@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { CalendarRange, ClipboardList, Database, LayoutDashboard, MapPin } from 'lucide-react';
+import { CalendarRange, CircleAlert, ClipboardList, Database, LayoutDashboard, MapPin } from 'lucide-react';
 
 import { ROLES, isApprover, isSystemAdmin, type Role } from './roles';
 
@@ -38,6 +38,7 @@ export const NAV: NavItem[] = [
   { slug: 'attendance', title: 'Attendance', href: '/attendance', icon: MapPin, roles: SALES, section: 'field' },
   { slug: 'dcr', title: 'DCR', href: '/dcr', icon: ClipboardList, roles: SALES, section: 'field' },
   { slug: 'tour-plans', title: 'Tour Plans', href: '/tour-plans', icon: CalendarRange, roles: SALES, section: 'field' },
+  { slug: 'exceptions', title: 'Exceptions', href: '/exceptions', icon: CircleAlert, roles: SALES, section: 'intelligence' },
   { slug: 'masters', title: 'Master Data', href: '/masters', icon: Database, roles: ['system_admin'], section: 'admin' },
 ];
 

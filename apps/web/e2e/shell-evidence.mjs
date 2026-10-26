@@ -14,8 +14,8 @@ const check = (c, m) => {
   if (!c) ok = false;
 };
 // Update as pages ship.
-const MANAGER_NAV = ['Dashboard', 'Attendance', 'DCR', 'Tour Plans'];
-const MANAGER_SECTIONS = ['workspace', 'field'];
+const MANAGER_NAV = ['Dashboard', 'Attendance', 'DCR', 'Tour Plans', 'Exceptions'];
+const MANAGER_SECTIONS = ['workspace', 'field', 'intelligence'];
 const MANAGER_ONLY = [];
 const GATED = '/masters';
 const navLabels = (page) =>

@@ -252,7 +252,12 @@ function Attention({ rows, className }: { rows: KpiReport['rows']; className?: s
   return (
     <Card className={cn('gap-0 py-0 shadow-xs', className)}>
       <CardHeader className="border-b px-4 py-4">
-        <CardTitle className="text-base">Exceptions</CardTitle>
+        <div className="flex items-start justify-between gap-2">
+          <CardTitle className="text-base">Exceptions</CardTitle>
+          <Link href="/exceptions" className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline" data-testid="see-all-exceptions">
+            See all
+          </Link>
+        </div>
         <CardDescription>From this month&apos;s KPIs, most serious first. Thresholds to confirm with Arighna.</CardDescription>
       </CardHeader>
       <ul className="divide-y" data-testid="attention-kpi">
