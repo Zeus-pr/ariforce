@@ -6,7 +6,11 @@ import {
   withTenant,
   DEMO_COMPANY_ID as A,
   T,
+  U,
   auditLog,
+  consentRecords,
+  devices,
+  geoCaptures,
   companies,
   doctors,
   territories,
@@ -133,6 +137,53 @@ describe.skipIf(!OWNER || !APP)('Postgres RLS tenant isolation (app role, non-su
         tx.insert(auditLog).values({ companyId: B, action: 'forged' }),
       ),
     ).rejects.toThrow();
+  });
+
+  it('devices, consent and geo point captures: tenant-scoped, consent/geo append-only', async () => {
+    const dev = '01930000-0000-7000-8000-0000000d0001';
+    await withTenant(db(), { companyId: A }, async (tx) => {
+      await tx
+        .insert(devices)
+        .values({
+          id: dev,
+          companyId: A,
+          userId: U.rep,
+          ownership: 'personal',
+          platform: 'ios',
+          installId: 'test-install-1',
+        })
+        .onConflictDoNothing();
+      await tx
+        .insert(consentRecords)
+        .values({
+          companyId: A,
+          userId: U.rep,
+          deviceId: dev,
+          purpose: 'location_checkin',
+          noticeVersion: 'loc-2026-10',
+          granted: true,
+        });
+      await tx
+        .insert(geoCaptures)
+        .values({
+          companyId: A,
+          userId: U.rep,
+          deviceId: dev,
+          kind: 'punch_in',
+          location: { x: 72.8777, y: 19.076 },
+          accuracyM: 12,
+          source: 'gps',
+          capturedAt: new Date(),
+        });
+    });
+    await expect(
+      withTenant(db(), { companyId: A }, (tx) => tx.update(consentRecords).set({ granted: false })),
+    ).rejects.toThrow();
+    await expect(
+      withTenant(db(), { companyId: A }, (tx) => tx.delete(geoCaptures)),
+    ).rejects.toThrow();
+    const other = await withTenant(db(), { companyId: B }, (tx) => tx.select().from(devices));
+    expect(other).toHaveLength(0);
   });
 
   it('every tenant table has company_id NOT NULL and forced RLS', async () => {

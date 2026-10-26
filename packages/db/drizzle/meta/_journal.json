@@ -29,6 +29,13 @@
       "when": 1793039610666,
       "tag": "0003_supabase_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793040096772,
+      "tag": "0004_devices_consent_geo",
+      "breakpoints": true
     }
   ]
 }

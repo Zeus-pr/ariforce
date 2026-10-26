@@ -75,3 +75,13 @@ One demo company, territory chain India > East Zone > West Bengal > Kolkata Nort
 ## Tests
 
 `packages/db/test/rls.test.ts` (runs when `DIRECT_URL` and `DATABASE_URL` are set, always in CI): app role not superuser; no context -> no rows; cross-tenant read/insert/update/delete fail; company_id immutable; version bump; audit_log append-only; every tenant table has NOT NULL `company_id` and forced RLS.
+
+## Devices, consent and location (migration 0004)
+
+Context: single tenant in production (Arighna Pharmaceutical), 200-1,000 field reps, Android + iPhone (Expo), a mix of company-issued and personal phones. `company_id` + RLS stay on every row anyway.
+
+- **`devices`**: one row per app install (`install_id`, never IMEI/advertising id), `ownership` = `company` | `personal`, `platform` = `android` | `ios`, `status` = `pending_consent` -> `active` -> `revoked`. A personal phone becomes `active` only after explicit consent.
+- **`consent_records`** (append-only): `purpose` = `personal_device_enrolment` | `location_checkin`, `notice_version` (exact DPDP notice text shown), `granted`, `at`, ip, user agent. Withdrawal is a new row with `granted = false`; the latest row per (user, purpose) wins.
+- **`geo_captures`** (append-only): **point captures only** at punch-in, each visit, punch-out and doctor geo-tag; PostGIS point + `accuracy_m`, `source` (gps/network/fused/manual), `is_mock`, `device_id`, `captured_at`/`received_at`, optional link to the entity and server-computed `distance_m` to the geofence.
+- **No continuous tracking.** There is deliberately no location-trail/breadcrumb table and the app does not sample location in the background.
+- Out of scope now: ERP/Tally integration.
