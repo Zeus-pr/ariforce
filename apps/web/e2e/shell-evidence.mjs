@@ -37,13 +37,16 @@ check(state === 'collapsed', `Ctrl+B collapses sidebar (${state})`);
 await page.screenshot({ path: path.join(OUT, 'sidebar-collapsed.png') });
 await page.keyboard.press('Control+b');
 
-await page.getByRole('button', { name: 'Approve' }).first().click();
-await page.waitForSelector('[data-sonner-toast]');
-await page.screenshot({ path: path.join(OUT, 'toast.png') });
+// Approvals now come from GET /v1/approvals; the mock may hold a single pending item, so return-dialog first.
+await page.getByTestId('dash-approval').first().waitFor();
 await page.getByRole('button', { name: 'Return', exact: true }).first().click();
 await page.waitForSelector('[role="dialog"]');
 await page.screenshot({ path: path.join(OUT, 'return-dialog.png') });
 await page.keyboard.press('Escape');
+await page.locator('[role="dialog"]').waitFor({ state: 'detached' });
+await page.getByRole('button', { name: 'Approve' }).first().click();
+await page.waitForSelector('[data-sonner-toast]');
+await page.screenshot({ path: path.join(OUT, 'toast.png') });
 
 await page.getByRole('button', { name: 'Account menu' }).click();
 await page.getByRole('menuitemradio', { name: 'Business Manager', exact: true }).click();

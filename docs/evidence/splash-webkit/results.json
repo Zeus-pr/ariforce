@@ -3,8 +3,8 @@
     "name": "desktop",
     "cls": 0,
     "animatedProps": [
-      "transform",
-      "opacity"
+      "opacity",
+      "transform"
     ],
     "splashEnd": {
       "x": 16,
@@ -35,8 +35,8 @@
     "name": "mobile",
     "cls": 0,
     "animatedProps": [
-      "transform",
-      "opacity"
+      "opacity",
+      "transform"
     ],
     "splashEnd": {
       "x": 12,
@@ -98,8 +98,8 @@
     "name": "os-dark",
     "cls": 0,
     "animatedProps": [
-      "transform",
-      "opacity"
+      "opacity",
+      "transform"
     ],
     "splashEnd": {
       "x": 16,
