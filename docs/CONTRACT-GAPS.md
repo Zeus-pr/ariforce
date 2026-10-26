@@ -42,3 +42,12 @@ The Architect branches (feat/api-1…6, roles-dh-accountant) have `GET /v1/users
 - `PATCH /v1/employees/{id}` – edit, move (managerId/hqId), deactivate/reactivate (`active`). Server must reject cycles and self-edits.
 
 No payroll fields (PAN, bank, CTC, salary) in any of these, by owner decision.
+
+**Update (feat/20-real-api):** the Architect's `GET /v1/team`, `POST /v1/employees`, `PATCH /v1/employees/{id}` and `POST /v1/team/{id}/manager` now back My Team in real mode (`lib/team-adapter/api-adapter.ts`). Mock mode keeps the local adapter. Still missing: a list of HQs/territories inside the caller's subtree for the create form beyond those already on tree nodes.
+
+## 22. Chemists, stockists and placeholder doctors
+
+- **No city filter.** Masters lists accept `territoryId` (subtree), `specialtyId`, `categoryId`, `q`, `sort`, `cursor`. The pages only offer those; a `city` param is needed for the requested city filter.
+- **No placeholder filter.** "No Doc" placeholder doctors get a muted "Placeholder" tag, but hiding them by default and a "Show placeholders" toggle need a server flag (`isPlaceholder` on the row and `includePlaceholders=false` default on the list). Filtering in the browser would break server paging and totals, so it is not done.
+- **No Products master.** No products list/CRUD endpoint, so there is no Products nav entry.
+- **Masters write rule.** The API's DEFAULT_ROLE_PERMISSIONS still gives `masters:write` to BM; the web follows the new RBM+ rule (docs/PERMISSIONS.md) and shows the API's 403 if they disagree.
