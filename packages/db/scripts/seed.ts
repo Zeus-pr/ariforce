@@ -8,37 +8,44 @@ if (!url) throw new Error('DIRECT_URL (direct owner connection, migrations only)
 const pool = new Pool({ connectionString: url });
 const db = drizzle(pool, { schema: s });
 
-const BASE = ['me:read', 'roles:read', 'territories:read', 'masters:read'];
-const MANAGER = [
-  ...BASE,
-  'users:read',
-  'masters:write',
-  'field:read',
-  'approvals:decide',
-  'reports:read',
+const BASE = [
+  'me:read',
+  'roles:read',
+  'territories:read',
+  'masters:read',
+  'stockists:read',
+  'products:read',
 ];
-/** Mirrors DEFAULT_ROLE_PERMISSIONS in @ariforce/contracts. */
+const MANAGER = [...BASE, 'users:read', 'field:read', 'approvals:decide', 'reports:read'];
+const MASTERS_WRITE = ['masters:write', 'territories:write', 'imports:write'];
+const SENIOR = [...MANAGER, ...MASTERS_WRITE];
+/** Mirrors DEFAULT_ROLE_PERMISSIONS in @ariforce/contracts (masters write = RBM and above). */
 const PERMS: Record<string, string[]> = {
-  business_manager: [...BASE, 'masters:write', 'field:read', 'field:write', 'reports:read'],
+  business_manager: [...BASE, 'field:read', 'field:write', 'reports:read'],
   area_business_manager: MANAGER,
-  regional_business_manager: MANAGER,
-  zonal_business_manager: MANAGER,
-  sales_manager: MANAGER,
-  general_manager: MANAGER,
-  vice_president: MANAGER,
-  director: [...MANAGER, 'imports:write', 'settings:write', 'audit:read'],
+  regional_business_manager: SENIOR,
+  zonal_business_manager: SENIOR,
+  sales_manager: SENIOR,
+  general_manager: SENIOR,
+  vice_president: SENIOR,
+  director: [...SENIOR, 'settings:write', 'audit:read'],
   system_admin: [
     ...BASE,
-    'territories:write',
+    ...MASTERS_WRITE,
     'users:read',
     'users:write',
-    'masters:write',
-    'imports:write',
     'settings:write',
     'audit:read',
   ],
-  distribution_head: ['me:read', 'roles:read', 'territories:read', 'sales:read'],
-  accountant: ['me:read', 'roles:read', 'territories:read', 'finance:read'],
+  distribution_head: [
+    'me:read',
+    'roles:read',
+    'territories:read',
+    'stockists:read',
+    'products:read',
+    'sales:read',
+  ],
+  accountant: ['me:read', 'roles:read', 'territories:read', 'products:read', 'finance:read'],
 };
 
 await db.transaction(async (tx) => {

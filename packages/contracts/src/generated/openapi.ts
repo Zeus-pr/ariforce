@@ -104,7 +104,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Territories in the caller's subtree (cursor-paginated, no 200 cap overall) */
+    /**
+     * Territories in the caller's subtree (cursor-paginated, no 200 cap overall)
+     * @description Requires: territories:read. Results are territory-subtree scoped.
+     */
     get: operations['listTerritories'];
     put?: never;
     post?: never;
@@ -121,6 +124,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Requires: territories:read. Results are territory-subtree scoped. */
     get: operations['getTerritory'];
     put?: never;
     post?: never;
@@ -137,7 +141,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Read-only in v1 */
+    /**
+     * Read-only in v1
+     * @description Requires: masters:read. Results are territory-subtree scoped.
+     */
     get: operations['listSpecialties'];
     put?: never;
     post?: never;
@@ -154,7 +161,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Read-only in v1 */
+    /**
+     * Read-only in v1
+     * @description Requires: masters:read. Results are territory-subtree scoped.
+     */
     get: operations['listDoctorCategories'];
     put?: never;
     post?: never;
@@ -244,6 +254,8 @@ export interface paths {
     /**
      * Bulk import doctors from Excel/CSV rows (dry-run first)
      * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
+     *
+     *     Requires: imports:write + masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
      */
     post: operations['importDoctors'];
     delete?: never;
@@ -259,9 +271,13 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List doctors visible to the caller (own territory subtree) */
+    /**
+     * List doctors visible to the caller (own territory subtree)
+     * @description Requires: masters:read. Results are territory-subtree scoped.
+     */
     get: operations['listDoctors'];
     put?: never;
+    /** @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403. */
     post: operations['createDoctor'];
     delete?: never;
     options?: never;
@@ -276,13 +292,18 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Requires: masters:read. Results are territory-subtree scoped. */
     get: operations['getDoctor'];
     put?: never;
     post?: never;
-    /** Soft delete (sets deletedAt tombstone) */
+    /**
+     * Soft delete (sets deletedAt tombstone)
+     * @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
+     */
     delete: operations['deleteDoctor'];
     options?: never;
     head?: never;
+    /** @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403. */
     patch: operations['updateDoctor'];
     trace?: never;
   };
@@ -298,6 +319,8 @@ export interface paths {
     /**
      * Bulk import chemists from Excel/CSV rows (dry-run first)
      * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
+     *
+     *     Requires: imports:write + masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
      */
     post: operations['importChemists'];
     delete?: never;
@@ -313,9 +336,13 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List chemists visible to the caller (own territory subtree) */
+    /**
+     * List chemists visible to the caller (own territory subtree)
+     * @description Requires: masters:read. Results are territory-subtree scoped.
+     */
     get: operations['listChemists'];
     put?: never;
+    /** @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403. */
     post: operations['createChemist'];
     delete?: never;
     options?: never;
@@ -330,13 +357,18 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Requires: masters:read. Results are territory-subtree scoped. */
     get: operations['getChemist'];
     put?: never;
     post?: never;
-    /** Soft delete (sets deletedAt tombstone) */
+    /**
+     * Soft delete (sets deletedAt tombstone)
+     * @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
+     */
     delete: operations['deleteChemist'];
     options?: never;
     head?: never;
+    /** @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403. */
     patch: operations['updateChemist'];
     trace?: never;
   };
@@ -352,6 +384,8 @@ export interface paths {
     /**
      * Bulk import stockists from Excel/CSV rows (dry-run first)
      * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
+     *
+     *     Requires: imports:write + masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
      */
     post: operations['importStockists'];
     delete?: never;
@@ -367,9 +401,13 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List stockists visible to the caller (own territory subtree) */
+    /**
+     * List stockists visible to the caller (own territory subtree)
+     * @description Requires: stockists:read. Results are territory-subtree scoped.
+     */
     get: operations['listStockists'];
     put?: never;
+    /** @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403. */
     post: operations['createStockist'];
     delete?: never;
     options?: never;
@@ -384,13 +422,18 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Requires: stockists:read. Results are territory-subtree scoped. */
     get: operations['getStockist'];
     put?: never;
     post?: never;
-    /** Soft delete (sets deletedAt tombstone) */
+    /**
+     * Soft delete (sets deletedAt tombstone)
+     * @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
+     */
     delete: operations['deleteStockist'];
     options?: never;
     head?: never;
+    /** @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403. */
     patch: operations['updateStockist'];
     trace?: never;
   };
@@ -406,6 +449,8 @@ export interface paths {
     /**
      * Bulk import products from Excel/CSV rows (dry-run first)
      * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
+     *
+     *     Requires: imports:write + masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
      */
     post: operations['importProducts'];
     delete?: never;
@@ -421,9 +466,13 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List products visible to the caller (own territory subtree) */
+    /**
+     * List products visible to the caller (own territory subtree)
+     * @description Requires: products:read. Results are territory-subtree scoped.
+     */
     get: operations['listProducts'];
     put?: never;
+    /** @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403. */
     post: operations['createProduct'];
     delete?: never;
     options?: never;
@@ -438,13 +487,18 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Requires: products:read. Results are territory-subtree scoped. */
     get: operations['getProduct'];
     put?: never;
     post?: never;
-    /** Soft delete (sets deletedAt tombstone) */
+    /**
+     * Soft delete (sets deletedAt tombstone)
+     * @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
+     */
     delete: operations['deleteProduct'];
     options?: never;
     head?: never;
+    /** @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403. */
     patch: operations['updateProduct'];
     trace?: never;
   };
@@ -455,9 +509,13 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List worktypes visible to the caller (own territory subtree) */
+    /**
+     * List worktypes visible to the caller (own territory subtree)
+     * @description Requires: masters:read. Results are territory-subtree scoped.
+     */
     get: operations['listWorkTypes'];
     put?: never;
+    /** @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403. */
     post: operations['createWorkType'];
     delete?: never;
     options?: never;
@@ -472,13 +530,18 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Requires: masters:read. Results are territory-subtree scoped. */
     get: operations['getWorkType'];
     put?: never;
     post?: never;
-    /** Soft delete (sets deletedAt tombstone) */
+    /**
+     * Soft delete (sets deletedAt tombstone)
+     * @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
+     */
     delete: operations['deleteWorkType'];
     options?: never;
     head?: never;
+    /** @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403. */
     patch: operations['updateWorkType'];
     trace?: never;
   };
@@ -494,6 +557,8 @@ export interface paths {
     /**
      * Bulk import products from Excel/CSV rows (dry-run first)
      * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
+     *
+     *     Requires: imports:write + masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
      */
     post: operations['importDivisions'];
     delete?: never;
@@ -514,6 +579,8 @@ export interface paths {
     /**
      * Bulk import territories from Excel/CSV rows (dry-run first)
      * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
+     *
+     *     Requires: imports:write + territories:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
      */
     post: operations['importTerritorys'];
     delete?: never;
@@ -534,6 +601,8 @@ export interface paths {
     /**
      * Bulk import products from Excel/CSV rows (dry-run first)
      * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
+     *
+     *     Requires: imports:write + masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
      */
     post: operations['importProductHqMappings'];
     delete?: never;
@@ -549,6 +618,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Requires: products:read. Results are territory-subtree scoped. */
     get: operations['listDivisions'];
     put?: never;
     post?: never;
@@ -565,8 +635,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Requires: products:read. Results are territory-subtree scoped. */
     get: operations['listProductHqMappings'];
     put?: never;
+    /** @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403. */
     post: operations['createProductHqMapping'];
     delete?: never;
     options?: never;
@@ -581,6 +653,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Requires: imports:write. Masters write = RBM and above or system_admin; ABM/BM get 403. */
     get: operations['getImportJob'];
     put?: never;
     post?: never;
@@ -1600,6 +1673,8 @@ export interface components {
       | 'users:read'
       | 'users:write'
       | 'masters:read'
+      | 'stockists:read'
+      | 'products:read'
       | 'masters:write'
       | 'imports:write'
       | 'field:read'

@@ -30,7 +30,7 @@ Sales hierarchy, lowest to highest. `rank` is stored on `roles`; keys are the `r
 
 System Admin is outside the hierarchy: no manager, nobody reports to it, it is not an approver, and by default it lacks `field:read`, `field:write`, `approvals:decide` and `reports:read`. Granting field access is an explicit, audited permission change on its role.
 
-Distribution Head and Accountant are functional roles, also outside the hierarchy (rank 0): no reporting line, never a manager, never an approver (no `approvals:decide`, so they cannot decide DCR/TP/corrections), not shown in the team tree. Default data scope: company-wide read of **their own domain only** (`sales:read` = stockists, primary/secondary sales, distribution views; `finance:read` = expenses and finance reports). They do not get `masters:read`, `field:read` or `reports:read`, so no doctor, chemist, DCR, check-in or KPI data by default. The domain endpoints themselves are not built yet; the permissions exist so they can be gated from day one.
+Distribution Head and Accountant are functional roles, also outside the hierarchy (rank 0): no reporting line, never a manager, never an approver (no `approvals:decide`, so they cannot decide DCR/TP/corrections), not shown in the team tree. Default data scope: company-wide read of **their own domain only** (`sales:read` = stockists, primary/secondary sales, distribution views; `finance:read` = expenses and finance reports). They do not get `masters:read`, `field:read` or `reports:read`, so no doctor, chemist, DCR, check-in or KPI data by default (masters read access: see the accepted section below). The domain endpoints themselves are not built yet; the permissions exist so they can be gated from day one.
 
 Scope follows the **reporting line**, not the role name: a manager sees their own team (everyone whose `manager_id` chain leads to them) and the territories those people are assigned to. An acting manager covering two teams sees both. Skipping levels is fine (a BM may report straight to an RBM).
 
@@ -38,18 +38,39 @@ Territory levels are a separate, geographic hierarchy (`national > zone > region
 
 ### Default permissions (`DEFAULT_ROLE_PERMISSIONS` in contracts; seeded per company)
 
-| Permission                                                                       |      BM      | ABM…VP | Director | System Admin | Distribution Head | Accountant |
-| -------------------------------------------------------------------------------- | :----------: | :----: | :------: | :----------: | :---------------: | :--------: |
-| `me:read`, `roles:read`, `territories:read`                                      |      ✓       |   ✓    |    ✓     |      ✓       |         ✓         |     ✓      |
-| `masters:read`                                                                   |      ✓       |   ✓    |    ✓     |      ✓       |                   |            |
-| `masters:write` (field-added doctors are `pending` unless director/system admin) |      ✓       |   ✓    |    ✓     |      ✓       |                   |            |
-| `field:read` / `field:write`                                                     |    ✓ / ✓     |  ✓ /   |   ✓ /    |              |                   |            |
-| `users:read`                                                                     |              |   ✓    |    ✓     |      ✓       |                   |            |
-| `approvals:decide`, `reports:read`                                               | reports only |   ✓    |    ✓     |              |                   |            |
-| `imports:write`, `settings:write`, `audit:read`                                  |              |        |    ✓     |      ✓       |                   |            |
-| `territories:write`, `users:write`                                               |              |        |          |      ✓       |                   |            |
-| `sales:read`                                                                     |              |        |          |              |         ✓         |            |
-| `finance:read`                                                                   |              |        |          |              |                   |     ✓      |
+| Permission                                                                               |      BM      | ABM | RBM…VP | Director | System Admin | Distribution Head | Accountant |
+| ---------------------------------------------------------------------------------------- | :----------: | :-: | :----: | :------: | :----------: | :---------------: | :--------: |
+| `me:read`, `roles:read`, `territories:read`                                              |      ✓       |  ✓  |   ✓    |    ✓     |      ✓       |         ✓         |     ✓      |
+| `masters:read` (doctors, chemists, work types)                                           |      ✓       |  ✓  |   ✓    |    ✓     |      ✓       |                   |            |
+| `stockists:read`                                                                         |      ✓       |  ✓  |   ✓    |    ✓     |      ✓       |         ✓         |            |
+| `products:read` (products, divisions, HQ mappings)                                       |      ✓       |  ✓  |   ✓    |    ✓     |      ✓       |         ✓         |     ✓      |
+| `masters:write`, `territories:write`, `imports:write` (create, edit, import, deactivate) |              |     |   ✓    |    ✓     |      ✓       |                   |            |
+| `field:read` / `field:write`                                                             |    ✓ / ✓     | ✓ / |  ✓ /   |   ✓ /    |              |                   |            |
+| `users:read`                                                                             |              |  ✓  |   ✓    |    ✓     |      ✓       |                   |            |
+| `approvals:decide`, `reports:read`                                                       | reports only |  ✓  |   ✓    |    ✓     |              |                   |            |
+| `settings:write`, `audit:read`                                                           |              |     |        |    ✓     |      ✓       |                   |            |
+| `users:write`                                                                            |              |     |        |          |      ✓       |                   |            |
+| `sales:read`                                                                             |              |     |        |          |              |         ✓         |            |
+| `finance:read`                                                                           |              |     |        |          |              |                   |     ✓      |
+
+Field-added doctors are `pending` unless created by a director or system admin.
+
+### Masters permissions (lead rule, 2026-10-27)
+
+- **Write** (create, edit, import dry-run and save, deactivate) on doctors, chemists, stockists, products, divisions, territories, work types, HQ mappings and imports: RBM and above (rank >= 3: RBM, ZBM, SM, GM, VP, Director) and System Admin. Constant: `MASTERS_WRITE` / `MASTERS_WRITE_MIN_RANK = 3` in `packages/contracts/src/schemas/roles.ts`.
+- **ABM and BM are read-only** on masters: every write returns 403 `Missing permission: ...`.
+- `GET /v1/imports/{id}` needs `imports:write` (write roles only).
+- Reads stay scoped to the caller's subtree (company-wide for System Admin, Distribution Head and Accountant).
+- My Team add-employee flow is unchanged (see "Team and employees").
+- Per-endpoint permissions are in the OpenAPI document as `x-required-permissions` on each masters operation (`mastersPermissions(path, method)` in `packages/contracts/src/openapi.ts`). Reads: territories → `territories:read`; stockists → `stockists:read`; products, divisions, product-hq-mappings → `products:read`; doctors, chemists, work types → `masters:read`. Writes: `masters:write` (territories: `territories:write`); import endpoints also need `imports:write`.
+- The mock (`packages/contracts/src/mocks/masters-guard.ts`) returns the same 403s.
+- SQL: `packages/db/migrations/0018_masters_write_rbm_up.sql` (idempotent).
+
+### Distribution Head and Accountant masters access: **accepted (lead, 2026-10-27)**
+
+- Distribution Head: read-only on stockists, products, divisions and territories, plus `sales:read`. No doctors or chemists.
+- Accountant: read-only on products, divisions and territories, plus `finance:read`. No doctors, chemists or stockists.
+- Neither role writes masters.
 
 ### Migration from the first role set
 
@@ -82,7 +103,7 @@ better-auth ships ESM only. The API stays CommonJS (Nest decorators/DI) with `mo
 
 ## Tests (`apps/api/test/auth-rbac.test.ts`, real Postgres in CI)
 
-401 unauthenticated, wrong password, BM sees only HQ doctors, ABM gets 404 on a sibling team's area, RBM sees both teams, director company-wide, system admin sees masters but has no field permissions and no manager, 404 on another tenant's doctor, 403 creating outside hierarchy, 201 + audit row inside, sign-in/sign-out audited and session revoked, 422 validation shape.
+401 unauthenticated, wrong password, BM sees only HQ doctors, ABM gets 404 on a sibling team's area, RBM sees both teams, director company-wide, system admin sees masters but has no field permissions and no manager, 404 on another tenant's doctor, BM/ABM 403 on masters writes, RBM 403 creating outside its hierarchy and 201 + audit row inside, sign-in/sign-out audited and session revoked, 422 validation shape.
 
 ## Team and employees
 

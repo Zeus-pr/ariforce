@@ -127,6 +127,13 @@
       "when": 1793047582947,
       "tag": "0017_users_joined_on",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793047950704,
+      "tag": "0018_masters_write_rbm_up",
+      "breakpoints": true
     }
   ]
 }

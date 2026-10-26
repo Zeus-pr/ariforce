@@ -451,7 +451,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "territories:read"
+        ],
+        "description": "Requires: territories:read. Results are territory-subtree scoped."
       }
     },
     "/v1/territories/{id}": {
@@ -521,7 +525,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "territories:read"
+        ],
+        "description": "Requires: territories:read. Results are territory-subtree scoped."
       }
     },
     "/v1/specialties": {
@@ -639,7 +647,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:read"
+        ],
+        "description": "Requires: masters:read. Results are territory-subtree scoped."
       }
     },
     "/v1/doctor-categories": {
@@ -757,7 +769,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:read"
+        ],
+        "description": "Requires: masters:read. Results are territory-subtree scoped."
       }
     },
     "/v1/files/upload-url": {
@@ -1111,7 +1127,7 @@
         ],
         "operationId": "importDoctors",
         "summary": "Bulk import doctors from Excel/CSV rows (dry-run first)",
-        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.",
+        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.\n\nRequires: imports:write + masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.",
         "parameters": [
           {
             "in": "header",
@@ -1194,7 +1210,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "imports:write",
+          "masters:write"
+        ]
       }
     },
     "/v1/doctors": {
@@ -1348,7 +1368,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:read"
+        ],
+        "description": "Requires: masters:read. Results are territory-subtree scoped."
       },
       "post": {
         "security": [
@@ -1422,7 +1446,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       }
     },
     "/v1/doctors/{id}": {
@@ -1492,7 +1520,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:read"
+        ],
+        "description": "Requires: masters:read. Results are territory-subtree scoped."
       },
       "patch": {
         "security": [
@@ -1589,7 +1621,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       },
       "delete": {
         "security": [
@@ -1651,7 +1687,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       }
     },
     "/v1/chemists/import": {
@@ -1667,7 +1707,7 @@
         ],
         "operationId": "importChemists",
         "summary": "Bulk import chemists from Excel/CSV rows (dry-run first)",
-        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.",
+        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.\n\nRequires: imports:write + masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.",
         "parameters": [
           {
             "in": "header",
@@ -1750,7 +1790,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "imports:write",
+          "masters:write"
+        ]
       }
     },
     "/v1/chemists": {
@@ -1882,7 +1926,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:read"
+        ],
+        "description": "Requires: masters:read. Results are territory-subtree scoped."
       },
       "post": {
         "security": [
@@ -1956,7 +2004,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       }
     },
     "/v1/chemists/{id}": {
@@ -2026,7 +2078,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:read"
+        ],
+        "description": "Requires: masters:read. Results are territory-subtree scoped."
       },
       "patch": {
         "security": [
@@ -2123,7 +2179,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       },
       "delete": {
         "security": [
@@ -2185,7 +2245,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       }
     },
     "/v1/stockists/import": {
@@ -2201,7 +2265,7 @@
         ],
         "operationId": "importStockists",
         "summary": "Bulk import stockists from Excel/CSV rows (dry-run first)",
-        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.",
+        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.\n\nRequires: imports:write + masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.",
         "parameters": [
           {
             "in": "header",
@@ -2284,7 +2348,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "imports:write",
+          "masters:write"
+        ]
       }
     },
     "/v1/stockists": {
@@ -2416,7 +2484,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "stockists:read"
+        ],
+        "description": "Requires: stockists:read. Results are territory-subtree scoped."
       },
       "post": {
         "security": [
@@ -2490,7 +2562,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       }
     },
     "/v1/stockists/{id}": {
@@ -2560,7 +2636,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "stockists:read"
+        ],
+        "description": "Requires: stockists:read. Results are territory-subtree scoped."
       },
       "patch": {
         "security": [
@@ -2657,7 +2737,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       },
       "delete": {
         "security": [
@@ -2719,7 +2803,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       }
     },
     "/v1/products/import": {
@@ -2735,7 +2823,7 @@
         ],
         "operationId": "importProducts",
         "summary": "Bulk import products from Excel/CSV rows (dry-run first)",
-        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.",
+        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.\n\nRequires: imports:write + masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.",
         "parameters": [
           {
             "in": "header",
@@ -2818,7 +2906,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "imports:write",
+          "masters:write"
+        ]
       }
     },
     "/v1/products": {
@@ -2970,7 +3062,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "products:read"
+        ],
+        "description": "Requires: products:read. Results are territory-subtree scoped."
       },
       "post": {
         "security": [
@@ -3044,7 +3140,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       }
     },
     "/v1/products/{id}": {
@@ -3114,7 +3214,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "products:read"
+        ],
+        "description": "Requires: products:read. Results are territory-subtree scoped."
       },
       "patch": {
         "security": [
@@ -3211,7 +3315,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       },
       "delete": {
         "security": [
@@ -3273,7 +3381,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       }
     },
     "/v1/work-types": {
@@ -3391,7 +3503,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:read"
+        ],
+        "description": "Requires: masters:read. Results are territory-subtree scoped."
       },
       "post": {
         "security": [
@@ -3465,7 +3581,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       }
     },
     "/v1/work-types/{id}": {
@@ -3535,7 +3655,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:read"
+        ],
+        "description": "Requires: masters:read. Results are territory-subtree scoped."
       },
       "patch": {
         "security": [
@@ -3632,7 +3756,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       },
       "delete": {
         "security": [
@@ -3694,7 +3822,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       }
     },
     "/v1/divisions/import": {
@@ -3710,7 +3842,7 @@
         ],
         "operationId": "importDivisions",
         "summary": "Bulk import products from Excel/CSV rows (dry-run first)",
-        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.",
+        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.\n\nRequires: imports:write + masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.",
         "parameters": [
           {
             "in": "header",
@@ -3793,7 +3925,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "imports:write",
+          "masters:write"
+        ]
       }
     },
     "/v1/territories/import": {
@@ -3809,7 +3945,7 @@
         ],
         "operationId": "importTerritorys",
         "summary": "Bulk import territories from Excel/CSV rows (dry-run first)",
-        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.",
+        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.\n\nRequires: imports:write + territories:write. Masters write = RBM and above or system_admin; ABM/BM get 403.",
         "parameters": [
           {
             "in": "header",
@@ -3892,7 +4028,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "imports:write",
+          "territories:write"
+        ]
       }
     },
     "/v1/product-hq-mappings/import": {
@@ -3908,7 +4048,7 @@
         ],
         "operationId": "importProductHqMappings",
         "summary": "Bulk import products from Excel/CSV rows (dry-run first)",
-        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.",
+        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.\n\nRequires: imports:write + masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.",
         "parameters": [
           {
             "in": "header",
@@ -3991,7 +4131,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "imports:write",
+          "masters:write"
+        ]
       }
     },
     "/v1/divisions": {
@@ -4108,7 +4252,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "products:read"
+        ],
+        "description": "Requires: products:read. Results are territory-subtree scoped."
       }
     },
     "/v1/product-hq-mappings": {
@@ -4259,7 +4407,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "products:read"
+        ],
+        "description": "Requires: products:read. Results are territory-subtree scoped."
       },
       "post": {
         "security": [
@@ -4311,7 +4463,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       }
     },
     "/v1/imports/{id}": {
@@ -4381,7 +4537,11 @@
               }
             }
           }
-        }
+        },
+        "x-required-permissions": [
+          "imports:write"
+        ],
+        "description": "Requires: imports:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
       }
     },
     "/v1/users": {
@@ -9626,6 +9786,8 @@
           "users:read",
           "users:write",
           "masters:read",
+          "stockists:read",
+          "products:read",
           "masters:write",
           "imports:write",
           "field:read",
