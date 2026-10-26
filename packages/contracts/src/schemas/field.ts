@@ -261,6 +261,13 @@ export const Dcr = Syncable.extend({
     .meta({ description: 'Locked after the day-lock cut-off (#23)' }),
   calls: z.array(DcrCall),
   submittedAt: Timestamp.nullable(),
+  lockAt: Timestamp.meta({
+    description:
+      'Day-lock cut-off: end of the day + companies.dcr_lock_after_hours (company time zone)',
+  }),
+  unlockedUntil: Timestamp.nullable().meta({
+    description: 'Set while an approved correction request keeps a locked day editable (48 h)',
+  }),
 }).meta({ id: 'Dcr' });
 export type Dcr = z.infer<typeof Dcr>;
 export const DcrUpsert = z
@@ -274,6 +281,11 @@ export const DcrUpsert = z
     version: z.int().min(1).optional(),
   })
   .meta({ id: 'DcrUpsert' });
+/** Ask the manager to reopen a locked day (gap #8); approval keeps it editable for 48 h. */
+export const DcrCorrectionRequest = z
+  .object({ date: DateOnly, reason: z.string().min(3).max(500) })
+  .meta({ id: 'DcrCorrectionRequest' });
+export const DCR_UNLOCK_HOURS = 48;
 export const DcrListQuery = FieldListQuery.extend({
   status: z.enum(['draft', 'submitted', 'locked']).optional(),
 });

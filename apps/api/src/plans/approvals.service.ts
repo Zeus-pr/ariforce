@@ -118,6 +118,11 @@ export class ApprovalsService {
     return id;
   }
 
+  async byId(tx: Tx, id: string): Promise<Approval> {
+    const [r] = await tx.select().from(approvalRequests).where(eq(approvalRequests.id, id));
+    return (await this.toDto(tx, [r!]))[0]!;
+  }
+
   private visible(p: Principal): SQL | undefined {
     return p.teamUserIds ? inArray(approvalRequests.requestedBy, p.teamUserIds) : undefined;
   }

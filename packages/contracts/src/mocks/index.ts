@@ -32,7 +32,10 @@ import {
   UserSummary,
   ConsentState,
   Dcr,
+  DcrCorrectionRequest,
   DcrUpsert,
+  DCR_UNLOCK_HOURS,
+  isDeviation,
   Division,
   GeofenceSettings,
   ImportJob,
@@ -490,6 +493,25 @@ function fieldHandlers(baseUrl: string) {
     decisionComment: null,
   });
 
+  /** Day lock (#23): end of the IST day + dcrLockAfterHours; unlocked 48 h after an approved correction. */
+  const corrections = new Map<string, string>();
+  const unlocked = new Map<string, number>();
+  const lockAt = (date: string) =>
+    new Date(
+      Date.parse(`${date}T00:00:00+05:30`) + 86_400_000 + fx.dcrLockAfterHours * 36e5,
+    ).toISOString();
+  const isLocked = (date: string) =>
+    Date.now() > Date.parse(lockAt(date)) && (unlocked.get(date) ?? 0) < Date.now();
+  const withLock = (d: Dcr): Dcr => ({
+    ...d,
+    lockAt: lockAt(d.date),
+    unlockedUntil:
+      (unlocked.get(d.date) ?? 0) > Date.now()
+        ? new Date(unlocked.get(d.date)!).toISOString()
+        : null,
+    status: isLocked(d.date) ? 'locked' : d.status === 'locked' ? 'submitted' : d.status,
+  });
+
   return [
     http.get(`${baseUrl}/v1/divisions`, ({ request }) =>
       list(Division, mockDivisions, new URL(request.url)),
@@ -731,20 +753,44 @@ function fieldHandlers(baseUrl: string) {
       });
       return HttpResponse.json(TourPlan.parse(p));
     }),
-    http.get(`${baseUrl}/v1/dcrs`, ({ request }) => list(Dcr, dcrs, new URL(request.url))),
+    http.get(`${baseUrl}/v1/dcrs`, ({ request }) =>
+      list(Dcr, dcrs.map(withLock), new URL(request.url)),
+    ),
     http.get(`${baseUrl}/v1/dcrs/:id`, ({ params }) => {
       const d = dcrs.find((x) => x.id === params.id);
-      return d ? HttpResponse.json(d) : notFound();
+      return d ? HttpResponse.json(withLock(d)) : notFound();
     }),
     http.put(`${baseUrl}/v1/dcrs`, async ({ request }) => {
       const b = DcrUpsert.safeParse(await request.json());
       if (!b.success) return validation('Invalid DCR', z.treeifyError(b.error));
+      if (b.data.date > today()) return validation('DCR date is in the future');
       let d = dcrs.find((x) => x.date === b.data.date && x.userId === fx.me.id);
-      if (d?.status === 'locked') return conflict('Day locked');
+      if (isLocked(b.data.date)) return conflict('Day locked; request a correction');
       if (d && b.data.version && b.data.version !== d.version) return conflict('Stale version');
       const wt = fx.workTypes.find((w) => w.id === b.data.workTypeId);
-      if (wt?.requiresCalls && b.data.submit && b.data.calls.length === 0)
+      if (!wt) return validation('Unknown work type');
+      if (wt.requiresCalls && b.data.submit && b.data.calls.length === 0)
         return validation('Field work needs at least one call');
+      if (!wt.requiresCalls && b.data.calls.length)
+        return validation('Calls need a field work type');
+      const tp = tourPlans.find(
+        (t) =>
+          t.userId === fx.me.id && t.month === b.data.date.slice(0, 7) && t.status === 'approved',
+      );
+      const planned = tp?.days.find((x) => x.date === b.data.date)?.entries ?? [];
+      if (
+        isDeviation(planned, b.data.workTypeId, b.data.territoryIds) &&
+        !b.data.deviationReason?.trim()
+      )
+        return HttpResponse.json(
+          {
+            error: {
+              code: 'DEVIATION_REASON_REQUIRED',
+              message: 'Worked plan differs from the approved tour plan; give a reason',
+            },
+          },
+          { status: 422 },
+        );
       const calls = b.data.calls.map(({ clientId, ...c }) => ({ ...c, id: clientId }));
       if (!d) {
         d = {
@@ -759,18 +805,46 @@ function fieldHandlers(baseUrl: string) {
           territoryIds: b.data.territoryIds,
           deviationReason: null,
           calls: [],
+          lockAt: lockAt(b.data.date),
+          unlockedUntil: null,
         };
         dcrs.push(d);
       } else d.version += 1;
       Object.assign(d, {
         workTypeId: b.data.workTypeId,
         territoryIds: b.data.territoryIds,
+        tourPlanId: tp?.id ?? null,
         deviationReason: b.data.deviationReason ?? null,
         calls,
         updatedAt: serverTime(),
         ...(b.data.submit ? { status: 'submitted', submittedAt: serverTime() } : {}),
       });
-      return HttpResponse.json(Dcr.parse(d));
+      return HttpResponse.json(Dcr.parse(withLock(d)));
+    }),
+    http.post(`${baseUrl}/v1/dcrs/correction-requests`, async ({ request }) => {
+      const b = DcrCorrectionRequest.safeParse(await request.json());
+      if (!b.success) return validation('Invalid request', z.treeifyError(b.error));
+      if (!isLocked(b.data.date)) return conflict('Day is not locked');
+      const a: Approval = {
+        id: crypto.randomUUID(),
+        companyId: fx.COMPANY_ID,
+        subjectType: 'dcr_unlock',
+        subjectId:
+          dcrs.find((x) => x.date === b.data.date && x.userId === fx.me.id)?.id ??
+          crypto.randomUUID(),
+        requestedBy: fx.me.id,
+        requestedByName: fx.me.name,
+        approverId: fx.me.managerId,
+        status: 'pending',
+        summary: `DCR correction ${b.data.date}`,
+        comment: null,
+        createdAt: serverTime(),
+        decidedAt: null,
+        decidedBy: null,
+      };
+      approvals.push(a);
+      corrections.set(a.id, b.data.date);
+      return HttpResponse.json(a, { status: 201 });
     }),
     http.get(`${baseUrl}/v1/approvals`, ({ request }) => {
       const url = new URL(request.url);
@@ -800,6 +874,9 @@ function fieldHandlers(baseUrl: string) {
         decidedAt: serverTime(),
         decidedBy: fx.me.id,
       });
+      const day = corrections.get(a.id);
+      if (day && b.data.decision === 'approve')
+        unlocked.set(day, Date.now() + DCR_UNLOCK_HOURS * 36e5);
       const tp = tourPlans.find((t) => t.id === a.subjectId);
       if (tp)
         Object.assign(tp, {

@@ -61,3 +61,19 @@ export function prevMonth(month: string): string {
   const [y, m] = month.split('-').map(Number) as [number, number];
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
 }
+
+/**
+ * DCR deviation from the approved TP (#22): the work type is not planned that day, or a worked territory is not planned.
+ * No planned entry = no deviation.
+ */
+export function isDeviation(
+  planned: { workTypeId: string; territoryIds: string[] }[],
+  workTypeId: string,
+  territoryIds: string[],
+): boolean {
+  if (!planned.length) return false;
+  const terr = new Set(planned.flatMap((e) => e.territoryIds));
+  return (
+    !planned.some((e) => e.workTypeId === workTypeId) || territoryIds.some((t) => !terr.has(t))
+  );
+}

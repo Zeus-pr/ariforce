@@ -256,6 +256,8 @@ export const workTypes: WorkType[] = [
     active: true,
   },
 ];
+/** companies.dcr_lock_after_hours */
+export const dcrLockAfterHours = 24;
 export const geofence: GeofenceSettings = {
   radiusM: 150,
   maxAccuracyM: 100,

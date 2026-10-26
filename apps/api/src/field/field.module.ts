@@ -13,5 +13,6 @@ import { SettingsController } from './settings.controller';
     DevicesController,
   ],
   providers: [CheckInsService],
+  exports: [CheckInsService],
 })
 export class FieldModule {}

@@ -31,6 +31,7 @@ import {
   ConsentState,
   Dcr,
   DcrListQuery,
+  DcrCorrectionRequest,
   DcrUpsert,
   FieldListQuery,
   GeofenceSettings,
@@ -609,8 +610,22 @@ export function buildOpenApiDocument(): OpenApiDocument {
           requestBody: json(DcrUpsert),
           responses: {
             '200': { description: 'Saved', ...json(Dcr) },
-            '409': err('Day locked or version conflict'),
-            '422': err('Validation failed (e.g. deviation reason missing)'),
+            '409': err('DAY_LOCKED (request a correction) or VERSION_CONFLICT'),
+            '422': err(
+              'Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown products, or a check-in that is not your visit to that outlet',
+            ),
+          },
+        }),
+      },
+      '/v1/dcrs/correction-requests': {
+        post: op({
+          tags: ['DCR'],
+          operationId: 'requestDcrCorrection',
+          summary: 'Ask your manager to reopen a locked day (gap #8)',
+          requestBody: json(DcrCorrectionRequest),
+          responses: {
+            '201': { description: 'Approval request created', ...json(Approval) },
+            '409': err('Day is not locked, or already unlocked'),
           },
         }),
       },

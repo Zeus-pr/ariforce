@@ -212,4 +212,27 @@ describe('contract gaps', () => {
     });
     expect(ok.data!.status).toBe('approved');
   });
+
+  it('DCR day lock and correction request (gap #8)', async () => {
+    const old = '2026-01-05';
+    const body = {
+      date: old,
+      workTypeId: fx.workTypes[0]!.id,
+      territoryIds: [],
+      calls: [],
+      submit: false,
+    };
+    const locked = await api.PUT('/v1/dcrs', { body });
+    expect(locked.response.status).toBe(409);
+    const req = await api.POST('/v1/dcrs/correction-requests', {
+      body: { date: old, reason: 'Forgot to submit' },
+    });
+    expect(req.response.status).toBe(201);
+    expect(req.data!.subjectType).toBe('dcr_unlock');
+    const today = new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10);
+    const notLocked = await api.POST('/v1/dcrs/correction-requests', {
+      body: { date: today, reason: 'Nothing to fix' },
+    });
+    expect(notLocked.response.status).toBe(409);
+  });
 });

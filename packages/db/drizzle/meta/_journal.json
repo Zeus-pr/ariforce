@@ -92,6 +92,13 @@
       "when": 1793045663699,
       "tag": "0012_tour_plan_days",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793046048880,
+      "tag": "0013_dcr_detail",
+      "breakpoints": true
     }
   ]
 }

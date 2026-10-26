@@ -96,6 +96,13 @@ export const dcrs = pgTable(
       .notNull()
       .references(() => workTypes.id),
     territoryId: uuid('territory_id').references(() => territories.id),
+    /** All territories worked (territory_id = the first, kept for existing views). */
+    territoryIds: uuid('territory_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    /** The approved monthly TP the day was compared against (#22). */
+    tourPlanId: uuid('tour_plan_id').references(() => tourPlans.id),
     status: docStatus('status').notNull().default('draft'),
     /** Reason when the day deviates from the approved TP. */
     deviationReason: text('deviation_reason'),
@@ -124,6 +131,11 @@ export const dcrCalls = pgTable(
     /** Visit GPS capture (only captured at punch-in, visit, punch-out). */
     geoCaptureId: uuid('geo_capture_id').references(() => geoCaptures.id),
     jointWorkUserId: uuid('joint_work_user_id').references(() => users.id),
+    /** All joint-work users (joint_work_user_id = the first, kept for existing views). */
+    jointWorkUserIds: uuid('joint_work_user_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     remarks: text('remarks'),
     ...syncCols(),
   },

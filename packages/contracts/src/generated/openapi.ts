@@ -809,6 +809,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/dcrs/correction-requests': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Ask your manager to reopen a locked day (gap #8) */
+    post: operations['requestDcrCorrection'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/dcrs/{id}': {
     parameters: {
       query?: never;
@@ -1353,6 +1370,14 @@ export interface components {
       stockistId?: string | null;
       /** @description INR, at PTR */
       value?: number | null;
+    };
+    DcrCorrectionRequest: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      reason: string;
     };
     ApprovalDecision: {
       /** @enum {string} */
@@ -2493,6 +2518,13 @@ export interface components {
       status: 'draft' | 'submitted' | 'locked';
       calls: components['schemas']['DcrCall'][];
       submittedAt: string | null;
+      /**
+       * Format: date-time
+       * @description Day-lock cut-off: end of the day + companies.dcr_lock_after_hours (company time zone)
+       */
+      lockAt: string;
+      /** @description Set while an approved correction request keeps a locked day editable (48 h) */
+      unlockedUntil: string | null;
     };
     DcrCall: {
       /**
@@ -2520,17 +2552,6 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       calledAt: string;
-    };
-    ApprovalPage: {
-      items: components['schemas']['Approval'][];
-      nextCursor: string | null;
-      /**
-       * Format: date-time
-       * @description ISO-8601 timestamp (UTC)
-       */
-      serverTime: string;
-      /** @description Rows matching the filters; present when includeTotal=true */
-      total?: number;
     };
     Approval: {
       /**
@@ -2574,6 +2595,17 @@ export interface components {
       createdAt: string;
       decidedAt: string | null;
       decidedBy: string | null;
+    };
+    ApprovalPage: {
+      items: components['schemas']['Approval'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
     };
     GeoPointOutput: {
       lat: number;
@@ -6446,7 +6478,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Day locked or version conflict */
+      /** @description DAY_LOCKED (request a correction) or VERSION_CONFLICT */
       409: {
         headers: {
           [name: string]: unknown;
@@ -6455,8 +6487,59 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Validation failed (e.g. deviation reason missing) */
+      /** @description Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown products, or a check-in that is not your visit to that outlet */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  requestDcrCorrection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DcrCorrectionRequest'];
+      };
+    };
+    responses: {
+      /** @description Approval request created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Approval'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Day is not locked, or already unlocked */
+      409: {
         headers: {
           [name: string]: unknown;
         };
