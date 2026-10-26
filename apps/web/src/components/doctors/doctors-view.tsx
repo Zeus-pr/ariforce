@@ -1,0 +1,419 @@
+'use client';
+
+import { ArrowLeft, MapPin, Phone } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import type { Doctor } from '@ariforce/contracts';
+import { Badge } from '@ariforce/ui/components/badge';
+import { Card, CardDescription, CardHeader, CardTitle } from '@ariforce/ui/components/card';
+import { cn } from '@ariforce/ui/lib/utils';
+import { axisProps, CHART, ChartFrame, ChartTooltip } from '@/components/charts/chart';
+import { DataTable } from '@/components/data-table/data-table';
+import type { Column } from '@/components/data-table/types';
+import { LookupsProvider, useLookups } from '@/components/masters/lookups';
+import { masterSource } from '@/components/masters/source';
+import { api, apiReady } from '@/lib/api';
+import { addDays, monthLabel, shortDate, thisMonth, todayYmd } from '@/lib/period';
+import { useReducedMotion } from '@/lib/use-reduced-motion';
+import {
+  HISTORY_DAYS,
+  productTally,
+  SAMPLE_CAP_PER_MONTH,
+  sampleVisits,
+  visitsFrom,
+  type Visit,
+} from './doctor-data';
+import { useProductNames } from './products';
+
+export function DoctorsView() {
+  const id = useSearchParams().get('id');
+  return <LookupsProvider>{id ? <Doctor360 id={id} /> : <DoctorList />}</LookupsProvider>;
+}
+
+function DoctorList() {
+  const lk = useLookups();
+  const router = useRouter();
+  const source = useMemo(() => masterSource('doctors', lk), [lk]);
+  const columns: Column<Doctor>[] = [
+    {
+      id: 'name',
+      header: 'Doctor',
+      mobile: 'primary',
+      cell: (d) => (
+        <Link
+          href={`/doctors?id=${d.id}`}
+          className="font-medium underline-offset-4 hover:underline"
+          data-testid="doctor-link"
+        >
+          {d.name}
+        </Link>
+      ),
+    },
+    {
+      id: 'specialty',
+      header: 'Specialty',
+      mobile: 'secondary',
+      cell: (d) => (d.specialtyId ? lk.byId.get(d.specialtyId) : '—'),
+    },
+    {
+      id: 'category',
+      header: 'Category',
+      mobile: 'secondary',
+      cell: (d) => (d.categoryId ? lk.byId.get(d.categoryId) : '—'),
+    },
+    { id: 'territory', header: 'Territory', cell: (d) => lk.byId.get(d.territoryId) ?? '—' },
+    { id: 'city', header: 'City', mobile: 'secondary', cell: (d) => d.city ?? '—' },
+  ];
+  if (!lk.ready) return <div className="h-96" aria-busy="true" />;
+  return (
+    <DataTable
+      label="doctors"
+      source={source as never}
+      columns={columns}
+      rowKey={(d) => d.id}
+      onRowClick={(d) => router.push(`/doctors?id=${d.id}`)}
+      searchPlaceholder="Search doctors"
+      empty={<p className="py-10 text-center text-sm text-muted-foreground">No doctors match.</p>}
+    />
+  );
+}
+
+const FEEDBACK: Record<string, string> = {
+  positive: 'Positive',
+  neutral: 'Neutral',
+  negative: 'Negative',
+};
+
+function Doctor360({ id }: { id: string }) {
+  const lk = useLookups();
+  const names = useProductNames();
+  const reduced = useReducedMotion();
+  const [doc, setDoc] = useState<Doctor | null | undefined>(undefined);
+  const [real, setReal] = useState<Visit[] | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      await apiReady();
+      const today = todayYmd();
+      const from = addDays(today, -HISTORY_DAYS);
+      // No GET /v1/doctors/{id} in the contract: read the list and pick (CONTRACT-GAPS #18).
+      const [docs, dcrs, ci] = await Promise.all([
+        api.GET('/v1/doctors', { params: { query: { limit: 200 } } }),
+        api.GET('/v1/dcrs', { params: { query: { from, to: today, limit: 200 } } }),
+        api.GET('/v1/check-ins', {
+          params: { query: { from, to: today, kind: 'visit', limit: 200 } },
+        }),
+      ]);
+      if (!live) return;
+      setDoc(docs.data?.items.find((d) => d.id === id) ?? null);
+      setReal(visitsFrom(id, dcrs.data?.items ?? [], ci.data?.items ?? []));
+    })();
+    return () => {
+      live = false;
+    };
+  }, [id]);
+
+  const category = lk.categories.find((c) => c.id === doc?.categoryId);
+  const target = category?.visitsPerMonth ?? 0;
+  const today = todayYmd();
+  const isSample = real !== null && real.length === 0;
+  const visits = useMemo(
+    () => (real === null ? null : real.length ? real : sampleVisits(id, today, target || 2)),
+    [real, id, today, target],
+  );
+  const month = thisMonth();
+  const thisMonthVisits = (visits ?? []).filter((v) => v.date.startsWith(month));
+  const samplesThisMonth = thisMonthVisits.reduce(
+    (s, v) => s + v.samples.reduce((a, x) => a + x.quantity, 0),
+    0,
+  );
+  const tally = productTally(visits ?? []);
+  const monthly = [-2, -1, 0].map((n) => {
+    const d = new Date(`${month}-15T00:00:00Z`);
+    d.setUTCMonth(d.getUTCMonth() + n);
+    const m = d.toISOString().slice(0, 7);
+    return {
+      name: monthLabel(m).split(' ')[0]!.slice(0, 3),
+      visits: (visits ?? []).filter((v) => v.date.startsWith(m)).length,
+    };
+  });
+
+  if (doc === undefined || !visits || !lk.ready) return <div className="h-96" aria-busy="true" />;
+  if (doc === null)
+    return (
+      <div className="flex flex-col items-start gap-3 py-10">
+        <p className="text-sm text-muted-foreground">This doctor isn’t in your list.</p>
+        <Link href="/doctors" className="text-sm underline underline-offset-4">
+          Back to doctors
+        </Link>
+      </div>
+    );
+
+  const pct = target ? Math.min(100, Math.round((thisMonthVisits.length / target) * 100)) : null;
+  const last = visits[0];
+  return (
+    <div className="flex flex-col gap-5" data-testid="doctor-360">
+      <Link
+        href="/doctors"
+        className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        data-testid="doctor-back"
+      >
+        <ArrowLeft className="size-4" /> Doctors
+      </Link>
+      <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-xl font-semibold tracking-tight" data-testid="doctor-name">
+            {doc.name}
+          </h2>
+          {category && <Badge variant="secondary">{category.name}</Badge>}
+          {isSample && (
+            <Badge
+              variant="outline"
+              className="border-dashed font-normal text-muted-foreground"
+              data-testid="sample-badge"
+            >
+              Sample visit history
+            </Badge>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {[
+            doc.qualification,
+            doc.specialtyId && lk.byId.get(doc.specialtyId),
+            doc.registrationNo && `Reg. ${doc.registrationNo}`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+        <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          <span className="inline-flex items-center gap-1">
+            <MapPin className="size-3.5" />
+            {[doc.addressLine, doc.city, lk.byId.get(doc.territoryId)].filter(Boolean).join(', ')}
+          </span>
+          {doc.phone && (
+            <a
+              href={`tel:${doc.phone}`}
+              className="inline-flex items-center gap-1 hover:text-foreground"
+            >
+              <Phone className="size-3.5" />
+              {doc.phone}
+            </a>
+          )}
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat
+          testid="d360-frequency"
+          label={`Visits in ${monthLabel(month)}`}
+          value={`${thisMonthVisits.length}${target ? ` of ${target}` : ''}`}
+        >
+          {pct !== null ? (
+            <Meter value={pct} label="Visit frequency" />
+          ) : (
+            <p className="mt-1 text-xs text-muted-foreground">No category visit norm</p>
+          )}
+        </Stat>
+        <Stat testid="d360-last" label="Last visit" value={last ? shortDate(last.date) : 'Never'}>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {last
+              ? `${Math.round((Date.parse(today) - Date.parse(last.date)) / 864e5)} days ago`
+              : '—'}
+          </p>
+        </Stat>
+        <Stat
+          testid="d360-samples"
+          label="Samples this month"
+          value={`${samplesThisMonth} of ${SAMPLE_CAP_PER_MONTH}`}
+        >
+          <Meter
+            value={Math.min(100, (samplesThisMonth / SAMPLE_CAP_PER_MONTH) * 100)}
+            label="Samples against cap"
+            over={samplesThisMonth > SAMPLE_CAP_PER_MONTH}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Cap is a placeholder, to confirm with Arighna
+          </p>
+        </Stat>
+        <Stat
+          testid="d360-pob"
+          label={`POB, last ${HISTORY_DAYS} days`}
+          value={`₹${visits.reduce((s, v) => s + (v.pobValue ?? 0), 0).toLocaleString('en-IN')}`}
+        >
+          <p className="mt-1 text-xs text-muted-foreground">
+            {visits.filter((v) => v.pobValue).length} orders
+          </p>
+        </Stat>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <Card className="gap-0 py-0 shadow-xs">
+          <CardHeader className="border-b px-4 py-4">
+            <CardTitle className="text-base">Visits</CardTitle>
+            <CardDescription>
+              Last {HISTORY_DAYS} days from DCR calls and visit check-ins.
+            </CardDescription>
+          </CardHeader>
+          <ol className="divide-y" data-testid="d360-visits">
+            {visits.map((v, i) => (
+              <li
+                key={v.id}
+                className="af-enter flex flex-col gap-1 px-4 py-3 text-sm"
+                style={{ '--i': Math.min(i, 8) } as React.CSSProperties}
+                data-testid="d360-visit"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium tabular-nums">{shortDate(v.date)}</span>
+                  {v.inFence === false && (
+                    <Badge variant="outline" className="font-normal text-amber-700">
+                      Outside geofence
+                    </Badge>
+                  )}
+                  {v.inFence === true && (
+                    <span className="text-xs text-muted-foreground">GPS verified</span>
+                  )}
+                  {v.pobValue ? (
+                    <span className="ml-auto text-xs tabular-nums">
+                      POB ₹{v.pobValue.toLocaleString('en-IN')}
+                    </span>
+                  ) : null}
+                </div>
+                {v.products.length > 0 && (
+                  <p className="text-muted-foreground">
+                    Detailed:{' '}
+                    {v.products.map((p) => names.get(p.productId) ?? 'Product').join(', ')}
+                  </p>
+                )}
+                {v.samples.length > 0 && (
+                  <p className="text-muted-foreground">
+                    Samples:{' '}
+                    {v.samples
+                      .map((s) => `${names.get(s.productId) ?? 'Product'} × ${s.quantity}`)
+                      .join(', ')}
+                  </p>
+                )}
+                {v.remarks && <p className="text-muted-foreground">“{v.remarks}”</p>}
+              </li>
+            ))}
+            {visits.length === 0 && (
+              <li className="px-4 py-8 text-center text-sm text-muted-foreground">
+                No visits in the last {HISTORY_DAYS} days.
+              </li>
+            )}
+          </ol>
+        </Card>
+        <div className="flex flex-col gap-5">
+          <Card className="gap-0 py-0 shadow-xs">
+            <CardHeader className="px-4 pt-4 pb-0">
+              <CardTitle className="text-sm">Visits per month</CardTitle>
+            </CardHeader>
+            <div className="px-2 pb-2">
+              <ChartFrame height={170} label="Visits per month">
+                <BarChart
+                  data={monthly}
+                  margin={{ top: 12, right: 12, left: -24, bottom: 0 }}
+                  barSize={32}
+                >
+                  <CartesianGrid vertical={false} stroke={CHART.grid} />
+                  <XAxis dataKey="name" {...axisProps} />
+                  <YAxis allowDecimals={false} {...axisProps} />
+                  <ChartTooltip />
+                  <Bar
+                    dataKey="visits"
+                    name="Visits"
+                    fill={CHART.primary}
+                    radius={[3, 3, 0, 0]}
+                    isAnimationActive={!reduced}
+                    animationDuration={500}
+                  />
+                </BarChart>
+              </ChartFrame>
+            </div>
+          </Card>
+          <Card className="gap-0 py-0 shadow-xs">
+            <CardHeader className="border-b px-4 py-4">
+              <CardTitle className="text-base">Products detailed</CardTitle>
+            </CardHeader>
+            <ul className="divide-y" data-testid="d360-products">
+              {tally.map((p) => (
+                <li key={p.productId} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {names.get(p.productId) ?? 'Product'}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {p.times}× · {p.samples} samples
+                  </span>
+                  {p.feedback && (
+                    <span
+                      className={cn(
+                        'text-xs',
+                        p.feedback === 'negative' ? 'text-destructive' : 'text-muted-foreground',
+                      )}
+                    >
+                      {FEEDBACK[p.feedback]}
+                    </span>
+                  )}
+                </li>
+              ))}
+              {tally.length === 0 && (
+                <li className="px-4 py-6 text-center text-sm text-muted-foreground">
+                  Nothing detailed yet.
+                </li>
+              )}
+            </ul>
+          </Card>
+        </div>
+      </div>
+      {isSample && (
+        <p className="text-xs text-muted-foreground">
+          Sample data: no calls to this doctor are recorded yet, so the visit history above is
+          illustrative.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  children,
+  testid,
+}: {
+  label: string;
+  value: string;
+  children?: React.ReactNode;
+  testid: string;
+}) {
+  return (
+    <Card className="gap-0 px-4 py-3 shadow-xs" data-testid={testid}>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
+      {children}
+    </Card>
+  );
+}
+
+function Meter({ value, label, over }: { value: number; label: string; over?: boolean }) {
+  return (
+    <div
+      role="meter"
+      aria-label={label}
+      aria-valuenow={Math.round(value)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"
+    >
+      <div
+        className={cn(
+          'h-full w-full origin-left rounded-full transition-transform duration-500',
+          over ? 'bg-destructive' : 'bg-primary',
+        )}
+        style={{ transform: `scaleX(${value / 100})` }}
+      />
+    </div>
+  );
+}
