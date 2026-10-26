@@ -16,3 +16,9 @@ pnpm lint && pnpm typecheck && pnpm build
 - `src/components/splash/splash.tsx`: after a 700 ms hold, measures the centred logo and the header logo (`[data-af-header-logo]`) and moves the overlay logo onto it with a transform-only WAAPI animation (850 ms, `cubic-bezier(0.32, 0.72, 0, 1)`). The wordmark fades out, the white veil fades, and `.af-page` elements fade in (opacity only). On finish it sets the session flag, removes the class and unmounts the overlay; the real header logo is revealed in the same box.
 - `prefers-reduced-motion: reduce`: no movement, a 250 ms opacity crossfade.
 - Evidence: `BASE_URL=http://localhost:3000 node e2e/splash-evidence.mjs` writes frames, videos and assertions to `docs/evidence/splash/`.
+
+## Mock sign-in
+
+**This is mock authentication.** `/sign-in` checks against `src/lib/mock-auth.ts`: one demo user per role, all with the password `ariforce-demo` (printed on the page). The session is a user id in `localStorage`; there are no real credentials and nothing secret. Replace the module when real auth (#5) lands.
+
+Demo accounts: bm@, abm@, rbm@, zbm@, sm@, gm@, vp@, director@, admin@ `demo.ariforce.test`.

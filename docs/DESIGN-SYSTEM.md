@@ -17,15 +17,36 @@ Add a shadcn component: `source scripts/env.sh && cd packages/ui && pnpm dlx sha
 4. Elevation: borders first, shadows rare and diffuse (`shadow-xs` on cards, `shadow-lg` only for popovers and dialogs).
 5. Spacing: Tailwind's 4px scale. Page padding is `p-4` on mobile and `p-6` on larger screens; cards use 16px insets.
 6. Motion: tokens `--ease-out` `cubic-bezier(0.23,1,0.32,1)`, `--ease-drawer` `cubic-bezier(0.32,0.72,0,1)`, durations 100/160/220/320ms. Animate `transform` and `opacity` only. UI motion stays under 300ms, and nothing animates on keyboard-driven actions. `prefers-reduced-motion` zeroes the duration tokens.
-7. Dark mode: the `.dark` token set exists, but there's no toggle yet.
+7. Light mode only. There is no dark token set, no theme toggle, no `dark:` classes and no `prefers-color-scheme` handling; `:root { color-scheme: light }` keeps native controls light even when the OS is dark.
 8. Data: empty, loading (`Skeleton`, `app/(app)/loading.tsx`) and error states for every list. Mock data lives only in `apps/web/src/mocks/` and is marked "Sample data" in the UI.
 
 ## Shell
-- Sticky header (56px): logo + wordmark (the splash lands here, so keep `[data-af-header-logo]` 36x32 at the same spot), sidebar toggle (Ctrl/⌘ B), search, notifications, account menu with a mock "preview as role" switch.
-- Sidebar (shadcn `collapsible="icon"`): Dashboard, Masters, Attendance, DCR, Tour plans, Reports, filtered by role (`apps/web/src/lib/nav.ts`; roles are provisional until RBAC #5 lands). Reps don't see Masters or Reports. On mobile it opens as a Sheet.
+- Sticky header (56px): logo + wordmark (the splash lands here, so keep `[data-af-header-logo]` 36x32 at the same spot), sidebar toggle (Ctrl/⌘ B), search, notifications, account menu (signed-in mock user, "Preview as role (mock)" switch, Sign out). No logo plate.
+- Sidebar (shadcn `collapsible="icon"`): Dashboard, Masters, Attendance, DCR, Tour plans, Reports, filtered by role (`apps/web/src/lib/nav.ts`, roles in `apps/web/src/lib/roles.ts`; see the matrix below). On mobile it opens as a Sheet.
 - Dashboard: "Needs attention" layout from the research in PR #16 (ux-patterns): hierarchy breadcrumb, KPI strip (call average, coverage, frequency compliance, DCR compliance), exceptions list sorted by severity, approvals inbox with Approve and Return-with-comment, and a team table with coverage rings. All of it is mock data.
 - Masters, Attendance, DCR, Tour plans and Reports are placeholders pointing to #8 to #11.
 
+## Roles and navigation
+
+Ladder, lowest to highest: Business Manager (BM), Area Business Manager (ABM), Regional Business Manager (RBM), Zonal Business Manager (ZBM), Sales Manager, General Manager, Vice President, Director. System Admin is technical and outside the ladder.
+`apps/web/src/lib/roles.ts` is the single source: order, labels, helpers and `ROLE_TO_CONTRACT_ROLE_KEY`, a temporary mapping onto the contract's current `RoleKey` enum (rep, area_manager, regional_manager, zonal_manager, national_head, admin). Swap only that table when the Architect updates the enum.
+
+| Area | BM | ABM to Director | System Admin |
+| --- | --- | --- | --- |
+| Dashboard | Own day | Team view, approvals inbox | No (lands on Masters) |
+| Masters | No | No | Yes |
+| Attendance | Own check-ins | Team map and table | No |
+| DCR | Files own | Team view | No |
+| Tour plans | Fills and submits own | Approves team plans | No |
+| Reports | No | Yes | No |
+
+Pages outside a role's nav redirect to that role's home, both before paint (inline head script) and on client navigation (`AuthGate`).
+
+## Sign-in (mock)
+
+`/sign-in` is MOCK auth only (`apps/web/src/lib/mock-auth.ts`): one demo user per role, a shared demo password printed on the page, session in `localStorage["af:mock-session"]`. No real credentials, nothing secret, nothing sent anywhere. Signed-out visitors are redirected to `/sign-in?next=...` before first paint; signed-in visitors skip it. The splash plays once per session wherever the visit starts; on `/sign-in` it lands on the card logo (`[data-af-header-logo]`, same 9:8 ratio) with no layout shift.
+
 ## Checks
 - `node apps/web/e2e/splash-evidence.mjs`: splash (CLS 0, transform/opacity only, exact landing box, once per session, reduced motion).
-- `node apps/web/e2e/shell-evidence.mjs`: nav by role, Google Sans applied, Ctrl+B collapse, toast, dialog, mobile sheet, no horizontal overflow, no console errors. Screenshots go to `docs/evidence/shell/`.
+- `node apps/web/e2e/auth-evidence.mjs`: guard without paint, inline errors, show/hide password, Enter submits, role landing, sign out, splash handoff on /sign-in, 16px inputs.
+- `node apps/web/e2e/shell-evidence.mjs`: nav by role, Google Sans applied, Ctrl+B collapse, toast, dialog, mobile sheet, no horizontal overflow, OS dark preference ignored, no console errors. Screenshots go to `docs/evidence/shell/`.

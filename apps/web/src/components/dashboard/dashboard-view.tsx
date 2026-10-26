@@ -19,6 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ariforce/ui/components/tabs';
 import { cn } from '@ariforce/ui/lib/utils';
 import { useRole } from '@/components/shell/role-context';
+import { isFieldRole } from '@/lib/roles';
 import {
   MOCK_APPROVALS,
   MOCK_ATTENTION,
@@ -57,12 +58,12 @@ export function DashboardView() {
     });
   };
 
-  if (role === 'rep') {
+  if (isFieldRole(role)) {
     return (
       <div className="mx-auto w-full max-w-7xl p-4 sm:p-6">
         <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          The rep view (today&apos;s plan, punch-in and DCR) comes with the field screens in #9 to #11.
+          Your day: check in from Attendance, file calls in DCR, and keep this month's Tour plan complete.
         </p>
       </div>
     );
@@ -128,7 +129,7 @@ export function DashboardView() {
         <Card className="gap-0 py-0 shadow-xs xl:col-span-3">
           <CardHeader className="border-b px-4 py-4">
             <CardTitle className="text-base">Exceptions</CardTitle>
-            <CardDescription>Sorted by severity. Each item links to the rep or record.</CardDescription>
+            <CardDescription>Sorted by severity. Each item links to the Business Manager or record.</CardDescription>
           </CardHeader>
           <ul className="divide-y">
             {MOCK_ATTENTION.map((a, i) => (
@@ -206,14 +207,14 @@ export function DashboardView() {
         <CardHeader className="flex flex-row items-center justify-between border-b px-4 py-4">
           <div>
             <CardTitle className="text-base">Team this cycle</CardTitle>
-            <CardDescription>Kolkata region · 4 reps</CardDescription>
+            <CardDescription>Kolkata area · 4 Business Managers</CardDescription>
           </div>
           <MockBadge />
         </CardHeader>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="pl-4">Rep</TableHead>
+              <TableHead className="pl-4">Business Manager</TableHead>
               <TableHead className="text-right">Calls</TableHead>
               <TableHead className="text-right">Call avg</TableHead>
               <TableHead>Coverage</TableHead>

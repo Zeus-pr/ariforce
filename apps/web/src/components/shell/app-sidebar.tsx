@@ -16,6 +16,7 @@ import {
   SidebarRail,
 } from '@ariforce/ui/components/sidebar';
 import { NAV, ROLE_LABEL } from '@/lib/nav';
+import { isApprover } from '@/lib/roles';
 import { useRole } from './role-context';
 
 // Layout follows the shadcn/ui "sidebar-16" block (sidebar under a sticky site header), MIT.
@@ -44,7 +45,7 @@ export function AppSidebar() {
                         <span>{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
-                    {item.slug === 'tour-plans' && role !== 'rep' && <SidebarMenuBadge>3</SidebarMenuBadge>}
+                    {item.slug === 'tour-plans' && isApprover(role) && <SidebarMenuBadge>3</SidebarMenuBadge>}
                   </SidebarMenuItem>
                 );
               })}

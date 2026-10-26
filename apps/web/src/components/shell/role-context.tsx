@@ -1,18 +1,18 @@
 'use client';
 
-import { createContext, useContext, useState } from 'react';
-import type { Role } from '@/lib/nav';
+import { setPreviewRole, useSession, type MockUser } from '@/lib/mock-auth';
+import type { Role } from '@/lib/roles';
 
-const RoleContext = createContext<{ role: Role; setRole: (r: Role) => void } | null>(null);
-
-/** Preview-only role switch. Real roles come from the session once auth (#5) lands. */
-export function RoleProvider({ children }: { children: React.ReactNode }) {
-  const [role, setRole] = useState<Role>('manager');
-  return <RoleContext.Provider value={{ role, setRole }}>{children}</RoleContext.Provider>;
-}
-
-export function useRole() {
-  const ctx = useContext(RoleContext);
-  if (!ctx) throw new Error('useRole must be used inside RoleProvider');
-  return ctx;
+/**
+ * The effective role comes from the mock session; "Preview as role" overrides it for demos.
+ * Inside the (app) group <AuthGate> guarantees a session before children render on the client.
+ */
+export function useRole(): { role: Role; setRole: (r: Role) => void; user: MockUser | null; previewing: boolean } {
+  const s = useSession();
+  return {
+    role: s?.role ?? 'business_manager',
+    setRole: setPreviewRole,
+    user: s?.user ?? null,
+    previewing: !!s?.previewing,
+  };
 }

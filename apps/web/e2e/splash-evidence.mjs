@@ -35,6 +35,7 @@ async function run(name, ctxOpts) {
   const browser = await engine.launch();
   const ctx = await browser.newContext({ ...ctxOpts, recordVideo: { dir: OUT, size: ctxOpts.viewport } });
   await ctx.addInitScript(probe);
+  await ctx.addInitScript(() => { if (!localStorage.getItem('af:mock-session')) localStorage.setItem('af:mock-session', JSON.stringify({ userId: 'mock-abm', role: 'area_business_manager' })); });
   const page = await ctx.newPage();
   await page.goto(BASE, { waitUntil: "commit" });
   // Headless screenshots stall the page clock, so wall-clock frames are unreliable.
@@ -91,13 +92,13 @@ const results = [];
 results.push(await run("desktop", { viewport: { width: 1280, height: 800 } }));
 results.push(await run("mobile", { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }));
 results.push(await run("reduced-motion", { viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" }));
-results.push(await run("dark", { viewport: { width: 1280, height: 800 }, colorScheme: "dark" }));
+results.push(await run("os-dark", { viewport: { width: 1280, height: 800 }, colorScheme: "dark" }));
 
 let ok = true;
 const check = (cond, msg) => { console.log(`${cond ? "PASS" : "FAIL"} ${msg}`); if (!cond) ok = false; };
 for (const r of results) {
   check(/rgb\(255, 255, 255\)/.test(r.holdState.veil), `${r.name}: splash veil is white (${r.holdState.veil}, page dark=${r.holdState.dark})`);
-  if (r.name === "dark") check(r.darkAfter && r.bodyBg !== "rgb(255, 255, 255)" , `${r.name}: page lands in dark theme (body ${r.bodyBg})`);
+  if (r.name === "os-dark") check(!r.darkAfter, `${r.name}: app stays light with an OS dark preference`);
   check(r.cls === 0, `${r.name}: CLS = ${r.cls}`);
   check(r.animatedProps.every((p) => p === "transform" || p === "opacity"), `${r.name}: animated props = [${r.animatedProps}]`);
   check(r.seen === "1" && !r.htmlClass, `${r.name}: session flag set, splash class removed`);

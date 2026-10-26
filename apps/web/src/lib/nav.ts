@@ -1,14 +1,12 @@
 import type { LucideIcon } from 'lucide-react';
 import { BarChart3, CalendarRange, ClipboardList, Database, LayoutDashboard, MapPin } from 'lucide-react';
 
-/** Provisional roles until the Architect's RBAC contract lands. */
-export type Role = 'admin' | 'manager' | 'rep';
+import { ROLES, isApprover, isSystemAdmin, type Role } from './roles';
 
-export const ROLE_LABEL: Record<Role, string> = {
-  admin: 'Admin',
-  manager: 'Area manager',
-  rep: 'Medical rep',
-};
+export { ROLE_LABEL, type Role } from './roles';
+
+const SALES = ROLES.filter((r) => !isSystemAdmin(r));
+const APPROVERS = ROLES.filter(isApprover);
 
 export type NavItem = {
   slug: string;
@@ -21,13 +19,13 @@ export type NavItem = {
 };
 
 export const NAV: NavItem[] = [
-  { slug: '', title: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'manager', 'rep'] },
+  { slug: '', title: 'Dashboard', href: '/', icon: LayoutDashboard, roles: SALES },
   {
     slug: 'masters',
     title: 'Masters',
     href: '/masters',
     icon: Database,
-    roles: ['admin', 'manager'],
+    roles: ['system_admin'],
     issue: 8,
     blurb: 'Territories, doctors, chemists, products and the reporting hierarchy.',
   },
@@ -36,7 +34,7 @@ export const NAV: NavItem[] = [
     title: 'Attendance',
     href: '/attendance',
     icon: MapPin,
-    roles: ['admin', 'manager', 'rep'],
+    roles: SALES,
     issue: 9,
     blurb: 'Day punch-in and check-ins on a map, with out-of-geofence calls flagged.',
   },
@@ -45,7 +43,7 @@ export const NAV: NavItem[] = [
     title: 'DCR',
     href: '/dcr',
     icon: ClipboardList,
-    roles: ['admin', 'manager', 'rep'],
+    roles: SALES,
     issue: 10,
     blurb: 'Daily call reports: doctor and chemist calls, products detailed, samples given.',
   },
@@ -54,7 +52,7 @@ export const NAV: NavItem[] = [
     title: 'Tour plans',
     href: '/tour-plans',
     icon: CalendarRange,
-    roles: ['admin', 'manager', 'rep'],
+    roles: SALES,
     issue: 11,
     blurb: 'Monthly tour plan calendar, submission and approval.',
   },
@@ -63,7 +61,17 @@ export const NAV: NavItem[] = [
     title: 'Reports',
     href: '/reports',
     icon: BarChart3,
-    roles: ['admin', 'manager'],
+    roles: APPROVERS,
     blurb: 'Coverage, call average, frequency compliance and DCR compliance by hierarchy.',
   },
 ];
+
+/** Where a role lands after sign-in: the first nav item it can see. */
+export function homeFor(role: Role): string {
+  return NAV.find((n) => n.roles.includes(role))?.href ?? '/';
+}
+
+export function canSee(role: Role, pathname: string): boolean {
+  const item = [...NAV].sort((a, b) => b.href.length - a.href.length).find((n) => (n.href === '/' ? pathname === '/' : pathname.startsWith(n.href)));
+  return !item || item.roles.includes(role);
+}
