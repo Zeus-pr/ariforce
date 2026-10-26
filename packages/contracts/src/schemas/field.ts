@@ -306,6 +306,7 @@ export const Approval = z
       'dcr_unlock',
       'leave',
       'device',
+      'expense',
     ]),
     subjectId: Id,
     requestedBy: Id,

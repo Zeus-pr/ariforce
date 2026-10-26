@@ -90,6 +90,24 @@ import {
   SignupRequestList,
   SignupRequestQuery,
 } from './schemas/signup';
+import {
+  ExpenseAttachment,
+  ExpenseAttachmentCreate,
+  ExpenseAttachmentUpload,
+  ExpenseClaim,
+  ExpenseClaimCreate,
+  ExpenseClaimList,
+  ExpenseClaimListQuery,
+  ExpenseDecision,
+  ExpenseDownload,
+  ExpenseExportQuery,
+  ExpenseLineInput,
+  ExpenseLineUpdate,
+  ExpensePay,
+  ExpenseReconciliation,
+  ExpenseReport,
+  ExpenseReportQuery,
+} from './schemas/expenses';
 import { ConsentGrant, ConsentRecord, Device, DeviceEnrol } from './schemas/devices';
 
 const json = <T extends z.ZodType>(schema: T) => ({ content: { 'application/json': { schema } } });
@@ -822,6 +840,227 @@ function buildDocument(): OpenApiDocument {
             '503': err('SIGNUP_DISABLED: company not configured'),
           },
         },
+      },
+      '/v1/expense-claims': {
+        get: op({
+          tags: ['Expenses'],
+          operationId: 'listExpenseClaims',
+          summary:
+            'Your claims; with expenses:approve also non-draft claims of your reporting line; with finance:read approved/paid claims company-wide',
+          requestParams: { query: ExpenseClaimListQuery },
+          responses: { '200': { description: 'Claims', ...json(ExpenseClaimList) } },
+        }),
+        post: op({
+          tags: ['Expenses'],
+          operationId: 'createExpenseClaim',
+          summary:
+            'Create your claim for a month (one per user per month); returns the existing one with 200',
+          requestBody: json(ExpenseClaimCreate),
+          responses: {
+            '200': { description: 'Existing claim', ...json(ExpenseClaim) },
+            '201': { description: 'Created (draft)', ...json(ExpenseClaim) },
+            '422': err('Future month'),
+          },
+        }),
+      },
+      '/v1/expense-claims/{id}': {
+        get: op({
+          tags: ['Expenses'],
+          operationId: 'getExpenseClaim',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'Claim with lines and attachments', ...json(ExpenseClaim) },
+            '404': err('Not found or not visible'),
+          },
+        }),
+      },
+      '/v1/expense-claims/{id}/lines': {
+        post: op({
+          tags: ['Expenses'],
+          operationId: 'addExpenseLine',
+          summary: 'Owner only, claim draft or rejected',
+          requestParams: { path: IdParam },
+          requestBody: json(ExpenseLineInput),
+          responses: {
+            '201': { description: 'Updated claim', ...json(ExpenseClaim) },
+            '404': err('Not found'),
+            '409': err('EXPENSE_NOT_EDITABLE'),
+            '422': err(
+              'Validation: date outside month/future, DCR not yours or other date, mileageKm rule',
+            ),
+          },
+        }),
+      },
+      '/v1/expense-claims/{id}/lines/{lineId}': {
+        put: op({
+          tags: ['Expenses'],
+          operationId: 'updateExpenseLine',
+          requestParams: { path: z.object({ id: IdParam.shape.id, lineId: IdParam.shape.id }) },
+          requestBody: json(ExpenseLineUpdate),
+          responses: {
+            '200': { description: 'Updated claim', ...json(ExpenseClaim) },
+            '404': err('Not found'),
+            '409': err('EXPENSE_NOT_EDITABLE or VERSION_CONFLICT'),
+            '422': err('Validation'),
+          },
+        }),
+        delete: op({
+          tags: ['Expenses'],
+          operationId: 'deleteExpenseLine',
+          requestParams: { path: z.object({ id: IdParam.shape.id, lineId: IdParam.shape.id }) },
+          responses: {
+            '200': { description: 'Updated claim', ...json(ExpenseClaim) },
+            '404': err('Not found'),
+            '409': err('EXPENSE_NOT_EDITABLE'),
+          },
+        }),
+      },
+      '/v1/expense-claims/{id}/lines/{lineId}/attachments': {
+        post: op({
+          tags: ['Expenses'],
+          operationId: 'createExpenseAttachment',
+          summary:
+            'Step 1 of the receipt upload: strict type/extension/size allow-list, max 5 per line. Returns a presigned PUT (10 min). Then PUT the bytes and call confirm.',
+          requestParams: { path: z.object({ id: IdParam.shape.id, lineId: IdParam.shape.id }) },
+          requestBody: json(ExpenseAttachmentCreate),
+          responses: {
+            '201': {
+              description: 'Pending attachment + upload URL',
+              ...json(ExpenseAttachmentUpload),
+            },
+            '404': err('Not found'),
+            '409': err('EXPENSE_NOT_EDITABLE'),
+            '422': err('VALIDATION (type, extension mismatch, size) or TOO_MANY_FILES'),
+            '503': err('File storage not configured'),
+          },
+        }),
+      },
+      '/v1/expense-attachments/{id}/confirm': {
+        post: op({
+          tags: ['Expenses'],
+          operationId: 'confirmExpenseAttachment',
+          summary:
+            'Step 3: server checks the object exists, its size and content type equal the declared ones and its first bytes match the format. On mismatch the object is deleted.',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'Confirmed', ...json(ExpenseAttachment) },
+            '404': err('Not found'),
+            '409': err('UPLOAD_MISSING or EXPENSE_NOT_EDITABLE'),
+            '422': err('UPLOAD_SIZE_MISMATCH, UPLOAD_TYPE_MISMATCH or UPLOAD_FORMAT_INVALID'),
+          },
+        }),
+      },
+      '/v1/expense-attachments/{id}': {
+        delete: op({
+          tags: ['Expenses'],
+          operationId: 'deleteExpenseAttachment',
+          requestParams: { path: IdParam },
+          responses: {
+            '204': { description: 'Deleted' },
+            '404': err('Not found'),
+            '409': err('EXPENSE_NOT_EDITABLE'),
+          },
+        }),
+      },
+      '/v1/expense-attachments/{id}/download-url': {
+        post: op({
+          tags: ['Expenses'],
+          operationId: 'expenseAttachmentDownloadUrl',
+          summary:
+            'Owner, the approver chain or finance (approved/paid). 5-minute signed GET; audited (expense.attachment_downloaded).',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'Signed URL', ...json(ExpenseDownload) },
+            '404': err('Not found or not visible'),
+            '409': err('UPLOAD_NOT_CONFIRMED'),
+          },
+        }),
+      },
+      '/v1/expense-claims/{id}/submit': {
+        post: op({
+          tags: ['Expenses'],
+          operationId: 'submitExpenseClaim',
+          summary:
+            'Draft or rejected -> submitted; opens an approval request (subjectType expense) to your reporting manager, then up the chain (EXPENSE_APPROVAL_LEVELS, default 2)',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'Submitted', ...json(ExpenseClaim) },
+            '404': err('Not found'),
+            '409': err('EXPENSE_NOT_EDITABLE'),
+            '422': err('EXPENSE_EMPTY or RECEIPT_REQUIRED (hotel lines need a confirmed receipt)'),
+          },
+        }),
+      },
+      '/v1/expense-claims/{id}/decision': {
+        post: op({
+          tags: ['Expenses'],
+          operationId: 'decideExpenseClaim',
+          summary:
+            'Current step approver or anyone above them; never your own claim or a second step you already approved. Same as POST /v1/approvals/{approvalId}/decision.',
+          requestParams: { path: IdParam },
+          requestBody: json(ExpenseDecision),
+          responses: {
+            '200': { description: 'Claim after the decision', ...json(ExpenseClaim) },
+            '403': err('Own claim, APPROVAL_NOT_YOUR_STEP or APPROVAL_ALREADY_DECIDED_BY_YOU'),
+            '404': err('Not found'),
+            '409': err('Not submitted / already decided'),
+            '422': err('comment required to reject'),
+          },
+        }),
+      },
+      '/v1/expense-claims/{id}/pay': {
+        post: op({
+          tags: ['Expenses'],
+          operationId: 'payExpenseClaim',
+          summary: 'Accountant (finance:write): approved -> paid',
+          requestParams: { path: IdParam },
+          requestBody: json(ExpensePay),
+          responses: {
+            '200': { description: 'Paid', ...json(ExpenseClaim) },
+            '404': err('Not found'),
+            '409': err('Not approved'),
+          },
+        }),
+      },
+      '/v1/expense-claims/{id}/reconciliation': {
+        get: op({
+          tags: ['Expenses'],
+          operationId: 'reconcileExpenseClaim',
+          summary: 'Claimed days vs DCR days with per-day flags',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'Reconciliation', ...json(ExpenseReconciliation) },
+            '404': err('Not found'),
+          },
+        }),
+      },
+      '/v1/expense-reports': {
+        get: op({
+          tags: ['Expenses'],
+          operationId: 'expenseReport',
+          summary: 'Month report over the claims you may read (same scope as the list)',
+          requestParams: { query: ExpenseReportQuery },
+          responses: { '200': { description: 'Report', ...json(ExpenseReport) } },
+        }),
+      },
+      '/v1/expense-reports/export': {
+        get: op({
+          tags: ['Expenses'],
+          operationId: 'exportExpenseReport',
+          summary: 'Same scope as the report, as an Excel (Claims + Lines sheets) or PDF download',
+          requestParams: { query: ExpenseExportQuery },
+          responses: {
+            '200': {
+              description: 'File (content-disposition: attachment)',
+              content: {
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
+                  schema: z.string().meta({ format: 'binary' }),
+                },
+                'application/pdf': { schema: z.string().meta({ format: 'binary' }) },
+              },
+            },
+          },
+        }),
       },
       '/v1/auth/sign-up-request': {
         post: {

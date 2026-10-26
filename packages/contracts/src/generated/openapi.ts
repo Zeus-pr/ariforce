@@ -1050,6 +1050,242 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/expense-claims': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Your claims; with expenses:approve also non-draft claims of your reporting line; with finance:read approved/paid claims company-wide */
+    get: operations['listExpenseClaims'];
+    put?: never;
+    /** Create your claim for a month (one per user per month); returns the existing one with 200 */
+    post: operations['createExpenseClaim'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-claims/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['getExpenseClaim'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-claims/{id}/lines': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Owner only, claim draft or rejected */
+    post: operations['addExpenseLine'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-claims/{id}/lines/{lineId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put: operations['updateExpenseLine'];
+    post?: never;
+    delete: operations['deleteExpenseLine'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-claims/{id}/lines/{lineId}/attachments': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Step 1 of the receipt upload: strict type/extension/size allow-list, max 5 per line. Returns a presigned PUT (10 min). Then PUT the bytes and call confirm. */
+    post: operations['createExpenseAttachment'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-attachments/{id}/confirm': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Step 3: server checks the object exists, its size and content type equal the declared ones and its first bytes match the format. On mismatch the object is deleted. */
+    post: operations['confirmExpenseAttachment'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-attachments/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: operations['deleteExpenseAttachment'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-attachments/{id}/download-url': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Owner, the approver chain or finance (approved/paid). 5-minute signed GET; audited (expense.attachment_downloaded). */
+    post: operations['expenseAttachmentDownloadUrl'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-claims/{id}/submit': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Draft or rejected -> submitted; opens an approval request (subjectType expense) to your reporting manager, then up the chain (EXPENSE_APPROVAL_LEVELS, default 2) */
+    post: operations['submitExpenseClaim'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-claims/{id}/decision': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Current step approver or anyone above them; never your own claim or a second step you already approved. Same as POST /v1/approvals/{approvalId}/decision. */
+    post: operations['decideExpenseClaim'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-claims/{id}/pay': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Accountant (finance:write): approved -> paid */
+    post: operations['payExpenseClaim'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-claims/{id}/reconciliation': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Claimed days vs DCR days with per-day flags */
+    get: operations['reconcileExpenseClaim'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-reports': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Month report over the claims you may read (same scope as the list) */
+    get: operations['expenseReport'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-reports/export': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Same scope as the report, as an Excel (Claims + Lines sheets) or PDF download */
+    get: operations['exportExpenseReport'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/auth/sign-up-request': {
     parameters: {
       query?: never;
@@ -1695,6 +1931,74 @@ export interface components {
       token: string;
       password: string;
     };
+    /**
+     * @description draft -> submitted -> approved -> paid; submitted -> rejected -> (edit) -> submitted again
+     * @enum {string}
+     */
+    ExpenseStatus: 'draft' | 'submitted' | 'approved' | 'rejected' | 'paid';
+    /** @description Creates (or returns) your claim for the month */
+    ExpenseClaimCreate: {
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+    };
+    ExpenseLineInput: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      category: components['schemas']['ExpenseCategory'];
+      amount: number;
+      /** @default null */
+      notes: string | null;
+      /**
+       * @description Required for mileage, not allowed otherwise
+       * @default null
+       */
+      mileageKm: number | null;
+      /**
+       * @description Your DCR for the same date
+       * @default null
+       */
+      dcrId: string | null;
+      /**
+       * @description Your tour plan for the month
+       * @default null
+       */
+      tourPlanId: string | null;
+    };
+    /** @enum {string} */
+    ExpenseCategory: 'travel' | 'hotel' | 'food' | 'mileage' | 'other';
+    ExpenseLineUpdate: {
+      line: components['schemas']['ExpenseLineInput'];
+      version: number;
+    };
+    ExpenseAttachmentCreate: {
+      /** @description Used only to check the extension; never stored or put in the key */
+      fileName: string;
+      /** @enum {string} */
+      contentType:
+        | 'image/jpeg'
+        | 'image/png'
+        | 'image/heic'
+        | 'image/heif'
+        | 'application/pdf'
+        | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        | 'application/vnd.ms-excel'
+        | 'text/csv';
+      sizeBytes: number;
+    };
+    ExpenseDecision: {
+      /** @enum {string} */
+      decision: 'approve' | 'reject';
+      comment?: string;
+    };
+    ExpensePay: {
+      paymentRef: string;
+    };
     SignupRequestCreate: {
       name: string;
       /** Format: email */
@@ -1816,7 +2120,11 @@ export interface components {
       | 'settings:write'
       | 'audit:read'
       | 'sales:read'
-      | 'finance:read';
+      | 'finance:read'
+      | 'expenses:write'
+      | 'expenses:read'
+      | 'expenses:approve'
+      | 'finance:write';
     RoleList: {
       items: components['schemas']['Role'][];
     };
@@ -2940,7 +3248,14 @@ export interface components {
       companyId: string;
       /** @enum {string} */
       subjectType:
-        'tour_plan' | 'doctor' | 'chemist' | 'stockist' | 'dcr_unlock' | 'leave' | 'device';
+        | 'tour_plan'
+        | 'doctor'
+        | 'chemist'
+        | 'stockist'
+        | 'dcr_unlock'
+        | 'leave'
+        | 'device'
+        | 'expense';
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -3090,6 +3405,252 @@ export interface components {
         /** @description Highest hierarchy role (ABM and above) */
         role: components['schemas']['RoleKey'];
       }[];
+    };
+    ExpenseClaimList: {
+      items: components['schemas']['ExpenseClaimSummary'][];
+    };
+    ExpenseClaimSummary: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      userName: string;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      status: components['schemas']['ExpenseStatus'];
+      total: number;
+      /** @constant */
+      currency: 'INR';
+      /** @description Current approval request (generic engine) */
+      approvalId: string | null;
+      approvalStep: number | null;
+      submittedAt: string | null;
+      decidedAt: string | null;
+      decidedBy: string | null;
+      decisionComment: string | null;
+      paidAt: string | null;
+      paymentRef: string | null;
+      version: number;
+      lineCount: number;
+    };
+    ExpenseClaim: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      userName: string;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      status: components['schemas']['ExpenseStatus'];
+      total: number;
+      /** @constant */
+      currency: 'INR';
+      lines: components['schemas']['ExpenseLine'][];
+      /** @description Current approval request (generic engine) */
+      approvalId: string | null;
+      approvalStep: number | null;
+      submittedAt: string | null;
+      decidedAt: string | null;
+      decidedBy: string | null;
+      decisionComment: string | null;
+      paidAt: string | null;
+      paymentRef: string | null;
+      version: number;
+    };
+    ExpenseLine: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      claimId: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      category: components['schemas']['ExpenseCategory'];
+      amount: number;
+      notes: string | null;
+      mileageKm: number | null;
+      dcrId: string | null;
+      tourPlanId: string | null;
+      attachments: components['schemas']['ExpenseAttachment'][];
+      version: number;
+    };
+    /** @description No file name or key is exposed; fetch bytes with download-url */
+    ExpenseAttachment: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      lineId: string;
+      /** @enum {string} */
+      contentType:
+        | 'image/jpeg'
+        | 'image/png'
+        | 'image/heic'
+        | 'image/heif'
+        | 'application/pdf'
+        | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        | 'application/vnd.ms-excel'
+        | 'text/csv';
+      sizeBytes: number;
+      /** @enum {string} */
+      status: 'pending' | 'confirmed';
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      confirmedAt: string | null;
+    };
+    ExpenseAttachmentUpload: {
+      attachment: components['schemas']['ExpenseAttachment'];
+      /** Format: uri */
+      uploadUrl: string;
+      /** @constant */
+      method: 'PUT';
+      /** @description Send exactly these */
+      headers: {
+        [key: string]: string;
+      };
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      expiresAt: string;
+    };
+    ExpenseDownload: {
+      /** Format: uri */
+      downloadUrl: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      expiresAt: string;
+    };
+    ExpenseReconciliation: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      claimId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      total: number;
+      claimedDays: number;
+      /** @description Submitted DCR days in the month */
+      dcrDays: number;
+      matchedDays: number;
+      /** @description Sum claimed on flagged days */
+      unmatchedAmount: number;
+      byCategory: {
+        [key: string]: number;
+      };
+      days: components['schemas']['ExpenseReconDay'][];
+    };
+    ExpenseReconDay: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      claimed: number;
+      lineCount: number;
+      dcrId: string | null;
+      dcrStatus: ('draft' | 'submitted' | 'approved' | 'rejected' | 'locked') | null;
+      flags: (
+        'no_dcr' | 'dcr_not_submitted' | 'dcr_link_mismatch' | 'non_field_day' | 'outside_month'
+      )[];
+    };
+    ExpenseReport: {
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      rows: components['schemas']['ExpenseReportRow'][];
+      total: number;
+      byCategory: {
+        [key: string]: number;
+      };
+    };
+    ExpenseReportRow: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      claimId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      total: number;
+      claimedDays: number;
+      /** @description Submitted DCR days in the month */
+      dcrDays: number;
+      matchedDays: number;
+      /** @description Sum claimed on flagged days */
+      unmatchedAmount: number;
+      byCategory: {
+        [key: string]: number;
+      };
+      userName: string;
+      status: components['schemas']['ExpenseStatus'];
     };
     SignupRequestAccepted: {
       /** @constant */
@@ -7155,7 +7716,14 @@ export interface operations {
         includeTotal?: 'true' | 'false';
         status?: 'pending' | 'approved' | 'rejected' | 'cancelled';
         subjectType?:
-          'tour_plan' | 'doctor' | 'chemist' | 'stockist' | 'dcr_unlock' | 'leave' | 'device';
+          | 'tour_plan'
+          | 'doctor'
+          | 'chemist'
+          | 'stockist'
+          | 'dcr_unlock'
+          | 'leave'
+          | 'device'
+          | 'expense';
         /** @description to_decide = pending requests from your reporting line that you may decide (never your own); requested = yours */
         mine?: 'to_decide' | 'requested';
       };
@@ -7539,6 +8107,979 @@ export interface operations {
       };
       /** @description SIGNUP_DISABLED: company not configured */
       503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listExpenseClaims: {
+    parameters: {
+      query?: {
+        month?: string;
+        userId?: string;
+        status?: components['schemas']['ExpenseStatus'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Claims */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseClaimList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createExpenseClaim: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ExpenseClaimCreate'];
+      };
+    };
+    responses: {
+      /** @description Existing claim */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseClaim'];
+        };
+      };
+      /** @description Created (draft) */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseClaim'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Future month */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getExpenseClaim: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Claim with lines and attachments */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseClaim'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found or not visible */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  addExpenseLine: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ExpenseLineInput'];
+      };
+    };
+    responses: {
+      /** @description Updated claim */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseClaim'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description EXPENSE_NOT_EDITABLE */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation: date outside month/future, DCR not yours or other date, mileageKm rule */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  updateExpenseLine: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+        /** @description UUIDv7 identifier */
+        lineId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ExpenseLineUpdate'];
+      };
+    };
+    responses: {
+      /** @description Updated claim */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseClaim'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description EXPENSE_NOT_EDITABLE or VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteExpenseLine: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+        /** @description UUIDv7 identifier */
+        lineId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Updated claim */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseClaim'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description EXPENSE_NOT_EDITABLE */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createExpenseAttachment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+        /** @description UUIDv7 identifier */
+        lineId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ExpenseAttachmentCreate'];
+      };
+    };
+    responses: {
+      /** @description Pending attachment + upload URL */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseAttachmentUpload'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description EXPENSE_NOT_EDITABLE */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (type, extension mismatch, size) or TOO_MANY_FILES */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description File storage not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  confirmExpenseAttachment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Confirmed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseAttachment'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description UPLOAD_MISSING or EXPENSE_NOT_EDITABLE */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description UPLOAD_SIZE_MISMATCH, UPLOAD_TYPE_MISMATCH or UPLOAD_FORMAT_INVALID */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteExpenseAttachment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description EXPENSE_NOT_EDITABLE */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  expenseAttachmentDownloadUrl: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Signed URL */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseDownload'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found or not visible */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description UPLOAD_NOT_CONFIRMED */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  submitExpenseClaim: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Submitted */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseClaim'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description EXPENSE_NOT_EDITABLE */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description EXPENSE_EMPTY or RECEIPT_REQUIRED (hotel lines need a confirmed receipt) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  decideExpenseClaim: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ExpenseDecision'];
+      };
+    };
+    responses: {
+      /** @description Claim after the decision */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseClaim'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Own claim, APPROVAL_NOT_YOUR_STEP or APPROVAL_ALREADY_DECIDED_BY_YOU */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not submitted / already decided */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description comment required to reject */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  payExpenseClaim: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ExpensePay'];
+      };
+    };
+    responses: {
+      /** @description Paid */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseClaim'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not approved */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  reconcileExpenseClaim: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Reconciliation */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseReconciliation'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  expenseReport: {
+    parameters: {
+      query: {
+        /** @description Month (YYYY-MM) */
+        month: string;
+        /** @description One user */
+        userId?: string;
+        /** @description That manager and everyone below */
+        teamOf?: string;
+        status?: components['schemas']['ExpenseStatus'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Report */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExpenseReport'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  exportExpenseReport: {
+    parameters: {
+      query: {
+        /** @description Month (YYYY-MM) */
+        month: string;
+        /** @description One user */
+        userId?: string;
+        /** @description That manager and everyone below */
+        teamOf?: string;
+        status?: components['schemas']['ExpenseStatus'];
+        format: 'xlsx' | 'pdf';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description File (content-disposition: attachment) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': string;
+          'application/pdf': string;
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
         headers: {
           [name: string]: unknown;
         };

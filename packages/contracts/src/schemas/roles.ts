@@ -81,6 +81,14 @@ export const PERMISSIONS = [
   'sales:read',
   /** Expenses and finance reports, company-wide (accountant). */
   'finance:read',
+  /** Own expense claims: create, edit while draft/rejected, submit, attach receipts (#52). */
+  'expenses:write',
+  /** Read own expense claims, plus the reporting line's for managers. */
+  'expenses:read',
+  /** Decide expense claims of the reporting line (manager chain, never your own). */
+  'expenses:approve',
+  /** Mark approved expense claims as paid (accountant). */
+  'finance:write',
 ] as const;
 export const Permission = z.enum(PERMISSIONS).meta({ id: 'Permission' });
 export type Permission = z.infer<typeof Permission>;
@@ -109,18 +117,22 @@ export const MASTERS_WRITE: Permission[] = ['masters:write', 'territories:write'
 /** Lowest hierarchy rank with masters write (RBM). */
 export const MASTERS_WRITE_MIN_RANK = 3;
 /** ABM: manager, read-only on masters. */
+/** Own expense claims (everyone in the sales hierarchy). */
+const EXPENSES_OWN: Permission[] = ['expenses:read', 'expenses:write'];
 const MANAGER: Permission[] = [
   ...BASE,
   'users:read',
   'field:read',
   'approvals:decide',
   'reports:read',
+  ...EXPENSES_OWN,
+  'expenses:approve',
 ];
 /** RBM and above. */
 const SENIOR: Permission[] = [...MANAGER, ...MASTERS_WRITE];
 /** Default permissions per role (seeded into roles.permissions; editable per company). */
 export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
-  business_manager: [...BASE, 'field:read', 'field:write', 'reports:read'],
+  business_manager: [...BASE, 'field:read', 'field:write', 'reports:read', ...EXPENSES_OWN],
   area_business_manager: MANAGER,
   regional_business_manager: SENIOR,
   zonal_business_manager: SENIOR,
@@ -145,7 +157,14 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'products:read',
     'sales:read',
   ],
-  accountant: ['me:read', 'roles:read', 'territories:read', 'products:read', 'finance:read'],
+  accountant: [
+    'me:read',
+    'roles:read',
+    'territories:read',
+    'products:read',
+    'finance:read',
+    'finance:write',
+  ],
 };
 
 export const Role = z

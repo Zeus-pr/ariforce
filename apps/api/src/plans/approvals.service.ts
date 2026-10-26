@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { Approval, ApprovalDecision } from '@ariforce/contracts';
+import type { Approval, ApprovalDecision, Permission } from '@ariforce/contracts';
 import type * as z from 'zod';
 import { approvalRequests, approvalSteps, tourPlans, users, type Tx } from '@ariforce/db';
 import { and, asc, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
@@ -16,6 +16,7 @@ const SUBJECT: Partial<Record<EntityType, Approval['subjectType']>> = {
   dcr_correction: 'dcr_unlock',
   doctor: 'doctor',
   leave: 'leave',
+  expense: 'expense',
 };
 const ENTITY = Object.fromEntries(Object.entries(SUBJECT).map(([k, v]) => [v, k])) as Record<
   Approval['subjectType'],
@@ -37,6 +38,23 @@ export type DecisionHook = (
   comment: string | null,
 ) => Promise<void>;
 
+/** Called when a non-final step is approved and the request moves up the chain. */
+export type StepHook = (
+  tx: Tx,
+  p: Principal,
+  req: typeof approvalRequests.$inferSelect,
+  nextStep: number,
+  nextApproverId: string,
+) => Promise<void>;
+
+export interface EntityOptions {
+  /** Approval levels up the reporting line (1 = reporting manager only). */
+  levels?: number;
+  /** Extra permission the decider needs for this entity type. */
+  permission?: Permission;
+  onStep?: StepHook;
+}
+
 export interface ApprovalQuery {
   limit?: number;
   cursor?: string;
@@ -54,6 +72,7 @@ export interface ApprovalQuery {
 @Injectable()
 export class ApprovalsService {
   private readonly hooks = new Map<string, DecisionHook>();
+  private readonly options = new Map<string, EntityOptions>();
   constructor(
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
@@ -71,8 +90,9 @@ export class ApprovalsService {
     });
   }
 
-  register(entity: EntityType, hook: DecisionHook) {
+  register(entity: EntityType, hook: DecisionHook, options: EntityOptions = {}) {
     this.hooks.set(entity, hook);
+    this.options.set(entity, options);
   }
 
   /** Creates a pending request (cancelling an older pending one for the same subject). */
@@ -155,7 +175,9 @@ export class ApprovalsService {
             ? `Tour plan ${r.payload.month}`
             : r.entityType === 'dcr_correction' && typeof r.payload?.date === 'string'
               ? `DCR correction ${r.payload.date}`
-              : (r.reason ?? r.entityType),
+              : r.entityType === 'expense' && typeof r.payload?.month === 'string'
+                ? `Expense claim ${r.payload.month}`
+                : (r.reason ?? r.entityType),
         comment: st?.comment ?? null,
         createdAt: r.createdAt.toISOString(),
         decidedAt: st?.decidedAt?.toISOString() ?? null,
@@ -222,8 +244,58 @@ export class ApprovalsService {
       if (req.requestedBy === p.userId)
         throw new ForbiddenException('You cannot decide your own request');
       if (req.state !== 'pending') throw err(409, 'CONFLICT', 'Already decided');
+      const opt = this.options.get(req.entityType) ?? {};
+      if (opt.permission && !p.permissions.includes(opt.permission))
+        throw new ForbiddenException(`Missing permission: ${opt.permission}`);
+      const steps = await tx
+        .select()
+        .from(approvalSteps)
+        .where(eq(approvalSteps.requestId, id))
+        .orderBy(asc(approvalSteps.stepNo));
+      const cur = steps.find((s) => s.stepNo === req.currentStep);
+      // The current step's approver or anyone above them; never someone who decided an earlier step.
+      if (cur?.approverUserId && p.teamUserIds && !p.teamUserIds.includes(cur.approverUserId))
+        throw err(403, 'APPROVAL_NOT_YOUR_STEP', 'Waiting for a higher approver');
+      if (steps.some((s) => s.stepNo < req.currentStep && s.decidedBy === p.userId))
+        throw err(403, 'APPROVAL_ALREADY_DECIDED_BY_YOU', 'You approved an earlier step');
       const approved = b.decision === 'approve';
       const comment = b.comment ?? null;
+      const levels = opt.levels ?? 1;
+      if (approved && req.currentStep < levels && cur?.approverUserId) {
+        const [up] = await tx
+          .select({ managerId: users.managerId })
+          .from(users)
+          .where(eq(users.id, cur.approverUserId));
+        if (up?.managerId && up.managerId !== req.requestedBy) {
+          const next = req.currentStep + 1;
+          await tx
+            .update(approvalSteps)
+            .set({ decision: 'approved', decidedBy: p.userId, decidedAt: new Date(), comment })
+            .where(eq(approvalSteps.id, cur.id));
+          await tx.insert(approvalSteps).values({
+            id: uuidv7(),
+            companyId: p.companyId,
+            requestId: id,
+            stepNo: next,
+            approverUserId: up.managerId,
+          });
+          await tx
+            .update(approvalRequests)
+            .set({ currentStep: next })
+            .where(eq(approvalRequests.id, id));
+          await opt.onStep?.(tx, p, req, next, up.managerId);
+          await this.audit.record(tx, p, 'approval.step_approved', {
+            entityType: req.entityType,
+            entityId: req.entityId,
+            after: { requestId: id, step: req.currentStep, nextStep: next, comment },
+          });
+          const [fresh] = await tx
+            .select()
+            .from(approvalRequests)
+            .where(eq(approvalRequests.id, id));
+          return (await this.toDto(tx, [fresh!]))[0]!;
+        }
+      }
       await tx
         .update(approvalSteps)
         .set({

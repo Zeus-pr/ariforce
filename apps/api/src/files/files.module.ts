@@ -5,5 +5,6 @@ import { StorageService } from './storage.service';
 @Module({
   controllers: [FilesController],
   providers: [{ provide: StorageService, useFactory: () => new StorageService(process.env) }],
+  exports: [StorageService],
 })
 export class FilesModule {}
