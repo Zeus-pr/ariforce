@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "sh ../../scripts/vitest.sh run",
-    "db:seed": "tsx scripts/seed-auth.mts"
+    "db:seed": "tsx scripts/seed-auth.mts",
+    "admin:create-first": "tsx scripts/admin-create-first.mts"
   },
   "dependencies": {
     "@ariforce/contracts": "workspace:*",

@@ -3,17 +3,36 @@
 Master data arrives as Excel today, so import is a first-class feature. The web wizard parses
 `.xlsx`/`.csv` in the browser, maps columns to the templates below, and calls
 `POST /v1/{entity}/import` (contracts: `ImportRequest`, `ImportJob`, `ImportRowResult`).
+Importable: `doctors`, `chemists`, `stockists`, `products`, `divisions`, `territories`,
+`product-hq-mappings` (users: later).
+
+**Row format (one format, gap #1):** each row is an object keyed by the snake_case template columns
+below, with masters referenced by **code** (`territory_code`, `division_code`, …). The mapper lives in
+`@ariforce/contracts` (`mapImportRow`, `duplicateKeys`) and is run by both the real API and the MSW mock.
+Accepted aliases, so a client can reuse the create body: camelCase keys (`territoryCode`,
+`registrationNo`), header spacing/case (`Territory Code`), `*_id` UUIDs instead of codes
+(`territory_id` / `territoryId`), and `location: {lat, lng}` / `centroid: {lat, lng}`. `Y`/`N`
+(also yes/no/true/false/1/0) for booleans; numbers may contain thousands separators. Codes are
+case-insensitive; a territory code outside the caller's hierarchy counts as unknown. Errors name the
+template column (`territory_code`, not `territoryId`).
 
 ## Flow
 
-1. Upload the source file to R2 (`/v1/files/upload-url`, kept for audit) and parse it client-side.
+1. Upload the source file to R2 for audit (gap #2): `POST /v1/files/upload-url` with
+   `purpose: "import_source"` and `contentType` `text/csv` or the `.xlsx` type (needs `imports:write`),
+   PUT the bytes, then pass the returned `fileKey` in every import request for that sheet. Parse it
+   client-side.
 2. **Dry run** (`dryRun: true`, the default): every row is validated with the entity's create schema,
    codes are resolved (territory, specialty, category, division, product), duplicate rules run. Nothing
-   is written. The response is a preview with per-row `status` (`valid` / `duplicate` / `error`),
+   is written to the master tables; the job and its row results are stored (`import_jobs`/`import_rows`)
+   as evidence. Response `200`. The response is a preview with per-row `status` (`valid` / `duplicate` / `error`),
    `errors[] {column, code, message}`, `duplicateOf` and `duplicateRule`.
 3. User fixes the sheet or picks `onDuplicate` (`skip` | `update` | `error`), then re-posts with
    `dryRun: false` and the same `Idempotency-Key` header. Rows become `created` / `updated` /
-   `skipped` / `error`. Valid rows are saved even if others fail; the job is audited (`import.apply`).
+   `skipped` / `error` (response `201`). Valid rows are saved even if others fail (one savepoint per
+   row); the job is audited (`import.apply`, dry runs `import.dry_run`). Replaying the same
+   `Idempotency-Key` + `dryRun` returns the stored job; reusing it for another entity or `onDuplicate`
+   is `409 IDEMPOTENCY_CONFLICT`. `onDuplicate: update` is not supported for territories (skipped).
 4. `GET /v1/imports/{id}` returns the job and per-row results (downloadable as an error report).
 
 Limits: 5,000 rows per request (split larger sheets), header row required, UTF-8 CSV, dates as
@@ -65,5 +84,6 @@ divisions → products → product_hq → specialties/categories → doctors/che
 
 ## Data model
 
-Import jobs and rows are stored (`import_jobs`, `import_rows`) together with `divisions`, `products` and
-`product_hq_mappings` in a new migration (0007+, not yet written). 0000-0003 stay untouched.
+`import_jobs` / `import_rows` (migration 0007). Company-wide roles can read any job via
+`GET /v1/imports/{id}`; other users only their own. Territory imports compute `path` from
+`parent_code` (a parent may be created earlier in the same file).

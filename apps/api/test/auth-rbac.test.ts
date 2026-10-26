@@ -124,12 +124,45 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
     ).toBe(200);
     const me = await http().get('/v1/me').set('authorization', dir);
     expect(me.body.roles).toEqual(['director']);
-    const sys = await http()
-      .get('/v1/me')
-      .set('authorization', await token('sysadmin@demo.ariforce.in'));
+    const sysAuth = await token('sysadmin@demo.ariforce.in');
+    const sys = await http().get('/v1/me').set('authorization', sysAuth);
     expect(sys.body.roles).toEqual(['system_admin']);
     expect(sys.body.permissions).not.toContain('field:read');
     expect(sys.body.managerId).toBeNull();
+  });
+
+  it('distribution_head / accountant: outside the hierarchy, domain permission only, no field or doctor data', async () => {
+    for (const [email, role, perm] of [
+      ['dh@demo.ariforce.in', 'distribution_head', 'sales:read'],
+      ['accountant@demo.ariforce.in', 'accountant', 'finance:read'],
+    ] as const) {
+      const auth = await token(email);
+      const me = await http().get('/v1/me').set('authorization', auth);
+      expect(me.status, JSON.stringify(me.body)).toBe(200);
+      expect(me.body.roles).toEqual([role]);
+      expect(me.body.permissions).toContain(perm);
+      expect(me.body.permissions).not.toContain('field:read');
+      expect(me.body.permissions).not.toContain('approvals:decide');
+      expect(me.body.managerId).toBeNull();
+      expect((await http().get('/v1/doctors').set('authorization', auth)).status).toBe(403);
+      expect((await http().get('/v1/dcrs').set('authorization', auth)).status).toBe(403);
+      expect((await http().get('/v1/kpis').set('authorization', auth)).status).toBe(403);
+      // Approvals list is open to everyone (own requests), but nothing is ever routed to them.
+      const queue = await http().get('/v1/approvals?mine=to_decide').set('authorization', auth);
+      expect(queue.body.items).toEqual([]);
+    }
+    const dirTok = await token('director@demo.ariforce.in');
+    const roles = await http().get('/v1/roles').set('authorization', dirTok);
+    const keys = roles.body.items.map((r: { key: string; inHierarchy: boolean }) => [
+      r.key,
+      r.inHierarchy,
+    ]);
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        ['distribution_head', false],
+        ['accountant', false],
+      ]),
+    );
   });
 
   it('business manager cannot create a doctor outside their hierarchy (403); inside = 201 + audit row', async () => {
@@ -182,6 +215,6 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
     const auth = await token('sysadmin@demo.ariforce.in');
     const res = await http().post('/v1/doctors').set('authorization', auth).send({ name: '' });
     expect(res.status).toBe(422);
-    expect(res.body.error.code).toBe('VALIDATION_FAILED');
+    expect(res.body.error.code).toBe('VALIDATION');
   });
 });

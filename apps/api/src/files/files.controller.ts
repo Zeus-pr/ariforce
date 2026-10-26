@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, HttpCode, Post } from '@nestjs/common';
 import {
   DownloadUrlRequest,
   UploadUrlRequest,
@@ -27,6 +27,8 @@ export class FilesController {
     @CurrentPrincipal() p: Principal,
     @Body(new ZodPipe(UploadUrlRequest)) body: UploadUrlRequest,
   ): Promise<UploadUrlResponse> {
+    if (body.purpose === 'import_source' && !p.permissions.includes('imports:write'))
+      throw new ForbiddenException('Missing permission: imports:write');
     const res = await this.storage.uploadUrl(p.companyId, body);
     await this.tenant.run(p, (tx) =>
       this.audit.record(tx, p, 'file.upload_url', {

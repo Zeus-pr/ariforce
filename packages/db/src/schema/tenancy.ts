@@ -28,6 +28,11 @@ export const companies = pgTable('companies', {
   defaultGeofenceM: integer('default_geofence_m').notNull().default(100),
   /** DCR lock: hours after day end before the DCR locks (#23). */
   dcrLockAfterHours: integer('dcr_lock_after_hours').notNull().default(24),
+  /** Check-in policy (#24): reject fixes worse than this accuracy (metres). */
+  geofenceMaxAccuracyM: integer('geofence_max_accuracy_m').notNull().default(200),
+  /** true = reject out-of-fence visits; false = allow and flag. */
+  geofenceBlockOutOfFence: boolean('geofence_block_out_of_fence').notNull().default(false),
+  geofenceBlockMock: boolean('geofence_block_mock').notNull().default(true),
   ...syncCols(),
 });
 
@@ -45,6 +50,8 @@ export const roleKey = pgEnum('role_key', [
   'vice_president',
   'director',
   'system_admin',
+  'distribution_head',
+  'accountant',
 ]);
 
 export const roles = pgTable(

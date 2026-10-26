@@ -1,6 +1,6 @@
 import { setupServer } from 'msw/node';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildOpenApiDocument, createApiClient, ROLE_KEYS, ROLE_RANK } from '../src';
+import { buildOpenApiDocument, createApiClient, monthDates, ROLE_KEYS, ROLE_RANK } from '../src';
 import { createHandlers, fixtures as fx } from '../src/mocks';
 
 const BASE = 'http://gaps.test';
@@ -14,8 +14,10 @@ beforeAll(() => {
 const uuid = () => crypto.randomUUID();
 
 describe('contract gaps', () => {
-  it('has the 8-level hierarchy plus system_admin', () => {
-    expect(ROLE_KEYS).toHaveLength(9);
+  it('has the 8-level hierarchy plus system_admin, distribution_head, accountant', () => {
+    expect(ROLE_KEYS).toHaveLength(11);
+    expect(ROLE_RANK.distribution_head).toBe(0);
+    expect(ROLE_RANK.accountant).toBe(0);
     expect(ROLE_RANK.business_manager).toBe(1);
     expect(ROLE_RANK.director).toBe(8);
     expect(ROLE_RANK.system_admin).toBe(0);
@@ -157,22 +159,82 @@ describe('contract gaps', () => {
       params: { path: { month: '2026-11' } },
       body: { days: [] },
     });
-    await api.POST('/v1/tour-plans/{month}/submit', { params: { path: { month: '2026-11' } } });
-    const pend = await api.GET('/v1/approvals', {
-      params: { query: { status: 'pending', subjectType: 'tour_plan' } },
+    const incomplete = await api.POST('/v1/tour-plans/{month}/submit', {
+      params: { path: { month: '2026-11' } },
     });
-    const mine = pend.data!.items.find((a) => a.summary === 'Tour plan 2026-11')!;
-    const noComment = await api.POST('/v1/approvals/{id}/decision', {
+    expect(incomplete.response.status).toBe(422);
+    const entry = {
+      session: 'full' as const,
+      workTypeId: fx.workTypes[0]!.id,
+      territoryIds: [fx.doctors[0]!.territoryId],
+      jointWorkUserIds: [],
+      plannedDoctorIds: [],
+      plannedChemistIds: [],
+    };
+    // STP for week 1 Monday only; copy fills just the matching date (2026-11-02).
+    await api.PUT('/v1/tour-plans/standard', {
+      body: { days: [{ week: 1, weekday: 1, entries: [entry] }] },
+    });
+    const copied = await api.POST('/v1/tour-plans/{month}/copy', {
+      params: { path: { month: '2026-11' } },
+      body: { fromStp: true },
+    });
+    expect(copied.data!.days.map((d) => d.date)).toEqual(['2026-11-02']);
+    const noSrc = await api.POST('/v1/tour-plans/{month}/copy', {
+      params: { path: { month: '2026-11' } },
+      body: { fromMonth: '2020-01', fromStp: false },
+    });
+    expect(noSrc.response.status).toBe(404);
+    await api.PUT('/v1/tour-plans/{month}', {
+      params: { path: { month: '2026-11' } },
+      body: { days: monthDates('2026-11').map((date) => ({ date, entries: [entry] })) },
+    });
+    const sub = await api.POST('/v1/tour-plans/{month}/submit', {
+      params: { path: { month: '2026-11' } },
+    });
+    expect(sub.data!.status).toBe('submitted');
+    const own = await api.GET('/v1/approvals', { params: { query: { mine: 'requested' } } });
+    const mine = own.data!.items.find((a) => a.summary === 'Tour plan 2026-11')!;
+    const self = await api.POST('/v1/approvals/{id}/decision', {
       params: { path: { id: mine.id } },
+      body: { decision: 'approve' },
+    });
+    expect(self.response.status).toBe(403);
+    const toDecide = await api.GET('/v1/approvals', { params: { query: { mine: 'to_decide' } } });
+    expect(toDecide.data!.items.some((a) => a.id === mine.id)).toBe(false);
+    const team = toDecide.data!.items[0]!;
+    const noComment = await api.POST('/v1/approvals/{id}/decision', {
+      params: { path: { id: team.id } },
       body: { decision: 'reject' },
     });
     expect(noComment.response.status).toBe(422);
     const ok = await api.POST('/v1/approvals/{id}/decision', {
-      params: { path: { id: mine.id } },
+      params: { path: { id: team.id } },
       body: { decision: 'approve' },
     });
     expect(ok.data!.status).toBe('approved');
-    const tp = await api.GET('/v1/tour-plans/{month}', { params: { path: { month: '2026-11' } } });
-    expect(tp.data!.status).toBe('approved');
+  });
+
+  it('DCR day lock and correction request (gap #8)', async () => {
+    const old = '2026-01-05';
+    const body = {
+      date: old,
+      workTypeId: fx.workTypes[0]!.id,
+      territoryIds: [],
+      calls: [],
+      submit: false,
+    };
+    const locked = await api.PUT('/v1/dcrs', { body });
+    expect(locked.response.status).toBe(409);
+    const req = await api.POST('/v1/dcrs/correction-requests', {
+      body: { date: old, reason: 'Forgot to submit' },
+    });
+    expect(req.response.status).toBe(201);
+    expect(req.data!.subjectType).toBe('dcr_unlock');
+    const today = new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10);
+    const notLocked = await api.POST('/v1/dcrs/correction-requests', {
+      body: { date: today, reason: 'Nothing to fix' },
+    });
+    expect(notLocked.response.status).toBe(409);
   });
 });

@@ -14,6 +14,8 @@ export const ROLE_DEFS = [
   { key: 'sales_manager', name: 'Sales Manager', rank: 5 },
   { key: 'general_manager', name: 'General Manager', rank: 6 },
   { key: 'vice_president', name: 'Vice President', rank: 7 },
+  { key: 'distribution_head', name: 'Distribution Head', rank: 0 },
+  { key: 'accountant', name: 'Accountant', rank: 0 },
 ] as const;
 
 export const T = {
@@ -36,6 +38,8 @@ export const U = {
   vp: id('3', 8),
   gm: id('3', 9),
   sm: id('3', 10),
+  dh: id('3', 11),
+  accountant: id('3', 12),
 };
 
 export const roleId = (i: number) => id('2', i + 1);

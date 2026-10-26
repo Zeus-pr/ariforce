@@ -1,0 +1,543 @@
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  DCR_UNLOCK_HOURS,
+  isDeviation,
+  type Dcr,
+  type DcrCall,
+  type DcrUpsert,
+  type TourPlan,
+} from '@ariforce/contracts';
+import {
+  chemists,
+  dcrCallProducts,
+  dcrCalls,
+  dcrs,
+  doctors,
+  geoCaptures,
+  products,
+  stockists,
+  territories,
+  tourPlans,
+  users,
+  workTypes,
+  type Tx,
+} from '@ariforce/db';
+import { and, asc, desc, eq, inArray, isNull, ne, notInArray, sql, type SQL } from 'drizzle-orm';
+import { v7 as uuidv7 } from 'uuid';
+import type * as z from 'zod';
+import type { Principal } from '../auth/principal';
+import { AuditService } from '../common/audit.service';
+import { TenantService } from '../common/tenant.service';
+import { CheckInsService, err } from '../field/checkins.service';
+import { companySettings, localDate, type CompanySettings } from '../field/field.util';
+import { decodeCursor, encodeCursor } from '../masters/masters.service';
+import { ApprovalsService } from '../plans/approvals.service';
+
+type Upsert = z.infer<typeof DcrUpsert>;
+type DcrRow = typeof dcrs.$inferSelect;
+const OUTLETS = { doctor: doctors, chemist: chemists, stockist: stockists } as const;
+
+export interface DcrQuery {
+  limit?: number;
+  cursor?: string;
+  sort?: string;
+  includeTotal?: 'true' | 'false';
+  from?: string;
+  to?: string;
+  userId?: string;
+  territoryId?: string;
+  status?: Dcr['status'];
+}
+
+/** SQL: day-lock instant for a dcrs.date-like expression. */
+const lockAtSql = (date: SQL | typeof dcrs.date, s: CompanySettings) =>
+  sql`((((${date})::date + 1)::timestamp at time zone ${s.timezone}) + make_interval(hours => ${s.dcrLockAfterHours}))`;
+/** SQL: end of the unlock window from the latest approved correction for (user, date), or null. */
+const unlockedUntilSql = (userId: SQL | typeof dcrs.userId, date: SQL | typeof dcrs.date) =>
+  sql`(select max(st.decided_at) + make_interval(hours => ${DCR_UNLOCK_HOURS})
+       from approval_requests r join approval_steps st on st.request_id = r.id
+       where r.entity_type = 'dcr_correction' and r.state = 'approved' and r.requested_by = ${userId}
+         and r.payload->>'date' = (${date})::text)`;
+
+@Injectable()
+export class DcrService {
+  constructor(
+    private readonly tenant: TenantService,
+    private readonly audit: AuditService,
+    private readonly checkIns: CheckInsService,
+    private readonly approvals: ApprovalsService,
+  ) {}
+
+  private async lockInfo(tx: Tx, s: CompanySettings, userId: string, date: string) {
+    const res = await tx.execute(
+      sql`select ${lockAtSql(sql`${date}`, s)}::text as lock_at,
+                 ${unlockedUntilSql(sql`${userId}::uuid`, sql`${date}`)}::text as unlocked_until`,
+    );
+    const rows = ((res as unknown as { rows?: unknown[] }).rows ?? res) as {
+      lock_at: string;
+      unlocked_until: string | null;
+    }[];
+    const lockAt = new Date(rows[0]!.lock_at);
+    const uu = rows[0]!.unlocked_until;
+    const unlockedUntil = uu ? new Date(uu) : null;
+    const now = Date.now();
+    const unlocked = !!unlockedUntil && unlockedUntil.getTime() > now;
+    return {
+      lockAt,
+      unlockedUntil: unlocked ? unlockedUntil : null,
+      locked: now > lockAt.getTime() && !unlocked,
+    };
+  }
+
+  private async toDto(tx: Tx, s: CompanySettings, rows: DcrRow[]): Promise<Dcr[]> {
+    if (!rows.length) return [];
+    const ids = rows.map((r) => r.id);
+    const calls = await tx
+      .select()
+      .from(dcrCalls)
+      .where(and(inArray(dcrCalls.dcrId, ids), isNull(dcrCalls.deletedAt)))
+      .orderBy(asc(dcrCalls.calledAt), asc(dcrCalls.id));
+    const lines = calls.length
+      ? await tx
+          .select()
+          .from(dcrCallProducts)
+          .where(
+            and(
+              inArray(
+                dcrCallProducts.callId,
+                calls.map((c) => c.id),
+              ),
+              isNull(dcrCallProducts.deletedAt),
+            ),
+          )
+      : [];
+    const out: Dcr[] = [];
+    for (const r of rows) {
+      const li = await this.lockInfo(tx, s, r.userId, r.date);
+      out.push({
+        id: r.id,
+        companyId: r.companyId,
+        createdAt: r.createdAt.toISOString(),
+        updatedAt: r.updatedAt.toISOString(),
+        deletedAt: r.deletedAt?.toISOString() ?? null,
+        version: r.version,
+        userId: r.userId,
+        date: r.date,
+        workTypeId: r.workTypeId,
+        territoryIds: r.territoryIds.length ? r.territoryIds : r.territoryId ? [r.territoryId] : [],
+        tourPlanId: r.tourPlanId,
+        deviationReason: r.deviationReason,
+        status: li.locked ? 'locked' : r.status === 'submitted' ? 'submitted' : 'draft',
+        submittedAt: r.submittedAt?.toISOString() ?? null,
+        lockAt: li.lockAt.toISOString(),
+        unlockedUntil: li.unlockedUntil?.toISOString() ?? null,
+        calls: calls
+          .filter((c) => c.dcrId === r.id)
+          .map((c): DcrCall => {
+            const l = lines.filter((x) => x.callId === c.id);
+            return {
+              id: c.id,
+              outletKind: c.outletKind,
+              outletId: c.outletId,
+              checkInId: c.geoCaptureId,
+              jointWorkUserIds: c.jointWorkUserIds,
+              productsDetailed: l
+                .filter((x) => x.kind === 'detailed')
+                .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+                .map((x) => ({ productId: x.productId, order: x.seq ?? 1 })),
+              samples: l
+                .filter((x) => x.kind === 'sample')
+                .map((x) => ({ productId: x.productId, quantity: x.quantity ?? 0 })),
+              pob: l
+                .filter((x) => x.kind === 'pob')
+                .map((x) => ({
+                  productId: x.productId,
+                  quantity: x.quantity ?? 0,
+                  stockistId: x.stockistId,
+                  value: x.value === null ? null : Number(x.value),
+                })),
+              remarks: c.remarks,
+              calledAt: (c.calledAt ?? c.createdAt).toISOString(),
+            };
+          }),
+      });
+    }
+    return out;
+  }
+
+  list(p: Principal, q: DcrQuery) {
+    return this.tenant.run(p, async (tx) => {
+      const s = await companySettings(tx, p);
+      const locked = sql`(now() > ${lockAtSql(dcrs.date, s)} and coalesce(${unlockedUntilSql(dcrs.userId, dcrs.date)} < now(), true))`;
+      const where = [
+        isNull(dcrs.deletedAt),
+        this.checkIns.userFilter(p, q.userId, dcrs.userId),
+        q.from ? sql`${dcrs.date} >= ${q.from}` : undefined,
+        q.to ? sql`${dcrs.date} <= ${q.to}` : undefined,
+        q.territoryId
+          ? sql`${dcrs.territoryIds} && array(${this.checkIns.territorySubtree(tx, q.territoryId)})`
+          : undefined,
+        q.status === 'locked'
+          ? locked
+          : q.status
+            ? and(eq(dcrs.status, q.status), sql`not ${locked}`)
+            : undefined,
+      ].filter(Boolean) as SQL[];
+      const sort = q.sort ?? '-date';
+      const field = sort.replace(/^-/, '');
+      const col = { date: dcrs.date, createdAt: dcrs.createdAt, updatedAt: dcrs.updatedAt }[field];
+      if (!col) throw err(422, 'VALIDATION', `Unknown sort field ${field}`);
+      const dir = sort.startsWith('-') ? desc : asc;
+      const limit = q.limit ?? 50;
+      const offset = decodeCursor(q.cursor);
+      const rows = await tx
+        .select()
+        .from(dcrs)
+        .where(and(...where))
+        .orderBy(dir(col), dir(dcrs.id))
+        .limit(limit + 1)
+        .offset(offset);
+      const out: Record<string, unknown> = {
+        items: await this.toDto(tx, s, rows.slice(0, limit)),
+        nextCursor: rows.length > limit ? encodeCursor(offset + limit) : null,
+        serverTime: new Date().toISOString(),
+      };
+      if (q.includeTotal === 'true') {
+        const [t] = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(dcrs)
+          .where(and(...where));
+        out.total = t!.n;
+      }
+      return out;
+    });
+  }
+
+  get(p: Principal, id: string) {
+    return this.tenant.run(p, async (tx) => {
+      const s = await companySettings(tx, p);
+      const [r] = await tx
+        .select()
+        .from(dcrs)
+        .where(
+          and(
+            eq(dcrs.id, id),
+            isNull(dcrs.deletedAt),
+            this.checkIns.userFilter(p, undefined, dcrs.userId),
+          ),
+        );
+      if (!r) throw new NotFoundException('DCR not found');
+      return (await this.toDto(tx, s, [r]))[0]!;
+    });
+  }
+
+  /** Approved TP for the date's month and its entries for that date. */
+  private async plan(tx: Tx, userId: string, date: string) {
+    const [tp] = await tx
+      .select({ id: tourPlans.id, days: tourPlans.days })
+      .from(tourPlans)
+      .where(
+        and(
+          eq(tourPlans.userId, userId),
+          eq(tourPlans.month, `${date.slice(0, 7)}-01`),
+          eq(tourPlans.status, 'approved'),
+          isNull(tourPlans.deletedAt),
+        ),
+      );
+    const entries =
+      ((tp?.days ?? []) as TourPlan['days']).find((d) => d.date === date)?.entries ?? [];
+    return { tourPlanId: tp?.id ?? null, entries };
+  }
+
+  private async validateCalls(tx: Tx, p: Principal, b: Upsert, dcrId: string | undefined) {
+    const bad: Record<string, string[]> = {};
+    const scope = this.tenant.scope(p, territories.path);
+    for (const kind of ['doctor', 'chemist', 'stockist'] as const) {
+      const ids = [...new Set(b.calls.filter((c) => c.outletKind === kind).map((c) => c.outletId))];
+      if (!ids.length) continue;
+      const t = OUTLETS[kind];
+      const found = await tx
+        .select({ id: t.id })
+        .from(t)
+        .innerJoin(territories, eq(territories.id, t.territoryId))
+        .where(and(inArray(t.id, ids), isNull(t.deletedAt), scope));
+      const miss = ids.filter((i) => !found.some((f) => f.id === i));
+      if (miss.length) bad[`${kind}Ids`] = miss;
+    }
+    const prodIds = [
+      ...new Set(
+        b.calls.flatMap((c) => [
+          ...c.productsDetailed.map((x) => x.productId),
+          ...c.samples.map((x) => x.productId),
+          ...c.pob.map((x) => x.productId),
+        ]),
+      ),
+    ];
+    if (prodIds.length) {
+      const found = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(and(inArray(products.id, prodIds), isNull(products.deletedAt)));
+      const miss = prodIds.filter((i) => !found.some((f) => f.id === i));
+      if (miss.length) bad.productIds = miss;
+    }
+    const jw = [...new Set(b.calls.flatMap((c) => c.jointWorkUserIds))];
+    if (jw.length) {
+      const found = await tx.select({ id: users.id }).from(users).where(inArray(users.id, jw));
+      const miss = jw.filter((i) => !found.some((f) => f.id === i));
+      if (miss.length) bad.jointWorkUserIds = miss;
+    }
+    const ci = b.calls.filter((c) => c.checkInId);
+    if (ci.length) {
+      const caps = await tx
+        .select()
+        .from(geoCaptures)
+        .where(
+          inArray(
+            geoCaptures.id,
+            ci.map((c) => c.checkInId!),
+          ),
+        );
+      const wrong = ci.filter((c) => {
+        const g = caps.find((x) => x.id === c.checkInId);
+        return (
+          !g ||
+          g.userId !== p.userId ||
+          g.kind !== 'visit' ||
+          g.entityType !== c.outletKind ||
+          g.entityId !== c.outletId
+        );
+      });
+      if (wrong.length) bad.checkInIds = wrong.map((c) => c.checkInId!);
+      const used = await tx
+        .select({ geo: dcrCalls.geoCaptureId })
+        .from(dcrCalls)
+        .where(
+          and(
+            inArray(
+              dcrCalls.geoCaptureId,
+              ci.map((c) => c.checkInId!),
+            ),
+            isNull(dcrCalls.deletedAt),
+            notInArray(
+              dcrCalls.id,
+              b.calls.map((c) => c.clientId),
+            ),
+          ),
+        );
+      if (used.length) bad.checkInIdsAlreadyLinked = used.map((u) => u.geo!);
+    }
+    const ids = b.calls.map((c) => c.clientId);
+    if (new Set(ids).size !== ids.length) bad.clientIds = ['duplicate clientId'];
+    if (Object.keys(bad).length) throw err(422, 'VALIDATION', 'Invalid calls', bad);
+    const foreign = await tx
+      .select({ id: dcrCalls.id })
+      .from(dcrCalls)
+      .where(and(inArray(dcrCalls.id, ids), dcrId ? ne(dcrCalls.dcrId, dcrId) : sql`true`));
+    if (foreign.length)
+      throw err(409, 'IDEMPOTENCY_CONFLICT', 'Call clientId belongs to another DCR', {
+        clientIds: foreign.map((f) => f.id),
+      });
+  }
+
+  upsert(p: Principal, b: Upsert) {
+    return this.tenant.run(p, async (tx) => {
+      const s = await companySettings(tx, p);
+      if (b.date > localDate(new Date(), s.timezone))
+        throw err(422, 'VALIDATION', 'DCR date is in the future');
+      const [cur] = await tx
+        .select()
+        .from(dcrs)
+        .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, b.date)))
+        .for('update');
+      const li = await this.lockInfo(tx, s, p.userId, b.date);
+      if (li.locked)
+        throw err(409, 'DAY_LOCKED', 'This day is locked; request a correction', {
+          lockAt: li.lockAt.toISOString(),
+        });
+      if (cur && b.version && b.version !== cur.version)
+        throw err(409, 'VERSION_CONFLICT', 'Stale version', (await this.toDto(tx, s, [cur]))[0]);
+
+      const [wt] = await tx
+        .select()
+        .from(workTypes)
+        .where(
+          and(
+            eq(workTypes.id, b.workTypeId),
+            isNull(workTypes.deletedAt),
+            eq(workTypes.active, true),
+          ),
+        );
+      if (!wt) throw err(422, 'VALIDATION', 'Unknown work type', { workTypeId: b.workTypeId });
+      const field = wt.kind === 'field';
+      if (!field && b.calls.length) throw err(422, 'VALIDATION', 'Calls need a field work type');
+      if (field && b.submit && !b.calls.length)
+        throw err(422, 'VALIDATION', 'Field work needs at least one call');
+      if (b.territoryIds.length) {
+        const found = await tx
+          .select({ id: territories.id })
+          .from(territories)
+          .where(
+            and(inArray(territories.id, b.territoryIds), this.tenant.scope(p, territories.path)),
+          );
+        const miss = b.territoryIds.filter((t) => !found.some((f) => f.id === t));
+        if (miss.length)
+          throw err(422, 'VALIDATION', 'Unknown or out-of-scope territories', {
+            territoryIds: miss,
+          });
+      }
+
+      const plan = await this.plan(tx, p.userId, b.date);
+      const reason = b.deviationReason?.trim() || null;
+      if (isDeviation(plan.entries, b.workTypeId, b.territoryIds) && !reason)
+        throw err(
+          422,
+          'DEVIATION_REASON_REQUIRED',
+          'Worked plan differs from the approved tour plan; give a reason',
+          {
+            planned: plan.entries.map((e) => ({
+              workTypeId: e.workTypeId,
+              territoryIds: e.territoryIds,
+            })),
+          },
+        );
+
+      await this.validateCalls(tx, p, b, cur?.id);
+
+      const vals = {
+        workTypeId: b.workTypeId,
+        territoryId: b.territoryIds[0] ?? null,
+        territoryIds: b.territoryIds,
+        tourPlanId: plan.tourPlanId,
+        deviationReason: reason,
+        ...(b.submit ? { status: 'submitted' as const, submittedAt: new Date() } : {}),
+      };
+      const [row] = cur
+        ? await tx
+            .update(dcrs)
+            .set({ ...vals, deletedAt: null })
+            .where(eq(dcrs.id, cur.id))
+            .returning()
+        : await tx
+            .insert(dcrs)
+            .values({
+              id: uuidv7(),
+              companyId: p.companyId,
+              userId: p.userId,
+              date: b.date,
+              ...vals,
+            })
+            .returning();
+      const dcrId = row!.id;
+      const now = new Date();
+      const keep = b.calls.map((c) => c.clientId);
+      await tx
+        .update(dcrCalls)
+        .set({ deletedAt: now })
+        .where(
+          and(
+            eq(dcrCalls.dcrId, dcrId),
+            isNull(dcrCalls.deletedAt),
+            keep.length ? notInArray(dcrCalls.id, keep) : sql`true`,
+          ),
+        );
+      for (const c of b.calls) {
+        const v = {
+          outletKind: c.outletKind,
+          outletId: c.outletId,
+          calledAt: new Date(c.calledAt),
+          geoCaptureId: c.checkInId ?? null,
+          jointWorkUserId: c.jointWorkUserIds[0] ?? null,
+          jointWorkUserIds: c.jointWorkUserIds,
+          remarks: c.remarks ?? null,
+        };
+        await tx
+          .insert(dcrCalls)
+          .values({
+            id: c.clientId,
+            companyId: p.companyId,
+            dcrId,
+            userId: p.userId,
+            date: b.date,
+            ...v,
+          })
+          .onConflictDoUpdate({ target: dcrCalls.id, set: { ...v, deletedAt: null } });
+      }
+      if (keep.length) {
+        await tx
+          .update(dcrCallProducts)
+          .set({ deletedAt: now })
+          .where(and(inArray(dcrCallProducts.callId, keep), isNull(dcrCallProducts.deletedAt)));
+        const lines = b.calls.flatMap((c) => [
+          ...c.productsDetailed.map((x) => ({
+            callId: c.clientId,
+            productId: x.productId,
+            kind: 'detailed' as const,
+            seq: x.order,
+          })),
+          ...c.samples.map((x) => ({
+            callId: c.clientId,
+            productId: x.productId,
+            kind: 'sample' as const,
+            quantity: x.quantity,
+          })),
+          ...c.pob.map((x) => ({
+            callId: c.clientId,
+            productId: x.productId,
+            kind: 'pob' as const,
+            quantity: x.quantity,
+            stockistId: x.stockistId ?? null,
+            value: x.value == null ? null : String(x.value),
+          })),
+        ]);
+        if (lines.length)
+          await tx
+            .insert(dcrCallProducts)
+            .values(lines.map((l) => ({ id: uuidv7(), companyId: p.companyId, ...l })));
+      }
+      await this.audit.record(tx, p, b.submit ? 'dcr.submit' : 'dcr.save', {
+        entityType: 'dcr',
+        entityId: dcrId,
+        after: { date: b.date, calls: b.calls.length, deviation: !!reason },
+      });
+      const [fresh] = await tx.select().from(dcrs).where(eq(dcrs.id, dcrId));
+      return (await this.toDto(tx, s, [fresh!]))[0]!;
+    });
+  }
+
+  requestCorrection(p: Principal, date: string, reason: string) {
+    return this.tenant.run(p, async (tx) => {
+      if (!p.teamUserIds && !p.roles.length) throw new ForbiddenException();
+      const s = await companySettings(tx, p);
+      const li = await this.lockInfo(tx, s, p.userId, date);
+      if (!li.locked)
+        throw err(
+          409,
+          'CONFLICT',
+          li.unlockedUntil ? 'Day is already unlocked' : 'Day is not locked',
+          {
+            lockAt: li.lockAt.toISOString(),
+            unlockedUntil: li.unlockedUntil?.toISOString() ?? null,
+          },
+        );
+      const [cur] = await tx
+        .select({ id: dcrs.id })
+        .from(dcrs)
+        .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, date)));
+      const id = await this.approvals.request(
+        tx,
+        p,
+        'dcr_correction',
+        cur?.id ?? uuidv7(),
+        reason,
+        { date },
+      );
+      await this.audit.record(tx, p, 'dcr.correction_request', {
+        entityType: 'dcr',
+        entityId: cur?.id ?? null,
+        after: { date, reason },
+      });
+      return this.approvals.byId(tx, id);
+    });
+  }
+}

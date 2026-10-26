@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { DateOnly, GeoPoint, Id, Month, Syncable, Timestamp, listQuery } from './common';
+import { RoleKey } from './roles';
 
 const Capture = z.object({
   location: GeoPoint,
@@ -26,7 +27,10 @@ export const CheckIn = Syncable.extend({
     .boolean()
     .nullable()
     .meta({ description: 'Within the geofence radius; null if outlet not geo-tagged' }),
-  selfieFileId: Id.nullable(),
+  selfieFileKey: z
+    .string()
+    .nullable()
+    .meta({ description: 'R2 key (upload purpose visit_attachment)' }),
 }).meta({ id: 'CheckIn' });
 export type CheckIn = z.infer<typeof CheckIn>;
 
@@ -36,7 +40,10 @@ export const CheckInCreate = z
     kind: CheckInKind,
     outletKind: OutletKind.optional(),
     outletId: Id.optional(),
-    selfieFileId: Id.optional(),
+    selfieFileKey: z.string().max(300).optional(),
+    deviceId: Id.optional().meta({
+      description: 'Enrolled device; may be omitted when the user has exactly one active device',
+    }),
     ...Capture.shape,
   })
   .refine((b) => b.kind !== 'visit' || (b.outletKind && b.outletId), {
@@ -52,7 +59,36 @@ export const FieldListQuery = listQuery(['date', 'createdAt', 'updatedAt'] as co
   userId: Id.optional().meta({ description: 'Must be the caller or someone in their team' }),
   territoryId: Id.optional().meta({ description: 'Territory incl. descendants' }),
 });
-export const CheckInListQuery = FieldListQuery.extend({ kind: CheckInKind.optional() });
+export const CheckInListQuery = FieldListQuery.extend({
+  kind: CheckInKind.optional(),
+  outletKind: OutletKind.optional(),
+  outletId: Id.optional(),
+  unlinked: z.enum(['true', 'false']).optional().meta({
+    description:
+      'true = only visit check-ins not yet linked to a DCR call (DCR call picker, gap #9)',
+  }),
+});
+
+// ---- Users (team directory, gap #3) ----
+export const UserSummary = z
+  .object({
+    id: Id,
+    name: z.string(),
+    email: z.string(),
+    employeeCode: z.string().nullable(),
+    roles: z.array(RoleKey),
+    managerId: Id.nullable(),
+    territoryIds: z.array(Id),
+    status: z.enum(['invited', 'active', 'suspended']),
+  })
+  .meta({ id: 'UserSummary' });
+export type UserSummary = z.infer<typeof UserSummary>;
+export const UserListQuery = listQuery(['name', 'employeeCode'] as const, {
+  role: RoleKey.optional(),
+  managerId: Id.optional().meta({ description: 'Direct reports of this user' }),
+  territoryId: Id.optional().meta({ description: 'Users assigned in this territory subtree' }),
+  status: z.enum(['invited', 'active', 'suspended']).optional(),
+}).meta({ description: 'Caller plus their reporting line; company-wide roles see everyone' });
 
 export const AttendanceDay = z
   .object({
@@ -135,8 +171,36 @@ export const TourPlanUpsert = z
   .object({ days: z.array(TourPlanDay), version: z.int().min(1).optional() })
   .meta({ id: 'TourPlanUpsert' });
 export const TourPlanCopy = z
-  .object({ fromMonth: Month.optional(), fromStp: z.boolean().default(true) })
-  .meta({ id: 'TourPlanCopy', description: 'STP to MTP copy (#20)' });
+  .object({
+    fromMonth: Month.optional().meta({
+      description: 'Copy this month (same week + weekday); wins over fromStp',
+    }),
+    fromStp: z.boolean().default(true).meta({
+      description: 'true = copy the standard plan; false (no fromMonth) = copy the previous month',
+    }),
+  })
+  .meta({
+    id: 'TourPlanCopy',
+    description:
+      'Fills a draft (new, draft or rejected plan) from the STP or another month (#20). Dates map by week of month + weekday.',
+  });
+
+/** Standard tour plan (STP): weekly pattern by week of month (1-5) and ISO weekday (Mon=1). */
+export const StandardTourPlanDay = z
+  .object({
+    week: z.int().min(1).max(5),
+    weekday: z.int().min(1).max(7),
+    entries: z.array(TourPlanEntry).max(3),
+  })
+  .meta({ id: 'StandardTourPlanDay' });
+export const StandardTourPlan = Syncable.extend({
+  userId: Id,
+  days: z.array(StandardTourPlanDay),
+}).meta({ id: 'StandardTourPlan' });
+export type StandardTourPlan = z.infer<typeof StandardTourPlan>;
+export const StandardTourPlanUpsert = z
+  .object({ days: z.array(StandardTourPlanDay).max(35), version: z.int().min(1).optional() })
+  .meta({ id: 'StandardTourPlanUpsert' });
 export const TourPlanListQuery = FieldListQuery.extend({
   month: Month.optional(),
   status: ApprovalStatus.optional(),
@@ -197,6 +261,13 @@ export const Dcr = Syncable.extend({
     .meta({ description: 'Locked after the day-lock cut-off (#23)' }),
   calls: z.array(DcrCall),
   submittedAt: Timestamp.nullable(),
+  lockAt: Timestamp.meta({
+    description:
+      'Day-lock cut-off: end of the day + companies.dcr_lock_after_hours (company time zone)',
+  }),
+  unlockedUntil: Timestamp.nullable().meta({
+    description: 'Set while an approved correction request keeps a locked day editable (48 h)',
+  }),
 }).meta({ id: 'Dcr' });
 export type Dcr = z.infer<typeof Dcr>;
 export const DcrUpsert = z
@@ -210,6 +281,11 @@ export const DcrUpsert = z
     version: z.int().min(1).optional(),
   })
   .meta({ id: 'DcrUpsert' });
+/** Ask the manager to reopen a locked day (gap #8); approval keeps it editable for 48 h. */
+export const DcrCorrectionRequest = z
+  .object({ date: DateOnly, reason: z.string().min(3).max(500) })
+  .meta({ id: 'DcrCorrectionRequest' });
+export const DCR_UNLOCK_HOURS = 48;
 export const DcrListQuery = FieldListQuery.extend({
   status: z.enum(['draft', 'submitted', 'locked']).optional(),
 });
@@ -256,5 +332,8 @@ export const ApprovalDecision = z
 export const ApprovalListQuery = listQuery(['createdAt'] as const, {
   status: z.enum(['pending', 'approved', 'rejected', 'cancelled']).optional(),
   subjectType: Approval.shape.subjectType.optional(),
-  mine: z.enum(['to_decide', 'requested']).optional(),
-});
+  mine: z.enum(['to_decide', 'requested']).optional().meta({
+    description:
+      'to_decide = pending requests from your reporting line that you may decide (never your own); requested = yours',
+  }),
+}).meta({ description: 'Visible: your own requests and those of your reporting line' });

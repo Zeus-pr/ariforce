@@ -26,13 +26,18 @@ import {
   CheckIn,
   CheckInCreate,
   CheckInListQuery,
+  UserListQuery,
+  UserSummary,
   ConsentState,
   Dcr,
   DcrListQuery,
+  DcrCorrectionRequest,
   DcrUpsert,
   FieldListQuery,
   GeofenceSettings,
   TourPlan,
+  StandardTourPlan,
+  StandardTourPlanUpsert,
   TourPlanCopy,
   TourPlanListQuery,
   TourPlanUpsert,
@@ -76,6 +81,28 @@ function op(o: ZodOpenApiOperationObject): ZodOpenApiOperationObject {
   return { security: [{ session: [] }], ...o, responses: { ...std, ...o.responses } };
 }
 
+function importPath(tag: string, base: string, name: string): ZodOpenApiPathsObject {
+  return {
+    [`${base}/import`]: {
+      post: op({
+        tags: [tag, 'Imports'],
+        operationId: `import${name}s`,
+        summary: `Bulk import ${tag.toLowerCase()} from Excel/CSV rows (dry-run first)`,
+        description:
+          'Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.',
+        requestParams: { header: IdempotencyKeyHeader },
+        requestBody: json(ImportRequest),
+        responses: {
+          '200': { description: 'Dry-run preview', ...json(ImportJob) },
+          '201': { description: 'Import applied', ...json(ImportJob) },
+          '413': err('More than 5,000 rows'),
+          '422': err('Request malformed'),
+        },
+      }),
+    },
+  };
+}
+
 function crud(
   tag: string,
   base: string,
@@ -86,27 +113,7 @@ function crud(
   query: z.ZodObject = CodeNameListQuery,
   importable = false,
 ): ZodOpenApiPathsObject {
-  const imp: ZodOpenApiPathsObject = importable
-    ? {
-        [`${base}/import`]: {
-          post: op({
-            tags: [tag, 'Imports'],
-            operationId: `import${name}s`,
-            summary: `Bulk import ${tag.toLowerCase()} from Excel/CSV rows (dry-run first)`,
-            description:
-              'Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.',
-            requestParams: { header: IdempotencyKeyHeader },
-            requestBody: json(ImportRequest),
-            responses: {
-              '200': { description: 'Dry-run preview', ...json(ImportJob) },
-              '201': { description: 'Import applied', ...json(ImportJob) },
-              '413': err('More than 5,000 rows'),
-              '422': err('Request malformed'),
-            },
-          }),
-        },
-      }
-    : {};
+  const imp: ZodOpenApiPathsObject = importable ? importPath(tag, base, name) : {};
   return {
     ...imp,
     [base]: {
@@ -370,6 +377,9 @@ export function buildOpenApiDocument(): OpenApiDocument {
         true,
       ),
       ...crud('WorkTypes', '/v1/work-types', WorkType, WorkTypeCreate, WorkTypeUpdate, 'WorkType'),
+      ...importPath('Products', '/v1/divisions', 'Division'),
+      ...importPath('Territories', '/v1/territories', 'Territory'),
+      ...importPath('Products', '/v1/product-hq-mappings', 'ProductHqMapping'),
       '/v1/divisions': {
         get: op({
           tags: ['Products'],
@@ -405,6 +415,17 @@ export function buildOpenApiDocument(): OpenApiDocument {
           },
         }),
       },
+      '/v1/users': {
+        get: op({
+          tags: ['Users'],
+          operationId: 'listUsers',
+          summary: 'Team directory: the caller and their reporting line (gap #3)',
+          requestParams: { query: UserListQuery },
+          responses: {
+            '200': { description: 'Page', ...json(page(UserSummary, 'UserSummaryPage')) },
+          },
+        }),
+      },
       '/v1/check-ins': {
         get: op({
           tags: ['Attendance'],
@@ -423,8 +444,13 @@ export function buildOpenApiDocument(): OpenApiDocument {
             '201': { description: 'Recorded', ...json(CheckIn) },
             '200': { description: 'Already recorded (same clientId)', ...json(CheckIn) },
             '409': err('Sequence error (e.g. visit before punch-in, second punch-in)'),
-            '412': err('Consent missing (DPDP)'),
-            '422': err('Validation failed, out of fence or mock location when blocked'),
+            '404': err('Outlet not found or outside your territories'),
+            '412': err(
+              'No active enrolled device (DEVICE_NOT_ACTIVE) or consent missing (CONSENT_REQUIRED)',
+            ),
+            '422': err(
+              'Validation failed; LOW_ACCURACY, MOCK_LOCATION or OUT_OF_FENCE when the company policy blocks',
+            ),
           },
         }),
       },
@@ -435,7 +461,11 @@ export function buildOpenApiDocument(): OpenApiDocument {
           summary:
             'KPI report (docs/kpi-definitions.md). Requires reports:read; scoped to the reporting line',
           requestParams: { query: KpiQuery },
-          responses: { '200': { description: 'OK', ...json(KpiReport) } },
+          responses: {
+            '200': { description: 'OK', ...json(KpiReport) },
+            '403': err('rollup=company without company-wide scope, or userId outside your team'),
+            '422': err('Invalid query'),
+          },
         }),
       },
       '/v1/kpis/products': {
@@ -444,7 +474,11 @@ export function buildOpenApiDocument(): OpenApiDocument {
           operationId: 'getProductKpis',
           summary: 'Product-wise detailing, samples and POB',
           requestParams: { query: KpiQuery },
-          responses: { '200': { description: 'OK', ...json(ProductKpiReport) } },
+          responses: {
+            '200': { description: 'OK', ...json(ProductKpiReport) },
+            '403': err('userId outside your team'),
+            '422': err('Invalid query'),
+          },
         }),
       },
       '/v1/attendance': {
@@ -492,6 +526,32 @@ export function buildOpenApiDocument(): OpenApiDocument {
           responses: { '200': { description: 'Page', ...json(page(TourPlan, 'TourPlanPage')) } },
         }),
       },
+      '/v1/tour-plans/standard': {
+        get: op({
+          tags: ['TourPlans'],
+          operationId: 'getStandardTourPlan',
+          summary:
+            "Caller's standard plan (STP), or userId's if in team. Empty days when none saved.",
+          requestParams: { query: z.object({ userId: IdParam.shape.id.optional() }) },
+          responses: {
+            '200': { description: 'OK', ...json(StandardTourPlan) },
+            '403': err('User outside your team'),
+          },
+        }),
+        put: op({
+          tags: ['TourPlans'],
+          operationId: 'upsertStandardTourPlan',
+          summary: "Replace the caller's standard plan",
+          requestBody: json(StandardTourPlanUpsert),
+          responses: {
+            '200': { description: 'Saved', ...json(StandardTourPlan) },
+            '409': err('Version conflict'),
+            '422': err(
+              'Validation failed (duplicate week/weekday, unknown work type or territory)',
+            ),
+          },
+        }),
+      },
       '/v1/tour-plans/{month}': {
         get: op({
           tags: ['TourPlans'],
@@ -511,6 +571,9 @@ export function buildOpenApiDocument(): OpenApiDocument {
           responses: {
             '200': { description: 'Saved draft', ...json(TourPlan) },
             '409': err('Not editable (submitted/approved) or version conflict'),
+            '422': err(
+              'Validation failed (date outside month, duplicate date, unknown work type/territory)',
+            ),
           },
         }),
       },
@@ -521,7 +584,9 @@ export function buildOpenApiDocument(): OpenApiDocument {
           requestParams: { path: z.object({ month: Month }) },
           requestBody: json(TourPlanCopy),
           responses: {
-            '200': { description: 'Draft created from STP/previous month', ...json(TourPlan) },
+            '200': { description: 'Draft filled from the STP or another month', ...json(TourPlan) },
+            '404': err('Source plan not found'),
+            '409': err('Target plan is submitted or approved'),
           },
         }),
       },
@@ -532,7 +597,9 @@ export function buildOpenApiDocument(): OpenApiDocument {
           requestParams: { path: z.object({ month: Month }) },
           responses: {
             '200': { description: 'Submitted; approval created', ...json(TourPlan) },
+            '404': err('No plan for the month'),
             '409': err('Not in draft'),
+            '422': err('Dates without an entry (details.missingDates)'),
           },
         }),
       },
@@ -551,8 +618,22 @@ export function buildOpenApiDocument(): OpenApiDocument {
           requestBody: json(DcrUpsert),
           responses: {
             '200': { description: 'Saved', ...json(Dcr) },
-            '409': err('Day locked or version conflict'),
-            '422': err('Validation failed (e.g. deviation reason missing)'),
+            '409': err('DAY_LOCKED (request a correction) or VERSION_CONFLICT'),
+            '422': err(
+              'Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown products, or a check-in that is not your visit to that outlet',
+            ),
+          },
+        }),
+      },
+      '/v1/dcrs/correction-requests': {
+        post: op({
+          tags: ['DCR'],
+          operationId: 'requestDcrCorrection',
+          summary: 'Ask your manager to reopen a locked day (gap #8)',
+          requestBody: json(DcrCorrectionRequest),
+          responses: {
+            '201': { description: 'Approval request created', ...json(Approval) },
+            '409': err('Day is not locked, or already unlocked'),
           },
         }),
       },
@@ -582,6 +663,7 @@ export function buildOpenApiDocument(): OpenApiDocument {
           requestBody: json(ApprovalDecision),
           responses: {
             '200': { description: 'Decided', ...json(Approval) },
+            '403': err('Own request, or requester not below you in the reporting line'),
             '404': err('Not found'),
             '409': err('Already decided'),
           },

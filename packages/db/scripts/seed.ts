@@ -37,6 +37,8 @@ const PERMS: Record<string, string[]> = {
     'settings:write',
     'audit:read',
   ],
+  distribution_head: ['me:read', 'roles:read', 'territories:read', 'sales:read'],
+  accountant: ['me:read', 'roles:read', 'territories:read', 'finance:read'],
 };
 
 await db.transaction(async (tx) => {
@@ -206,6 +208,25 @@ await db.transaction(async (tx) => {
       terr: T.otherArea,
       mgr: U.regional,
     },
+    // Outside the hierarchy: no manager, no territory (domain-wide read via permissions).
+    {
+      id: U.dh,
+      email: 'dh@demo.ariforce.in',
+      name: 'Dev Distribution Head',
+      code: 'DH001',
+      role: 9,
+      terr: null,
+      mgr: null,
+    },
+    {
+      id: U.accountant,
+      email: 'accountant@demo.ariforce.in',
+      name: 'Anita Accountant',
+      code: 'ACC001',
+      role: 10,
+      terr: null,
+      mgr: null,
+    },
   ];
   await tx
     .insert(s.users)
@@ -226,7 +247,9 @@ await db.transaction(async (tx) => {
     .onConflictDoNothing();
   await tx
     .insert(s.userTerritories)
-    .values(people.map((p) => ({ companyId: C, userId: p.id, territoryId: p.terr })))
+    .values(
+      people.flatMap((p) => (p.terr ? [{ companyId: C, userId: p.id, territoryId: p.terr }] : [])),
+    )
     .onConflictDoNothing();
 
   const { id } = seedIds;

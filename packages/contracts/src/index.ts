@@ -13,3 +13,5 @@ export { buildOpenApiDocument, type OpenApiDocument } from './openapi';
 export { createApiClient, type ApiClient } from './client';
 export type { paths, components } from './generated/openapi';
 export const API_VERSION = 'v1';
+export * from './import/templates';
+export * from './tour-plan';

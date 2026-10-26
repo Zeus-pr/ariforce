@@ -106,3 +106,11 @@ sequence errors, 412 without DPDP consent (`GET /v1/me/consent`), geofence from 
 `GET /v1/attendance` is one row per user-day. Tour plans are per month (`PUT`, `/copy` for STP→MTP,
 `/submit` creates an approval). `PUT /v1/dcrs` upserts the day's DCR; each call carries products detailed
 (ordered), samples (qty) and POB lines. `POST /v1/approvals/{id}/decision` (reject needs a comment).
+
+## Mock sign-in and personas
+
+The MSW mock mirrors better-auth: `POST /v1/auth/sign-in/email` accepts any password for
+`<persona>@demo.ariforce.in` (director, vp, gm, sm, zbm, rbm, abm, bm, sysadmin), returns
+`set-auth-token: mock:<role_key>` and a `better-auth.session_token` cookie. Requests are resolved as:
+`x-mock-user` header (role key, email or local part; `none` = signed out) > bearer/cookie token >
+default persona (director). The real API ignores `x-mock-user`.

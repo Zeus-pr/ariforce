@@ -125,7 +125,9 @@ export const importJobs = pgTable(
     fileName: text('file_name'),
     fileKey: text('file_key'),
     idempotencyKey: text('idempotency_key'),
-    totals: jsonb('totals').notNull().default(sql`'{}'::jsonb`),
+    totals: jsonb('totals')
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),
@@ -151,7 +153,9 @@ export const importRows = pgTable(
     rowNo: integer('row_no').notNull(),
     status: importRowStatus('status').notNull(),
     raw: jsonb('raw').notNull(),
-    errors: jsonb('errors').notNull().default(sql`'[]'::jsonb`),
+    errors: jsonb('errors')
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     entityId: uuid('entity_id'),
     duplicateOf: uuid('duplicate_of'),
     duplicateRule: text('duplicate_rule'),

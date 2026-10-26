@@ -4,6 +4,7 @@ import {
   check,
   date,
   index,
+  jsonb,
   integer,
   numeric,
   pgEnum,
@@ -38,12 +39,31 @@ export const tourPlans = pgTable(
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     decidedBy: uuid('decided_by').references(() => users.id),
+    /** Canonical plan (TourPlanDay[]); plan_sessions + tour_plan_visits are derived from it on save. */
+    days: jsonb('days').$type<unknown[]>().notNull().default([]),
+    decisionComment: text('decision_comment'),
     ...syncCols(),
   },
   (t) => [
     uniqueIndex('tour_plans_user_month_uq').on(t.companyId, t.userId, t.month),
     check('tour_plans_month_first', sql`extract(day from ${t.month}) = 1`),
   ],
+);
+
+/** Standard tour plan (STP, #20): one weekly-pattern template per user, copied into monthly plans. */
+export const standardTourPlans = pgTable(
+  'standard_tour_plans',
+  {
+    id: pk(),
+    companyId: companyId().references(() => companies.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    /** StandardTourPlanDay[]: { week 1-5, weekday 1-7 (ISO, Mon=1), entries }. */
+    days: jsonb('days').$type<unknown[]>().notNull().default([]),
+    ...syncCols(),
+  },
+  (t) => [uniqueIndex('standard_tour_plans_user_uq').on(t.companyId, t.userId)],
 );
 
 export const tourPlanVisits = pgTable(
@@ -76,6 +96,13 @@ export const dcrs = pgTable(
       .notNull()
       .references(() => workTypes.id),
     territoryId: uuid('territory_id').references(() => territories.id),
+    /** All territories worked (territory_id = the first, kept for existing views). */
+    territoryIds: uuid('territory_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    /** The approved monthly TP the day was compared against (#22). */
+    tourPlanId: uuid('tour_plan_id').references(() => tourPlans.id),
     status: docStatus('status').notNull().default('draft'),
     /** Reason when the day deviates from the approved TP. */
     deviationReason: text('deviation_reason'),
@@ -104,6 +131,11 @@ export const dcrCalls = pgTable(
     /** Visit GPS capture (only captured at punch-in, visit, punch-out). */
     geoCaptureId: uuid('geo_capture_id').references(() => geoCaptures.id),
     jointWorkUserId: uuid('joint_work_user_id').references(() => users.id),
+    /** All joint-work users (joint_work_user_id = the first, kept for existing views). */
+    jointWorkUserIds: uuid('joint_work_user_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     remarks: text('remarks'),
     ...syncCols(),
   },

@@ -243,7 +243,7 @@ export interface paths {
     put?: never;
     /**
      * Bulk import doctors from Excel/CSV rows (dry-run first)
-     * @description Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.
+     * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
      */
     post: operations['importDoctors'];
     delete?: never;
@@ -297,7 +297,7 @@ export interface paths {
     put?: never;
     /**
      * Bulk import chemists from Excel/CSV rows (dry-run first)
-     * @description Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.
+     * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
      */
     post: operations['importChemists'];
     delete?: never;
@@ -351,7 +351,7 @@ export interface paths {
     put?: never;
     /**
      * Bulk import stockists from Excel/CSV rows (dry-run first)
-     * @description Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.
+     * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
      */
     post: operations['importStockists'];
     delete?: never;
@@ -405,7 +405,7 @@ export interface paths {
     put?: never;
     /**
      * Bulk import products from Excel/CSV rows (dry-run first)
-     * @description Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.
+     * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
      */
     post: operations['importProducts'];
     delete?: never;
@@ -482,6 +482,66 @@ export interface paths {
     patch: operations['updateWorkType'];
     trace?: never;
   };
+  '/v1/divisions/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Bulk import products from Excel/CSV rows (dry-run first)
+     * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
+     */
+    post: operations['importDivisions'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/territories/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Bulk import territories from Excel/CSV rows (dry-run first)
+     * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
+     */
+    post: operations['importTerritorys'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/product-hq-mappings/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Bulk import products from Excel/CSV rows (dry-run first)
+     * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
+     */
+    post: operations['importProductHqMappings'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/divisions': {
     parameters: {
       query?: never;
@@ -522,6 +582,23 @@ export interface paths {
       cookie?: never;
     };
     get: operations['getImportJob'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/users': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Team directory: the caller and their reporting line (gap #3) */
+    get: operations['listUsers'];
     put?: never;
     post?: never;
     delete?: never;
@@ -648,6 +725,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/tour-plans/standard': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Caller's standard plan (STP), or userId's if in team. Empty days when none saved. */
+    get: operations['getStandardTourPlan'];
+    /** Replace the caller's standard plan */
+    put: operations['upsertStandardTourPlan'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/tour-plans/{month}': {
     parameters: {
       query?: never;
@@ -708,6 +803,23 @@ export interface paths {
     /** Create or update the caller's DCR for a date (idempotent on date + call clientIds) */
     put: operations['upsertDcr'];
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/dcrs/correction-requests': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Ask your manager to reopen a locked day (gap #8) */
+    post: operations['requestDcrCorrection'];
     delete?: never;
     options?: never;
     head?: never;
@@ -778,12 +890,19 @@ export interface components {
     UploadUrlRequest: {
       purpose: components['schemas']['FilePurpose'];
       /** @enum {string} */
-      contentType: 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf';
+      contentType:
+        | 'image/jpeg'
+        | 'image/png'
+        | 'image/webp'
+        | 'application/pdf'
+        | 'text/csv'
+        | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       sizeBytes: number;
       fileName?: string;
     };
     /** @enum {string} */
-    FilePurpose: 'doctor_photo' | 'visit_attachment' | 'expense_receipt' | 'avatar';
+    FilePurpose:
+      'doctor_photo' | 'visit_attachment' | 'expense_receipt' | 'avatar' | 'import_source';
     DownloadUrlRequest: {
       fileKey: string;
     };
@@ -816,8 +935,8 @@ export interface components {
        * @default true
        */
       dryRun: boolean;
-      /** @description Uploaded source file (R2) kept for audit */
-      fileId?: string | null;
+      /** @description fileKey from POST /v1/files/upload-url with purpose import_source (source sheet kept in R2 for audit) */
+      fileKey?: string | null;
       fileName?: string;
       /**
        * @description What to do with rows matching an existing record
@@ -825,7 +944,7 @@ export interface components {
        * @enum {string}
        */
       onDuplicate: 'skip' | 'update' | 'error';
-      /** @description Parsed rows keyed by template column (see docs/IMPORT.md) */
+      /** @description Parsed rows keyed by the snake_case template columns with master codes (docs/IMPORT.md). Aliases: camelCase keys and create-schema *_id UUIDs. */
       rows: {
         [key: string]: unknown;
       }[];
@@ -1032,7 +1151,22 @@ export interface components {
       productId: string | null;
     };
     /** @enum {string} */
+    RoleKey:
+      | 'business_manager'
+      | 'area_business_manager'
+      | 'regional_business_manager'
+      | 'zonal_business_manager'
+      | 'sales_manager'
+      | 'general_manager'
+      | 'vice_president'
+      | 'director'
+      | 'system_admin'
+      | 'distribution_head'
+      | 'accountant';
+    /** @enum {string} */
     CheckInKind: 'punch_in' | 'visit' | 'punch_out';
+    /** @enum {string} */
+    OutletKind: 'doctor' | 'chemist' | 'stockist';
     CheckInCreate: {
       /**
        * Format: uuid
@@ -1048,12 +1182,13 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       outletId?: string;
+      selfieFileKey?: string;
       /**
        * Format: uuid
-       * @description UUIDv7 identifier
+       * @description Enrolled device; may be omitted when the user has exactly one active device
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
-      selfieFileId?: string;
+      deviceId?: string;
       location: components['schemas']['GeoPoint'];
       accuracyM: number;
       /**
@@ -1067,8 +1202,6 @@ export interface components {
        */
       isMock: boolean;
     };
-    /** @enum {string} */
-    OutletKind: 'doctor' | 'chemist' | 'stockist';
     /**
      * @description company is Director-only; team/byUser need a reporting line
      * @enum {string}
@@ -1105,16 +1238,13 @@ export interface components {
     };
     /** @enum {string} */
     ApprovalStatus: 'draft' | 'submitted' | 'approved' | 'rejected' | 'recalled';
-    TourPlanUpsert: {
-      days: components['schemas']['TourPlanDay'][];
+    StandardTourPlanUpsert: {
+      days: components['schemas']['StandardTourPlanDay'][];
       version?: number;
     };
-    TourPlanDay: {
-      /**
-       * Format: date
-       * @description Calendar date (YYYY-MM-DD, IST)
-       */
-      date: string;
+    StandardTourPlanDay: {
+      week: number;
+      weekday: number;
       entries: components['schemas']['TourPlanEntry'][];
     };
     TourPlanEntry: {
@@ -1139,14 +1269,29 @@ export interface components {
       plannedChemistIds: string[];
       notes?: string | null;
     };
-    /** @description STP to MTP copy (#20) */
+    TourPlanUpsert: {
+      days: components['schemas']['TourPlanDay'][];
+      version?: number;
+    };
+    TourPlanDay: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      entries: components['schemas']['TourPlanEntry'][];
+    };
+    /** @description Fills a draft (new, draft or rejected plan) from the STP or another month (#20). Dates map by week of month + weekday. */
     TourPlanCopy: {
       /**
-       * @description Month (YYYY-MM)
+       * @description Copy this month (same week + weekday); wins over fromStp
        * @example 2026-11
        */
       fromMonth?: string;
-      /** @default true */
+      /**
+       * @description true = copy the standard plan; false (no fromMonth) = copy the previous month
+       * @default true
+       */
       fromStp: boolean;
     };
     DcrUpsert: {
@@ -1228,6 +1373,14 @@ export interface components {
       /** @description INR, at PTR */
       value?: number | null;
     };
+    DcrCorrectionRequest: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      reason: string;
+    };
     ApprovalDecision: {
       /** @enum {string} */
       decision: 'approve' | 'reject';
@@ -1283,17 +1436,6 @@ export interface components {
       managerId: string | null;
     };
     /** @enum {string} */
-    RoleKey:
-      | 'business_manager'
-      | 'area_business_manager'
-      | 'regional_business_manager'
-      | 'zonal_business_manager'
-      | 'sales_manager'
-      | 'general_manager'
-      | 'vice_president'
-      | 'director'
-      | 'system_admin';
-    /** @enum {string} */
     Permission:
       | 'me:read'
       | 'roles:read'
@@ -1309,7 +1451,9 @@ export interface components {
       | 'approvals:decide'
       | 'reports:read'
       | 'settings:write'
-      | 'audit:read';
+      | 'audit:read'
+      | 'sales:read'
+      | 'finance:read';
     RoleList: {
       items: components['schemas']['Role'][];
     };
@@ -1322,7 +1466,7 @@ export interface components {
       id: string;
       key: components['schemas']['RoleKey'];
       name: string;
-      /** @description 1..8 sales hierarchy; 0 = system_admin */
+      /** @description 1..8 sales hierarchy; 0 = outside it (system_admin, distribution_head, accountant) */
       rank: number;
       inHierarchy: boolean;
       permissions: components['schemas']['Permission'][];
@@ -1576,6 +1720,9 @@ export interface components {
       /** @enum {string} */
       status: 'validated' | 'completed' | 'failed';
       fileName: string | null;
+      fileKey: string | null;
+      /** @enum {string} */
+      onDuplicate: 'skip' | 'update' | 'error';
       totals: {
         rows: number;
         valid: number;
@@ -1995,6 +2142,33 @@ export interface components {
       /** @description Null = whole division */
       productId: string | null;
     };
+    UserSummaryPage: {
+      items: components['schemas']['UserSummary'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    UserSummary: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      email: string;
+      employeeCode: string | null;
+      roles: components['schemas']['RoleKey'][];
+      managerId: string | null;
+      territoryIds: string[];
+      /** @enum {string} */
+      status: 'invited' | 'active' | 'suspended';
+    };
     CheckInPage: {
       items: components['schemas']['CheckIn'][];
       nextCursor: string | null;
@@ -2069,7 +2243,8 @@ export interface components {
       distanceM: number | null;
       /** @description Within the geofence radius; null if outlet not geo-tagged */
       inFence: boolean | null;
-      selfieFileId: string | null;
+      /** @description R2 key (upload purpose visit_attachment) */
+      selfieFileKey: string | null;
     };
     KpiReport: {
       /**
@@ -2094,6 +2269,8 @@ export interface components {
       userId: string | null;
       territoryId: string | null;
       label: string;
+      /** @description Expected working days in the period up to today (IST): calendar days - Sundays - days filed as leave/holiday, summed over the users in the row. Denominator of dcr_compliance_pct */
+      workingDays: number;
       metrics: components['schemas']['KpiValue'][];
     };
     KpiValue: {
@@ -2246,6 +2423,41 @@ export interface components {
       decidedBy: string | null;
       decisionComment: string | null;
     };
+    StandardTourPlan: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Tombstone: set when soft-deleted */
+      deletedAt: string | null;
+      /** @description Row version, incremented on every update (optimistic concurrency) */
+      version: number;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      days: components['schemas']['StandardTourPlanDayOutput'][];
+    };
     DcrPage: {
       items: components['schemas']['Dcr'][];
       nextCursor: string | null;
@@ -2312,6 +2524,13 @@ export interface components {
       status: 'draft' | 'submitted' | 'locked';
       calls: components['schemas']['DcrCall'][];
       submittedAt: string | null;
+      /**
+       * Format: date-time
+       * @description Day-lock cut-off: end of the day + companies.dcr_lock_after_hours (company time zone)
+       */
+      lockAt: string;
+      /** @description Set while an approved correction request keeps a locked day editable (48 h) */
+      unlockedUntil: string | null;
     };
     DcrCall: {
       /**
@@ -2339,17 +2558,6 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       calledAt: string;
-    };
-    ApprovalPage: {
-      items: components['schemas']['Approval'][];
-      nextCursor: string | null;
-      /**
-       * Format: date-time
-       * @description ISO-8601 timestamp (UTC)
-       */
-      serverTime: string;
-      /** @description Rows matching the filters; present when includeTotal=true */
-      total?: number;
     };
     Approval: {
       /**
@@ -2394,6 +2602,17 @@ export interface components {
       decidedAt: string | null;
       decidedBy: string | null;
     };
+    ApprovalPage: {
+      items: components['schemas']['Approval'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
     GeoPointOutput: {
       lat: number;
       lng: number;
@@ -2436,6 +2655,11 @@ export interface components {
       /** @default [] */
       plannedChemistIds: string[];
       notes?: string | null;
+    };
+    StandardTourPlanDayOutput: {
+      week: number;
+      weekday: number;
+      entries: components['schemas']['TourPlanEntryOutput'][];
     };
     DetailedProductOutput: {
       /**
@@ -4857,6 +5081,222 @@ export interface operations {
       };
     };
   };
+  importDivisions: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Client-generated key; safe retries for POST */
+        'idempotency-key'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ImportRequest'];
+      };
+    };
+    responses: {
+      /** @description Dry-run preview */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Import applied */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description More than 5,000 rows */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Request malformed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  importTerritorys: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Client-generated key; safe retries for POST */
+        'idempotency-key'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ImportRequest'];
+      };
+    };
+    responses: {
+      /** @description Dry-run preview */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Import applied */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description More than 5,000 rows */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Request malformed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  importProductHqMappings: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Client-generated key; safe retries for POST */
+        'idempotency-key'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ImportRequest'];
+      };
+    };
+    responses: {
+      /** @description Dry-run preview */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Import applied */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description More than 5,000 rows */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Request malformed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   listDivisions: {
     parameters: {
       query?: {
@@ -5053,6 +5493,62 @@ export interface operations {
       };
     };
   };
+  listUsers: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
+        updatedSince?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description Sort: name, employeeCode (prefix - for descending) */
+        sort?: 'name' | '-name' | 'employeeCode' | '-employeeCode';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        role?: components['schemas']['RoleKey'];
+        /** @description Direct reports of this user */
+        managerId?: string;
+        /** @description Users assigned in this territory subtree */
+        territoryId?: string;
+        status?: 'invited' | 'active' | 'suspended';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['UserSummaryPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   listCheckIns: {
     parameters: {
       query?: {
@@ -5074,6 +5570,10 @@ export interface operations {
         /** @description Territory incl. descendants */
         territoryId?: string;
         kind?: components['schemas']['CheckInKind'];
+        outletKind?: components['schemas']['OutletKind'];
+        outletId?: string;
+        /** @description true = only visit check-ins not yet linked to a DCR call (DCR call picker, gap #9) */
+        unlinked?: 'true' | 'false';
       };
       header?: never;
       path?: never;
@@ -5162,6 +5662,15 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
+      /** @description Outlet not found or outside your territories */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
       /** @description Sequence error (e.g. visit before punch-in, second punch-in) */
       409: {
         headers: {
@@ -5171,7 +5680,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Consent missing (DPDP) */
+      /** @description No active enrolled device (DEVICE_NOT_ACTIVE) or consent missing (CONSENT_REQUIRED) */
       412: {
         headers: {
           [name: string]: unknown;
@@ -5180,7 +5689,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Validation failed, out of fence or mock location when blocked */
+      /** @description Validation failed; LOW_ACCURACY, MOCK_LOCATION or OUT_OF_FENCE when the company policy blocks */
       422: {
         headers: {
           [name: string]: unknown;
@@ -5230,8 +5739,17 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      /** @description rollup=company without company-wide scope, or userId outside your team */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Invalid query */
+      422: {
         headers: {
           [name: string]: unknown;
         };
@@ -5280,8 +5798,17 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      /** @description userId outside your team */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Invalid query */
+      422: {
         headers: {
           [name: string]: unknown;
         };
@@ -5532,6 +6059,106 @@ export interface operations {
       };
     };
   };
+  getStandardTourPlan: {
+    parameters: {
+      query?: {
+        userId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StandardTourPlan'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description User outside your team */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  upsertStandardTourPlan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['StandardTourPlanUpsert'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StandardTourPlan'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Version conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed (duplicate week/weekday, unknown work type or territory) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   getTourPlan: {
     parameters: {
       query?: {
@@ -5636,6 +6263,15 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
+      /** @description Validation failed (date outside month, duplicate date, unknown work type/territory) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
     };
   };
   copyTourPlan: {
@@ -5654,7 +6290,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Draft created from STP/previous month */
+      /** @description Draft filled from the STP or another month */
       200: {
         headers: {
           [name: string]: unknown;
@@ -5674,6 +6310,24 @@ export interface operations {
       };
       /** @description Signed in but not allowed (role, hierarchy or tenant) */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Source plan not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Target plan is submitted or approved */
+      409: {
         headers: {
           [name: string]: unknown;
         };
@@ -5722,8 +6376,26 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
+      /** @description No plan for the month */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
       /** @description Not in draft */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Dates without an entry (details.missingDates) */
+      422: {
         headers: {
           [name: string]: unknown;
         };
@@ -5830,7 +6502,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Day locked or version conflict */
+      /** @description DAY_LOCKED (request a correction) or VERSION_CONFLICT */
       409: {
         headers: {
           [name: string]: unknown;
@@ -5839,8 +6511,59 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Validation failed (e.g. deviation reason missing) */
+      /** @description Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown products, or a check-in that is not your visit to that outlet */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  requestDcrCorrection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DcrCorrectionRequest'];
+      };
+    };
+    responses: {
+      /** @description Approval request created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Approval'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Day is not locked, or already unlocked */
+      409: {
         headers: {
           [name: string]: unknown;
         };
@@ -5917,6 +6640,7 @@ export interface operations {
         status?: 'pending' | 'approved' | 'rejected' | 'cancelled';
         subjectType?:
           'tour_plan' | 'doctor' | 'chemist' | 'stockist' | 'dcr_unlock' | 'leave' | 'device';
+        /** @description to_decide = pending requests from your reporting line that you may decide (never your own); requested = yours */
         mine?: 'to_decide' | 'requested';
       };
       header?: never;
@@ -5988,7 +6712,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      /** @description Own request, or requester not below you in the reporting line */
       403: {
         headers: {
           [name: string]: unknown;

@@ -19,6 +19,9 @@ import {
   Territory,
 } from '../index';
 import * as fx from './fixtures';
+import { duplicateKeys, mapImportRow, type ImportLookup } from '../import/templates';
+import type { ImportEntity } from '../schemas/imports';
+import { SignInEmailBody } from '../schemas/auth';
 import { kpiReport, productKpiReport } from './kpis';
 import {
   Approval,
@@ -26,9 +29,13 @@ import {
   AttendanceDay,
   CheckIn,
   CheckInCreate,
+  UserSummary,
   ConsentState,
   Dcr,
+  DcrCorrectionRequest,
   DcrUpsert,
+  DCR_UNLOCK_HOURS,
+  isDeviation,
   Division,
   GeofenceSettings,
   ImportJob,
@@ -37,8 +44,15 @@ import {
   Product,
   ProductCreate,
   ProductHqMapping,
+  StandardTourPlan,
+  StandardTourPlanUpsert,
   TourPlan,
+  TourPlanCopy,
   TourPlanUpsert,
+  copyFromMonth,
+  copyFromStandard,
+  missingDates,
+  prevMonth,
   WorkType,
   WorkTypeCreate,
 } from '../index';
@@ -51,7 +65,17 @@ const serverTime = () => new Date().toISOString();
 const notFound = () =>
   HttpResponse.json({ error: { code: 'NOT_FOUND', message: 'Not found' } }, { status: 404 });
 
-const FILTER_SKIP = new Set(['limit', 'cursor', 'updatedSince', 'q', 'sort', 'includeTotal']);
+const FILTER_SKIP = new Set([
+  'limit',
+  'cursor',
+  'updatedSince',
+  'q',
+  'sort',
+  'includeTotal',
+  'unlinked',
+  'role',
+  'mine',
+]);
 const encodeCursor = (n: number) => btoa(`o:${n}`);
 const decodeCursor = (c: string | null) => {
   if (!c) return 0;
@@ -73,6 +97,9 @@ function inTerritory(row: Record<string, unknown>, territoryId: string) {
  * Generic list: honours updatedSince, q (name/code/city), field filters (exact match;
  * territoryId/ancestorId include descendants; from/to on `date`), sort, limit, cursor, includeTotal.
  */
+const nextDay = (d: string) =>
+  new Date(Date.parse(`${d}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+
 export function list<T extends { id: string }>(schema: z.ZodType<T>, rows: T[], url: URL) {
   const sp = url.searchParams;
   const since = sp.get('updatedSince');
@@ -131,184 +158,135 @@ export function list<T extends { id: string }>(schema: z.ZodType<T>, rows: T[], 
   });
 }
 
-type DupRule = {
-  rule: 'registration_no' | 'name_pincode' | 'gstin' | 'drug_license_no' | 'code';
-  key: (r: Record<string, unknown>) => string | null;
+const IMPORT_ENTITY_BY_PATH: Record<string, Exclude<ImportEntity, 'users'>> = {
+  '/v1/doctors': 'doctors',
+  '/v1/chemists': 'chemists',
+  '/v1/stockists': 'stockists',
+  '/v1/products': 'products',
 };
-const DUP_RULES: Record<string, DupRule[]> = {
-  '/v1/doctors': [
-    {
-      rule: 'registration_no',
-      key: (r) => (r.registrationNo ? String(r.registrationNo).toUpperCase() : null),
-    },
-    {
-      rule: 'name_pincode',
-      key: (r) =>
-        r.name && r.pincode
-          ? `${String(r.name)
-              .toLowerCase()
-              .replace(/^dr\.?\s*/, '')
-              .trim()}|${r.pincode}`
-          : null,
-    },
-  ],
-  '/v1/chemists': [
-    { rule: 'gstin', key: (r) => (r.gstin ? String(r.gstin).toUpperCase() : null) },
-    {
-      rule: 'drug_license_no',
-      key: (r) => (r.drugLicenseNo ? String(r.drugLicenseNo).toUpperCase() : null),
-    },
-    {
-      rule: 'name_pincode',
-      key: (r) =>
-        r.name && r.pincode ? `${String(r.name).toLowerCase().trim()}|${r.pincode}` : null,
-    },
-  ],
-  '/v1/products': [{ rule: 'code', key: (r) => (r.code ? String(r.code).toUpperCase() : null) }],
+const lower = (v: unknown) => String(v ?? '').toUpperCase();
+const mockLookup: ImportLookup = {
+  territory: (c) => fx.territories.find((t) => lower(t.code) === c)?.id,
+  specialty: (c) => fx.specialties.find((t) => lower(t.code) === c)?.id,
+  category: (c) => fx.doctorCategories.find((t) => lower(t.code) === c)?.id,
+  division: (c) => mockDivisions.find((t) => lower(t.code) === c)?.id,
+  product: (c) => fx.products.find((t) => lower(t.code) === c)?.id,
 };
-DUP_RULES['/v1/stockists'] = DUP_RULES['/v1/chemists']!;
+const mockDivisions = structuredClone(fx.divisions);
+const mockTerritoryRows = structuredClone(fx.territories);
+const mockHq = structuredClone(fx.productHqMappings);
+
+/** Same algorithm as the API (ImportService): map template row -> validate -> duplicate rules. */
+async function mockImport(
+  entity: Exclude<ImportEntity, 'users'>,
+  existing: Record<string, unknown>[],
+  request: Request,
+) {
+  const parsed = ImportRequest.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return validation('Invalid import', z.treeifyError(parsed.error));
+  const { dryRun, rows: input, onDuplicate, fileName, fileKey } = parsed.data;
+  const seen = new Map<string, number>();
+  const index = new Map<string, Record<string, unknown>>();
+  for (const x of existing)
+    if (!x.deletedAt) for (const k of duplicateKeys(entity, x)) index.set(`${k.rule}:${k.key}`, x);
+  const results: ImportRowResult[] = input.map((raw, i) => {
+    const row = i + 1;
+    const res = (o: Partial<ImportRowResult>): ImportRowResult => ({
+      row,
+      status: 'valid',
+      errors: [],
+      id: null,
+      duplicateOf: null,
+      duplicateRule: null,
+      ...o,
+    });
+    const m = mapImportRow(entity, raw, mockLookup);
+    if (!m.body) return res({ status: 'error', errors: m.errors });
+    const data = m.body;
+    for (const k of duplicateKeys(entity, data)) {
+      const prev = seen.get(`${k.rule}:${k.key}`);
+      if (prev)
+        return res({
+          status: 'error',
+          errors: [
+            { column: null, code: 'duplicate_in_file', message: `Same ${k.rule} as row ${prev}` },
+          ],
+          duplicateRule: 'in_file',
+        });
+    }
+    for (const k of duplicateKeys(entity, data)) seen.set(`${k.rule}:${k.key}`, row);
+    for (const k of duplicateKeys(entity, data)) {
+      const hit = index.get(`${k.rule}:${k.key}`);
+      if (!hit) continue;
+      const dup = { id: hit.id as string, duplicateOf: hit.id as string, duplicateRule: k.rule };
+      if (onDuplicate === 'error')
+        return res({
+          status: 'error',
+          errors: [
+            { column: null, code: 'duplicate', message: `Matches existing record by ${k.rule}` },
+          ],
+          ...dup,
+        });
+      if (onDuplicate === 'update') {
+        if (dryRun) return res({ status: 'valid', ...dup });
+        Object.assign(hit, data, { version: Number(hit.version) + 1, updatedAt: serverTime() });
+        return res({ status: 'updated', ...dup });
+      }
+      return res({ status: dryRun ? 'duplicate' : 'skipped', ...dup });
+    }
+    if (dryRun) return res({ status: 'valid' });
+    const ts = serverTime();
+    const created = {
+      ...data,
+      id: crypto.randomUUID(),
+      companyId: fx.COMPANY_ID,
+      createdAt: ts,
+      updatedAt: ts,
+      deletedAt: null,
+      version: 1,
+    };
+    existing.push(created);
+    return res({ status: 'created', id: created.id });
+  });
+  const count = (st: string) => results.filter((r) => r.status === st).length;
+  const job = ImportJob.parse({
+    id: crypto.randomUUID(),
+    companyId: fx.COMPANY_ID,
+    entity,
+    dryRun,
+    status: dryRun ? 'validated' : 'completed',
+    fileName: fileName ?? null,
+    fileKey: fileKey ?? null,
+    onDuplicate,
+    totals: {
+      rows: results.length,
+      valid: count('valid'),
+      created: count('created'),
+      updated: count('updated'),
+      duplicate: count('duplicate'),
+      skipped: count('skipped'),
+      error: count('error'),
+    },
+    results,
+    createdBy: fx.me.id,
+    createdAt: serverTime(),
+  });
+  jobs.set(job.id, job);
+  return HttpResponse.json(job, { status: dryRun ? 200 : 201 });
+}
 
 function crud<
   T extends { id: string; updatedAt: string; version: number; deletedAt: string | null },
 >(baseUrl: string, path: string, schema: z.ZodType<T>, createSchema: z.ZodType, seed: T[]) {
   const rows = structuredClone(seed);
   return [
-    http.post(`${baseUrl}${path}/import`, async ({ request }) => {
-      const parsed = ImportRequest.safeParse(await request.json());
-      if (!parsed.success) return validation('Invalid import', z.treeifyError(parsed.error));
-      const { dryRun, rows: input, onDuplicate, fileName } = parsed.data;
-      const rules = DUP_RULES[path] ?? [];
-      const seen = new Map<string, number>();
-      const results: ImportRowResult[] = input.map((raw, i) => {
-        const row = i + 1;
-        const body = createSchema.safeParse(raw);
-        if (!body.success)
-          return {
-            row,
-            status: 'error',
-            errors: body.error.issues.map((e) => ({
-              column: e.path.length ? String(e.path[0]) : null,
-              code: e.code,
-              message: e.message,
-            })),
-            id: null,
-            duplicateOf: null,
-            duplicateRule: null,
-          };
-        const data = body.data as Record<string, unknown>;
-        for (const r of rules) {
-          const k = r.key(data);
-          if (!k) continue;
-          const prev = seen.get(`${r.rule}:${k}`);
-          if (prev)
-            return {
-              row,
-              status: 'error',
-              errors: [
-                {
-                  column: null,
-                  code: 'duplicate_in_file',
-                  message: `Same ${r.rule} as row ${prev}`,
-                },
-              ],
-              id: null,
-              duplicateOf: null,
-              duplicateRule: 'in_file',
-            };
-          seen.set(`${r.rule}:${k}`, row);
-          const hit = rows.find(
-            (x) => !x.deletedAt && r.key(x as unknown as Record<string, unknown>) === k,
-          );
-          if (hit) {
-            if (onDuplicate === 'error')
-              return {
-                row,
-                status: 'error',
-                errors: [
-                  {
-                    column: null,
-                    code: 'duplicate',
-                    message: `Matches existing record by ${r.rule}`,
-                  },
-                ],
-                id: hit.id,
-                duplicateOf: hit.id,
-                duplicateRule: r.rule,
-              };
-            if (onDuplicate === 'update' && !dryRun) {
-              Object.assign(hit, data, { version: hit.version + 1, updatedAt: serverTime() });
-              return {
-                row,
-                status: 'updated',
-                errors: [],
-                id: hit.id,
-                duplicateOf: hit.id,
-                duplicateRule: r.rule,
-              };
-            }
-            return {
-              row,
-              status: onDuplicate === 'update' ? 'valid' : dryRun ? 'duplicate' : 'skipped',
-              errors: [],
-              id: hit.id,
-              duplicateOf: hit.id,
-              duplicateRule: r.rule,
-            };
-          }
-        }
-        if (dryRun)
-          return {
-            row,
-            status: 'valid',
-            errors: [],
-            id: null,
-            duplicateOf: null,
-            duplicateRule: null,
-          };
-        const ts = serverTime();
-        const created = {
-          ...data,
-          id: crypto.randomUUID(),
-          companyId: fx.COMPANY_ID,
-          createdAt: ts,
-          updatedAt: ts,
-          deletedAt: null,
-          version: 1,
-        } as unknown as T;
-        rows.push(created);
-        return {
-          row,
-          status: 'created',
-          errors: [],
-          id: created.id,
-          duplicateOf: null,
-          duplicateRule: null,
-        };
-      });
-      const count = (st: string) => results.filter((r) => r.status === st).length;
-      const job = ImportJob.parse({
-        id: crypto.randomUUID(),
-        companyId: fx.COMPANY_ID,
-        entity: path.replace('/v1/', ''),
-        dryRun,
-        status: dryRun ? 'validated' : 'completed',
-        fileName: fileName ?? null,
-        totals: {
-          rows: results.length,
-          valid: count('valid'),
-          created: count('created'),
-          updated: count('updated'),
-          duplicate: count('duplicate'),
-          skipped: count('skipped'),
-          error: count('error'),
-        },
-        results,
-        createdBy: fx.me.id,
-        createdAt: serverTime(),
-      });
-      jobs.set(job.id, job);
-      return HttpResponse.json(job, { status: dryRun ? 200 : 201 });
-    }),
+    ...(IMPORT_ENTITY_BY_PATH[path]
+      ? [
+          http.post(`${baseUrl}${path}/import`, ({ request }) =>
+            mockImport(IMPORT_ENTITY_BY_PATH[path]!, rows as never, request),
+          ),
+        ]
+      : []),
     http.get(`${baseUrl}${path}`, ({ request }) => list(schema, rows, new URL(request.url))),
     http.get(`${baseUrl}${path}/:id`, ({ params }) => {
       const row = rows.find((r) => r.id === params.id);
@@ -362,6 +340,27 @@ function crud<
   ];
 }
 
+/**
+ * Mock session: `x-mock-user: <role key | email | local part>` header, else a `mock:<role>` token from
+ * `authorization: Bearer` or the `better-auth.session_token` cookie, else the default persona (director)
+ * unless `x-mock-user: none` (behaves as signed out -> 401).
+ */
+export function mockPrincipal(request: Request): Me | undefined {
+  const h = request.headers.get('x-mock-user');
+  if (h) return h === 'none' ? undefined : fx.findMockUser(h);
+  const bearer = request.headers.get('authorization')?.match(/^Bearer\s+mock:(\S+)$/i)?.[1];
+  const cookie = request.headers
+    .get('cookie')
+    ?.match(/better-auth\.session_token=mock:([^;]+)/)?.[1];
+  if (bearer || cookie) return fx.findMockUser(bearer ?? cookie);
+  return fx.me;
+}
+const unauthenticated = () =>
+  HttpResponse.json(
+    { error: { code: 'UNAUTHENTICATED', message: 'Sign in required' } },
+    { status: 401 },
+  );
+
 export function createHandlers(baseUrl = '') {
   return [
     http.get(`${baseUrl}/v1/health`, () => HttpResponse.json({ status: 'ok' })),
@@ -380,22 +379,57 @@ export function createHandlers(baseUrl = '') {
         expiresAt: new Date(Date.now() + 300_000).toISOString(),
       }),
     ),
-    http.post(`${baseUrl}/v1/auth/sign-in/email`, () =>
-      HttpResponse.json({
-        token: 'mock-token',
-        user: { id: fx.me.id, email: fx.me.email, name: fx.me.name },
-      }),
+    http.post(`${baseUrl}/v1/auth/sign-in/email`, async ({ request }) => {
+      const b = SignInEmailBody.safeParse(await request.json().catch(() => null));
+      const u = b.success ? fx.findMockUser(b.data.email) : undefined;
+      if (!u)
+        return HttpResponse.json(
+          { code: 'INVALID_EMAIL_OR_PASSWORD', message: 'Invalid email or password' },
+          { status: 401 },
+        );
+      const token = `mock:${u.roles[0]}`;
+      return HttpResponse.json(
+        { token, user: { id: u.id, email: u.email, name: u.name } },
+        {
+          headers: {
+            'set-auth-token': token,
+            'set-cookie': `better-auth.session_token=${token}; Path=/; HttpOnly; SameSite=Lax`,
+          },
+        },
+      );
+    }),
+    http.post(`${baseUrl}/v1/auth/sign-out`, () =>
+      HttpResponse.json(
+        { success: true },
+        { headers: { 'set-cookie': 'better-auth.session_token=; Path=/; Max-Age=0' } },
+      ),
     ),
-    http.post(`${baseUrl}/v1/auth/sign-out`, () => HttpResponse.json({ success: true })),
-    http.get(`${baseUrl}/v1/auth/get-session`, () =>
-      HttpResponse.json({
-        session: { id: 'mock-session', expiresAt: new Date(Date.now() + 864e5).toISOString() },
-        user: { id: fx.me.id, email: fx.me.email, name: fx.me.name },
-      }),
-    ),
-    http.get(`${baseUrl}/v1/me`, () => HttpResponse.json(Me.parse(fx.me))),
+    http.get(`${baseUrl}/v1/auth/get-session`, ({ request }) => {
+      const u = mockPrincipal(request);
+      if (!u) return HttpResponse.json(null);
+      return HttpResponse.json({
+        session: {
+          id: `mock-session-${u.roles[0]}`,
+          expiresAt: new Date(Date.now() + 864e5).toISOString(),
+        },
+        user: { id: u.id, email: u.email, name: u.name },
+      });
+    }),
+    http.get(`${baseUrl}/v1/me`, ({ request }) => {
+      const u = mockPrincipal(request);
+      return u ? HttpResponse.json(Me.parse(u)) : unauthenticated();
+    }),
     http.get(`${baseUrl}/v1/roles`, () =>
       HttpResponse.json({ items: z.array(Role).parse(fx.roles) }),
+    ),
+    http.post(`${baseUrl}/v1/divisions/import`, ({ request }) =>
+      mockImport('divisions', mockDivisions as never, request),
+    ),
+    http.post(`${baseUrl}/v1/territories/import`, ({ request }) =>
+      mockImport('territories', mockTerritoryRows as never, request),
+    ),
+    http.post(`${baseUrl}/v1/product-hq-mappings/import`, ({ request }) =>
+      mockImport('product_hq', mockHq as never, request),
     ),
     http.get(`${baseUrl}/v1/territories`, ({ request }) =>
       list(Territory, fx.territories, new URL(request.url)),
@@ -422,6 +456,7 @@ export function createHandlers(baseUrl = '') {
 function fieldHandlers(baseUrl: string) {
   const checkIns: CheckIn[] = [];
   const tourPlans: TourPlan[] = [];
+  let stp: StandardTourPlan | null = null;
   const dcrs: Dcr[] = [];
   const approvals = structuredClone(fx.approvals);
   let geofence = { ...fx.geofence };
@@ -458,9 +493,28 @@ function fieldHandlers(baseUrl: string) {
     decisionComment: null,
   });
 
+  /** Day lock (#23): end of the IST day + dcrLockAfterHours; unlocked 48 h after an approved correction. */
+  const corrections = new Map<string, string>();
+  const unlocked = new Map<string, number>();
+  const lockAt = (date: string) =>
+    new Date(
+      Date.parse(`${date}T00:00:00+05:30`) + 86_400_000 + fx.dcrLockAfterHours * 36e5,
+    ).toISOString();
+  const isLocked = (date: string) =>
+    Date.now() > Date.parse(lockAt(date)) && (unlocked.get(date) ?? 0) < Date.now();
+  const withLock = (d: Dcr): Dcr => ({
+    ...d,
+    lockAt: lockAt(d.date),
+    unlockedUntil:
+      (unlocked.get(d.date) ?? 0) > Date.now()
+        ? new Date(unlocked.get(d.date)!).toISOString()
+        : null,
+    status: isLocked(d.date) ? 'locked' : d.status === 'locked' ? 'submitted' : d.status,
+  });
+
   return [
     http.get(`${baseUrl}/v1/divisions`, ({ request }) =>
-      list(Division, fx.divisions, new URL(request.url)),
+      list(Division, mockDivisions, new URL(request.url)),
     ),
     http.get(`${baseUrl}/v1/product-hq-mappings`, ({ request }) =>
       list(ProductHqMapping, fx.productHqMappings, new URL(request.url)),
@@ -482,9 +536,45 @@ function fieldHandlers(baseUrl: string) {
     http.get(`${baseUrl}/v1/me/consent`, () =>
       HttpResponse.json(ConsentState.parse(fx.consentState)),
     ),
-    http.get(`${baseUrl}/v1/check-ins`, ({ request }) =>
-      list(CheckIn, checkIns, new URL(request.url)),
-    ),
+    http.get(`${baseUrl}/v1/check-ins`, ({ request }) => {
+      const url = new URL(request.url);
+      // gap #9: unlinked = visit check-ins no DCR call points at yet
+      const linked = new Set(dcrs.flatMap((d) => d.calls.map((c) => c.checkInId)));
+      const rows =
+        url.searchParams.get('unlinked') === 'true'
+          ? checkIns.filter((c) => c.kind === 'visit' && !linked.has(c.id))
+          : checkIns;
+      return list(CheckIn, rows, url);
+    }),
+    http.get(`${baseUrl}/v1/users`, ({ request }) => {
+      const url = new URL(request.url);
+      const p = mockPrincipal(request);
+      if (!p) return unauthenticated();
+      const wide = p.roles.includes('director') || p.roles.includes('system_admin');
+      const team = new Set([p.id]);
+      for (let grew = true; grew;) {
+        grew = false;
+        for (const u of fx.mockUsers)
+          if (u.managerId && team.has(u.managerId) && !team.has(u.id)) {
+            team.add(u.id);
+            grew = true;
+          }
+      }
+      const role = url.searchParams.get('role');
+      const rows = fx.mockUsers
+        .filter((u) => (wide || team.has(u.id)) && (!role || u.roles.includes(role as never)))
+        .map((u) => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          employeeCode: u.employeeCode,
+          roles: u.roles,
+          managerId: u.managerId,
+          territoryIds: u.territoryIds,
+          status: 'active' as const,
+        }));
+      return list(UserSummary, rows, url);
+    }),
     http.post(`${baseUrl}/v1/check-ins`, async ({ request }) => {
       const b = CheckInCreate.safeParse(await request.json());
       if (!b.success) return validation('Invalid check-in', z.treeifyError(b.error));
@@ -524,7 +614,7 @@ function fieldHandlers(baseUrl: string) {
         receivedAt: serverTime(),
         distanceM,
         inFence,
-        selfieFileId: b.data.selfieFileId ?? null,
+        selfieFileKey: b.data.selfieFileKey ?? null,
       });
       checkIns.push(row);
       return HttpResponse.json(row, { status: 201 });
@@ -549,6 +639,31 @@ function fieldHandlers(baseUrl: string) {
         d.status = d.punchIn && d.punchOut ? 'present' : 'incomplete';
         days.set(k, d);
       }
+      // Like the API: every team member gets a row per day; no punch-in = absent (or leave/holiday
+      // from the DCR work type).
+      const sp = new URL(request.url).searchParams;
+      const from = sp.get('from') ?? today();
+      const to = sp.get('to') ?? from;
+      const who = sp.get('userId')
+        ? fx.mockUsers.filter((u) => u.id === sp.get('userId'))
+        : [fx.me];
+      for (let d = from; d <= to; d = nextDay(d))
+        for (const u of who) {
+          const k = `${u.id}|${d}`;
+          if (days.has(k)) continue;
+          const dcr = dcrs.find((x) => x.userId === u.id && x.date === d);
+          const kind = fx.workTypes.find((w) => w.id === dcr?.workTypeId)?.kind;
+          days.set(k, {
+            userId: u.id,
+            userName: u.name,
+            date: d,
+            status: kind === 'leave' ? 'leave' : kind === 'holiday' ? 'holiday' : 'absent',
+            punchIn: null,
+            punchOut: null,
+            visits: 0,
+            workTypeId: dcr?.workTypeId ?? null,
+          });
+        }
       return list(
         AttendanceDay as unknown as z.ZodType<{ id: string }>,
         [...days.values()].map((d) => ({ ...d, id: `${d.userId}|${d.date}` })) as never,
@@ -558,6 +673,20 @@ function fieldHandlers(baseUrl: string) {
     http.get(`${baseUrl}/v1/tour-plans`, ({ request }) =>
       list(TourPlan, tourPlans, new URL(request.url)),
     ),
+    http.get(`${baseUrl}/v1/tour-plans/standard`, () =>
+      HttpResponse.json(stp ?? { ...stamp(), id: crypto.randomUUID(), userId: fx.me.id, days: [] }),
+    ),
+    http.put(`${baseUrl}/v1/tour-plans/standard`, async ({ request }) => {
+      const b = StandardTourPlanUpsert.safeParse(await request.json());
+      if (!b.success) return validation('Invalid plan', z.treeifyError(b.error));
+      const keys = b.data.days.map((d) => `${d.week}|${d.weekday}`);
+      if (new Set(keys).size !== keys.length) return validation('Duplicate week/weekday');
+      if (stp && b.data.version && b.data.version !== stp.version) return conflict('Stale version');
+      stp = stp
+        ? { ...stp, days: b.data.days, version: stp.version + 1, updatedAt: serverTime() }
+        : { ...stamp(), id: crypto.randomUUID(), userId: fx.me.id, days: b.data.days };
+      return HttpResponse.json(StandardTourPlan.parse(stp));
+    }),
     http.get(`${baseUrl}/v1/tour-plans/:month`, ({ params }) => {
       const p = tourPlans.find((t) => t.month === params.month && t.userId === fx.me.id);
       return p ? HttpResponse.json(p) : notFound();
@@ -575,18 +704,37 @@ function fieldHandlers(baseUrl: string) {
       Object.assign(p, { days: b.data.days, status: 'draft', updatedAt: serverTime() });
       return HttpResponse.json(TourPlan.parse(p));
     }),
-    http.post(`${baseUrl}/v1/tour-plans/:month/copy`, ({ params }) => {
+    http.post(`${baseUrl}/v1/tour-plans/:month/copy`, async ({ params, request }) => {
+      const b = TourPlanCopy.safeParse(await request.json().catch(() => ({})));
+      if (!b.success) return validation('Invalid copy', z.treeifyError(b.error));
       const month = String(params.month);
-      if (tourPlans.some((t) => t.month === month && t.userId === fx.me.id))
-        return conflict('Plan exists');
-      const p = emptyPlan(month);
-      tourPlans.push(p);
-      return HttpResponse.json(p);
+      let p = tourPlans.find((t) => t.month === month && t.userId === fx.me.id);
+      if (p && !['draft', 'rejected', 'recalled'].includes(p.status))
+        return conflict('Plan not editable');
+      let days: TourPlan['days'];
+      if (b.data.fromMonth || !b.data.fromStp) {
+        const from = b.data.fromMonth ?? prevMonth(month);
+        const src = tourPlans.find((t) => t.month === from && t.userId === fx.me.id);
+        if (!src) return notFound();
+        days = copyFromMonth(month, src.days);
+      } else {
+        if (!stp) return notFound();
+        days = copyFromStandard(month, stp.days);
+      }
+      if (!p) tourPlans.push((p = emptyPlan(month)));
+      else p.version += 1;
+      Object.assign(p, { days, status: 'draft', updatedAt: serverTime() });
+      return HttpResponse.json(TourPlan.parse(p));
     }),
     http.post(`${baseUrl}/v1/tour-plans/:month/submit`, ({ params }) => {
       const p = tourPlans.find((t) => t.month === params.month && t.userId === fx.me.id);
       if (!p) return notFound();
       if (p.status !== 'draft') return conflict('Not in draft');
+      const missing = missingDates(p.month, p.days);
+      if (missing.length)
+        return validation(`${missing.length} date(s) have no plan entry`, {
+          missingDates: missing,
+        });
       Object.assign(p, { status: 'submitted', submittedAt: serverTime(), version: p.version + 1 });
       approvals.push({
         id: crypto.randomUUID(),
@@ -605,20 +753,44 @@ function fieldHandlers(baseUrl: string) {
       });
       return HttpResponse.json(TourPlan.parse(p));
     }),
-    http.get(`${baseUrl}/v1/dcrs`, ({ request }) => list(Dcr, dcrs, new URL(request.url))),
+    http.get(`${baseUrl}/v1/dcrs`, ({ request }) =>
+      list(Dcr, dcrs.map(withLock), new URL(request.url)),
+    ),
     http.get(`${baseUrl}/v1/dcrs/:id`, ({ params }) => {
       const d = dcrs.find((x) => x.id === params.id);
-      return d ? HttpResponse.json(d) : notFound();
+      return d ? HttpResponse.json(withLock(d)) : notFound();
     }),
     http.put(`${baseUrl}/v1/dcrs`, async ({ request }) => {
       const b = DcrUpsert.safeParse(await request.json());
       if (!b.success) return validation('Invalid DCR', z.treeifyError(b.error));
+      if (b.data.date > today()) return validation('DCR date is in the future');
       let d = dcrs.find((x) => x.date === b.data.date && x.userId === fx.me.id);
-      if (d?.status === 'locked') return conflict('Day locked');
+      if (isLocked(b.data.date)) return conflict('Day locked; request a correction');
       if (d && b.data.version && b.data.version !== d.version) return conflict('Stale version');
       const wt = fx.workTypes.find((w) => w.id === b.data.workTypeId);
-      if (wt?.requiresCalls && b.data.submit && b.data.calls.length === 0)
+      if (!wt) return validation('Unknown work type');
+      if (wt.requiresCalls && b.data.submit && b.data.calls.length === 0)
         return validation('Field work needs at least one call');
+      if (!wt.requiresCalls && b.data.calls.length)
+        return validation('Calls need a field work type');
+      const tp = tourPlans.find(
+        (t) =>
+          t.userId === fx.me.id && t.month === b.data.date.slice(0, 7) && t.status === 'approved',
+      );
+      const planned = tp?.days.find((x) => x.date === b.data.date)?.entries ?? [];
+      if (
+        isDeviation(planned, b.data.workTypeId, b.data.territoryIds) &&
+        !b.data.deviationReason?.trim()
+      )
+        return HttpResponse.json(
+          {
+            error: {
+              code: 'DEVIATION_REASON_REQUIRED',
+              message: 'Worked plan differs from the approved tour plan; give a reason',
+            },
+          },
+          { status: 422 },
+        );
       const calls = b.data.calls.map(({ clientId, ...c }) => ({ ...c, id: clientId }));
       if (!d) {
         d = {
@@ -633,27 +805,68 @@ function fieldHandlers(baseUrl: string) {
           territoryIds: b.data.territoryIds,
           deviationReason: null,
           calls: [],
+          lockAt: lockAt(b.data.date),
+          unlockedUntil: null,
         };
         dcrs.push(d);
       } else d.version += 1;
       Object.assign(d, {
         workTypeId: b.data.workTypeId,
         territoryIds: b.data.territoryIds,
+        tourPlanId: tp?.id ?? null,
         deviationReason: b.data.deviationReason ?? null,
         calls,
         updatedAt: serverTime(),
         ...(b.data.submit ? { status: 'submitted', submittedAt: serverTime() } : {}),
       });
-      return HttpResponse.json(Dcr.parse(d));
+      return HttpResponse.json(Dcr.parse(withLock(d)));
     }),
-    http.get(`${baseUrl}/v1/approvals`, ({ request }) =>
-      list(Approval, approvals, new URL(request.url)),
-    ),
+    http.post(`${baseUrl}/v1/dcrs/correction-requests`, async ({ request }) => {
+      const b = DcrCorrectionRequest.safeParse(await request.json());
+      if (!b.success) return validation('Invalid request', z.treeifyError(b.error));
+      if (!isLocked(b.data.date)) return conflict('Day is not locked');
+      const a: Approval = {
+        id: crypto.randomUUID(),
+        companyId: fx.COMPANY_ID,
+        subjectType: 'dcr_unlock',
+        subjectId:
+          dcrs.find((x) => x.date === b.data.date && x.userId === fx.me.id)?.id ??
+          crypto.randomUUID(),
+        requestedBy: fx.me.id,
+        requestedByName: fx.me.name,
+        approverId: fx.me.managerId,
+        status: 'pending',
+        summary: `DCR correction ${b.data.date}`,
+        comment: null,
+        createdAt: serverTime(),
+        decidedAt: null,
+        decidedBy: null,
+      };
+      approvals.push(a);
+      corrections.set(a.id, b.data.date);
+      return HttpResponse.json(a, { status: 201 });
+    }),
+    http.get(`${baseUrl}/v1/approvals`, ({ request }) => {
+      const url = new URL(request.url);
+      const mine = url.searchParams.get('mine');
+      const rows =
+        mine === 'to_decide'
+          ? approvals.filter((a) => a.status === 'pending' && a.requestedBy !== fx.me.id)
+          : mine === 'requested'
+            ? approvals.filter((a) => a.requestedBy === fx.me.id)
+            : approvals;
+      return list(Approval, rows, url);
+    }),
     http.post(`${baseUrl}/v1/approvals/:id/decision`, async ({ params, request }) => {
       const a = approvals.find((x) => x.id === params.id);
       if (!a) return notFound();
       const b = ApprovalDecision.safeParse(await request.json());
       if (!b.success) return validation('Invalid decision', z.treeifyError(b.error));
+      if (a.requestedBy === fx.me.id)
+        return HttpResponse.json(
+          { error: { code: 'FORBIDDEN', message: 'You cannot decide your own request' } },
+          { status: 403 },
+        );
       if (a.status !== 'pending') return conflict('Already decided');
       Object.assign(a, {
         status: b.data.decision === 'approve' ? 'approved' : 'rejected',
@@ -661,6 +874,9 @@ function fieldHandlers(baseUrl: string) {
         decidedAt: serverTime(),
         decidedBy: fx.me.id,
       });
+      const day = corrections.get(a.id);
+      if (day && b.data.decision === 'approve')
+        unlocked.set(day, Date.now() + DCR_UNLOCK_HOURS * 36e5);
       const tp = tourPlans.find((t) => t.id === a.subjectId);
       if (tp)
         Object.assign(tp, {
