@@ -1,12 +1,24 @@
 import type { LucideIcon } from 'lucide-react';
-import { BarChart3, CalendarRange, ClipboardList, Database, LayoutDashboard, MapPin } from 'lucide-react';
+import { CalendarRange, ClipboardList, Database, LayoutDashboard, MapPin } from 'lucide-react';
 
 import { ROLES, isApprover, isSystemAdmin, type Role } from './roles';
 
 export { ROLE_LABEL, type Role } from './roles';
 
-const SALES = ROLES.filter((r) => !isSystemAdmin(r));
-const APPROVERS = ROLES.filter(isApprover);
+export const SALES = ROLES.filter((r) => !isSystemAdmin(r));
+export const APPROVERS = ROLES.filter(isApprover);
+
+export type NavSectionId = 'workspace' | 'field' | 'business' | 'performance' | 'intelligence' | 'admin';
+
+/** Sidebar sections, in order. A section with no item visible to the role is not rendered. */
+export const NAV_SECTIONS: { id: NavSectionId; title: string }[] = [
+  { id: 'workspace', title: 'Workspace' },
+  { id: 'field', title: 'Field Force' },
+  { id: 'business', title: 'Business' },
+  { id: 'performance', title: 'Performance' },
+  { id: 'intelligence', title: 'Intelligence' },
+  { id: 'admin', title: 'Administration' },
+];
 
 export type NavItem = {
   slug: string;
@@ -14,56 +26,19 @@ export type NavItem = {
   href: string;
   icon: LucideIcon;
   roles: Role[];
-  issue?: number;
-  blurb?: string;
+  section: NavSectionId;
 };
 
+/**
+ * Only pages that exist are listed; each new page adds itself here when it ships.
+ * Managers' pages show their team; a Business Manager sees their own numbers on the same page.
+ */
 export const NAV: NavItem[] = [
-  { slug: '', title: 'Dashboard', href: '/', icon: LayoutDashboard, roles: SALES },
-  {
-    slug: 'masters',
-    title: 'Masters',
-    href: '/masters',
-    icon: Database,
-    roles: ['system_admin'],
-    issue: 8,
-    blurb: 'Territories, doctors, chemists, products and the reporting hierarchy.',
-  },
-  {
-    slug: 'attendance',
-    title: 'Attendance',
-    href: '/attendance',
-    icon: MapPin,
-    roles: SALES,
-    issue: 9,
-    blurb: 'Day punch-in and check-ins on a map, with out-of-geofence calls flagged.',
-  },
-  {
-    slug: 'dcr',
-    title: 'DCR',
-    href: '/dcr',
-    icon: ClipboardList,
-    roles: SALES,
-    issue: 10,
-    blurb: 'Daily call reports: doctor and chemist calls, products detailed, samples given.',
-  },
-  {
-    slug: 'tour-plans',
-    title: 'Tour plans',
-    href: '/tour-plans',
-    icon: CalendarRange,
-    roles: SALES,
-    issue: 11,
-    blurb: 'Monthly tour plan calendar, submission and approval.',
-  },
-  {
-    slug: 'reports',
-    title: 'Reports',
-    href: '/reports',
-    icon: BarChart3,
-    roles: APPROVERS,
-    blurb: 'Coverage, call average, frequency compliance and DCR compliance by hierarchy.',
-  },
+  { slug: '', title: 'Dashboard', href: '/', icon: LayoutDashboard, roles: SALES, section: 'workspace' },
+  { slug: 'attendance', title: 'Attendance', href: '/attendance', icon: MapPin, roles: SALES, section: 'field' },
+  { slug: 'dcr', title: 'DCR', href: '/dcr', icon: ClipboardList, roles: SALES, section: 'field' },
+  { slug: 'tour-plans', title: 'Tour Plans', href: '/tour-plans', icon: CalendarRange, roles: SALES, section: 'field' },
+  { slug: 'masters', title: 'Master Data', href: '/masters', icon: Database, roles: ['system_admin'], section: 'admin' },
 ];
 
 /** Where a role lands after sign-in: the first nav item it can see. */

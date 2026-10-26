@@ -13,6 +13,11 @@ const check = (c, m) => {
   console.log(`${c ? 'PASS' : 'FAIL'} ${m}`);
   if (!c) ok = false;
 };
+// Update as pages ship.
+const MANAGER_NAV = ['Dashboard', 'Attendance', 'DCR', 'Tour Plans'];
+const MANAGER_SECTIONS = ['workspace', 'field'];
+const MANAGER_ONLY = [];
+const GATED = '/masters';
 const navLabels = (page) =>
   page.$$eval('[data-sidebar="menu-button"]', (els) => els.map((e) => e.textContent.trim()).filter(Boolean));
 
@@ -26,7 +31,20 @@ await page.goto(BASE, { waitUntil: 'networkidle' });
 await page.waitForTimeout(1200);
 await page.screenshot({ path: path.join(OUT, 'dashboard-desktop.png'), fullPage: true });
 const managerNav = await navLabels(page);
-check(['Dashboard', 'Attendance', 'DCR', 'Tour plans', 'Reports'].every((l) => managerNav.some((n) => n.startsWith(l))) && !managerNav.some((n) => n.startsWith('Masters')), `Area Business Manager nav: ${managerNav}`);
+check(MANAGER_NAV.every((l) => managerNav.includes(l)) && !managerNav.includes('Master Data'), `Area Business Manager nav: ${managerNav}`);
+const sections = () => page.$$eval('[data-testid=nav-section]', (els) => els.map((e) => e.dataset.section));
+check(JSON.stringify(await sections()) === JSON.stringify(MANAGER_SECTIONS), `sections shown (no empty ones): ${await sections()}`);
+// Collapse a section without the current page; it stays collapsed after reload. The active section cannot hide.
+const fieldBtn = page.locator('[data-section=field] [data-sidebar=group-label]');
+await fieldBtn.click();
+check((await fieldBtn.getAttribute('aria-expanded')) === 'false' && !(await navLabels(page)).includes('DCR'), 'Field Force collapses');
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForTimeout(400);
+check((await page.locator('[data-section=field] [data-sidebar=group-label]').getAttribute('aria-expanded')) === 'false', 'collapsed section persists across reload');
+await page.locator('[data-section=workspace] [data-sidebar=group-label]').click();
+check((await navLabels(page)).includes('Dashboard'), 'section with the active page stays open');
+await page.screenshot({ path: path.join(OUT, 'sidebar-sections.png') });
+await page.locator('[data-section=field] [data-sidebar=group-label]').click();
 const font = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
 check(/Google_Sans|googleSans|Google Sans/i.test(font), `body font: ${font}`);
 
@@ -52,10 +70,10 @@ await page.getByRole('button', { name: 'Account menu' }).click();
 await page.getByRole('menuitemradio', { name: 'Business Manager', exact: true }).click();
 await page.waitForTimeout(300);
 const repNav = await navLabels(page);
-check(!repNav.some((n) => n.startsWith('Masters') || n.startsWith('Reports')), `Business Manager nav hides Masters/Reports: ${repNav}`);
-await page.goto(BASE + '/reports', { waitUntil: 'networkidle' });
+check(!repNav.some((n) => MANAGER_ONLY.includes(n) || n === 'Master Data'), `Business Manager nav hides manager/admin pages: ${repNav}`);
+await page.goto(BASE + GATED, { waitUntil: 'networkidle' });
 await page.waitForURL(BASE + '/', { timeout: 5000 }).catch(() => {});
-check(new URL(page.url()).pathname === '/', `Business Manager is sent home from /reports (${page.url()})`);
+check(new URL(page.url()).pathname === '/', `Business Manager is sent home from ${GATED} (${page.url()})`);
 await page.getByRole('button', { name: 'Account menu' }).click();
 await page.getByRole('menuitemradio', { name: 'Area Business Manager', exact: true }).click();
 
