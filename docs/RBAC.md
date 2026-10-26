@@ -83,3 +83,34 @@ better-auth ships ESM only. The API stays CommonJS (Nest decorators/DI) with `mo
 ## Tests (`apps/api/test/auth-rbac.test.ts`, real Postgres in CI)
 
 401 unauthenticated, wrong password, BM sees only HQ doctors, ABM gets 404 on a sibling team's area, RBM sees both teams, director company-wide, system admin sees masters but has no field permissions and no manager, 404 on another tenant's doctor, 403 creating outside hierarchy, 201 + audit row inside, sign-in/sign-out audited and session revoked, 422 validation shape.
+
+## Team and employees
+
+The server enforces every rule in `apps/api/src/team/team.service.ts`, and the mock in
+`packages/contracts/src/mocks/team.ts` mirrors it.
+
+- `GET /v1/team` returns the caller's reporting-line subtree, depth-first. Each node has its
+  role(s), free-text `designation`, `joinedOn`, code, phone, email, territories (city, state and
+  centroid), status and direct-report count.
+  `unassigned` lists hierarchy users with no `manager_id` whose territory is in the caller's scope,
+  ranked below the caller. Only ABM and above see it. Directors see the whole company.
+- Functional roles (`system_admin`, `distribution_head`, `accountant`) never appear in the tree and
+  cannot be granted through this flow.
+- Create (`POST /v1/employees`), edit, deactivate or move (`PATCH /v1/employees/{id}`), and assign
+  a manager (`POST /v1/team/{id}/manager`):
+  - The caller must be ABM (rank 2) or above.
+  - The role must be a hierarchy role strictly below the caller's.
+  - Territories must be inside the caller's territory subtree.
+  - The manager must be the caller or someone in their subtree, and rank above the target.
+  - The target must be below the caller and either in their subtree or unassigned in their scope.
+  - Callers cannot change themselves, peers or anyone above them.
+  - A reporting cycle returns 409 and a stale `version` returns 409.
+  - Every change writes to `audit_log` (`employee.created`, `employee.updated`,
+    `employee.deactivated`, `employee.manager_assigned`, `employee.invited`,
+    `employee.invite_accepted`).
+- Invites are single-use, expire after 7 days and are stored only as a SHA-256 hash. Re-inviting
+  revokes the earlier token. `POST /v1/invites/accept` (public) creates the better-auth identity
+  and activates the user. The mailer is a stub that logs only the invite id.
+- `designation` is free text from HR and has no effect on permissions.
+- No payroll or HR-sensitive data (PAN, bank, CTC, nominee) is stored in app tables or contracts.
+- Chemists are an independent master with no doctor link, and the chemist import does not need one.
