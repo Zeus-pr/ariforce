@@ -11,12 +11,15 @@
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@ariforce/contracts": "workspace:*",
     "@ariforce/ui": "workspace:*",
     "lucide-react": "^1.61.0",
     "next": "^16.4.3",
     "next-themes": "^0.4.6",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "read-excel-file": "^9.3.12",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@ariforce/config": "workspace:*",
@@ -26,8 +29,14 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "eslint": "^10.13.0",
+    "msw": "^3.0.3",
     "postcss": "^8.5.31",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.9.3"
+  },
+  "msw": {
+    "workerDirectory": [
+      "public"
+    ]
   }
 }

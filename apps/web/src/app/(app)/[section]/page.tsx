@@ -4,7 +4,7 @@ import { DotPattern } from '@ariforce/ui/components/dot-pattern';
 import { NAV } from '@/lib/nav';
 
 export function generateStaticParams() {
-  return NAV.filter((n) => n.slug).map((n) => ({ section: n.slug }));
+  return NAV.filter((n) => n.slug && n.slug !== 'masters').map((n) => ({ section: n.slug }));
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ section: string }> }) {

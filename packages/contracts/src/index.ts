@@ -1,2 +1,9 @@
-/** Zod API contracts land here (API contract PR). */
+export * from './schemas/common';
+export * from './schemas/roles';
+export * from './schemas/territories';
+export * from './schemas/masters';
+export * from './schemas/auth';
+export { buildOpenApiDocument, type OpenApiDocument } from './openapi';
+export { createApiClient, type ApiClient } from './client';
+export type { paths, components } from './generated/openapi';
 export const API_VERSION = 'v1';
