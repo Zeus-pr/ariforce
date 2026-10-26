@@ -26,7 +26,7 @@ describe.skipIf(!OWNER || !APP)('masters + import (real API)', () => {
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = configureApp(mod.createNestApplication({ bodyParser: false }));
     await app.init();
-    for (const who of ['sysadmin', 'director', 'bm', 'abm']) {
+    for (const who of ['sysadmin', 'director', 'bm', 'abm', 'rbm']) {
       const res = await http()
         .post('/v1/auth/sign-in/email')
         .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
@@ -194,7 +194,7 @@ describe.skipIf(!OWNER || !APP)('masters + import (real API)', () => {
   it('CRUD: PATCH with version (409 on stale), soft DELETE, scope on writes', async () => {
     const created = await http()
       .post('/v1/chemists')
-      .set(as('bm'))
+      .set(as('rbm'))
       .send({
         territoryId: T.hq,
         name: `Chem ${RUN}`,
@@ -211,22 +211,22 @@ describe.skipIf(!OWNER || !APP)('masters + import (real API)', () => {
     const id = created.body.id;
     const ok = await http()
       .patch(`/v1/chemists/${id}`)
-      .set(as('bm'))
+      .set(as('rbm'))
       .send({ version: 1, city: 'Howrah' });
     expect(ok.status).toBe(200);
     expect(ok.body).toMatchObject({ city: 'Howrah', version: 2 });
     const stale = await http()
       .patch(`/v1/chemists/${id}`)
-      .set(as('bm'))
+      .set(as('rbm'))
       .send({ version: 1, city: 'X' });
     expect(stale.status).toBe(409);
     expect(stale.body.error.code).toBe('VERSION_CONFLICT');
     const moveOut = await http()
       .patch(`/v1/chemists/${id}`)
-      .set(as('bm'))
-      .send({ version: 2, territoryId: T.otherArea });
+      .set(as('rbm'))
+      .send({ version: 2, territoryId: T.zone });
     expect(moveOut.status).toBe(403);
-    const prodWrite = await http().post('/v1/products').set(as('bm')).send({
+    const prodWrite = await http().post('/v1/products').set(as('rbm')).send({
       code: 'X',
       name: 'X',
       divisionId: T.hq,
@@ -241,12 +241,12 @@ describe.skipIf(!OWNER || !APP)('masters + import (real API)', () => {
       active: true,
     });
     expect(prodWrite.status).toBe(403); // company-wide master
-    const del = await http().delete(`/v1/chemists/${id}`).set(as('bm'));
+    const del = await http().delete(`/v1/chemists/${id}`).set(as('rbm'));
     expect(del.status).toBe(204);
-    expect((await http().get(`/v1/chemists/${id}`).set(as('bm'))).status).toBe(404);
+    expect((await http().get(`/v1/chemists/${id}`).set(as('rbm'))).status).toBe(404);
     const since = await http()
       .get(`/v1/chemists?updatedSince=${encodeURIComponent(created.body.createdAt)}`)
-      .set(as('bm'));
+      .set(as('rbm'));
     expect(since.body.items.find((c: { id: string }) => c.id === id)?.deletedAt).toBeTruthy();
   });
 

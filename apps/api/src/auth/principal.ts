@@ -27,4 +27,4 @@ export const COMPANY_WIDE_ROLES: RoleKey[] = ['director'];
  * Technical admin outside the hierarchy: company-wide masters/users/settings, no reporting line.
  * Field data (check-ins, DCRs, reports) is gated by field:read / reports:read, which it lacks by default.
  */
-export const MASTERS_WIDE_ROLES: RoleKey[] = ['system_admin'];
+export const MASTERS_WIDE_ROLES: RoleKey[] = ['system_admin', 'distribution_head', 'accountant'];

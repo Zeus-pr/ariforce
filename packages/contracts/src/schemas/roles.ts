@@ -65,6 +65,10 @@ export const PERMISSIONS = [
   'users:read',
   'users:write',
   'masters:read',
+  /** Stockists list/get (everyone with masters:read, plus distribution_head). */
+  'stockists:read',
+  /** Products, divisions, product-HQ mappings (masters:read holders, distribution_head, accountant). */
+  'products:read',
   'masters:write',
   'imports:write',
   'field:read',
@@ -81,37 +85,67 @@ export const PERMISSIONS = [
 export const Permission = z.enum(PERMISSIONS).meta({ id: 'Permission' });
 export type Permission = z.infer<typeof Permission>;
 
-const BASE: Permission[] = ['me:read', 'roles:read', 'territories:read', 'masters:read'];
+const BASE: Permission[] = [
+  'me:read',
+  'roles:read',
+  'territories:read',
+  'masters:read',
+  'stockists:read',
+  'products:read',
+];
+
+/** Read permission for a masters collection (path segment under /v1). */
+export function masterReadPermission(segment: string): Permission {
+  if (segment === 'territories') return 'territories:read';
+  if (segment === 'stockists') return 'stockists:read';
+  if (['products', 'divisions', 'product-hq-mappings'].includes(segment)) return 'products:read';
+  return 'masters:read';
+}
+/**
+ * Masters write (doctors, chemists, stockists, products, divisions, territories, work types,
+ * HQ mappings, imports): RBM and above + system_admin. ABM and BM are read-only on masters.
+ */
+export const MASTERS_WRITE: Permission[] = ['masters:write', 'territories:write', 'imports:write'];
+/** Lowest hierarchy rank with masters write (RBM). */
+export const MASTERS_WRITE_MIN_RANK = 3;
+/** ABM: manager, read-only on masters. */
 const MANAGER: Permission[] = [
   ...BASE,
   'users:read',
-  'masters:write',
   'field:read',
   'approvals:decide',
   'reports:read',
 ];
-/** Default permissions per role (seeded into role_permissions; editable per company). */
+/** RBM and above. */
+const SENIOR: Permission[] = [...MANAGER, ...MASTERS_WRITE];
+/** Default permissions per role (seeded into roles.permissions; editable per company). */
 export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
-  business_manager: [...BASE, 'masters:write', 'field:read', 'field:write', 'reports:read'],
+  business_manager: [...BASE, 'field:read', 'field:write', 'reports:read'],
   area_business_manager: MANAGER,
-  regional_business_manager: MANAGER,
-  zonal_business_manager: MANAGER,
-  sales_manager: MANAGER,
-  general_manager: MANAGER,
-  vice_president: MANAGER,
-  director: [...MANAGER, 'imports:write', 'settings:write', 'audit:read'],
+  regional_business_manager: SENIOR,
+  zonal_business_manager: SENIOR,
+  sales_manager: SENIOR,
+  general_manager: SENIOR,
+  vice_president: SENIOR,
+  director: [...SENIOR, 'settings:write', 'audit:read'],
   system_admin: [
     ...BASE,
-    'territories:write',
+    ...MASTERS_WRITE,
     'users:read',
     'users:write',
-    'masters:write',
-    'imports:write',
     'settings:write',
     'audit:read',
   ],
-  distribution_head: ['me:read', 'roles:read', 'territories:read', 'sales:read'],
-  accountant: ['me:read', 'roles:read', 'territories:read', 'finance:read'],
+  // Accepted by lead: read-only, company-wide; no doctors/chemists; never masters write.
+  distribution_head: [
+    'me:read',
+    'roles:read',
+    'territories:read',
+    'stockists:read',
+    'products:read',
+    'sales:read',
+  ],
+  accountant: ['me:read', 'roles:read', 'territories:read', 'products:read', 'finance:read'],
 };
 
 export const Role = z

@@ -165,8 +165,11 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
     );
   });
 
-  it('business manager cannot create a doctor outside their hierarchy (403); inside = 201 + audit row', async () => {
-    const auth = await token('bm@demo.ariforce.in');
+  it('RBM (masters write) cannot create a doctor outside their hierarchy (403); inside = 201 + audit row; BM is read-only', async () => {
+    const bmAuth = await token('bm@demo.ariforce.in');
+    const bmTry = await http().post('/v1/doctors').set('authorization', bmAuth).send({});
+    expect(bmTry.status).toBe(403);
+    const auth = await token('rbm@demo.ariforce.in');
     const body = {
       name: 'Dr. New Field',
       qualification: null,
@@ -183,7 +186,7 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
     const denied = await http()
       .post('/v1/doctors')
       .set('authorization', auth)
-      .send({ ...body, territoryId: T.otherArea });
+      .send({ ...body, territoryId: T.zone });
     expect(denied.status).toBe(403);
     const ok = await http()
       .post('/v1/doctors')

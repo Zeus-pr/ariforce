@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { masterReadPermission } from './schemas/roles';
 import {
   createDocument,
   type ZodOpenApiOperationObject,
@@ -178,7 +179,56 @@ function crud(
 
 export type OpenApiDocument = ReturnType<typeof createDocument>;
 
+const MASTER_SEGMENTS = new Set([
+  'doctors',
+  'chemists',
+  'stockists',
+  'products',
+  'divisions',
+  'territories',
+  'work-types',
+  'product-hq-mappings',
+  'specialties',
+  'doctor-categories',
+]);
+/** Permission(s) the API requires for masters endpoints (docs/RBAC.md); undefined = not a master route. */
+export function mastersPermissions(path: string, method: string): string[] | undefined {
+  const [, , seg, rest] = path.split('/');
+  if (seg === 'imports') return ['imports:write'];
+  if (!seg || !MASTER_SEGMENTS.has(seg)) return undefined;
+  const read = masterReadPermission(seg);
+  const write = seg === 'territories' ? 'territories:write' : 'masters:write';
+  if (method === 'get') return [read];
+  return rest === 'import' ? ['imports:write', write] : [write];
+}
+
 export function buildOpenApiDocument(): OpenApiDocument {
+  const doc = buildDocument();
+  for (const [path, item] of Object.entries(doc.paths ?? {}))
+    for (const [method, o] of Object.entries(item ?? {})) {
+      const perms = mastersPermissions(path, method);
+      if (!perms || typeof o !== 'object' || !o || !('responses' in o)) continue;
+      const opObj = o as { description?: string; responses: Record<string, unknown> } & Record<
+        string,
+        unknown
+      >;
+      opObj['x-required-permissions'] = perms;
+      const write = perms.some((x) => x.endsWith(':write'));
+      opObj.description = [
+        opObj.description,
+        `Requires: ${perms.join(' + ')}.${write ? ' Masters write = RBM and above or system_admin; ABM/BM get 403.' : ' Results are territory-subtree scoped.'}`,
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+      opObj.responses['403'] ??= {
+        description: 'Missing permission',
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+      };
+    }
+  return doc;
+}
+
+function buildDocument(): OpenApiDocument {
   return createDocument({
     openapi: '3.1.0',
     info: {

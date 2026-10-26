@@ -1,3 +1,4 @@
+import { masterReadPermission } from '@ariforce/contracts';
 import {
   Body,
   Controller,
@@ -38,7 +39,7 @@ function masterController(path: string, def: MasterDef, ops: Ops): Type<unknown>
     ) {}
 
     @Get()
-    @RequirePermissions(path === 'territories' ? 'territories:read' : 'masters:read')
+    @RequirePermissions(masterReadPermission(path))
     list(@CurrentPrincipal() p: Principal, @Query(new ZodPipe(def.listQuery)) q: Row) {
       return this.svc.list(def, p, q);
     }
@@ -57,7 +58,7 @@ function masterController(path: string, def: MasterDef, ops: Ops): Type<unknown>
     for (const d of ds.reverse()) if (d) d(proto, k, desc(k));
   };
   const param = (k: string, i: number, d: ParameterDecorator) => d(proto, k, i);
-  const perm = path === 'territories' ? 'territories:read' : 'masters:read';
+  const perm = masterReadPermission(path);
 
   if (ops.get !== false) {
     add(
@@ -122,7 +123,7 @@ function masterController(path: string, def: MasterDef, ops: Ops): Type<unknown>
       } as never,
       () => {},
     );
-    dec('import', Post('import'), RequirePermissions('imports:write'));
+    dec('import', Post('import'), RequirePermissions('imports:write', def.writePermission));
     param('import', 0, CurrentPrincipal());
     param('import', 1, Body(new ZodPipe(ImportRequest)));
     param('import', 2, Headers('idempotency-key'));
