@@ -1,6 +1,17 @@
 @import '@ariforce/ui/globals.css';
 @source '../../../../packages/ui/src';
 
+/* ---- No rubber-band on the page itself (macOS/iOS Safari, Chrome). In the app shell only <main>
+   scrolls (app-shell.tsx); header and sidebar sit outside the scroller and never move. ---- */
+html,
+body {
+  overscroll-behavior: none;
+}
+.af-scroll {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* ---- Splash (#2): state is decided before first paint by the inline script in layout.tsx ---- */
 .af-splash-overlay {
   display: none;

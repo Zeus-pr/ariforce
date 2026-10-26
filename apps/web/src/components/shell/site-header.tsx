@@ -47,7 +47,7 @@ export function SiteHeader() {
     router.replace('/sign-in');
   };
   return (
-    <header className="sticky top-0 z-30 flex h-(--header-height) w-full shrink-0 items-center gap-2 border-b bg-card px-3 sm:px-4">
+    <header className="z-30 flex h-(--header-height) w-full shrink-0 items-center gap-2 border-b bg-card px-3 pt-[env(safe-area-inset-top)] sm:px-4">
       {/* The splash logo lands on this exact box ([data-af-header-logo]); keep its size and position stable. */}
       <Link href="/" className="flex items-center gap-2.5 rounded-md pr-1" aria-label="AriForce home">
         <Image

@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   applicationName: 'AriForce',
 };
 
-export const viewport: Viewport = { themeColor: '#ffffff' };
+export const viewport: Viewport = { themeColor: '#ffffff', viewportFit: 'cover' };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

@@ -58,7 +58,7 @@ export function AppSidebar() {
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
 
   return (
-    <Sidebar collapsible="icon" className="af-page top-(--header-height) h-[calc(100svh-var(--header-height))]!">
+    <Sidebar collapsible="icon" className="af-page top-(--header-height) h-[calc(100dvh-var(--header-height))]!">
       <SidebarContent className="gap-0">
         {NAV_SECTIONS.map((section) => {
           const list = items.filter((i) => i.section === section.id);
