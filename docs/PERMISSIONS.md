@@ -28,7 +28,7 @@ Rule: `isSystemAdmin(role) || roleLevel(role) >= roleLevel('regional_business_ma
 
 ## Sign-up requests
 
-`canReviewSignups(role)` in `lib/permissions.ts`: System Admin, or Area Business Manager and above. The `/sign-up-requests` nav item and route guard use it. `reviewableRoles(viewer)` (lib/signup) limits rows and approve options to roles below the viewer; System Admin sees all, including Distribution Head and Accountant. `/sign-up` is public (no redirect when signed out).
+`canReviewSignups(role)` in `lib/permissions.ts`: System Admin, or Area Business Manager and above. The `/sign-up-requests` nav item and route guard use it. `grantableRoles(viewer)` (lib/signup) uses contracts `assignableRoles(rank)`: managers grant hierarchy roles below their own; only System Admin grants Distribution Head and Accountant. Approve needs at least one territory for hierarchy roles; Director, Distribution Head and Accountant get no manager picker. The API remains the authority (403 outside authority or own request, 409 already decided). `/sign-up` is public (no redirect when signed out).
 
 ## Routes (Oct 27)
 

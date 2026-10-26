@@ -22,7 +22,10 @@ await page.getByLabel('Mobile number').fill('+91 90000 00099');
 const pw = page.getByLabel('Password', { exact: true });
 check((await pw.getAttribute('autocomplete')) === 'new-password', 'password autocomplete=new-password');
 await pw.fill('Weak');
-check((await page.getByTestId('pw-strength').innerText()) === 'Weak', 'strength hint: Weak');
+check((await page.getByTestId('pw-strength').innerText()) === 'Too short', 'strength hint: Too short under 12');
+await pw.fill('Elevenchars');
+await form.getByRole('button', { name: 'Send request' }).click();
+check(await page.getByText('Use at least 12 characters.').isVisible(), '11-char password rejected (min 12)');
 await pw.fill('Str0ng!Passw0rd');
 check((await page.getByTestId('pw-strength').innerText()) === 'Strong', 'strength hint: Strong');
 await page.getByRole('button', { name: 'Show password' }).click();
@@ -41,7 +44,7 @@ await shot(page, 'signup-sent-mobile.png');
 // 2. Pending sign-in shows "Awaiting approval", not wrong password.
 await page.getByRole('link', { name: 'Back to sign in' }).click();
 await page.getByLabel('Work email').fill(EMAIL);
-await page.getByLabel('Password').first().fill('Str0ng!Passw0rd');
+await page.getByLabel('Password', { exact: true }).fill('Str0ng!Passw0rd');
 await page.getByRole('button', { name: 'Sign in' }).click();
 await page.getByTestId('signin-account-status').waitFor();
 const msg = await page.getByTestId('signin-account-status').innerText();
@@ -67,6 +70,21 @@ const seed = (c) => c.addInitScript((s) => localStorage.setItem('af:mock-signups
   check(/Business Manager/.test(text) && !/Distribution Head|Accountant|Area Business Manager ·/.test(text), 'ABM sees only BM requests');
   await ctx.close();
 }
+// Duplicate email gets the deliberately generic 409 SIGNUP_UNAVAILABLE text.
+{
+  const c2 = await browser.newContext(VIEWS.mobile);
+  await seed(c2);
+  const p2 = await c2.newPage();
+  await p2.goto(`${BASE}/sign-up`);
+  await p2.getByLabel('Full name').fill('Dup Person');
+  await p2.getByLabel('Work email').fill(EMAIL);
+  await p2.getByLabel('Password', { exact: true }).fill('Another!Passw0rd');
+  await p2.getByLabel('Your role').selectOption('business_manager');
+  await p2.getByTestId('signup-form').getByRole('button', { name: 'Send request' }).click();
+  const err = await p2.getByTestId('signup-error').innerText();
+  check(/could not create an account/i.test(err) && !/exists/i.test(err), 'duplicate email: generic message, never "exists"');
+  await c2.close();
+}
 const { ctx: actx, page: a } = await open('system_admin', '/sign-up-requests');
 await seed(actx);
 await a.reload();
@@ -77,6 +95,13 @@ const before = await rows.count();
 const mine = rows.filter({ hasText: EMAIL });
 await mine.getByRole('button', { name: 'Approve' }).click();
 await a.getByTestId('approve-dialog').waitFor();
+await a.getByTestId('confirm-approve').click();
+check(/at least one territory/.test(await a.getByTestId('decide-error').innerText()), 'approve needs >=1 territory for hierarchy role');
+await a.getByTestId('territory-picker').locator('input[type=checkbox]').first().check();
+await a.getByLabel('Role').selectOption('director');
+check(await a.getByTestId('no-manager-note').isVisible(), 'director: no manager picker');
+await a.getByLabel('Role').selectOption('business_manager');
+check(await a.getByLabel('Reports to').isVisible(), 'BM: manager picker shown');
 await shot(a, 'approve-dialog.png');
 await a.getByTestId('confirm-approve').click();
 await a.getByTestId('approve-dialog').waitFor({ state: 'detached' });
@@ -86,9 +111,16 @@ await a.getByLabel(/Reason/).fill('Duplicate request');
 await a.getByTestId('confirm-reject').click();
 await a.getByTestId('reject-dialog').waitFor({ state: 'detached' });
 check((await rows.count()) === before - 2, 'reject removes the row');
-await a.getByLabel('Search requests').fill('zzzz-nobody');
+while ((await rows.count()) > 0) {
+  await rows.first().getByRole('button', { name: 'Reject' }).click();
+  await a.getByTestId('confirm-reject').click();
+  await a.getByTestId('reject-dialog').waitFor({ state: 'detached' });
+}
 await a.getByTestId('signups-empty').waitFor();
-check(true, 'empty state on no match');
+check(true, 'empty state once all pending are decided');
+await a.getByTestId('signups-tab-approved').click();
+await a.getByTestId('signup-row').filter({ hasText: EMAIL }).waitFor();
+check(/Approved as Business Manager/.test(await a.getByTestId('signups-list').innerText()), 'Approved tab lists the approved request');
 await shot(a, 'requests-empty.png');
 await actx.close();
 await finish();

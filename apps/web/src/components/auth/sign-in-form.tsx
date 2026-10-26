@@ -31,7 +31,14 @@ export function SignInForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
-  const [error, setError] = useState<SignInError | null>(null);
+  const [error, setError] = useState<SignInError | null>(() => {
+    const a = params.get('account');
+    return a === 'pending'
+      ? { field: 'password', message: PENDING_MESSAGE, account: 'pending' }
+      : a === 'rejected'
+        ? { field: 'password', message: REJECTED_MESSAGE, account: 'rejected' }
+        : null;
+  });
   const [pending, setPending] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);

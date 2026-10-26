@@ -52,19 +52,11 @@ No payroll fields (PAN, bank, CTC, salary) in any of these, by owner decision.
 - **No Products master.** No products list/CRUD endpoint, so there is no Products nav entry.
 - **Masters write rule.** The API's DEFAULT_ROLE_PERMISSIONS still gives `masters:write` to BM; the web follows the new RBM+ rule (docs/PERMISSIONS.md) and shows the API's 403 if they disagree.
 
-## 23. Sign-up requests (web built against an ASSUMED contract)
+## 23. Sign-up requests (now on the real contract, feat/signup-requests c067e17)
 
-No sign-up endpoints exist in packages/contracts or any Architect branch (better-auth has `disableSignUp: true`).
-The web uses `apps/web/src/lib/signup/adapter.ts` (mock: localStorage `af:mock-signups`, password kept only as SHA-256; real: plain fetch to the shapes below). Swap to the generated client once these land.
+The web uses `POST /v1/auth/sign-up-request`, `GET /v1/signup-requests?status=`, `POST /v1/signup-requests/{id}/approve|reject` and the sign-in 403 codes exactly as in docs/SIGNUP.md. Remaining gaps:
 
-| Call | Request | Response |
-|---|---|---|
-| `POST /v1/auth/sign-up-request` (public) | `{ name, email, phone, password, role, hqId \| null }` | `202 { id, status: 'pending' }`; `409 { error: { code: 'EMAIL_TAKEN' } }`; `400` validation |
-| `GET /v1/public/hqs` (public, optional) | | `{ items: Hq[] }` for the optional HQ field (hidden if it fails) |
-| `GET /v1/sign-up-requests?status=pending&q&cursor&limit&includeTotal=true` | | `{ items: SignUpRequest[], nextCursor, total }`, scoped server-side: System Admin all; managers only roles below their level |
-| `POST /v1/sign-up-requests/{id}/approve` | `{ role, hqId, managerId }` | `SignUpRequest`; `403` role not below reviewer; `409` already decided |
-| `POST /v1/sign-up-requests/{id}/reject` | `{ reason? }` | `SignUpRequest` |
-| `POST /v1/auth/sign-in/email` for an unapproved identity | | `403 { error: { code: 'ACCOUNT_PENDING' } }` (or `ACCOUNT_REJECTED`) instead of 401 |
-
-`SignUpRequest = { id, name, email, phone, role, hqId, status: 'pending'|'approved'|'rejected', createdAt, reason }`.
-Also needed: whether DH/Accountant requests may be approved by anyone other than System Admin (web: admin only, since they sit outside the sales ladder), and a `GET /v1/roles` list if roles should come from the API (web uses the shared ROLES list).
+- **List has no `q`, cursor or total.** The approvals page shows Pending / Approved / Rejected tabs with the full list; add `q`, `cursor`, `limit` if lists grow.
+- **No public territory list for the sign-up form.** The optional HQ (`territoryId`) picker shows only in mock mode; real mode sends `territoryId: null`. A public `GET /v1/auth/sign-up-options` (territories by name, no ids of people) would fix it. `managerId` is always null from the form for the same reason.
+- **Turnstile site key not exposed.** The web sends no `turnstileToken`; if `TURNSTILE_SECRET` is set on the API, real sign-ups get 403 CAPTCHA_FAILED until a `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is agreed.
+- **Approve dialog territory list** uses `GET /v1/territories` (the reviewer's scope); manager candidates come from the team tree. The API stays the authority (403/422).

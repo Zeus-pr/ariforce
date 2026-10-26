@@ -6,7 +6,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { ROLES, ROLE_LABEL, roleLevel, type Role } from './roles';
-import { API_URL, REAL, api, setUnauthenticatedHandler } from './api';
+import { API_URL, REAL, api, setAccountStateHandler, setUnauthenticatedHandler } from './api';
 
 export const MOCK_PASSWORD = 'ariforce-demo';
 import { SESSION_KEY } from './auth-boot';
@@ -118,9 +118,9 @@ export type SignInError = {
 };
 
 export const PENDING_MESSAGE =
-  'Your sign-up request is awaiting approval. You can sign in once an admin approves it.';
+  'Your account is awaiting approval. You can sign in once an administrator approves it.';
 export const REJECTED_MESSAGE =
-  'Your sign-up request was not approved. Contact your manager or the admin.';
+  'Your sign-up request was not approved. Contact your administrator.';
 
 export function signIn(email: string, password: string): MockUser | SignInError {
   const e = email.trim().toLowerCase();
@@ -171,9 +171,13 @@ export async function signInReal(email: string, password: string): Promise<MockU
       signal: AbortSignal.timeout(8000),
     });
     if (res.status === 403) {
-      const b = (await res.json().catch(() => null)) as { error?: { code?: string }; code?: string } | null;
-      const code = b?.error?.code ?? b?.code;
-      if (code === 'ACCOUNT_PENDING')
+      // better-auth shape { code, message } (no error wrapper); accept the wrapped shape too.
+      const b = (await res.json().catch(() => null)) as {
+        error?: { code?: string };
+        code?: string;
+      } | null;
+      const code = b?.code ?? b?.error?.code;
+      if (code === 'ACCOUNT_PENDING_APPROVAL')
         return { field: 'password', message: PENDING_MESSAGE, account: 'pending' };
       if (code === 'ACCOUNT_REJECTED')
         return { field: 'password', message: REJECTED_MESSAGE, account: 'rejected' };
@@ -198,6 +202,12 @@ export async function signInReal(email: string, password: string): Promise<MockU
     return { field: 'password', message: 'Could not reach the server. Check your connection.' };
   }
 }
+
+if (typeof window !== 'undefined')
+  setAccountStateHandler((state) => {
+    write(null);
+    if (!location.pathname.startsWith('/sign-in')) location.replace(`/sign-in?account=${state}`);
+  });
 
 if (typeof window !== 'undefined')
   setUnauthenticatedHandler(() => {

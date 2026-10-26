@@ -36,6 +36,6 @@ Smoke test (fresh browser, bogus credential only, API up and simulated down): `B
 
 Failsafes: the splash overlay never takes clicks and is hidden after 4s by CSS and by the inline boot script even if no JS chunk loads; every real-mode API call times out after 8s; `app/error.tsx` and `app/global-error.tsx` show a retry instead of a blank or stuck page.
 
-## Sign-up (mock)
+## Sign-up
 
-Try it on :3000: Sign in page > "Request an account" > submit. Signing in with that email shows "Awaiting approval". Sign in as admin@ (or any ABM+) > Administration > Sign-up requests to approve or reject. Four seeded pending requests use `@example.test` emails. Mock data lives in this browser only (`af:mock-signups`). Real mode calls the assumed endpoints in CONTRACT-GAPS #23 and shows "not available on this server yet" on 404.
+Mock (:3000): Sign in page > "Request an account" > submit (password at least 12 characters). Signing in with that email shows "Awaiting approval". Sign in with the System Admin demo account (or any ABM and above) > Administration > Sign-up requests to approve or reject. Four seeded pending requests use `@example.test` emails. Mock requests live in this browser only (`af:mock-signups`, password as SHA-256 hash). Real mode (:3200) calls the contract endpoints in docs/SIGNUP.md; a 403 ACCOUNT_PENDING_APPROVAL / ACCOUNT_REJECTED on any data call signs out to `/sign-in?account=pending|rejected`. Evidence: `e2e/signup-evidence.mjs` (mock) and `e2e/signup-real-evidence.mjs` (real build, every write intercepted, nothing reaches the DB).

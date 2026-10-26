@@ -1,130 +1,193 @@
 /**
- * Sign-up requests. ASSUMED CONTRACT (CONTRACT-GAPS #23): the Architect's endpoints are not in
- * packages/contracts yet, so real mode calls the shapes below with plain fetch and mock mode keeps
- * requests in this browser's localStorage (password stored only as a SHA-256 hash, never plaintext).
- *
- *   POST /v1/auth/sign-up-request            (public)  SignUpInput -> 202 { id, status: 'pending' }
- *                                                       409 { error: { code: 'EMAIL_TAKEN' } }
- *   GET  /v1/public/hqs                      (public)  { items: Hq[] }
- *   GET  /v1/sign-up-requests?status=pending&q&cursor&limit -> { items: SignUpRequest[], nextCursor, total }
- *   POST /v1/sign-up-requests/{id}/approve   { role, hqId, managerId } -> SignUpRequest
- *   POST /v1/sign-up-requests/{id}/reject    { reason? }               -> SignUpRequest
- *   POST /v1/auth/sign-in/email for a pending identity -> 403 { error: { code: 'ACCOUNT_PENDING' } }
- *                                           (rejected -> 403 { error: { code: 'ACCOUNT_REJECTED' } })
+ * Sign-up requests, built on the Architect's contract (feat/signup-requests c067e17, docs/SIGNUP.md):
+ *   POST /v1/auth/sign-up-request (public)        SignupRequestCreate -> 202 SignupRequestAccepted
+ *   GET  /v1/signup-requests?status=...           -> { items: SignupRequest[] }
+ *   POST /v1/signup-requests/{id}/approve         SignupApprove { role, territoryIds?, managerId? }
+ *   POST /v1/signup-requests/{id}/reject          SignupReject { reason }
+ * Real mode calls the API through the typed client. Mock mode keeps requests in this browser's
+ * localStorage (so they survive reloads and sign-in/out while you try the flow), validates with the
+ * same zod schemas and returns the same codes as the contract's MSW handlers. Passwords are never
+ * stored in plaintext: the mock keeps a SHA-256 hash only.
  */
-import { API_URL, REAL } from '@/lib/api';
-import { canSee } from '@/lib/nav';
-import { roleLevel, ROLES, isSystemAdmin, type Role } from '@/lib/roles';
-import type { Hq, Page } from '@/lib/team-adapter/types';
+import {
+  AUTH_STATE_CODES,
+  ROLE_RANK,
+  SIGNUP_PASSWORD_MIN,
+  SIGNUP_ROLE_KEYS,
+  SignupApprove,
+  SignupRequestCreate,
+  assignableRoles,
+  isHierarchyRole,
+} from '@ariforce/contracts';
+import type * as z from 'zod';
+import { REAL, api, apiReady } from '@/lib/api';
+import { isSystemAdmin, type Role } from '@/lib/roles';
 
-export type SignUpStatus = 'pending' | 'approved' | 'rejected';
-export type SignUpInput = {
+export type SignupInput = z.input<typeof SignupRequestCreate>;
+export type SignupStatus = 'pending' | 'approved' | 'rejected';
+export type SignupRequest = {
+  id: string;
+  userId: string;
   name: string;
   email: string;
-  phone: string;
-  password: string;
-  role: Role;
-  hqId: string | null;
-};
-export type SignUpRequest = Omit<SignUpInput, 'password'> & {
-  id: string;
-  status: SignUpStatus;
-  createdAt: string;
+  phone: string | null;
+  requestedRole: Role;
+  requestedTerritoryId: string | null;
+  requestedManagerId: string | null;
+  status: SignupStatus;
+  approvedRole: Role | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
   reason: string | null;
+  createdAt: string;
 };
-export type Decision = { role: Role; hqId: string | null; managerId: string | null };
+export type Decision = z.input<typeof SignupApprove>;
+type Field = 'name' | 'email' | 'phone' | 'password' | 'requestedRole';
 
-export class SignUpError extends Error {
+export { SIGNUP_PASSWORD_MIN };
+export const SIGNUP_ROLES = SIGNUP_ROLE_KEYS as readonly Role[];
+
+export class SignupError extends Error {
   constructor(
     message: string,
-    public field?: keyof SignUpInput,
+    public code?: string,
+    public field?: Field,
     public status?: number,
   ) {
     super(message);
   }
 }
 
-/** Roles a reviewer may approve: System Admin any; a manager only roles below their own level. */
-export function reviewableRoles(viewer: Role): Role[] {
-  if (isSystemAdmin(viewer)) return [...ROLES];
-  const lvl = roleLevel(viewer);
-  return ROLES.filter((r) => roleLevel(r) > 0 && roleLevel(r) < lvl);
+/** Every code in docs/SIGNUP.md and API-CONVENTIONS "Sign-up and account-state codes", in plain words. */
+export function messageFor(status: number, code?: string, serverMessage?: string): string {
+  switch (code) {
+    case AUTH_STATE_CODES.unavailable:
+      // Deliberately generic on the server; show it as is.
+      return (
+        serverMessage ??
+        'We could not create an account with these details. If you already have an account, sign in or contact your administrator.'
+      );
+    case AUTH_STATE_CODES.rateLimited:
+      return 'Too many requests from here. Wait a while and try again.';
+    case AUTH_STATE_CODES.captcha:
+      return 'The security check failed. Reload the page and try again.';
+    case 'SIGNUP_DISABLED':
+      return 'Account requests are switched off right now. Ask your administrator to add you.';
+    case AUTH_STATE_CODES.pending:
+      return 'This account is still awaiting approval.';
+    case AUTH_STATE_CODES.rejected:
+      return 'This sign-up request was not approved.';
+  }
+  if (status === 422) return 'Some details are not valid. Check the fields and try again.';
+  if (status === 403) return 'That is outside what you can approve, or it is your own request.';
+  if (status === 404) return 'This request is no longer visible to you. Refresh the list.';
+  if (status === 409) return 'This request was already decided. Refresh the list.';
+  if (status === 429) return 'Too many requests from here. Wait a while and try again.';
+  if (status === 503) return 'Account requests are switched off right now.';
+  return serverMessage ?? 'Something went wrong. Try again.';
 }
 
-// ---------- validation shared by both modes ----------
-export function validate(i: SignUpInput): SignUpError | null {
-  if (i.name.trim().length < 2) return new SignUpError('Enter your full name.', 'name');
+/** Client checks matching SignupRequestCreate, with friendly per-field messages. */
+export function validate(i: SignupInput): SignupError | null {
+  const f = (m: string, field: Field) => new SignupError(m, 'VALIDATION', field, 422);
+  if (!i.name.trim()) return f('Enter your full name.', 'name');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(i.email.trim()))
-    return new SignUpError('Enter a valid work email.', 'email');
-  if (!/^\+?[0-9][0-9 -]{8,15}$/.test(i.phone.trim()))
-    return new SignUpError('Enter a 10-digit mobile number.', 'phone');
-  if (i.password.length < 8) return new SignUpError('Use at least 8 characters.', 'password');
-  if (!ROLES.includes(i.role)) return new SignUpError('Pick your role.', 'role');
-  return null;
+    return f('Enter a valid work email.', 'email');
+  const phone = i.phone?.trim() ?? '';
+  if (phone && (phone.length < 6 || phone.length > 20 || !/^\+?[0-9 ()-]+$/.test(phone)))
+    return f('Enter a valid phone number, or leave it empty.', 'phone');
+  if (i.password.length < SIGNUP_PASSWORD_MIN)
+    return f(`Use at least ${SIGNUP_PASSWORD_MIN} characters.`, 'password');
+  if (i.password.length > 128) return f('Use at most 128 characters.', 'password');
+  if (!SIGNUP_ROLES.includes(i.requestedRole as Role)) return f('Pick your role.', 'requestedRole');
+  return SignupRequestCreate.safeParse(i).success
+    ? null
+    : new SignupError(messageFor(422), 'VALIDATION', undefined, 422);
 }
 
-/** 0-4: length, mixed case, digit, symbol. Only a hint; the server decides. */
+/** 0-4 hint only (length 12/16, mixed case, digit + symbol); the server only enforces length. */
 export function strength(p: string): { score: number; label: string } {
-  let s = 0;
-  if (p.length >= 8) s++;
-  if (p.length >= 12) s++;
+  if (p.length < SIGNUP_PASSWORD_MIN) return { score: p ? 1 : 0, label: p ? 'Too short' : '' };
+  let s = 1;
+  if (p.length >= 16) s++;
   if (/[a-z]/.test(p) && /[A-Z]/.test(p)) s++;
   if (/\d/.test(p) && /[^A-Za-z0-9]/.test(p)) s++;
-  return { score: s, label: ['Too short', 'Weak', 'Fair', 'Good', 'Strong'][s]! };
+  return { score: s, label: ['', 'Fair', 'Good', 'Strong', 'Very strong'][s]! };
 }
 
-// ---------- mock ----------
+// ---------- who reviews what (one helper; route guard uses canReviewSignups in lib/permissions) ----------
+const rank = (r: Role) => ROLE_RANK[r];
+/** Roles the viewer may grant: System Admin any sign-up role; ABM+ hierarchy roles below their own. */
+export function grantableRoles(viewer: Role): Role[] {
+  if (isSystemAdmin(viewer)) return [...SIGNUP_ROLES];
+  return assignableRoles(rank(viewer)) as Role[];
+}
+/** Rows the viewer can decide (mirrors the mock; the API also checks the subtree). */
+export function canDecide(viewer: Role, r: Pick<SignupRequest, 'requestedRole'>): boolean {
+  if (isSystemAdmin(viewer)) return true;
+  const rr = rank(r.requestedRole);
+  return isHierarchyRole(r.requestedRole) && rr > 0 && rr < rank(viewer);
+}
+/** Director and functional roles take no manager; hierarchy roles need at least one territory. */
+export const takesManager = (role: Role) => isHierarchyRole(role) && role !== 'director';
+export const needsTerritory = (role: Role) => isHierarchyRole(role);
+
+// ---------- mock store ----------
 const KEY = 'af:mock-signups';
-type Stored = SignUpRequest & { passwordHash: string };
+type Stored = SignupRequest & { passwordHash: string };
 
 async function hash(p: string) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
-
-const SEED: Stored[] = [
+const SEED: Stored[] = (
   [
-    'Anita Ghosh',
-    'anita.ghosh@example.test',
-    '+91 90000 00011',
-    'business_manager',
-    '2026-10-24T05:30:00Z',
-  ],
-  [
-    'Rakesh Mondal',
-    'rakesh.mondal@example.test',
-    '+91 90000 00012',
-    'distribution_head',
-    '2026-10-25T06:10:00Z',
-  ],
-  [
-    'Sumana Paul',
-    'sumana.paul@example.test',
-    '+91 90000 00013',
-    'accountant',
-    '2026-10-26T04:45:00Z',
-  ],
-  [
-    'Arijit Das',
-    'arijit.das@example.test',
-    '+91 90000 00014',
-    'area_business_manager',
-    '2026-10-26T09:20:00Z',
-  ],
-].map(([name, email, phone, role, createdAt], i) => ({
-  id: `signup-seed-${i + 1}`,
-  name: name!,
-  email: email!,
-  phone: phone!,
-  role: role as Role,
-  hqId: null,
-  status: 'pending' as const,
-  createdAt: createdAt!,
+    [
+      'Anita Ghosh',
+      'anita.ghosh@example.test',
+      '+91 90000 00011',
+      'business_manager',
+      '2026-10-24T05:30:00Z',
+    ],
+    [
+      'Rakesh Mondal',
+      'rakesh.mondal@example.test',
+      null,
+      'distribution_head',
+      '2026-10-25T06:10:00Z',
+    ],
+    [
+      'Sumana Paul',
+      'sumana.paul@example.test',
+      '+91 90000 00013',
+      'accountant',
+      '2026-10-26T04:45:00Z',
+    ],
+    [
+      'Arijit Das',
+      'arijit.das@example.test',
+      '+91 90000 00014',
+      'area_business_manager',
+      '2026-10-26T09:20:00Z',
+    ],
+  ] as const
+).map(([name, email, phone, role, createdAt], i) => ({
+  id: `00000000-0000-4000-8000-5eed0000000${i + 1}`,
+  userId: `00000000-0000-4000-8000-5eed1000000${i + 1}`,
+  name,
+  email,
+  phone,
+  requestedRole: role,
+  requestedTerritoryId: null,
+  requestedManagerId: null,
+  status: 'pending',
+  approvedRole: null,
+  decidedBy: null,
+  decidedAt: null,
   reason: null,
-  // No hash: any password shows "Awaiting approval" for these seeded emails (demo only).
-  passwordHash: '',
+  createdAt,
+  passwordHash: '', // seeded: any password shows the pending message (demo only)
 }));
-
 function load(): Stored[] {
   try {
     const raw = localStorage.getItem(KEY);
@@ -142,171 +205,165 @@ function save(rows: Stored[]) {
   }
 }
 const delay = () => new Promise((r) => setTimeout(r, 150));
-const strip = ({ passwordHash: _h, ...r }: Stored): SignUpRequest => r;
-
-function currentRole(): Role | null {
+const strip = ({ passwordHash: _h, ...r }: Stored): SignupRequest => r;
+function viewer(): { id: string; role: Role } | null {
   try {
     const s = JSON.parse(localStorage.getItem('af:mock-session') ?? 'null') as {
+      userId?: string;
       role?: Role;
       previewRole?: Role;
     } | null;
-    return s?.previewRole ?? s?.role ?? null;
+    const role = s?.previewRole ?? s?.role;
+    return s?.userId && role ? { id: s.userId, role } : null;
   } catch {
     return null;
   }
 }
+const uuid = () =>
+  `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0').slice(-12)}`;
 
 const mockAdapter = {
-  async submit(input: SignUpInput): Promise<{ id: string; status: SignUpStatus }> {
+  async submit(input: SignupInput): Promise<string> {
     await delay();
     const bad = validate(input);
     if (bad) throw bad;
     const rows = load();
     const email = input.email.trim().toLowerCase();
-    if (rows.some((r) => r.email === email && r.status !== 'rejected'))
-      throw new SignUpError('A request for this email already exists.', 'email', 409);
-    const row: Stored = {
-      id: `signup-${Date.now().toString(36)}`,
+    if (rows.some((r) => r.email === email) || /@demo\.ariforce\.(test|in)$/.test(email))
+      throw new SignupError(
+        messageFor(409, AUTH_STATE_CODES.unavailable),
+        AUTH_STATE_CODES.unavailable,
+        undefined,
+        409,
+      );
+    rows.unshift({
+      id: uuid(),
+      userId: uuid(),
       name: input.name.trim(),
       email,
-      phone: input.phone.trim(),
-      role: input.role,
-      hqId: input.hqId,
+      phone: input.phone?.trim() || null,
+      requestedRole: input.requestedRole as Role,
+      requestedTerritoryId: input.territoryId ?? null,
+      requestedManagerId: input.managerId ?? null,
       status: 'pending',
-      createdAt: new Date().toISOString(),
+      approvedRole: null,
+      decidedBy: null,
+      decidedAt: null,
       reason: null,
+      createdAt: new Date().toISOString(),
       passwordHash: await hash(input.password),
-    };
-    save([row, ...rows]);
-    return { id: row.id, status: 'pending' };
+    });
+    save(rows);
+    return 'Request received. You can sign in once an administrator approves it.';
   },
-  async publicHqs(): Promise<Hq[]> {
-    const { teamAdapter } = await import('@/lib/team-adapter/adapter');
-    return 'allHqs' in teamAdapter ? (teamAdapter as { allHqs: () => Hq[] }).allHqs() : [];
-  },
-  /** Mock sign-in hook: the status of a request matching email (and password, when one was set). */
-  async statusFor(email: string, password: string): Promise<SignUpStatus | null> {
-    const e = email.trim().toLowerCase();
-    const row = load().find((r) => r.email === e);
+  /** Mock sign-in hook: the state of a request for this email (password checked when one was set). */
+  async statusFor(email: string, password: string): Promise<SignupStatus | null> {
+    const row = load().find((r) => r.email === email.trim().toLowerCase());
     if (!row) return null;
     if (row.passwordHash && row.passwordHash !== (await hash(password))) return null;
     return row.status;
   },
-  async list(
-    viewer: Role,
-    { q = '', cursor, limit = 20 }: { q?: string; cursor?: string | null; limit?: number },
-  ): Promise<Page<SignUpRequest>> {
+  async list(role: Role, status: SignupStatus): Promise<SignupRequest[]> {
     await delay();
-    const allowed = new Set(reviewableRoles(viewer));
-    const term = q.trim().toLowerCase();
-    const all = load()
-      .filter((r) => r.status === 'pending' && allowed.has(r.role))
-      .filter((r) => !term || `${r.name} ${r.email} ${r.phone}`.toLowerCase().includes(term))
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    const start = cursor ? Number(cursor) : 0;
-    return {
-      items: all.slice(start, start + limit).map(strip),
-      total: all.length,
-      nextCursor: start + limit < all.length ? String(start + limit) : null,
-    };
+    const me = viewer();
+    return load()
+      .filter((r) => r.status === status && canDecide(role, r) && r.userId !== me?.id)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(strip);
   },
-  async decide(
-    id: string,
-    body: { approve: true; d: Decision } | { approve: false; reason: string },
-  ) {
+  async approve(id: string, d: Decision): Promise<SignupRequest> {
     await delay();
-    const viewer = currentRole();
-    if (!viewer || !canSee(viewer, '/sign-up-requests'))
-      throw new SignUpError('You can’t review sign-up requests.', undefined, 403);
-    const rows = load();
-    const row = rows.find((r) => r.id === id);
-    if (!row || row.status !== 'pending')
-      throw new SignUpError('This request was already handled. Refresh the list.', undefined, 409);
-    if (body.approve) {
-      if (!reviewableRoles(viewer).includes(body.d.role))
-        throw new SignUpError('You can only approve roles below your own.', 'role', 403);
-      Object.assign(row, { status: 'approved', role: body.d.role, hqId: body.d.hqId });
-    } else Object.assign(row, { status: 'rejected', reason: body.reason.trim() || null });
-    save(rows);
-    return strip(row);
+    return decide(id, (row, me) => {
+      if (!grantableRoles(me.role).includes(d.role as Role))
+        throw new SignupError(messageFor(403), 'FORBIDDEN', undefined, 403);
+      if (!takesManager(d.role as Role) && d.managerId)
+        throw new SignupError('This role has no manager.', 'VALIDATION', undefined, 422);
+      if (needsTerritory(d.role as Role) && !(d.territoryIds?.length ?? row.requestedTerritoryId))
+        throw new SignupError('Pick at least one territory.', 'VALIDATION', undefined, 422);
+      Object.assign(row, { status: 'approved', approvedRole: d.role });
+    });
+  },
+  async reject(id: string, reason: string | null): Promise<SignupRequest> {
+    await delay();
+    return decide(id, (row) =>
+      Object.assign(row, { status: 'rejected', reason: reason?.trim() || null }),
+    );
   },
 };
-
-// ---------- real (assumed contract) ----------
-async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}${path}`, {
-      credentials: 'include',
-      ...init,
-      headers: { 'content-type': 'application/json', ...(init.headers ?? {}) },
-      signal: AbortSignal.timeout(8000),
-    });
-  } catch {
-    throw new SignUpError('Could not reach the server. Check your connection.');
-  }
-  const body = (await res.json().catch(() => null)) as
-    (T & { error?: { code?: string; message?: string } }) | null;
-  if (!res.ok) {
-    const code = body?.error?.code;
-    if (res.status === 409 || code === 'EMAIL_TAKEN')
-      throw new SignUpError('A request or account for this email already exists.', 'email', 409);
-    if (res.status === 404)
-      throw new SignUpError(
-        'Sign-up requests are not available on this server yet.',
-        undefined,
-        404,
-      );
-    if (res.status === 403)
-      throw new SignUpError('You can’t do that for this request.', undefined, 403);
-    throw new SignUpError(
-      body?.error?.message ?? 'Something went wrong. Try again.',
-      undefined,
-      res.status,
-    );
-  }
-  return body as T;
+function decide(id: string, apply: (row: Stored, me: { id: string; role: Role }) => void) {
+  const me = viewer();
+  if (!me) throw new SignupError('Sign in again.', 'UNAUTHENTICATED', undefined, 401);
+  const rows = load();
+  const row = rows.find((r) => r.id === id);
+  if (!row || !canDecide(me.role, row) || row.userId === me.id)
+    throw new SignupError(messageFor(404), 'NOT_FOUND', undefined, 404);
+  if (row.status !== 'pending') throw new SignupError(messageFor(409), 'CONFLICT', undefined, 409);
+  apply(row, me);
+  Object.assign(row, { decidedBy: me.id, decidedAt: new Date().toISOString() });
+  save(rows);
+  return strip(row);
 }
+
+// ---------- real ----------
+function fail(error: unknown, response: Response): never {
+  const e = (error ?? {}) as { error?: { code?: string; message?: string } };
+  const code = e.error?.code;
+  throw new SignupError(
+    messageFor(response.status, code, e.error?.message),
+    code,
+    undefined,
+    response.status,
+  );
+}
+const network = () =>
+  new SignupError('Could not reach the server. Check your connection.', 'NETWORK');
 
 const apiAdapter: typeof mockAdapter = {
   async submit(input) {
     const bad = validate(input);
     if (bad) throw bad;
-    return call('/v1/auth/sign-up-request', {
-      method: 'POST',
-      body: JSON.stringify({ ...input, email: input.email.trim().toLowerCase() }),
+    const body = SignupRequestCreate.parse({
+      ...input,
+      email: input.email.trim().toLowerCase(),
+      phone: input.phone?.trim() || null,
     });
-  },
-  async publicHqs() {
-    try {
-      return (await call<{ items: Hq[] }>('/v1/public/hqs')).items;
-    } catch {
-      return [];
-    }
+    const r = await api.POST('/v1/auth/sign-up-request', { body }).catch(() => {
+      throw network();
+    });
+    if (!r.data) fail(r.error, r.response);
+    return r.data.message;
   },
   async statusFor() {
-    return null; // real mode: the sign-in response says so (ACCOUNT_PENDING)
+    return null; // real mode: the sign-in response carries the code
   },
-  async list(_viewer, { q = '', cursor, limit = 20 }) {
-    const p = new URLSearchParams({
-      status: 'pending',
-      limit: String(limit),
-      includeTotal: 'true',
+  async list(_role, status) {
+    await apiReady();
+    const r = await api.GET('/v1/signup-requests', { params: { query: { status } } }).catch(() => {
+      throw network();
     });
-    if (q.trim()) p.set('q', q.trim());
-    if (cursor) p.set('cursor', cursor);
-    const r = await call<{ items: SignUpRequest[]; nextCursor: string | null; total?: number }>(
-      `/v1/sign-up-requests?${p}`,
-    );
-    return { items: r.items, nextCursor: r.nextCursor, total: r.total ?? r.items.length };
+    if (!r.data) fail(r.error, r.response);
+    return r.data.items as SignupRequest[];
   },
-  async decide(id, body) {
-    return body.approve
-      ? call(`/v1/sign-up-requests/${id}/approve`, { method: 'POST', body: JSON.stringify(body.d) })
-      : call(`/v1/sign-up-requests/${id}/reject`, {
-          method: 'POST',
-          body: JSON.stringify({ reason: body.reason.trim() || undefined }),
-        });
+  async approve(id, d) {
+    const r = await api
+      .POST('/v1/signup-requests/{id}/approve', { params: { path: { id } }, body: d as never })
+      .catch(() => {
+        throw network();
+      });
+    if (!r.data) fail(r.error, r.response);
+    return r.data as SignupRequest;
+  },
+  async reject(id, reason) {
+    const r = await api
+      .POST('/v1/signup-requests/{id}/reject', {
+        params: { path: { id } },
+        body: { reason: reason?.trim() || null },
+      })
+      .catch(() => {
+        throw network();
+      });
+    if (!r.data) fail(r.error, r.response);
+    return r.data as SignupRequest;
   },
 };
 

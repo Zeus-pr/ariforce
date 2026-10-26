@@ -7,35 +7,49 @@ import { CircleCheck, Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
-import { REAL } from '@/lib/api';
-import { ROLES, ROLE_LABEL, isSystemAdmin, type Role } from '@/lib/roles';
+import { REAL, api, apiReady } from '@/lib/api';
+import { ROLE_LABEL } from '@/lib/roles';
 import {
-  SignUpError,
+  SIGNUP_PASSWORD_MIN,
+  SIGNUP_ROLES,
+  SignupError,
   signupAdapter,
   strength,
   validate,
-  type SignUpInput,
+  type SignupInput,
 } from '@/lib/signup/adapter';
-import type { Hq } from '@/lib/team-adapter/types';
 
-type Field = keyof SignUpInput;
+type Field = 'name' | 'email' | 'phone' | 'password' | 'requestedRole';
+type Territory = { id: string; name: string };
 const SELECT =
   'h-10 w-full rounded-md border border-input bg-transparent px-3 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-[invalid=true]:border-destructive';
-const ROLE_OPTIONS = ROLES.filter((r) => !isSystemAdmin(r));
+const ROLE_OPTIONS = SIGNUP_ROLES;
 
 export function SignUpForm() {
   const id = useId();
-  const [v, setV] = useState({ name: '', email: '', phone: '', password: '', role: '', hqId: '' });
+  const [v, setV] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+    requestedRole: '',
+    territoryId: '',
+  });
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ field?: Field; message: string } | null>(null);
-  const [sent, setSent] = useState<string | null>(null);
-  const [hqs, setHqs] = useState<Hq[]>([]);
+  const [sent, setSent] = useState<{ email: string; message: string } | null>(null);
+  const [hqs, setHqs] = useState<Territory[]>([]);
   const refs = useRef<Partial<Record<Field, HTMLInputElement | HTMLSelectElement | null>>>({});
 
   useEffect(() => {
     let live = true;
-    void signupAdapter.publicHqs().then((h) => live && setHqs(h));
+    // No public territory list in the contract: the optional HQ picker shows only in mock mode.
+    if (!REAL)
+      void apiReady()
+        .then(() => api.GET('/v1/territories', { params: { query: { limit: 200 } } }))
+        .then((r) => live && setHqs((r.data?.items ?? []).map((t) => ({ id: t.id, name: t.name }))))
+        .catch(() => {});
     return () => {
       live = false;
     };
@@ -58,7 +72,16 @@ export function SignUpForm() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
-    const input: SignUpInput = { ...v, role: v.role as Role, hqId: v.hqId || null };
+    // Nulls, not empty strings (SignupRequestCreate).
+    const input: SignupInput = {
+      name: v.name.trim(),
+      email: v.email.trim(),
+      phone: v.phone.trim() || null,
+      password: v.password,
+      requestedRole: v.requestedRole as SignupInput['requestedRole'],
+      territoryId: v.territoryId || null,
+      managerId: null,
+    };
     const bad = validate(input);
     if (bad) {
       setError({ field: bad.field, message: bad.message });
@@ -68,11 +91,11 @@ export function SignUpForm() {
     setBusy(true);
     setError(null);
     try {
-      await signupAdapter.submit(input);
+      const message = await signupAdapter.submit(input);
       setV((s) => ({ ...s, password: '' })); // drop plaintext from memory as soon as it is sent
-      setSent(input.email.trim().toLowerCase());
+      setSent({ email: input.email.toLowerCase(), message });
     } catch (x) {
-      const se = x instanceof SignUpError ? x : new SignUpError('Something went wrong. Try again.');
+      const se = x instanceof SignupError ? x : new SignupError('Something went wrong. Try again.');
       setError({ field: se.field, message: se.message });
       if (se.field) refs.current[se.field]?.focus();
     } finally {
@@ -90,8 +113,8 @@ export function SignUpForm() {
         <CircleCheck className="mx-auto size-8 text-success" aria-hidden />
         <h2 className="mt-3 text-lg font-semibold">Request sent, awaiting approval</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          We sent your request for <span className="font-medium text-foreground">{sent}</span>. An
-          admin or your manager will review it. You can sign in once it is approved.
+          {sent.message} We sent it for{' '}
+          <span className="font-medium text-foreground">{sent.email}</span>.
         </p>
         <Button asChild className="mt-5 h-10 w-full">
           <Link href="/sign-in">Back to sign in</Link>
@@ -107,7 +130,8 @@ export function SignUpForm() {
           role="note"
           className="mb-5 border-l-2 border-warning pl-3 text-[13px] leading-snug text-warning-text"
         >
-          Mock mode. The request stays in this browser; sign in as admin@ariforce.test to review it.
+          Mock mode. The request stays in this browser; sign in with the System Admin demo account
+          to review it.
         </p>
       )}
       {error && !error.field && (
@@ -149,7 +173,9 @@ export function SignUpForm() {
           <Err f="email" />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor={`${id}-phone`}>Mobile number</Label>
+          <Label htmlFor={`${id}-phone`}>
+            Mobile number <span className="font-normal text-muted-foreground">(optional)</span>
+          </Label>
           <Input
             ref={(el) => void (refs.current.phone = el)}
             id={`${id}-phone`}
@@ -202,20 +228,20 @@ export function SignUpForm() {
               ))}
             </div>
             <span className="text-xs text-muted-foreground" data-testid="pw-strength">
-              {v.password ? st.label : 'At least 8 characters'}
+              {v.password ? st.label : `At least ${SIGNUP_PASSWORD_MIN} characters`}
             </span>
           </div>
           <Err f="password" />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor={`${id}-role`}>Your role</Label>
+          <Label htmlFor={`${id}-requestedRole`}>Your role</Label>
           <select
-            ref={(el) => void (refs.current.role = el)}
-            id={`${id}-role`}
-            name="role"
-            value={v.role}
-            onChange={set('role')}
-            {...aria('role')}
+            ref={(el) => void (refs.current.requestedRole = el)}
+            id={`${id}-requestedRole`}
+            name="requestedRole"
+            value={v.requestedRole}
+            onChange={set('requestedRole')}
+            {...aria('requestedRole')}
             className={SELECT}
           >
             <option value="" disabled>
@@ -227,7 +253,7 @@ export function SignUpForm() {
               </option>
             ))}
           </select>
-          <Err f="role" />
+          <Err f="requestedRole" />
         </div>
         {hqs.length > 0 && (
           <div className="grid gap-1.5">
@@ -236,9 +262,9 @@ export function SignUpForm() {
             </Label>
             <select
               id={`${id}-hq`}
-              name="hqId"
-              value={v.hqId}
-              onChange={set('hqId')}
+              name="territoryId"
+              value={v.territoryId}
+              onChange={set('territoryId')}
               className={SELECT}
             >
               <option value="">Not sure</option>

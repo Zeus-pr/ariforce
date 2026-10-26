@@ -1,9 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useId, useState } from 'react';
-import { LoaderCircle, Search, UserPlus } from 'lucide-react';
+import { LoaderCircle, UserPlus } from 'lucide-react';
 import { Button } from '@ariforce/ui/components/button';
-import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
 import {
   Dialog,
@@ -14,91 +13,89 @@ import {
   DialogTitle,
 } from '@ariforce/ui/components/dialog';
 import { toast } from '@ariforce/ui/components/sonner';
+import { api, apiReady } from '@/lib/api';
 import { useSession } from '@/lib/mock-auth';
-import { ROLE_LABEL, isSystemAdmin, roleLevel, type Role } from '@/lib/roles';
+import { ROLE_LABEL, roleLevel, type Role } from '@/lib/roles';
 import {
-  SignUpError,
-  reviewableRoles,
+  SignupError,
+  grantableRoles,
+  needsTerritory,
   signupAdapter,
-  type SignUpRequest,
+  takesManager,
+  type SignupRequest,
+  type SignupStatus,
 } from '@/lib/signup/adapter';
 import { teamAdapter } from '@/lib/team-adapter/adapter';
-import type { Employee, Hq } from '@/lib/team-adapter/types';
+import type { Employee } from '@/lib/team-adapter/types';
 
 const SELECT =
   'h-10 w-full rounded-md border border-input bg-transparent px-3 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm';
-const LIMIT = 20;
+const TABS: { id: SignupStatus; label: string }[] = [
+  { id: 'pending', label: 'Pending' },
+  { id: 'approved', label: 'Approved' },
+  { id: 'rejected', label: 'Rejected' },
+];
 const fmt = (iso: string) =>
   new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 type State =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; items: SignUpRequest[]; total: number; next: string | null };
-type Done = (r: SignUpRequest, verb: string) => void;
+  | { kind: 'ready'; items: SignupRequest[] };
+type Done = (r: SignupRequest, verb: string) => void;
 
 export function SignupRequestsView() {
   const session = useSession();
   const role = session?.role as Role | undefined;
-  const [q, setQ] = useState('');
+  const [tab, setTab] = useState<SignupStatus>('pending');
   const [state, setState] = useState<State>({ kind: 'loading' });
-  const [more, setMore] = useState(false);
-  const [acting, setActing] = useState<{ req: SignUpRequest; kind: 'approve' | 'reject' } | null>(
+  const [acting, setActing] = useState<{ req: SignupRequest; kind: 'approve' | 'reject' } | null>(
     null,
   );
 
-  const load = useCallback(
-    async (cursor?: string | null) => {
-      if (!role) return;
-      if (!cursor) setState({ kind: 'loading' });
-      else setMore(true);
-      try {
-        const p = await signupAdapter.list(role, { q, cursor, limit: LIMIT });
-        setState((s) =>
-          cursor && s.kind === 'ready'
-            ? { kind: 'ready', items: [...s.items, ...p.items], total: p.total, next: p.nextCursor }
-            : { kind: 'ready', items: p.items, total: p.total, next: p.nextCursor },
-        );
-      } catch (e) {
-        setState({
-          kind: 'error',
-          message: e instanceof SignUpError ? e.message : 'Could not load requests.',
-        });
-      } finally {
-        setMore(false);
-      }
-    },
-    [role, q],
-  );
+  // The contract returns the whole list for one status ({ items }): no q or cursor (CONTRACT-GAPS #23).
+  const load = useCallback(async () => {
+    if (!role) return;
+    setState({ kind: 'loading' });
+    try {
+      setState({ kind: 'ready', items: await signupAdapter.list(role, tab) });
+    } catch (e) {
+      setState({
+        kind: 'error',
+        message: e instanceof SignupError ? e.message : 'Could not load requests.',
+      });
+    }
+  }, [role, tab]);
 
   useEffect(() => {
-    const t = setTimeout(() => void load(), q ? 250 : 0);
-    return () => clearTimeout(t);
-  }, [load, q]);
+    void load();
+  }, [load]);
 
   const done: Done = (r, verb) => {
     setActing(null);
     toast.success(`${r.name}: ${verb}.`);
     setState((s) =>
-      s.kind === 'ready'
-        ? { ...s, items: s.items.filter((i) => i.id !== r.id), total: Math.max(0, s.total - 1) }
-        : s,
+      s.kind === 'ready' ? { ...s, items: s.items.filter((i) => i.id !== r.id) } : s,
     );
   };
 
   if (!role) return null;
   return (
     <>
-      <div className="relative max-w-sm">
-        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search name, email or phone"
-          aria-label="Search requests"
-          className="h-10 pl-9"
-        />
+      <div role="tablist" aria-label="Request status" className="flex gap-1">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            type="button"
+            aria-selected={tab === t.id}
+            data-testid={`signups-tab-${t.id}`}
+            onClick={() => setTab(t.id)}
+            className={`h-9 rounded-md px-3 text-sm font-medium transition-colors ${tab === t.id ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {state.kind === 'loading' && (
@@ -127,9 +124,9 @@ export function SignupRequestsView() {
           className="rounded-lg border border-dashed p-10 text-center"
         >
           <UserPlus className="mx-auto size-6 text-muted-foreground" aria-hidden />
-          <p className="mt-2 font-medium">{q ? 'No matching requests' : 'No pending requests'}</p>
+          <p className="mt-2 font-medium">No {tab} requests</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            New requests from the sign-up page show up here.
+            New requests from the sign-up page show up under Pending.
           </p>
         </div>
       )}
@@ -137,7 +134,7 @@ export function SignupRequestsView() {
       {state.kind === 'ready' && state.items.length > 0 && (
         <>
           <p className="text-sm text-muted-foreground" data-testid="signups-total">
-            {state.total} pending
+            {state.items.length} {tab}
           </p>
           <ul className="grid gap-2" data-testid="signups-list">
             {state.items.map((r) => (
@@ -149,36 +146,42 @@ export function SignupRequestsView() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{r.name}</p>
                   <p className="truncate text-sm text-muted-foreground">
-                    {r.email} · <span className="tabular-nums">{r.phone}</span>
+                    {r.email}
+                    {r.phone && (
+                      <>
+                        {' · '}
+                        <span className="tabular-nums">{r.phone}</span>
+                      </>
+                    )}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Asked for {ROLE_LABEL[r.role]} · {fmt(r.createdAt)}
+                    Asked for {ROLE_LABEL[r.requestedRole]} · {fmt(r.createdAt)}
+                    {r.status === 'approved' &&
+                      r.approvedRole &&
+                      ` · Approved as ${ROLE_LABEL[r.approvedRole]}`}
+                    {r.status === 'rejected' && r.reason && ` · ${r.reason}`}
                   </p>
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1 sm:flex-none"
-                    onClick={() => setActing({ req: r, kind: 'reject' })}
-                  >
-                    Reject
-                  </Button>
-                  <Button
-                    className="flex-1 sm:flex-none"
-                    onClick={() => setActing({ req: r, kind: 'approve' })}
-                  >
-                    Approve
-                  </Button>
-                </div>
+                {r.status === 'pending' && (
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1 sm:flex-none"
+                      onClick={() => setActing({ req: r, kind: 'reject' })}
+                    >
+                      Reject
+                    </Button>
+                    <Button
+                      className="flex-1 sm:flex-none"
+                      onClick={() => setActing({ req: r, kind: 'approve' })}
+                    >
+                      Approve
+                    </Button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
-          {state.next && (
-            <Button variant="outline" onClick={() => void load(state.next)} disabled={more}>
-              {more && <LoaderCircle className="animate-spin motion-reduce:animate-none" />}
-              Load more
-            </Button>
-          )}
         </>
       )}
 
@@ -200,13 +203,13 @@ export function SignupRequestsView() {
 function useDecide(onDone: Done) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const run = async (fn: () => Promise<SignUpRequest>, verb: string) => {
+  const run = async (fn: () => Promise<SignupRequest>, verb: string) => {
     setBusy(true);
     setError(null);
     try {
       onDone(await fn(), verb);
     } catch (e) {
-      setError(e instanceof SignUpError ? e.message : 'Something went wrong. Try again.');
+      setError(e instanceof SignupError ? e.message : 'Something went wrong. Try again.');
     } finally {
       setBusy(false);
     }
@@ -240,38 +243,45 @@ function ApproveDialog({
   onDone,
 }: {
   viewer: Role;
-  req: SignUpRequest;
+  req: SignupRequest;
   onClose: () => void;
   onDone: Done;
 }) {
   const id = useId();
-  const roles = reviewableRoles(viewer);
-  const [role, setRole] = useState<Role>(roles.includes(req.role) ? req.role : roles[0]!);
-  const [hqId, setHq] = useState(req.hqId ?? '');
+  const roles = grantableRoles(viewer);
+  const [role, setRole] = useState<Role>(
+    roles.includes(req.requestedRole) ? req.requestedRole : roles[0]!,
+  );
+  const [territoryIds, setTerritoryIds] = useState<string[]>(
+    req.requestedTerritoryId ? [req.requestedTerritoryId] : [],
+  );
   const [managerId, setManager] = useState('');
-  const [hqs, setHqs] = useState<Hq[]>([]);
+  const [territories, setTerritories] = useState<{ id: string; name: string }[] | null>(null);
   const [people, setPeople] = useState<Employee[]>([]);
+  const [localError, setLocalError] = useState<string | null>(null);
   const { busy, error, run } = useDecide(onDone);
 
   useEffect(() => {
     let live = true;
-    const all = (teamAdapter as { allHqs?: () => Hq[] }).allHqs;
-    void Promise.allSettled([
-      isSystemAdmin(viewer) && all ? Promise.resolve(all()) : teamAdapter.hqs(viewer),
-      teamAdapter.tree(viewer),
-    ]).then(([h, t]) => {
-      if (!live) return;
-      if (h.status === 'fulfilled') setHqs(h.value);
-      if (t.status === 'fulfilled') setPeople(t.value.nodes);
-    });
+    void apiReady()
+      .then(() => api.GET('/v1/territories', { params: { query: { limit: 200 } } }))
+      .then((r) => {
+        if (live) setTerritories((r.data?.items ?? []).map((t) => ({ id: t.id, name: t.name })));
+      })
+      .catch(() => live && setTerritories([]));
+    void teamAdapter
+      .tree(viewer)
+      .then((t) => live && setPeople(t.nodes))
+      .catch(() => {});
     return () => {
       live = false;
     };
   }, [viewer]);
 
   const lvl = roleLevel(role);
-  const managers = people.filter((p) => p.active && (lvl === 0 || roleLevel(p.role as Role) > lvl));
-  const needsManager = lvl > 0 && role !== 'director';
+  const managers = people.filter((p) => p.active && roleLevel(p.role as Role) > lvl);
+  const withManager = takesManager(role);
+  const withTerritory = needsTerritory(role);
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
@@ -286,11 +296,16 @@ function ApproveDialog({
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault();
+            if (withTerritory && territoryIds.length === 0)
+              return setLocalError('Pick at least one territory for this role.');
+            setLocalError(null);
             void run(
               () =>
-                signupAdapter.decide(req.id, {
-                  approve: true,
-                  d: { role, hqId: hqId || null, managerId: managerId || null },
+                signupAdapter.approve(req.id, {
+                  role: role as never,
+                  ...(withTerritory ? { territoryIds } : {}),
+                  // Director, Distribution Head and Accountant take no manager.
+                  ...(withManager && managerId ? { managerId } : {}),
                 }),
               'approved',
             );
@@ -311,23 +326,38 @@ function ApproveDialog({
               ))}
             </select>
           </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor={`${id}-hq`}>HQ</Label>
-            <select
-              id={`${id}-hq`}
-              value={hqId}
-              onChange={(e) => setHq(e.target.value)}
-              className={SELECT}
-            >
-              <option value="">No HQ yet</option>
-              {hqs.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          {needsManager && (
+          {withTerritory && (
+            <fieldset className="grid gap-1.5">
+              <legend className="mb-1.5 text-sm font-medium">Territories</legend>
+              {territories === null ? (
+                <p className="text-sm text-muted-foreground">Loading territories…</p>
+              ) : territories.length === 0 ? (
+                <p className="text-sm text-destructive">No territories you can assign.</p>
+              ) : (
+                <div
+                  className="grid max-h-40 gap-1 overflow-y-auto rounded-md border p-2"
+                  data-testid="territory-picker"
+                >
+                  {territories.map((t) => (
+                    <label key={t.id} className="flex min-h-8 items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={territoryIds.includes(t.id)}
+                        onChange={(e) =>
+                          setTerritoryIds((ids) =>
+                            e.target.checked ? [...ids, t.id] : ids.filter((x) => x !== t.id),
+                          )
+                        }
+                        className="size-4"
+                      />
+                      {t.name}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </fieldset>
+          )}
+          {withManager ? (
             <div className="grid gap-1.5">
               <Label htmlFor={`${id}-mgr`}>Reports to</Label>
               <select
@@ -336,7 +366,7 @@ function ApproveDialog({
                 onChange={(e) => setManager(e.target.value)}
                 className={SELECT}
               >
-                <option value="">Assign later (Unassigned)</option>
+                <option value="">Me (default)</option>
                 {managers.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name}, {ROLE_LABEL[m.role as Role]}
@@ -344,10 +374,14 @@ function ApproveDialog({
                 ))}
               </select>
             </div>
+          ) : (
+            <p className="text-[13px] text-muted-foreground" data-testid="no-manager-note">
+              {ROLE_LABEL[role]} has no reporting manager.
+            </p>
           )}
-          {error && (
+          {(localError ?? error) && (
             <p role="alert" className="text-[13px] text-destructive" data-testid="decide-error">
-              {error}
+              {localError ?? error}
             </p>
           )}
           <Footer busy={busy} onClose={onClose}>
@@ -367,7 +401,7 @@ function RejectDialog({
   onClose,
   onDone,
 }: {
-  req: SignUpRequest;
+  req: SignupRequest;
   onClose: () => void;
   onDone: Done;
 }) {
@@ -385,7 +419,7 @@ function RejectDialog({
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            void run(() => signupAdapter.decide(req.id, { approve: false, reason }), 'rejected');
+            void run(() => signupAdapter.reject(req.id, reason), 'rejected');
           }}
         >
           <div className="grid gap-1.5">
