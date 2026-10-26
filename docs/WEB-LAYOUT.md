@@ -11,3 +11,5 @@
   - Tailwind v4 preset (CSS-first): `@ariforce/config/tailwind/theme.css`, imported by `packages/ui/src/globals.css`. Design tokens (#3) go here / in `packages/ui/src/globals.css`.
 - Fonts: Google Sans copied to `apps/web/public/fonts`, loaded with `next/font/local` (#3).
 - API: `apps/web/src/lib/api.ts` typed client from `@ariforce/contracts`; mock mode via `@ariforce/contracts/mocks` (see `docs/API-CONVENTIONS.md`).
+
+> Known quirk: the shadcn CLI may write `import { cn } from 'cn'` in packages/ui. Change it to `'../lib/utils'` (typecheck catches it).
