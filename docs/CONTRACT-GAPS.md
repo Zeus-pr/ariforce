@@ -60,3 +60,23 @@ The web uses `POST /v1/auth/sign-up-request`, `GET /v1/signup-requests?status=`,
 - **No public territory list for the sign-up form.** The optional HQ (`territoryId`) picker shows only in mock mode; real mode sends `territoryId: null`. A public `GET /v1/auth/sign-up-options` (territories by name, no ids of people) would fix it. `managerId` is always null from the form for the same reason.
 - **Turnstile site key not exposed.** The web sends no `turnstileToken`; if `TURNSTILE_SECRET` is set on the API, real sign-ups get 403 CAPTCHA_FAILED until a `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is agreed.
 - **Approve dialog territory list** uses `GET /v1/territories` (the reviewer's scope); manager candidates come from the team tree. The API stays the authority (403/422).
+
+## 24. Global search: proposed `GET /v1/search?q=`
+
+The top-bar palette (Cmd/Ctrl+K) works today by fanning out to the list endpoints (`GET /v1/{doctors,chemists,stockists,users,products}?q=&limit=5`, up to 5 requests per keystroke after a 200 ms debounce). It sits behind `apps/web/src/lib/search/adapter.ts`; one endpoint would replace `fetchGroups` only.
+
+**Request:** `GET /v1/search?q=<2..100 chars>&limit=<1..10, default 5>&groups=doctors,chemists,stockists,users,products` (optional subset). Requires `me:read`; each group is gated by its own read permission (`masters:read`, `stockists:read`, `users:read`, `products:read`) and silently omitted when missing, never 403 for the whole call.
+
+**Scoping:** the same territory-subtree scoping as the list endpoints (users: own subtree; System Admin company-wide). No deleted rows. Matches name and code (users: name, employeeCode), case- and accent-insensitive, prefix matches ranked first.
+
+**Response 200:**
+```json
+{ "q": "sen",
+  "groups": [
+    { "group": "doctors", "total": 3, "items": [ { "id": "…", "name": "Dr. A. Sen", "code": "D-001", "subtitle": "General Physician · Kolkata" } ] },
+    { "group": "users", "total": 1, "items": [ { "id": "…", "name": "…", "code": "E-104", "subtitle": "Regional Business Manager" } ] }
+  ] }
+```
+Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the UI can say "All N matching". No emails or phone numbers in items. Errors: 422 (q too short or long), 429 RATE_LIMITED. Pages/navigation stay client-side (from the role's nav).
+
+**Also missing:** a products page in the web. Product hits open Sales by brand (`/sales`) for roles that can see it; roles without it (System Admin) get no Products group.

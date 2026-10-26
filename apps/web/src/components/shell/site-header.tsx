@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { Bell, LogOut, Search } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@ariforce/ui/components/avatar';
 import { Button } from '@ariforce/ui/components/button';
@@ -16,17 +17,30 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@ariforce/ui/components/dropdown-menu';
-import { Input } from '@ariforce/ui/components/input';
 import { SidebarTrigger } from '@ariforce/ui/components/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@ariforce/ui/components/tooltip';
 import { signOut } from '@/lib/mock-auth';
 import { ROLES, ROLE_LABEL, type Role } from '@/lib/roles';
+import { CommandPalette } from '@/components/search/command-palette';
 import { useRole } from './role-context';
 
 export function SiteHeader() {
   const { role, setRole, user, previewing } = useRole();
   const router = useRouter();
   const name = user?.name ?? '';
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [mac, setMac] = useState(true);
+  useEffect(() => {
+    setMac(/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent));
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const initials = name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
   const onSignOut = () => {
     signOut();
@@ -56,17 +70,36 @@ export function SiteHeader() {
           <TooltipContent>Toggle sidebar (Ctrl/⌘ B)</TooltipContent>
         </Tooltip>
 
-        <div className="relative ml-2 hidden max-w-sm flex-1 md:block">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search people, doctors, territories"
-            className="h-9 bg-background pl-8"
-            aria-label="Search"
-          />
-        </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.currentTarget.focus(); // Safari does not focus buttons on click; focus returns here on close
+            setSearchOpen(true);
+          }}
+          aria-haspopup="dialog"
+          aria-keyshortcuts={mac ? 'Meta+K' : 'Control+K'}
+          data-testid="search-trigger"
+          className="ml-2 hidden h-9 max-w-sm flex-1 items-center gap-2 rounded-md border border-input bg-background px-2.5 text-left text-sm text-muted-foreground shadow-xs transition-colors hover:border-ring/60 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none md:flex"
+        >
+          <Search className="size-4 shrink-0" aria-hidden />
+          <span className="flex-1 truncate">Search doctors, chemists, team…</span>
+          <kbd className="rounded border bg-muted px-1.5 py-0.5 font-sans text-[11px]">
+            {mac ? '⌘K' : 'Ctrl K'}
+          </kbd>
+        </button>
+        <CommandPalette role={role} open={searchOpen} onOpenChange={setSearchOpen} />
 
         <div className="ml-auto flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Search"
+            data-testid="search-trigger-mobile"
+            className="text-muted-foreground md:hidden"
+            onClick={() => setSearchOpen(true)}
+          >
+            <Search className="size-4" />
+          </Button>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" aria-label="Notifications" className="text-muted-foreground">

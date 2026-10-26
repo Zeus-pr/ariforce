@@ -19,6 +19,8 @@ export type TreeProps = {
   setExpanded: (s: Set<string>) => void;
   /** Lowercased search; matches are highlighted, non-matching branches hidden. */
   query: string;
+  /** Real mode: ids the server matched for `query` (GET /v1/users?q=). When set, it replaces local matching. */
+  matchIds?: Set<string> | null;
   onOpen: (e: Employee) => void;
 };
 
@@ -50,7 +52,18 @@ function Highlight({ text, q }: { text: string; q: string }) {
   );
 }
 
-export function OrgTree({ rootId, nodes, hqs, expanded, setExpanded, query, onOpen }: TreeProps) {
+export function OrgTree({
+  rootId,
+  nodes,
+  hqs,
+  expanded,
+  setExpanded,
+  query,
+  matchIds,
+  onOpen,
+}: TreeProps) {
+  const isHit = (e: Employee) =>
+    matchIds ? matchIds.has(e.id) : matches(e, e.hqId ? hqs.get(e.hqId) : undefined, query);
   const kids = useMemo(() => {
     const m = new Map<string, Employee[]>();
     for (const e of nodes) if (e.managerId) m.set(e.managerId, [...(m.get(e.managerId) ?? []), e]);
@@ -65,7 +78,7 @@ export function OrgTree({ rootId, nodes, hqs, expanded, setExpanded, query, onOp
     if (!query) return null;
     const keep = new Set<string>();
     for (const e of nodes)
-      if (matches(e, e.hqId ? hqs.get(e.hqId) : undefined, query))
+      if (isHit(e))
         for (
           let x: Employee | undefined = e;
           x && !keep.has(x.id);
@@ -73,7 +86,7 @@ export function OrgTree({ rootId, nodes, hqs, expanded, setExpanded, query, onOp
         )
           keep.add(x.id);
     return keep;
-  }, [query, nodes, hqs, byId]);
+  }, [query, nodes, hqs, byId, matchIds]);
 
   // Flattened visible rows in order, for keyboard navigation.
   const flat = useMemo(() => {
@@ -171,7 +184,7 @@ export function OrgTree({ rootId, nodes, hqs, expanded, setExpanded, query, onOp
         const hq = e.hqId ? hqs.get(e.hqId) : undefined;
         const c = kids.get(e.id) ?? [];
         const open = visibleIds ? true : expanded.has(e.id);
-        const hit = !!query && matches(e, hq, query);
+        const hit = !!query && isHit(e);
         return (
           <li
             key={e.id}

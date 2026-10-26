@@ -16,6 +16,7 @@ import {
 import { toast } from '@ariforce/ui/components/sonner';
 import { useRole } from '@/components/shell/role-context';
 import { ROLE_SHORT } from '@/lib/roles';
+import { REAL, api, apiReady } from '@/lib/api';
 import { teamAdapter } from '@/lib/team-adapter/adapter';
 import type { Employee, Hq, OrgTree } from '@/lib/team-adapter/types';
 import { EmployeeSheet, type SheetState } from './employee-sheet';
@@ -28,7 +29,33 @@ export function MyTeamView() {
   const [hqs, setHqs] = useState<Hq[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string> | null>(null);
+  // ?q= from the search palette prefills the box.
   const [q, setQ] = useState('');
+  useEffect(() => {
+    const v = new URLSearchParams(location.search).get('q');
+    if (v) setQ(v);
+  }, []);
+  // Real mode: search is server-side (GET /v1/users?q=, scoped to the caller), debounced, stale calls cancelled.
+  const [matchIds, setMatchIds] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    const term = q.trim();
+    if (!REAL || !term) {
+      setMatchIds(null);
+      return;
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(async () => {
+      await apiReady();
+      const r = await api
+        .GET('/v1/users', { params: { query: { q: term, limit: 100 } }, signal: ctrl.signal })
+        .catch(() => null);
+      if (!ctrl.signal.aborted) setMatchIds(new Set((r?.data?.items ?? []).map((u) => u.id)));
+    }, 250);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [q]);
   const [sheet, setSheet] = useState<SheetState>(null);
 
   const load = useCallback(async () => {
@@ -137,7 +164,7 @@ export function MyTeamView() {
               <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search name, code, HQ, city"
+                placeholder={REAL ? 'Search name or code' : 'Search name, code, HQ, city'}
                 aria-label="Search your team"
                 className="pl-8"
                 data-testid="team-search"
@@ -169,6 +196,7 @@ export function MyTeamView() {
             expanded={expanded}
             setExpanded={setExpanded}
             query={query}
+            matchIds={matchIds}
             onOpen={(e) => setSheet({ mode: 'edit', employee: e })}
           />
         </div>

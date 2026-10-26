@@ -39,3 +39,17 @@ Failsafes: the splash overlay never takes clicks and is hidden after 4s by CSS a
 ## Sign-up
 
 Mock (:3000): Sign in page > "Request an account" > submit (password at least 12 characters). Signing in with that email shows "Awaiting approval". Sign in with the System Admin demo account (or any ABM and above) > Administration > Sign-up requests to approve or reject. Four seeded pending requests use `@example.test` emails. Mock requests live in this browser only (`af:mock-signups`, password as SHA-256 hash). Real mode (:3200) calls the contract endpoints in docs/SIGNUP.md; a 403 ACCOUNT_PENDING_APPROVAL / ACCOUNT_REJECTED on any data call signs out to `/sign-in?account=pending|rejected`. Evidence: `e2e/signup-evidence.mjs` (mock) and `e2e/signup-real-evidence.mjs` (real build, every write intercepted, nothing reaches the DB).
+
+## Global search
+
+Top bar (or Cmd/Ctrl+K; search icon on phones) opens a command palette. Groups: Doctors, Chemists, Stockists, Team, Products, Pages, each up to 5, only for groups the role can read and open (`searchableGroups(role)` in `lib/search/adapter.ts`). Doctors open their profile (`/doctors?id=`); chemists, stockists and team open the list filtered by `?q=`. 200 ms debounce; each keystroke aborts the previous requests (the API client now keeps the caller's abort signal alongside its 8 s timeout). Evidence: `e2e/search-evidence.mjs`.
+
+### List search audit (Oct 27)
+
+| Page | Search | Real mode |
+| --- | --- | --- |
+| Doctors, Chemists, Stockists | DataTable + masterSource | Server: 300 ms debounce, `q` to API, back to page 1 (URL state) |
+| My Team | Tree search | **Fixed:** real mode now asks `GET /v1/users?q=` (250 ms debounce, abortable) and highlights those ids; mock still filters locally (name, code, HQ, city) |
+| Exceptions | memorySource | Client-side: no list endpoint (known gap) |
+| Sign-up requests | Status tabs | No `q` in the contract (#23) |
+| DCR product picker | Local filter | Picker inside a form, not a list page; products loaded once |
