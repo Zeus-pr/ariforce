@@ -1,18 +1,7 @@
 @import 'tailwindcss';
 
 /* shadcn/ui base tokens (neutral). AriForce Dev replaces these in #3 (design system). */
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-border: var(--border);
-  --color-muted-foreground: var(--muted-foreground);
-}
+@import '@ariforce/config/tailwind/theme.css';
 
 :root {
   --radius: 0.625rem;

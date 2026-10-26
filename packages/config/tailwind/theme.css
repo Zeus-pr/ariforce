@@ -1,0 +1,15 @@
+/* Shared Tailwind v4 "preset" (v4 is CSS-first, so the preset is a CSS file).
+   Imported by packages/ui/src/globals.css; AriForce Dev owns the real tokens (#3). */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-border: var(--border);
+  --color-muted-foreground: var(--muted-foreground);
+  --radius-lg: var(--radius);
+}

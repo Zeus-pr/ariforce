@@ -9,7 +9,8 @@
     "./tsconfig/nextjs.json": "./tsconfig/nextjs.json",
     "./tsconfig/library.json": "./tsconfig/library.json",
     "./eslint": "./eslint.js",
-    "./prettier": "./prettier.json"
+    "./prettier": "./prettier.json",
+    "./tailwind/theme.css": "./tailwind/theme.css"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
