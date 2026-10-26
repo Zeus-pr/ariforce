@@ -67,3 +67,10 @@ double-counted in the team row; joint-work calls count for the rep who owns the 
   A "verified call" share (visit with a geo capture within the geofence) can be added later.
 - All percentages are rounded to 1 decimal in SQL; the API returns numerator and denominator as well
   so the UI can recompute rollups exactly.
+
+## API implementation (`apps/api/src/kpis`)
+
+- `GET /v1/kpis` and `GET /v1/kpis/products` need `reports:read`. Default period is the current IST month; `from`/`to` limits day-grain KPIs (calls, DCR compliance/on-time, POB) exactly, month-grain KPIs (MSL, coverage, frequency, TP adherence, sales, product report) use every month overlapping the range.
+- Rollups: `self` (or `userId` in your team, else 403), `team` (you + reporting line, one summed row), `byUser`, `byTerritory` (children of `territoryId`, or your own territories), `company` (company-wide scope only, else 403). Rows sum numerators/denominators, never average percentages.
+- `workingDays` on each row = (non-Sunday calendar days from `from` to min(`to`, today)) × users − non-Sunday days filed as a leave/holiday DCR. It is the denominator of `dcr_compliance_pct`. There is no company holiday calendar yet; holidays count only when filed as a holiday DCR.
+- `pob_achievement_pct` is null until POB targets exist. `growth_vs_ly_pct` uses primary sales.

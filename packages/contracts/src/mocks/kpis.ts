@@ -1,4 +1,11 @@
-import { KPI_KEYS, KpiQuery, KpiReport, type KpiKey, ProductKpiReport } from '../schemas/kpis';
+import {
+  calendarWorkingDates,
+  KPI_KEYS,
+  KpiQuery,
+  KpiReport,
+  type KpiKey,
+  ProductKpiReport,
+} from '../schemas/kpis';
 import * as fx from './fixtures';
 
 type Unit = 'count' | 'ratio' | 'percent' | 'inr';
@@ -76,11 +83,18 @@ export function kpiReport(url: URL): KpiReport | { error: string } {
         return [{ userId: null, territoryId: null, label: fx.me.companyName }];
     }
   };
+  const per = period(q);
+  const today = new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10);
+  const wd = calendarWorkingDates(per.from, per.to < today ? per.to : today).length;
   return KpiReport.parse({
-    ...period(q),
+    ...per,
     rollup: q.rollup,
     generatedAt: new Date().toISOString(),
-    rows: rowsFor().map((r, i) => ({ ...r, metrics: keys.map((k) => metric(k, i)) })),
+    rows: rowsFor().map((r, i) => ({
+      ...r,
+      workingDays: wd,
+      metrics: keys.map((k) => metric(k, i)),
+    })),
   });
 }
 

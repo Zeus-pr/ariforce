@@ -461,7 +461,11 @@ export function buildOpenApiDocument(): OpenApiDocument {
           summary:
             'KPI report (docs/kpi-definitions.md). Requires reports:read; scoped to the reporting line',
           requestParams: { query: KpiQuery },
-          responses: { '200': { description: 'OK', ...json(KpiReport) } },
+          responses: {
+            '200': { description: 'OK', ...json(KpiReport) },
+            '403': err('rollup=company without company-wide scope, or userId outside your team'),
+            '422': err('Invalid query'),
+          },
         }),
       },
       '/v1/kpis/products': {
@@ -470,7 +474,11 @@ export function buildOpenApiDocument(): OpenApiDocument {
           operationId: 'getProductKpis',
           summary: 'Product-wise detailing, samples and POB',
           requestParams: { query: KpiQuery },
-          responses: { '200': { description: 'OK', ...json(ProductKpiReport) } },
+          responses: {
+            '200': { description: 'OK', ...json(ProductKpiReport) },
+            '403': err('userId outside your team'),
+            '422': err('Invalid query'),
+          },
         }),
       },
       '/v1/attendance': {

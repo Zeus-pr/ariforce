@@ -67,6 +67,10 @@ export const KpiRow = z
     userId: Id.nullable(),
     territoryId: Id.nullable(),
     label: z.string(),
+    workingDays: z.number().int().meta({
+      description:
+        'Expected working days in the period up to today (IST): calendar days - Sundays - days filed as leave/holiday, summed over the users in the row. Denominator of dcr_compliance_pct',
+    }),
     metrics: z.array(KpiValue),
   })
   .meta({ id: 'KpiRow' });
@@ -100,3 +104,13 @@ export const ProductKpiReport = z
 
 export type KpiReport = z.infer<typeof KpiReport>;
 export type ProductKpiReport = z.infer<typeof ProductKpiReport>;
+
+/** Non-Sunday dates in [from, to] (inclusive, YYYY-MM-DD), the calendar part of working days. */
+export function calendarWorkingDates(from: string, to: string): string[] {
+  const out: string[] = [];
+  for (let t = Date.parse(`${from}T00:00:00Z`); t <= Date.parse(`${to}T00:00:00Z`); t += 864e5) {
+    const d = new Date(t);
+    if (d.getUTCDay() !== 0) out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}

@@ -4989,7 +4989,17 @@
             }
           },
           "403": {
-            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "description": "rollup=company without company-wide scope, or userId outside your team",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid query",
             "content": {
               "application/json": {
                 "schema": {
@@ -5132,7 +5142,17 @@
             }
           },
           "403": {
-            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "description": "userId outside your team",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid query",
             "content": {
               "application/json": {
                 "schema": {
@@ -11566,6 +11586,12 @@
           "label": {
             "type": "string"
           },
+          "workingDays": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Expected working days in the period up to today (IST): calendar days - Sundays - days filed as leave/holiday, summed over the users in the row. Denominator of dcr_compliance_pct"
+          },
           "metrics": {
             "type": "array",
             "items": {
@@ -11577,6 +11603,7 @@
           "userId",
           "territoryId",
           "label",
+          "workingDays",
           "metrics"
         ],
         "additionalProperties": false

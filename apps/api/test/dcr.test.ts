@@ -8,6 +8,7 @@ import { monthDates } from '@ariforce/contracts';
 import { T } from '@ariforce/db';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
+import { ensureProduct } from './support';
 
 const OWNER = process.env.DIRECT_URL;
 const APP = process.env.DATABASE_URL;
@@ -28,7 +29,7 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = configureApp(mod.createNestApplication({ bodyParser: false }));
     await app.init();
-    for (const who of ['bm', 'abm']) {
+    for (const who of ['bm', 'abm', 'director']) {
       const res = await http()
         .post('/v1/auth/sign-in/email')
         .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
@@ -38,7 +39,7 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
     field = wt.find((w: { kind: string }) => w.kind === 'field').id;
     leave = wt.find((w: { kind: string }) => w.kind !== 'field').id;
     doctor = (await http().get('/v1/doctors?limit=1').set(as('bm'))).body.items[0].id;
-    product = (await http().get('/v1/products?limit=1').set(as('bm'))).body.items[0].id;
+    product = await ensureProduct(http, tok.bm!, tok.director!);
     // Approved tour plan for this month: field work in T.hq every day.
     const entry = { session: 'full', workTypeId: field, territoryIds: [T.hq] };
     const days = monthDates(M).map((date) => ({ date, entries: [entry] }));

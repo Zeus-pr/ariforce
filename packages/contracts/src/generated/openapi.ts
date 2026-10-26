@@ -2265,6 +2265,8 @@ export interface components {
       userId: string | null;
       territoryId: string | null;
       label: string;
+      /** @description Expected working days in the period up to today (IST): calendar days - Sundays - days filed as leave/holiday, summed over the users in the row. Denominator of dcr_compliance_pct */
+      workingDays: number;
       metrics: components['schemas']['KpiValue'][];
     };
     KpiValue: {
@@ -5733,8 +5735,17 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      /** @description rollup=company without company-wide scope, or userId outside your team */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Invalid query */
+      422: {
         headers: {
           [name: string]: unknown;
         };
@@ -5783,8 +5794,17 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      /** @description userId outside your team */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Invalid query */
+      422: {
         headers: {
           [name: string]: unknown;
         };
