@@ -2,10 +2,36 @@
   "$schema": "https://turborepo.com/schema.json",
   "globalEnv": ["NODE_ENV", "DATABASE_URL", "DATABASE_URL_APP"],
   "tasks": {
-    "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**", "!.next/cache/**"] },
-    "dev": { "dependsOn": ["^build"], "cache": false, "persistent": true },
-    "lint": { "dependsOn": ["^build"] },
-    "typecheck": { "dependsOn": ["^build"] },
-    "test": { "dependsOn": ["^build"], "env": ["DATABASE_URL", "DATABASE_URL_APP"] }
-  }
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^build"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "env": ["DATABASE_URL", "DATABASE_URL_APP"]
+    }
+  },
+  "globalPassThroughEnv": [
+    "TMPDIR",
+    "NODE_COMPILE_CACHE",
+    "XDG_CACHE_HOME",
+    "XDG_DATA_HOME",
+    "XDG_STATE_HOME",
+    "npm_config_cache",
+    "COREPACK_HOME",
+    "ARIFORCE_TEST_HOME",
+    "TURBO_TELEMETRY_DISABLED",
+    "NEXT_TELEMETRY_DISABLED"
+  ]
 }

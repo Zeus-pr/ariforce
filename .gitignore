@@ -9,3 +9,6 @@ next-env.d.ts
 !.env.example
 .DS_Store
 .pgdata
+
+# SSD-local test HOME / caches (scripts/vitest.sh)
+.cache/

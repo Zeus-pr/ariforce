@@ -39,13 +39,31 @@ export const ListQuery = z.object({
   updatedSince: Timestamp.optional().meta({
     description: 'Delta sync: only rows with updatedAt > this (includes tombstones)',
   }),
-  q: z.string().max(100).optional().meta({ description: 'Free-text search' }),
+  q: z.string().max(100).optional().meta({ description: 'Free-text search (name, code)' }),
+  sort: z.string().max(40).optional().meta({
+    description:
+      '`field` ascending or `-field` descending. Allowed fields are listed per endpoint; unknown fields return 422.',
+    example: '-updatedAt',
+  }),
+  includeTotal: z
+    .enum(['true', 'false'])
+    .optional()
+    .meta({ description: 'When `true`, the page carries `total` (ignored with updatedSince)' }),
 });
 export type ListQuery = z.infer<typeof ListQuery>;
 
 export function page<T extends z.ZodType>(item: T, id: string) {
   return z
-    .object({ items: z.array(item), nextCursor: z.string().nullable(), serverTime: Timestamp })
+    .object({
+      items: z.array(item),
+      nextCursor: z.string().nullable(),
+      serverTime: Timestamp,
+      total: z
+        .int()
+        .min(0)
+        .optional()
+        .meta({ description: 'Rows matching the filters; present when includeTotal=true' }),
+    })
     .meta({ id });
 }
 
@@ -57,3 +75,27 @@ export const IdempotencyKeyHeader = z.object({
     .optional()
     .meta({ description: 'Client-generated key; safe retries for POST' }),
 });
+
+export const DateOnly = z.iso.date().meta({ description: 'Calendar date (YYYY-MM-DD, IST)' });
+export const Month = z
+  .string()
+  .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+  .meta({ description: 'Month (YYYY-MM)', example: '2026-11' });
+export const GeoPoint = z
+  .object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) })
+  .meta({ id: 'GeoPoint' });
+
+/** Builds a list query with a sort allow-list and extra filters. */
+export function listQuery<S extends readonly [string, ...string[]], F extends z.ZodRawShape>(
+  sortFields: S,
+  filters: F,
+) {
+  const allowed = sortFields.flatMap((f) => [f, `-${f}`]) as [string, ...string[]];
+  return ListQuery.extend({
+    sort: z
+      .enum(allowed)
+      .optional()
+      .meta({ description: `Sort: ${sortFields.join(', ')} (prefix - for descending)` }),
+    ...filters,
+  });
+}

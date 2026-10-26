@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { Id, Syncable } from './common';
+import { Id, Syncable, listQuery } from './common';
 
 export const TerritoryLevel = z
   .enum(['national', 'zone', 'region', 'area', 'headquarter'])
@@ -17,3 +17,12 @@ export const Territory = Syncable.extend({
     .nullable(),
 }).meta({ id: 'Territory' });
 export type Territory = z.infer<typeof Territory>;
+
+export const TerritoryListQuery = listQuery(['code', 'name', 'level', 'updatedAt'] as const, {
+  level: TerritoryLevel.optional(),
+  parentId: Id.optional(),
+  ancestorId: Id.optional().meta({ description: 'Only descendants of this territory' }),
+  code: z.string().max(32).optional().meta({ description: 'Exact code match (import lookup)' }),
+}).meta({
+  description: 'Cursor-paginated; page through with nextCursor for more than 200 territories',
+});

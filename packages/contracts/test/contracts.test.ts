@@ -26,7 +26,7 @@ describe('contracts', () => {
   it('typed client talks to the MSW mock', async () => {
     const api = createApiClient(BASE);
     const me = await api.GET('/v1/me');
-    expect(me.data?.roles).toContain('admin');
+    expect(me.data?.roles).toContain('director');
     const list = await api.GET('/v1/doctors', { params: { query: { limit: 10 } } });
     expect(list.data?.items.length).toBeGreaterThan(0);
     const doc = list.data!.items[0]!;
