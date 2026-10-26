@@ -42,8 +42,8 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
     );
     await owner.query(
       `insert into territories (id, company_id, level, code, name, path)
-       values ($1, $2, 'national', 'IN', 'India', $1) on conflict do nothing`,
-      [B_TERR, B],
+       values ($1, $2, 'national', 'IN', 'India', $3) on conflict do nothing`,
+      [B_TERR, B, B_TERR],
     );
     await owner.query(
       `insert into doctors (id, company_id, territory_id, name) values ($1, $2, $3, 'Dr. Other')
