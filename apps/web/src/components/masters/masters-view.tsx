@@ -7,7 +7,6 @@ import Link from 'next/link';
 import { Suspense, useMemo, useState } from 'react';
 import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
-import { cn } from '@ariforce/ui/lib/utils';
 import { DataTable } from '@/components/data-table/data-table';
 import type { Column } from '@/components/data-table/types';
 import { MASTERS, type MasterKind, type MasterRow } from './config';
@@ -117,7 +116,7 @@ function Inner({ kind }: { kind: MasterKind }) {
   const canWrite = canWriteMasters(role);
   const importLink = (
     <Button variant="outline" asChild>
-      <Link href={`/masters/${kind}/import`} data-testid="master-import">
+      <Link href={`/${kind}/import`} data-testid="master-import">
         <FileSpreadsheet /> Import
       </Link>
     </Button>
@@ -141,7 +140,7 @@ function Inner({ kind }: { kind: MasterKind }) {
             <p>No {cfg.title.toLowerCase()} yet.</p>
             {canWrite && (
               <Button asChild>
-                <Link href={`/masters/${kind}/import`}>
+                <Link href={`/${kind}/import`}>
                   <FileSpreadsheet /> Import {cfg.title.toLowerCase()}
                 </Link>
               </Button>
@@ -174,26 +173,6 @@ function Inner({ kind }: { kind: MasterKind }) {
         onSaved={() => setReload((n) => n + 1)}
       />
     </>
-  );
-}
-
-export function MastersTabs({ kind }: { kind: MasterKind }) {
-  return (
-    <nav aria-label="Masters" className="-mx-1 flex gap-1 overflow-x-auto px-1">
-      {(Object.keys(MASTERS) as MasterKind[]).map((k) => (
-        <Link
-          key={k}
-          href={`/masters/${k}`}
-          aria-current={k === kind ? 'page' : undefined}
-          className={cn(
-            'rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground',
-            k === kind && 'bg-secondary text-foreground',
-          )}
-        >
-          {MASTERS[k].title}
-        </Link>
-      ))}
-    </nav>
   );
 }
 

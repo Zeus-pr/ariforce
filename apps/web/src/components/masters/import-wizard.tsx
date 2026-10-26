@@ -549,7 +549,7 @@ function ServerImport({
       <div className="flex flex-wrap gap-2">
         {saved ? (
           <Button asChild>
-            <Link href={`/masters/${kind}`}>Back to {cfg.title.toLowerCase()}</Link>
+            <Link href={`/${kind}`}>Back to {cfg.title.toLowerCase()}</Link>
           </Button>
         ) : (
           <>
@@ -576,7 +576,7 @@ export function ImportWizard({ kind }: { kind: MasterKind }) {
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 sm:p-6">
       <div>
         <Button variant="ghost" size="sm" asChild className="-ml-2 text-muted-foreground">
-          <Link href={`/masters/${kind}`}>
+          <Link href={`/${kind}`}>
             <ArrowLeft /> {cfg.title}
           </Link>
         </Button>

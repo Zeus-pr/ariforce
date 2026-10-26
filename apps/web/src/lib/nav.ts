@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
-import { UserPlus,
+import {
+  UserPlus,
   CalendarRange,
   Pill,
   Package,
@@ -11,7 +12,6 @@ import { UserPlus,
   ChartNoAxesColumn,
   CircleAlert,
   ClipboardList,
-  Database,
   LayoutDashboard,
   MapPin,
 } from 'lucide-react';
@@ -81,23 +81,23 @@ export const NAV: NavItem[] = [
     title: 'Doctors',
     href: '/doctors',
     icon: Stethoscope,
-    roles: SALES,
+    roles: [...ROLES],
     section: 'business',
   },
   {
     slug: 'chemists',
     title: 'Chemists',
-    href: '/masters/chemists',
+    href: '/chemists',
     icon: Pill,
-    roles: SALES,
+    roles: [...ROLES],
     section: 'business',
   },
   {
     slug: 'stockists',
     title: 'Stockists',
-    href: '/masters/stockists',
+    href: '/stockists',
     icon: Package,
-    roles: SALES,
+    roles: [...ROLES],
     section: 'business',
   },
   {
@@ -149,14 +149,6 @@ export const NAV: NavItem[] = [
     section: 'admin',
   },
   {
-    slug: 'masters',
-    title: 'Master Data',
-    href: '/masters',
-    icon: Database,
-    roles: ['system_admin'],
-    section: 'admin',
-  },
-  {
     slug: 'sign-up-requests',
     title: 'Sign-up requests',
     href: '/sign-up-requests',
@@ -177,12 +169,8 @@ export function homeFor(role: Role): string {
  * Longest prefix wins.
  */
 export const GUARDS: { href: string; roles: readonly Role[] }[] = [
-  // Masters lists are readable by every role (System Admin reaches them from Administration).
-  ...NAV.filter((i) => !i.href.startsWith('/masters/')),
-  ...(['doctors', 'chemists', 'stockists'] as const).map((k) => ({
-    href: `/masters/${k}`,
-    roles: ROLES,
-  })),
+  // Doctors, Chemists and Stockists are readable by every role; their /{kind}/import needs a writer.
+  ...NAV,
   ...WRITE_ROUTES,
 ];
 

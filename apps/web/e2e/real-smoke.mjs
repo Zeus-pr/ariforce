@@ -25,9 +25,9 @@ for (const apiDown of [false, true]) {
   let navs = 0;
   page.on('framenavigated', (f) => f === page.mainFrame() && navs++);
 
-  await page.goto(`${BASE}/masters/doctors`, { waitUntil: 'load' });
+  await page.goto(`${BASE}/doctors`, { waitUntil: 'load' });
   await page.waitForURL(/\/sign-in/, { timeout: 10000 }).catch(() => {});
-  check(/\/sign-in\?next=%2Fmasters%2Fdoctors/.test(page.url()), `${tag}: protected page → sign-in (${new URL(page.url()).pathname})`);
+  check(/\/sign-in\?next=%2Fdoctors/.test(page.url()), `${tag}: protected page → sign-in (${new URL(page.url()).pathname})`);
   await page.waitForTimeout(4500);
   check(navs <= 3, `${tag}: no redirect loop (${navs} navigations)`);
   const splash = await page.evaluate(() => document.documentElement.classList.contains('af-splash'));

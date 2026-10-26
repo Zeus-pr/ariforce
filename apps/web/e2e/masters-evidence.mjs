@@ -37,17 +37,17 @@ const rowSel = (view) => (view === 'mobile' ? '[data-testid=card-row]' : '[data-
 for (const view of ['desktop', 'mobile'])
   for (const theme of ['light']) {
     const { ctx, page } = await open(view, theme);
-    await page.goto(`${BASE}/masters/doctors`, { waitUntil: 'networkidle' });
+    await page.goto(`${BASE}/doctors`, { waitUntil: 'networkidle' });
     await page.locator(rowSel(view)).first().waitFor({ timeout: 15000 });
     check(await page.locator(rowSel(view)).filter({ hasText: 'Dr. A. Sen' }).first().isVisible(), `${view}/${theme}: doctors list shows contract fixture`);
     await page.screenshot({ path: path.join(OUT, `doctors-${view}.png`) });
     const status = await page.getByTestId('page-status').first().textContent();
     check(/of\s*[\d,]+/.test(status ?? ''), `${view}: pager shows a real total ("${status}")`);
     if (view === 'desktop') {
-      await page.getByRole('button', { name: /^Name/ }).first().click();
+      await page.getByRole('button', { name: /^(Name|Doctor)/ }).first().click();
       await page.waitForURL(/sort=name/, { timeout: 5000 });
       check(true, `${view}: sort by name goes to the URL/server`);
-      await page.goto(`${BASE}/masters/doctors`, { waitUntil: 'networkidle' });
+      await page.goto(`${BASE}/doctors`, { waitUntil: 'networkidle' });
       await page.locator(rowSel(view)).first().waitFor({ timeout: 15000 });
     }
     if (theme === 'light') {
@@ -73,11 +73,12 @@ for (const view of ['desktop', 'mobile'])
       check(await page.locator(rowSel(view)).filter({ hasText: `Dr. Test ${view}` }).first().isVisible(), `${view}: created row appears after refetch`);
       // Edit
       await page.locator(rowSel(view)).filter({ hasText: 'Dr. A. Sen' }).first().click();
+      await page.getByTestId('doctor-edit').click();
       await page.locator('#f-qualification').fill('MBBS, MD (Medicine)');
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await page.getByText('Saved Dr. A. Sen').waitFor({ timeout: 5000 });
       check(true, `${view}: edit saves with version (PATCH)`);
-      await page.goto(`${BASE}/masters/chemists`, { waitUntil: 'networkidle' });
+      await page.goto(`${BASE}/chemists`, { waitUntil: 'networkidle' });
       await page.locator(rowSel(view)).first().waitFor({ timeout: 15000 });
       check(await page.locator(rowSel(view)).filter({ hasText: 'Sen Medical Hall' }).first().isVisible(), `${view}: chemists tab`);
     }
@@ -106,7 +107,7 @@ for (const view of ['desktop', 'mobile']) {
       json: { items: Array.from({ length: limit }, (_, i) => item(start + i + 1)), nextCursor: start ? null : 'c2', serverTime: new Date().toISOString() },
     });
   });
-  await page.goto(`${BASE}/masters/doctors`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/doctors`, { waitUntil: 'networkidle' });
   await page.locator(rowSel(view)).first().waitFor();
   check(/limit=25/.test(seen[0] ?? '') && !/cursor/.test(seen[0]), `${view}: first request ${seen[0]}`);
   check((await page.locator(rowSel(view)).count()) === 25, `${view}: renders server page of 25`);
@@ -130,7 +131,7 @@ for (const view of ['desktop', 'mobile']) {
 // 3. Import wizard (CSV): auto-match, client validation, server dry run, then save.
 for (const view of ['desktop', 'mobile']) {
   const { ctx, page } = await open(view, 'light');
-  await page.goto(`${BASE}/masters/doctors/import`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/doctors/import`, { waitUntil: 'networkidle' });
   const csv = [
     'Doctor Name,Speciality,Territory Code,PIN,Mobile',
     'Dr. Valid One,Cardiologist,KOL-N,700001,9830000000',

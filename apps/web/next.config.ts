@@ -6,6 +6,18 @@ const real = process.env.NEXT_PUBLIC_API_MODE === 'real';
 
 const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? (real ? '.next-real' : '.next'),
+  // Doctors, Chemists and Stockists are standalone pages; old /masters links keep working (query kept).
+  async redirects() {
+    return [
+      { source: '/masters', destination: '/doctors', permanent: false },
+      { source: '/masters/:kind(doctors|chemists|stockists)', destination: '/:kind', permanent: false },
+      {
+        source: '/masters/:kind(doctors|chemists|stockists)/import',
+        destination: '/:kind/import',
+        permanent: false,
+      },
+    ];
+  },
   transpilePackages: ['@ariforce/ui', '@ariforce/contracts'],
 };
 

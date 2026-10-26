@@ -16,7 +16,7 @@ export const MASTER_WRITERS: Role[] = ROLES.filter(canWriteMasters);
 
 /** Write-only routes and who may open them (used by the route guard and the pre-paint script). */
 export const WRITE_ROUTES: { href: string; roles: Role[] }[] = MASTER_KINDS.map((k) => ({
-  href: `/masters/${k}/import`,
+  href: `/${k}/import`,
   roles: MASTER_WRITERS,
 }));
 

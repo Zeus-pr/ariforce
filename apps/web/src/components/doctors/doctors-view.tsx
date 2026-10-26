@@ -2,7 +2,9 @@
 
 import { PlaceholderTag } from '@/components/masters/placeholder';
 
-import { ArrowLeft, FileSpreadsheet, MapPin, Pencil, Phone } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, MapPin, Pencil, Phone, Plus } from 'lucide-react';
+import { RecordSheet } from '@/components/masters/record-sheet';
+import type { MasterRow } from '@/components/masters/config';
 import { Button } from '@ariforce/ui/components/button';
 import { useRole } from '@/components/shell/role-context';
 import { canWriteMasters } from '@/lib/permissions';
@@ -76,33 +78,43 @@ function DoctorList() {
     { id: 'city', header: 'City', mobile: 'secondary', cell: (d) => d.city ?? '—' },
   ];
   const canWrite = canWriteMasters(role);
+  const [adding, setAdding] = useState(false);
+  const [reload, setReload] = useState(0);
   if (!lk.ready) return <div className="h-96" aria-busy="true" />;
   return (
-    <DataTable
-      label="doctors"
-      source={source as never}
-      columns={columns}
-      rowKey={(d) => d.id}
-      onRowClick={(d) => router.push(`/doctors?id=${d.id}`)}
-      searchPlaceholder="Search doctors"
-      actions={
-        canWrite ? (
-          <>
-            <Button variant="outline" asChild>
-              <Link href="/masters/doctors/import" data-testid="master-import">
-                <FileSpreadsheet /> Import
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link href="/masters/doctors" data-testid="manage-doctors">
-                <Pencil /> Add or edit
-              </Link>
-            </Button>
-          </>
-        ) : undefined
-      }
-      empty={<p className="py-10 text-center text-sm text-muted-foreground">No doctors match.</p>}
-    />
+    <>
+      <RecordSheet
+        kind="doctors"
+        open={adding}
+        row={null}
+        onOpenChange={setAdding}
+        onSaved={() => setReload((n) => n + 1)}
+      />
+      <DataTable
+        reloadKey={reload}
+        label="doctors"
+        source={source as never}
+        columns={columns}
+        rowKey={(d) => d.id}
+        onRowClick={(d) => router.push(`/doctors?id=${d.id}`)}
+        searchPlaceholder="Search doctors"
+        actions={
+          canWrite ? (
+            <>
+              <Button variant="outline" asChild>
+                <Link href="/doctors/import" data-testid="master-import">
+                  <FileSpreadsheet /> Import
+                </Link>
+              </Button>
+              <Button data-testid="master-add" onClick={() => setAdding(true)}>
+                <Plus /> Add doctor
+              </Button>
+            </>
+          ) : undefined
+        }
+        empty={<p className="py-10 text-center text-sm text-muted-foreground">No doctors match.</p>}
+      />
+    </>
   );
 }
 
@@ -118,6 +130,9 @@ function Doctor360({ id }: { id: string }) {
   const reduced = useReducedMotion();
   const [doc, setDoc] = useState<Doctor | null | undefined>(undefined);
   const [real, setReal] = useState<Visit[] | null>(null);
+  const { role } = useRole();
+  const [editing, setEditing] = useState(false);
+  const [rev, setRev] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -140,7 +155,7 @@ function Doctor360({ id }: { id: string }) {
     return () => {
       live = false;
     };
-  }, [id]);
+  }, [id, rev]);
 
   const category = lk.categories.find((c) => c.id === doc?.categoryId);
   const target = category?.visitsPerMonth ?? 0;
@@ -182,6 +197,13 @@ function Doctor360({ id }: { id: string }) {
   const last = visits[0];
   return (
     <div className="flex flex-col gap-5" data-testid="doctor-360">
+      <RecordSheet
+        kind="doctors"
+        open={editing}
+        row={doc as unknown as MasterRow}
+        onOpenChange={setEditing}
+        onSaved={() => setRev((n) => n + 1)}
+      />
       <Link
         href="/doctors"
         className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -195,6 +217,17 @@ function Doctor360({ id }: { id: string }) {
             {doc.name}
           </h2>
           {category && <Badge variant="secondary">{category.name}</Badge>}
+          {canWriteMasters(role) && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto"
+              data-testid="doctor-edit"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil /> Edit
+            </Button>
+          )}
           {isSample && (
             <Badge
               variant="outline"
