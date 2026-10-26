@@ -139,3 +139,12 @@ The server enforces every rule in `apps/api/src/team/team.service.ts`, and the m
 - `designation` is free text from HR and has no effect on permissions.
 - No payroll or HR-sensitive data (PAN, bank, CTC, nominee) is stored in app tables or contracts.
 - Chemists are an independent master with no doctor link, and the chemist import does not need one.
+
+### System admin creates directors and other employees (2026-10-27)
+
+- A `system_admin` holding `users:write` may create (`POST /v1/employees`), edit and re-invite **any hierarchy role, including `director`**. Every action is audit-logged (`employee.created`, `employee.invited`).
+- The system admin is outside the reporting line, so no manager is set by default. A `director` never has a manager: passing `managerId` for a director returns 422.
+- Other managers keep the strict rule: they can only create roles below their own, inside their own subtree.
+- `POST /v1/employees/{id}/invite` also works for an existing employee row that has no login yet (for example imported users). The row goes back to `invited` until the invite is accepted. Users who already have a login get 409.
+- `INVITE_RETURN_LINK=true` (read per request; restart the API after changing it) returns `inviteUrl` = `<WEB_ORIGIN>/invite?token=...`. The web app has no `/invite` page yet; accept with `POST /v1/invites/accept {token,password}`.
+- CLI: `pnpm -F @ariforce/api admin:create-first --company <slug> --role <key> --email ... --name ... [--territory <code>]` creates or links a user with that role and sets the password (hidden prompt or `ARIFORCE_ADMIN_PASSWORD`). It is idempotent and never grants `system_admin` unless `--role system_admin` (the default) is used.
