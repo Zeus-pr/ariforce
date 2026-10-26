@@ -5,6 +5,12 @@ import { authAccount, authSession, authUser, authVerification, type Db } from '@
 import type { AuditService } from '../common/audit.service';
 
 export const AUTH_BASE_PATH = '/v1/auth';
+/** Browser origins allowed for CORS (with credentials) and better-auth: WEB_ORIGIN, comma-separated. */
+export const webOrigins = () =>
+  (process.env.WEB_ORIGIN ?? 'http://localhost:3000,http://localhost:3200')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
 
 /**
  * better-auth: email + password, DB sessions (revocable), bearer tokens for mobile.
@@ -19,7 +25,7 @@ export function createAuth(db: Db, audit: AuditService) {
     basePath: AUTH_BASE_PATH,
     baseURL: process.env.BETTER_AUTH_URL ?? 'http://localhost:4000',
     secret: secret ?? 'dev-only-insecure-secret-change-me-0000000000',
-    trustedOrigins: (process.env.WEB_ORIGIN ?? 'http://localhost:3000').split(','),
+    trustedOrigins: webOrigins(),
     database: drizzleAdapter(db, {
       provider: 'pg',
       schema: {

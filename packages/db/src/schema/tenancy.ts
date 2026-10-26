@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  date,
   boolean,
   geometry,
   index,
@@ -8,6 +9,7 @@ import {
   pgTable,
   primaryKey,
   text,
+  timestamp,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
@@ -84,6 +86,10 @@ export const users = pgTable(
     name: text('name').notNull(),
     phone: text('phone'),
     employeeCode: text('employee_code'),
+    /** Free-text job title from HR (e.g. "Distribution Head"); independent of the RBAC role. */
+    designation: text('designation'),
+    /** Date of joining (from HR import); nullable. */
+    joinedOn: date('joined_on'),
     /** Reporting manager (people hierarchy; may differ from territory hierarchy). */
     managerId: uuid('manager_id'),
     status: userStatus('status').notNull().default('active'),
@@ -130,6 +136,8 @@ export const territories = pgTable(
     code: text('code').notNull(),
     name: text('name').notNull(),
     path: text('path').notNull(),
+    city: text('city'),
+    state: text('state'),
     centroid: geometry('centroid', { type: 'point', mode: 'xy', srid: 4326 }),
     boundary: multiPolygon('boundary'),
     ...syncCols(),
@@ -156,4 +164,29 @@ export const userTerritories = pgTable(
     createdAt: syncCols().createdAt,
   },
   (t) => [primaryKey({ columns: [t.userId, t.territoryId] })],
+);
+
+/**
+ * Single-use employee invites. Only the SHA-256 of the token is stored; the token itself travels in
+ * the invite link. Accepting creates the auth identity and activates the user.
+ */
+export const userInvites = pgTable(
+  'user_invites',
+  {
+    id: pk(),
+    companyId: companyId().references(() => companies.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    tokenHash: text('token_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdBy: uuid('created_by'),
+    ...syncCols(),
+  },
+  (t) => [
+    uniqueIndex('user_invites_token_uq').on(t.tokenHash),
+    index('user_invites_user_idx').on(t.companyId, t.userId),
+  ],
 );

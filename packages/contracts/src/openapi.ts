@@ -68,6 +68,17 @@ import {
   UploadUrlRequest,
   UploadUrlResponse,
 } from './schemas/files';
+import {
+  EmployeeCreate,
+  EmployeeCreated,
+  EmployeeUpdate,
+  Invite,
+  InviteAccept,
+  InviteAccepted,
+  ManagerAssign,
+  TeamNode,
+  TeamTree,
+} from './schemas/team';
 import { ConsentGrant, ConsentRecord, Device, DeviceEnrol } from './schemas/devices';
 
 const json = <T extends z.ZodType>(schema: T) => ({ content: { 'application/json': { schema } } });
@@ -652,6 +663,92 @@ export function buildOpenApiDocument(): OpenApiDocument {
           requestParams: { query: ApprovalListQuery },
           responses: { '200': { description: 'Page', ...json(page(Approval, 'ApprovalPage')) } },
         }),
+      },
+      '/v1/team': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'getTeam',
+          summary:
+            'The caller and their reporting-line subtree (flat, depth-first) plus unassigned people in their territory scope',
+          responses: { '200': { description: 'OK', ...json(TeamTree) } },
+        }),
+      },
+      '/v1/team/{id}/manager': {
+        post: op({
+          tags: ['Team'],
+          operationId: 'assignManager',
+          summary:
+            'Set the manager of someone in your subtree or unassigned list; the new manager must be you or in your subtree and rank above them',
+          requestParams: { path: IdParam },
+          requestBody: json(ManagerAssign),
+          responses: {
+            '200': { description: 'Assigned', ...json(TeamNode) },
+            '403': err('Target or manager outside your scope, or rank rule broken'),
+            '404': err('Not found'),
+            '409': err('Would create a reporting cycle'),
+          },
+        }),
+      },
+      '/v1/employees': {
+        post: op({
+          tags: ['Team'],
+          operationId: 'createEmployee',
+          summary:
+            'ABM and above: add an employee with a role strictly below yours, territory in your subtree; creates a single-use invite',
+          requestBody: json(EmployeeCreate),
+          responses: {
+            '201': { description: 'Created (status invited)', ...json(EmployeeCreated) },
+            '403': err('Privilege escalation or outside your scope'),
+            '409': err('Email or employee code already exists'),
+            '422': err('Validation failed'),
+          },
+        }),
+      },
+      '/v1/employees/{id}': {
+        patch: op({
+          tags: ['Team'],
+          operationId: 'updateEmployee',
+          summary:
+            'Edit, move, deactivate or reactivate someone below you in your subtree (never yourself or anyone at/above your level)',
+          requestParams: { path: IdParam },
+          requestBody: json(EmployeeUpdate),
+          responses: {
+            '200': { description: 'Saved', ...json(TeamNode) },
+            '403': err('Privilege escalation or outside your scope'),
+            '404': err('Not found'),
+            '409': err('Version conflict or reporting cycle'),
+          },
+        }),
+      },
+      '/v1/employees/{id}/invite': {
+        post: op({
+          tags: ['Team'],
+          operationId: 'reinviteEmployee',
+          summary: 'Issue a new invite (revokes earlier unused ones) for an invited employee',
+          requestParams: { path: IdParam },
+          responses: {
+            '201': { description: 'Invite issued', ...json(Invite) },
+            '403': err('Outside your scope'),
+            '404': err('Not found'),
+            '409': err('Employee already active'),
+          },
+        }),
+      },
+      '/v1/invites/accept': {
+        post: {
+          tags: ['Team'],
+          operationId: 'acceptInvite',
+          summary:
+            'Public. Single-use, expiring token from the invite link: creates the sign-in identity and activates the employee',
+          requestBody: json(InviteAccept),
+          responses: {
+            '200': {
+              description: 'Activated; sign in with email + password',
+              ...json(InviteAccepted),
+            },
+            '404': err('Invalid, used, revoked or expired invite'),
+          },
+        },
       },
       '/v1/approvals/{id}/decision': {
         post: op({

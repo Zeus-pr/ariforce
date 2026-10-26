@@ -2,7 +2,7 @@ import { VersioningType, type INestApplication } from '@nestjs/common';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import { toNodeHandler } from 'better-auth/node';
 import express, { type Express } from 'express';
-import { AUTH_BASE_PATH } from './auth/auth';
+import { AUTH_BASE_PATH, webOrigins } from './auth/auth';
 import { AuthService } from './auth/auth.service';
 
 /**
@@ -12,12 +12,10 @@ import { AuthService } from './auth/auth.service';
 export function configureApp(app: INestApplication) {
   const server = app.getHttpAdapter().getInstance() as Express;
   server.set('trust proxy', process.env.TRUST_PROXY ?? 'loopback');
+  // CORS must run before the better-auth handler so sign-in/out also get the headers.
+  app.enableCors({ origin: webOrigins(), credentials: true });
   server.all(`${AUTH_BASE_PATH}/*splat`, toNodeHandler(app.get(AuthService).auth));
   app.use(express.json({ limit: '1mb' }));
-  app.enableCors({
-    origin: (process.env.WEB_ORIGIN ?? 'http://localhost:3000').split(','),
-    credentials: true,
-  });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
   app.use('/docs', apiReference({ url: '/openapi.json', theme: 'default' }));
   app.enableShutdownHooks();

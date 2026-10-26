@@ -858,6 +858,108 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/team': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The caller and their reporting-line subtree (flat, depth-first) plus unassigned people in their territory scope */
+    get: operations['getTeam'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/team/{id}/manager': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Set the manager of someone in your subtree or unassigned list; the new manager must be you or in your subtree and rank above them */
+    post: operations['assignManager'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/employees': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** ABM and above: add an employee with a role strictly below yours, territory in your subtree; creates a single-use invite */
+    post: operations['createEmployee'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/employees/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Edit, move, deactivate or reactivate someone below you in your subtree (never yourself or anyone at/above your level) */
+    patch: operations['updateEmployee'];
+    trace?: never;
+  };
+  '/v1/employees/{id}/invite': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Issue a new invite (revokes earlier unused ones) for an invited employee */
+    post: operations['reinviteEmployee'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/invites/accept': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Public. Single-use, expiring token from the invite link: creates the sign-in identity and activates the employee */
+    post: operations['acceptInvite'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/approvals/{id}/decision': {
     parameters: {
       query?: never;
@@ -1380,6 +1482,60 @@ export interface components {
        */
       date: string;
       reason: string;
+    };
+    ManagerAssign: {
+      /**
+       * Format: uuid
+       * @description The caller or someone in their subtree
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      managerId: string;
+    };
+    EmployeeCreate: {
+      name: string;
+      /** Format: email */
+      email: string;
+      /** @default null */
+      phone: string | null;
+      /** @default null */
+      employeeCode: string | null;
+      /** @default null */
+      designation: string | null;
+      /** @default null */
+      joinedOn: string | null;
+      /** @description Must be a hierarchy role strictly below the caller's */
+      role: components['schemas']['RoleKey'];
+      /** @description Within the caller's territory subtree */
+      territoryIds: string[];
+      /**
+       * @description Default = caller; must be the caller or in their subtree
+       * @default null
+       */
+      managerId: string | null;
+    };
+    EmployeeUpdate: {
+      version: number;
+      name?: string;
+      phone?: string | null;
+      designation?: string | null;
+      joinedOn?: string | null;
+      role?: components['schemas']['RoleKey'];
+      territoryIds?: string[];
+      /**
+       * Format: uuid
+       * @description Move within the subtree
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      managerId?: string;
+      /**
+       * @description suspended = deactivate (sign-in blocked); active = reactivate
+       * @enum {string}
+       */
+      status?: 'active' | 'suspended';
+    };
+    InviteAccept: {
+      token: string;
+      password: string;
     };
     ApprovalDecision: {
       /** @enum {string} */
@@ -2163,6 +2319,9 @@ export interface components {
       name: string;
       email: string;
       employeeCode: string | null;
+      phone?: string | null;
+      designation?: string | null;
+      joinedOn?: string | null;
       roles: components['schemas']['RoleKey'][];
       managerId: string | null;
       territoryIds: string[];
@@ -2612,6 +2771,95 @@ export interface components {
       serverTime: string;
       /** @description Rows matching the filters; present when includeTotal=true */
       total?: number;
+    };
+    TeamTree: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      rootId: string;
+      /** @description The caller and their reporting-line subtree, depth-first; build the tree from managerId */
+      nodes: components['schemas']['TeamNode'][];
+      /** @description Hierarchy users with no manager (and not the top), whose territory lies in the caller scope; managers (rank >= 2) only */
+      unassigned: components['schemas']['TeamNode'][];
+    };
+    TeamNode: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      /** @description Highest role; null if none assigned */
+      role: components['schemas']['RoleKey'] | null;
+      roles: components['schemas']['RoleKey'][];
+      /** @description Free-text HR title, not a role */
+      designation: string | null;
+      employeeCode: string | null;
+      /** @description Date of joining */
+      joinedOn: string | null;
+      phone: string | null;
+      email: string;
+      status: components['schemas']['UserStatus'];
+      managerId: string | null;
+      /** @description 0 = the caller (root); unassigned users have depth -1 */
+      depth: number;
+      territories: components['schemas']['TeamTerritory'][];
+      directReportCount: number;
+      version: number;
+    };
+    /** @enum {string} */
+    UserStatus: 'invited' | 'active' | 'suspended';
+    TeamTerritory: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      code: string;
+      level: string;
+      city: string | null;
+      state: string | null;
+      lat: number | null;
+      lng: number | null;
+    };
+    EmployeeCreated: {
+      employee: components['schemas']['TeamNode'];
+      invite: components['schemas']['Invite'];
+    };
+    Invite: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      expiresAt: string;
+      /** @description Only returned when the server runs with INVITE_RETURN_LINK=true (dev/test); otherwise delivered by the mailer */
+      inviteUrl: string | null;
+    };
+    InviteAccepted: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      email: string;
     };
     GeoPointOutput: {
       lat: number;
@@ -6669,6 +6917,322 @@ export interface operations {
       };
       /** @description Signed in but not allowed (role, hierarchy or tenant) */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getTeam: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamTree'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  assignManager: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ManagerAssign'];
+      };
+    };
+    responses: {
+      /** @description Assigned */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamNode'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Target or manager outside your scope, or rank rule broken */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Would create a reporting cycle */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createEmployee: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['EmployeeCreate'];
+      };
+    };
+    responses: {
+      /** @description Created (status invited) */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EmployeeCreated'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Privilege escalation or outside your scope */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Email or employee code already exists */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  updateEmployee: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['EmployeeUpdate'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamNode'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Privilege escalation or outside your scope */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Version conflict or reporting cycle */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  reinviteEmployee: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Invite issued */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Invite'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Outside your scope */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Employee already active */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  acceptInvite: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['InviteAccept'];
+      };
+    };
+    responses: {
+      /** @description Activated; sign in with email + password */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['InviteAccepted'];
+        };
+      };
+      /** @description Invalid, used, revoked or expired invite */
+      404: {
         headers: {
           [name: string]: unknown;
         };

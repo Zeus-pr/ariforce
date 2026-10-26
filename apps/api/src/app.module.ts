@@ -8,6 +8,7 @@ import { KpisModule } from './kpis/kpis.module';
 import { FieldModule } from './field/field.module';
 import { MastersModule } from './masters/masters.module';
 import { PlansModule } from './plans/plans.module';
+import { TeamModule } from './team/team.module';
 import { MeController } from './me/me.controller';
 import { OpenApiController } from './openapi/openapi.controller';
 
@@ -21,6 +22,7 @@ import { OpenApiController } from './openapi/openapi.controller';
     PlansModule,
     DcrModule,
     KpisModule,
+    TeamModule,
   ],
   controllers: [HealthController, OpenApiController, MeController],
 })
