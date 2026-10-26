@@ -134,6 +134,13 @@
       "when": 1793047950704,
       "tag": "0018_masters_write_rbm_up",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793048427973,
+      "tag": "0019_role_permissions_baseline",
+      "breakpoints": true
     }
   ]
 }

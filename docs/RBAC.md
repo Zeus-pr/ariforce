@@ -55,6 +55,10 @@ Territory levels are a separate, geographic hierarchy (`national > zone > region
 
 Field-added doctors are `pending` unless created by a director or system admin.
 
+### Baseline sync (migration 0019)
+
+`packages/db/migrations/0019_role_permissions_baseline.sql` SETs the full array above for every role in every company (re-run converges, only `roles.permissions` changes). It is generated from `DEFAULT_ROLE_PERMISSIONS` by `pnpm -F @ariforce/db db:role-perms`; the seed uses the same matrix and `packages/db/test/role-permissions.test.ts` fails if they drift. DCR, attendance, tour plans and check-ins are `field:read`/`field:write`; KPIs are `reports:read`; team tree and employees are `users:read`/`users:write`; imports are `imports:write`.
+
 ### Masters permissions (lead rule, 2026-10-27)
 
 - **Write** (create, edit, import dry-run and save, deactivate) on doctors, chemists, stockists, products, divisions, territories, work types, HQ mappings and imports: RBM and above (rank >= 3: RBM, ZBM, SM, GM, VP, Director) and System Admin. Constant: `MASTERS_WRITE` / `MASTERS_WRITE_MIN_RANK = 3` in `packages/contracts/src/schemas/roles.ts`.
