@@ -11,7 +11,7 @@ Against the contracts on `feat/roles-hierarchy` (merged locally into the web bra
 ## Open
 1. **Import row keys.** `docs/IMPORT.md` says rows are keyed by template columns (`territory_code`, `specialty_code`, snake_case). The mock validates rows with the entity *create* schema (camelCase, ids). The web currently sends create-schema rows (ids resolved client-side) because that is what the mock accepts. Please pick one and align docs + mock.
 2. **Import file audit.** The wizard does not upload the source file to R2 yet (`fileId` is optional); will wire `/v1/files/upload-url` once the mock supports PUT to the presigned URL.
-3. **KPI endpoints** for the dashboard (still mock data in the web).
+3. ~~KPI endpoints~~ Closed by feat/import-kpis: the dashboard reads `GET /v1/kpis` and `GET /v1/kpis/products`.
 4. **Attendance is caller-only in the mock.** `GET /v1/attendance` builds days only from the caller's own check-ins and labels every day with `me.name` ("Demo Director" even when signed in as a BM). For the approver team view we need: mock users per role (so `userId`/`userName` match the signed-in mock user), team rows for `userId`/`territoryId` filters, and absent/leave rows for people with no check-ins. Also no `GET /v1/users` (team list) to pick a person.
 5. **Check-in identity.** The mock attributes check-ins to `fx.me` (director) regardless of the session; the web has no way to send the mock user. Needs auth-backed mock or an `x-mock-user` header.
 6. **Tour plan copy is a stub.** `POST /v1/tour-plans/{month}/copy` returns an empty plan whatever `fromMonth`/`fromStp` say, and there is no endpoint to read or edit the STP (standard plan) itself.
@@ -20,3 +20,9 @@ Against the contracts on `feat/roles-hierarchy` (merged locally into the web bra
 9. **DCR vs tour plan is client-only.** `PUT /v1/dcrs` never sets `tourPlanId` and does not require `deviationReason` when the day differs from the approved plan (#22); the web enforces both. No day-lock cut-off in the mock (#23).
 10. **DCR call ↔ visit check-in.** `DcrCall.checkInId` exists but there is no way to list today's unlinked visit check-ins for a doctor; the web sends `null`. POB lines are not captured in the UI yet.
 11. Specialties and categories are read-only (no create in Masters by design).
+12. **KPI product names are placeholders.** The contract mock's product fixtures have 2 fake products ("Atorvastatin 10 mg", "Paracetamol 650 mg"), so the product KPI table shows them. The web's own pickers use a local mock seed of Arighna's 101 real products (`apps/web/src/mocks/product-seed.ts`); the mock fixtures should be seeded from the same sheet.
+13. **KPI targets mostly null.** Only achievement KPIs return a target (100). Cards show "No target set" for the rest; targets per KPI/role need a source (#49).
+14. **No period comparison.** `KpiReport` has no previous-month / last-year values, so the cards show no trend.
+15. **No exceptions feed.** The "Needs attention" list derives missed-doctor and DCR-compliance items from `rollup=byUser` with placeholder thresholds (30% missed, 90% DCR; to confirm with Arighna). Geofence breaches, late DCRs and sample stock have no contract and stay labelled sample data (`apps/web/src/mocks/dashboard.ts`).
+16. **No hierarchy scope endpoint.** Nothing returns the caller's position (region/area/territory chain) for a breadcrumb; the dashboard shows a role scope label ("Whole company" / "Your team" / "Your own numbers") instead. `byUser` also returns the same two demo rows for any caller.
+
