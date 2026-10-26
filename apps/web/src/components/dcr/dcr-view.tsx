@@ -2,7 +2,7 @@
 
 import { Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import type { Dcr, Doctor, Product, TourPlan, WorkType } from '@ariforce/contracts';
+import type { Dcr, Doctor, TourPlan, WorkType } from '@ariforce/contracts';
 import { Button } from '@ariforce/ui/components/button';
 import {
   Dialog,
@@ -19,7 +19,14 @@ import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
 import { dateLabel, timeIST, todayIST } from '@/components/attendance/format';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
-import { api, apiReady, toApiError } from '@/lib/api';
+import { api, apiReady, MOCKING, toApiError } from '@/lib/api';
+import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
+
+/** What the call form needs from a product. */
+type PickProduct = { id: string; name: string; detail: string | null; isSample: boolean };
+
+/** In mock mode the picker uses Arighna's real product names (local mock seed); live mode uses GET /v1/products. */
+const SEED_PRODUCTS: PickProduct[] = MOCK_PRODUCT_SEED.map((p) => ({ id: p.id, name: p.name, detail: p.composition, isSample: true }));
 
 type Call = Omit<Dcr['calls'][number], 'id'> & { clientId: string };
 type Planned = TourPlan['days'][number]['entries'][number];
@@ -42,7 +49,7 @@ function DcrDay({ today }: { today: string }) {
   const [planned, setPlanned] = useState<Planned | null>(null);
   const [workTypes, setWorkTypes] = useState<WorkType[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<PickProduct[]>([]);
   const [wt, setWt] = useState('');
   const [terr, setTerr] = useState('');
   const [reason, setReason] = useState('');
@@ -61,7 +68,8 @@ function DcrDay({ today }: { today: string }) {
       ]);
       if (w.data) setWorkTypes(w.data.items.filter((x) => x.active));
       if (d.data) setDoctors(d.data.items);
-      if (p.data) setProducts(p.data.items.filter((x) => x.active));
+      if (MOCKING) setProducts(SEED_PRODUCTS);
+      else if (p.data) setProducts(p.data.items.filter((x) => x.active).map((x) => ({ id: x.id, name: x.name, detail: x.composition, isSample: x.isSample })));
     })();
   }, []);
 
@@ -242,7 +250,7 @@ function CallDialog({
 }: {
   open: boolean;
   doctors: Doctor[];
-  products: Product[];
+  products: PickProduct[];
   onClose: () => void;
   onAdd: (c: Call) => void;
 }) {
@@ -250,8 +258,17 @@ function CallDialog({
   const [detailed, setDetailed] = useState<string[]>([]);
   const [samples, setSamples] = useState<Record<string, string>>({});
   const [remarks, setRemarks] = useState('');
+  const [q, setQ] = useState('');
+  const shown = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    const hit = t ? products.filter((p) => p.name.toLowerCase().includes(t) || p.detail?.toLowerCase().includes(t)) : products;
+    // Picked products stay visible, in detailing order, ahead of the rest.
+    const picked = detailed.map((id) => products.find((p) => p.id === id)).filter(Boolean) as PickProduct[];
+    return [...picked, ...hit.filter((p) => !detailed.includes(p.id)).slice(0, 24)];
+  }, [q, products, detailed]);
   useEffect(() => {
     if (!open) return;
+    setQ('');
     setDoctorId('');
     setDetailed([]);
     setSamples({});
@@ -276,8 +293,16 @@ function CallDialog({
           </div>
           <fieldset className="flex flex-col gap-2">
             <legend className="mb-1.5 text-sm font-medium">Products detailed, in order</legend>
-            <div className="flex flex-wrap gap-2">
-              {products.map((p) => {
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={`Search ${products.length} products`}
+              aria-label="Search products"
+              className="md:text-base"
+              data-testid="call-product-search"
+            />
+            <div className="flex max-h-48 flex-wrap gap-2 overflow-y-auto">
+              {shown.map((p) => {
                 const n = detailed.indexOf(p.id);
                 return (
                   <button
@@ -286,6 +311,7 @@ function CallDialog({
                     aria-pressed={n >= 0}
                     onClick={() => toggle(p.id)}
                     data-testid="call-product"
+                    title={p.detail ?? undefined}
                     className={cn(
                       'rounded-full border px-3 py-1 text-sm transition-[transform,background-color] duration-150 active:scale-[0.97]',
                       n >= 0 ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted',
