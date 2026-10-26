@@ -1,6 +1,5 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
 import { bearer } from 'better-auth/plugins';
 import { authAccount, authSession, authUser, authVerification, type Db } from '@ariforce/db';
 import type { AuditService } from '../common/audit.service';
@@ -46,18 +45,16 @@ export function createAuth(db: Db, audit: AuditService) {
             });
           },
         },
+        delete: {
+          after: async (session, ctx) => {
+            await audit.recordForAuthUser(
+              session.userId,
+              ctx?.path === '/sign-out' ? 'auth.sign_out' : 'auth.session_revoked',
+              { entityType: 'session', entityId: session.id },
+            );
+          },
+        },
       },
-    },
-    hooks: {
-      before: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== '/sign-out') return;
-        const s = await getSessionFromCtx(ctx).catch(() => null);
-        if (s)
-          await audit.recordForAuthUser(s.user.id, 'auth.sign_out', {
-            entityType: 'session',
-            entityId: s.session.id,
-          });
-      }),
     },
   });
 }

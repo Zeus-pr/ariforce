@@ -29,7 +29,7 @@ Scope = the subtree of the user's **assigned territories** (`user_territories`),
 
 Append-only `audit_log` (insert-only grant + blocking trigger). Written:
 
-- `auth.sign_in` (better-auth `databaseHooks.session.create.after`) and `auth.sign_out` (`hooks.before` on `/sign-out`), with IP / user agent.
+- `auth.sign_in` (better-auth `databaseHooks.session.create.after`) and `auth.sign_out` (`databaseHooks.session.delete.after`; other deletions = `auth.session_revoked`), with IP / user agent.
 - Every mutation, **in the same transaction** as the change (`AuditService.record(tx, principal, action, {before, after})`), e.g. `doctor.create`.
 
 ## Identities
