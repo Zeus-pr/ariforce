@@ -50,6 +50,8 @@ export const roleKey = pgEnum('role_key', [
   'vice_president',
   'director',
   'system_admin',
+  'distribution_head',
+  'accountant',
 ]);
 
 export const roles = pgTable(

@@ -14,8 +14,10 @@ beforeAll(() => {
 const uuid = () => crypto.randomUUID();
 
 describe('contract gaps', () => {
-  it('has the 8-level hierarchy plus system_admin', () => {
-    expect(ROLE_KEYS).toHaveLength(9);
+  it('has the 8-level hierarchy plus system_admin, distribution_head, accountant', () => {
+    expect(ROLE_KEYS).toHaveLength(11);
+    expect(ROLE_RANK.distribution_head).toBe(0);
+    expect(ROLE_RANK.accountant).toBe(0);
     expect(ROLE_RANK.business_manager).toBe(1);
     expect(ROLE_RANK.director).toBe(8);
     expect(ROLE_RANK.system_admin).toBe(0);

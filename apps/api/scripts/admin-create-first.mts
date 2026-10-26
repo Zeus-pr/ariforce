@@ -18,7 +18,7 @@ import { hashPassword } from 'better-auth/crypto';
 import { Client } from 'pg';
 import {
   DEFAULT_ROLE_PERMISSIONS,
-  HIERARCHY_ROLE_KEYS,
+  ROLE_KEYS,
   ROLE_NAMES,
   ROLE_RANK,
   type RoleKey,
@@ -103,9 +103,9 @@ try {
     [companyId, `admin-create-first-${randomUUID()}`],
   );
 
-  // Roles: ensure all 9 exist with the default permissions (existing permissions are kept).
+  // Roles: ensure all 11 exist with the default permissions (existing permissions are kept).
   const roleIds = new Map<RoleKey, string>();
-  for (const key of [...HIERARCHY_ROLE_KEYS, 'system_admin'] as RoleKey[]) {
+  for (const key of ROLE_KEYS as readonly RoleKey[]) {
     const r = await c.query<{ id: string }>(
       `insert into roles (id, company_id, key, name, rank, permissions) values ($1, $2, $3, $4, $5, $6)
        on conflict (company_id, key) do update set name = excluded.name, rank = excluded.rank

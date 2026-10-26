@@ -98,6 +98,8 @@ const PERSONAS: { key: (typeof ROLE_KEYS)[number]; local: string; code: string; 
   { key: 'area_business_manager', local: 'abm', code: 'ABM001', t: [4] },
   { key: 'business_manager', local: 'bm', code: 'BM001', t: [4] },
   { key: 'system_admin', local: 'sysadmin', code: 'SYS001', t: [] },
+  { key: 'distribution_head', local: 'dh', code: 'DH001', t: [] },
+  { key: 'accountant', local: 'accountant', code: 'ACC001', t: [] },
 ];
 const uid = (i: number) => `01930000-0000-7000-8000-000000000${301 + i}`;
 export const mockUsers: Me[] = PERSONAS.map((p, i) => ({
@@ -109,7 +111,7 @@ export const mockUsers: Me[] = PERSONAS.map((p, i) => ({
   roles: [p.key],
   permissions: DEFAULT_ROLE_PERMISSIONS[p.key],
   territoryIds: p.t.map(tid),
-  managerId: i === 0 || p.key === 'system_admin' ? null : uid(i - 1),
+  managerId: i === 0 || ROLE_RANK[p.key] === 0 ? null : uid(i - 1),
 }));
 export function findMockUser(s: string | null | undefined): Me | undefined {
   if (!s) return undefined;

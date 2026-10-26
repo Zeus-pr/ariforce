@@ -1160,7 +1160,9 @@ export interface components {
       | 'general_manager'
       | 'vice_president'
       | 'director'
-      | 'system_admin';
+      | 'system_admin'
+      | 'distribution_head'
+      | 'accountant';
     /** @enum {string} */
     CheckInKind: 'punch_in' | 'visit' | 'punch_out';
     /** @enum {string} */
@@ -1449,7 +1451,9 @@ export interface components {
       | 'approvals:decide'
       | 'reports:read'
       | 'settings:write'
-      | 'audit:read';
+      | 'audit:read'
+      | 'sales:read'
+      | 'finance:read';
     RoleList: {
       items: components['schemas']['Role'][];
     };
@@ -1462,7 +1466,7 @@ export interface components {
       id: string;
       key: components['schemas']['RoleKey'];
       name: string;
-      /** @description 1..8 sales hierarchy; 0 = system_admin */
+      /** @description 1..8 sales hierarchy; 0 = outside it (system_admin, distribution_head, accountant) */
       rank: number;
       inHierarchy: boolean;
       permissions: components['schemas']['Permission'][];

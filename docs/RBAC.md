@@ -14,19 +14,23 @@
 
 Sales hierarchy, lowest to highest. `rank` is stored on `roles`; keys are the `role_key` enum.
 
-| Rank | Key                         | Title                        | Sees                                                                |
-| ---: | --------------------------- | ---------------------------- | ------------------------------------------------------------------- |
-|    1 | `business_manager`          | Business Manager (field rep) | own data and own HQ masters                                         |
-|    2 | `area_business_manager`     | Area Business Manager        | self + team below (via `manager_id`)                                |
-|    3 | `regional_business_manager` | Regional Business Manager    | self + team below                                                   |
-|    4 | `zonal_business_manager`    | Zonal Business Manager       | self + team below                                                   |
-|    5 | `sales_manager`             | Sales Manager                | self + team below                                                   |
-|    6 | `general_manager`           | General Manager              | self + team below                                                   |
-|    7 | `vice_president`            | Vice President               | self + team below                                                   |
-|    8 | `director`                  | Director                     | whole company                                                       |
-|    0 | `system_admin`              | System Admin (technical)     | users, masters, imports, settings; **no field data** unless granted |
+| Rank | Key                         | Title                        | Sees                                                                 |
+| ---: | --------------------------- | ---------------------------- | -------------------------------------------------------------------- |
+|    1 | `business_manager`          | Business Manager (field rep) | own data and own HQ masters                                          |
+|    2 | `area_business_manager`     | Area Business Manager        | self + team below (via `manager_id`)                                 |
+|    3 | `regional_business_manager` | Regional Business Manager    | self + team below                                                    |
+|    4 | `zonal_business_manager`    | Zonal Business Manager       | self + team below                                                    |
+|    5 | `sales_manager`             | Sales Manager                | self + team below                                                    |
+|    6 | `general_manager`           | General Manager              | self + team below                                                    |
+|    7 | `vice_president`            | Vice President               | self + team below                                                    |
+|    8 | `director`                  | Director                     | whole company                                                        |
+|    0 | `system_admin`              | System Admin (technical)     | users, masters, imports, settings; **no field data** unless granted  |
+|    0 | `distribution_head`         | Distribution Head            | stockists, sales and distribution views, company-wide (`sales:read`) |
+|    0 | `accountant`                | Accountant                   | expenses and finance reports, company-wide (`finance:read`)          |
 
 System Admin is outside the hierarchy: no manager, nobody reports to it, it is not an approver, and by default it lacks `field:read`, `field:write`, `approvals:decide` and `reports:read`. Granting field access is an explicit, audited permission change on its role.
+
+Distribution Head and Accountant are functional roles, also outside the hierarchy (rank 0): no reporting line, never a manager, never an approver (no `approvals:decide`, so they cannot decide DCR/TP/corrections), not shown in the team tree. Default data scope: company-wide read of **their own domain only** (`sales:read` = stockists, primary/secondary sales, distribution views; `finance:read` = expenses and finance reports). They do not get `masters:read`, `field:read` or `reports:read`, so no doctor, chemist, DCR, check-in or KPI data by default. The domain endpoints themselves are not built yet; the permissions exist so they can be gated from day one.
 
 Scope follows the **reporting line**, not the role name: a manager sees their own team (everyone whose `manager_id` chain leads to them) and the territories those people are assigned to. An acting manager covering two teams sees both. Skipping levels is fine (a BM may report straight to an RBM).
 
@@ -34,19 +38,29 @@ Territory levels are a separate, geographic hierarchy (`national > zone > region
 
 ### Default permissions (`DEFAULT_ROLE_PERMISSIONS` in contracts; seeded per company)
 
-| Permission                                                                       |      BM      | ABM…VP | Director | System Admin |
-| -------------------------------------------------------------------------------- | :----------: | :----: | :------: | :----------: |
-| `me:read`, `roles:read`, `territories:read`, `masters:read`                      |      ✓       |   ✓    |    ✓     |      ✓       |
-| `masters:write` (field-added doctors are `pending` unless director/system admin) |      ✓       |   ✓    |    ✓     |      ✓       |
-| `field:read` / `field:write`                                                     |    ✓ / ✓     |  ✓ /   |   ✓ /    |              |
-| `users:read`                                                                     |              |   ✓    |    ✓     |      ✓       |
-| `approvals:decide`, `reports:read`                                               | reports only |   ✓    |    ✓     |              |
-| `imports:write`, `settings:write`, `audit:read`                                  |              |        |    ✓     |      ✓       |
-| `territories:write`, `users:write`                                               |              |        |          |      ✓       |
+| Permission                                                                       |      BM      | ABM…VP | Director | System Admin | Distribution Head | Accountant |
+| -------------------------------------------------------------------------------- | :----------: | :----: | :------: | :----------: | :---------------: | :--------: |
+| `me:read`, `roles:read`, `territories:read`                                      |      ✓       |   ✓    |    ✓     |      ✓       |         ✓         |     ✓      |
+| `masters:read`                                                                   |      ✓       |   ✓    |    ✓     |      ✓       |                   |            |
+| `masters:write` (field-added doctors are `pending` unless director/system admin) |      ✓       |   ✓    |    ✓     |      ✓       |                   |            |
+| `field:read` / `field:write`                                                     |    ✓ / ✓     |  ✓ /   |   ✓ /    |              |                   |            |
+| `users:read`                                                                     |              |   ✓    |    ✓     |      ✓       |                   |            |
+| `approvals:decide`, `reports:read`                                               | reports only |   ✓    |    ✓     |              |                   |            |
+| `imports:write`, `settings:write`, `audit:read`                                  |              |        |    ✓     |      ✓       |                   |            |
+| `territories:write`, `users:write`                                               |              |        |          |      ✓       |                   |            |
+| `sales:read`                                                                     |              |        |          |              |         ✓         |            |
+| `finance:read`                                                                   |              |        |          |              |                   |     ✓      |
 
 ### Migration from the first role set
 
 `packages/db/migrations/0006_role_hierarchy.sql` renames enum values in place (ids and assignments keep working): rep → business_manager, area_manager → area_business_manager, regional_manager → regional_business_manager, zonal_manager → zonal_business_manager, national_head → director, admin → system_admin (field permissions removed); adds sales_manager, general_manager, vice_president before director. Rows for the three new roles are created by the seed / admin UI (Postgres cannot use a new enum value in the transaction that adds it).
+
+### ADR: functional roles distribution_head and accountant (2026-10-27)
+
+- **Decision**: add two `role_key` values outside the 8-level chain, approved by the lead. Rank 0, like `system_admin`; `inHierarchy=false`.
+- **Why not designations**: they need different data access (sales/finance), not just a title. Other titles from the HR file stay free-text designations, not roles.
+- **Migrations**: `0014_functional_roles_enum.sql` only adds the enum values (`ADD VALUE IF NOT EXISTS`). `0015_functional_roles_rows.sql` inserts the role rows per company (`ON CONFLICT DO NOTHING`), in a separate transaction because Postgres cannot use a new enum value in the transaction that adds it. Both are safe to re-run; apply 0014, then 0015.
+- **Scope**: domain-wide read via `sales:read` / `finance:read` only. Session scope stays non-wide (no territories, team = self), so every existing masters/field/KPI endpoint returns 403 or nothing for them.
 
 ## Audit
 

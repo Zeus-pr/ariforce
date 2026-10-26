@@ -8159,7 +8159,9 @@
           "general_manager",
           "vice_president",
           "director",
-          "system_admin"
+          "system_admin",
+          "distribution_head",
+          "accountant"
         ]
       },
       "CheckInKind": {
@@ -8989,7 +8991,9 @@
           "approvals:decide",
           "reports:read",
           "settings:write",
-          "audit:read"
+          "audit:read",
+          "sales:read",
+          "finance:read"
         ]
       },
       "RoleList": {
@@ -9027,7 +9031,7 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 8,
-            "description": "1..8 sales hierarchy; 0 = system_admin"
+            "description": "1..8 sales hierarchy; 0 = outside it (system_admin, distribution_head, accountant)"
           },
           "inHierarchy": {
             "type": "boolean"
