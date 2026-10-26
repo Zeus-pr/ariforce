@@ -1,30 +1,49 @@
 import { cursorPager } from '@/components/data-table/cursor-source';
-import type { DataSource } from '@/components/data-table/types';
+import type { DataSource, FilterDef } from '@/components/data-table/types';
 import { api, apiReady } from '@/lib/api';
 import { MASTERS, type MasterKind, type MasterRow } from './config';
+import type { Lookups } from './lookups';
 
-const sources = new Map<MasterKind, DataSource<MasterRow>>();
+/** Table column id -> API sort key (`sort=name` / `sort=-name`). */
+const SORT_KEYS: Record<string, string> = { name: 'name', city: 'city', updated: 'updatedAt' };
+/** Table filter id -> API query param. Doctors filter by territory, specialty and category; chemists/stockists by territory. */
+const FILTER_PARAMS: Record<MasterKind, string[]> = {
+  doctors: ['territoryId', 'specialtyId', 'categoryId'],
+  chemists: ['territoryId'],
+  stockists: ['territoryId'],
+};
 
-/**
- * v1 list endpoints support `q`, `limit` and `cursor` only. No sort, no filters, no total yet
- * (listed as contract gaps), so the table exposes search + paging and nothing it can't do server-side.
- */
-export function masterSource(kind: MasterKind): DataSource<MasterRow> {
-  let s = sources.get(kind);
-  if (!s) {
+const fetchers = new Map<MasterKind, DataSource<MasterRow>['fetch']>();
+
+/** Server-side list: q, sort, filters, includeTotal and cursor paging all go to GET /v1/{kind}. */
+export function masterSource(kind: MasterKind, lk: Lookups): DataSource<MasterRow> {
+  let fetch = fetchers.get(kind);
+  if (!fetch) {
     const path = MASTERS[kind].path;
-    s = {
-      searchable: true,
-      sortable: [],
-      filters: [],
-      fetch: cursorPager<MasterRow>(async (query, signal) => {
-        await apiReady();
-        const { data, error } = await api.GET(path, { params: { query }, signal });
-        if (error || !data) throw new Error((error as { error?: { message?: string } })?.error?.message ?? 'Could not load.');
-        return { items: data.items.filter((r) => !r.deletedAt), nextCursor: data.nextCursor };
-      }),
-    };
-    sources.set(kind, s);
+    fetch = cursorPager<MasterRow>(async ({ limit, cursor, q, query: tq }, signal) => {
+      await apiReady();
+      const sortKey = tq.sort ? SORT_KEYS[tq.sort.id] : undefined;
+      const filters = Object.fromEntries(FILTER_PARAMS[kind].filter((k) => tq.filters[k]).map((k) => [k, tq.filters[k]]));
+      const query = {
+        limit,
+        cursor,
+        q,
+        includeTotal: 'true' as const,
+        ...(sortKey ? { sort: (tq.sort!.desc ? `-${sortKey}` : sortKey) as 'name' } : {}),
+        ...filters,
+      };
+      const { data, error } = await api.GET(path, { params: { query }, signal });
+      if (error || !data) throw new Error((error as { error?: { message?: string } })?.error?.message ?? 'Could not load.');
+      return { items: data.items.filter((r) => !r.deletedAt), nextCursor: data.nextCursor, total: data.total };
+    });
+    fetchers.set(kind, fetch);
   }
-  return s;
+  const opt = (rows: { id: string; name: string }[]) => rows.map((r) => ({ value: r.id, label: r.name }));
+  const filters: FilterDef[] = [{ id: 'territoryId', label: 'Territory', options: opt(lk.territories) }];
+  if (kind === 'doctors')
+    filters.push(
+      { id: 'specialtyId', label: 'Specialty', options: opt(lk.specialties) },
+      { id: 'categoryId', label: 'Category', options: opt(lk.categories) },
+    );
+  return { searchable: true, sortable: Object.keys(SORT_KEYS), filters, fetch };
 }

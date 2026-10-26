@@ -29,7 +29,7 @@ Add a shadcn component: `source scripts/env.sh && cd packages/ui && pnpm dlx sha
 ## Roles and navigation
 
 Ladder, lowest to highest: Business Manager (BM), Area Business Manager (ABM), Regional Business Manager (RBM), Zonal Business Manager (ZBM), Sales Manager, General Manager, Vice President, Director. System Admin is technical and outside the ladder.
-`apps/web/src/lib/roles.ts` is the single source: order, labels, helpers and `ROLE_TO_CONTRACT_ROLE_KEY`, a temporary mapping onto the contract's current `RoleKey` enum (rep, area_manager, regional_manager, zonal_manager, national_head, admin). Swap only that table when the Architect updates the enum.
+`apps/web/src/lib/roles.ts` takes role values from the contract enum (`ROLE_KEYS`, `HIERARCHY_ROLE_KEYS` in `@ariforce/contracts`) and adds only display labels, short labels, ordering helpers and gating predicates.
 
 | Area | BM | ABM to Director | System Admin |
 | --- | --- | --- | --- |

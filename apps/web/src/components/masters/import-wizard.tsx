@@ -1,8 +1,10 @@
 'use client';
 
-import { AlertTriangle, ArrowLeft, Check, CircleAlert, Download, FileSpreadsheet, Upload } from 'lucide-react';
+import { ArrowLeft, Check, CircleAlert, Download, FileSpreadsheet, Upload } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { components } from '@ariforce/contracts';
+import { api, apiReady, toApiError } from '@/lib/api';
 import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
 import {
@@ -328,28 +330,143 @@ function Wizard({ kind }: { kind: MasterKind }) {
         </div>
       )}
 
-      {step === 3 && (
-        <div className="flex flex-col gap-4">
-          <div role="status" className="flex gap-3 rounded-lg border border-warning/40 bg-warning-soft p-4 text-sm">
-            <AlertTriangle className="size-5 shrink-0 text-warning" />
-            <div>
-              <p className="font-medium">Import isn&apos;t switched on yet</p>
-              <p className="mt-1 text-muted-foreground">
-                {valid.toLocaleString('en-IN')} rows passed every check. Saving them needs the bulk import service,
-                which is still being built. Nothing has been saved.
-              </p>
+      {step === 3 && sheet && (
+        <ServerImport kind={kind} fileName={sheet.fileName} rows={results.filter((r) => r.ok)} onBack={() => setStep(2)} />
+      )}
+    </div>
+  );
+}
+
+type Job = components['schemas']['ImportJob'];
+
+/**
+ * Step 4: POST /v1/{entity}/import. First a dry run (default; writes nothing) for server-side
+ * validation and duplicate detection, then the same request with dryRun:false and the same
+ * Idempotency-Key to save. See docs/IMPORT.md.
+ */
+function ServerImport({ kind, fileName, rows, onBack }: { kind: MasterKind; fileName: string; rows: Checked[]; onBack: () => void }) {
+  const cfg = MASTERS[kind];
+  const [onDuplicate, setOnDuplicate] = useState<'skip' | 'update' | 'error'>('skip');
+  const [preview, setPreview] = useState<Job | null>(null);
+  const [saved, setSaved] = useState<Job | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const key = useRef(crypto.randomUUID());
+
+  async function run(dryRun: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiReady();
+      const { data, error: e } = await api.POST(`${cfg.path}/import`, {
+        params: { header: { 'idempotency-key': dryRun ? `${key.current}-dry-${onDuplicate}` : key.current } },
+        body: { dryRun, onDuplicate, fileName, rows: rows.map((r) => r.body as Record<string, unknown>) },
+      });
+      if (e || !data) throw new Error(toApiError(e).message);
+      if (dryRun) setPreview(data);
+      else setSaved(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    setPreview(null);
+    void run(true);
+  }, [onDuplicate]);
+
+  const job = saved ?? preview;
+  const problems = job?.results.filter((r) => r.status === 'error' || r.status === 'duplicate') ?? [];
+  const t = job?.totals;
+  const willSave = t ? t.valid : 0;
+
+  return (
+    <div className="flex flex-col gap-4" data-testid="server-import">
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="grid gap-1.5">
+          <span className="text-sm font-medium">Rows that match an existing record</span>
+          <Select value={onDuplicate} onValueChange={(v) => setOnDuplicate(v as typeof onDuplicate)} disabled={busy || !!saved}>
+            <SelectTrigger className="w-56" aria-label="Rows that match an existing record">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="skip">Skip them</SelectItem>
+              <SelectItem value="update">Update the existing record</SelectItem>
+              <SelectItem value="error">Treat as errors</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+          {busy ? (saved ? 'Saving' : 'Checking on the server') : saved ? 'Saved' : preview ? 'Server check done. Nothing saved yet.' : ''}
+        </p>
+      </div>
+
+      {error && <p className="border-l-2 border-destructive pl-3 text-sm text-destructive">{error}</p>}
+
+      {t && (
+        <dl className="grid grid-cols-2 divide-y rounded-lg border sm:grid-cols-5 sm:divide-x sm:divide-y-0" data-testid="import-totals">
+          {(
+            [
+              ['Rows', t.rows],
+              [saved ? 'Created' : 'Valid', saved ? t.created : t.valid],
+              [saved ? 'Updated' : 'Duplicates', saved ? t.updated : t.duplicate],
+              ['Skipped', t.skipped],
+              ['Errors', t.error],
+            ] as const
+          ).map(([label, n]) => (
+            <div key={label} className="px-4 py-3">
+              <dt className="text-xs text-muted-foreground">{label}</dt>
+              <dd className="text-lg font-semibold tabular-nums">{n.toLocaleString('en-IN')}</dd>
             </div>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setStep(2)}>
-              Back
-            </Button>
-            <Button disabled data-testid="import-commit">
-              Import {valid.toLocaleString('en-IN')} {cfg.title.toLowerCase()}
-            </Button>
-          </div>
+          ))}
+        </dl>
+      )}
+
+      {problems.length > 0 && (
+        <div className="overflow-hidden rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-20 pl-4">Row</TableHead>
+                <TableHead className="w-28">Status</TableHead>
+                <TableHead>Detail</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {problems.slice(0, 100).map((r) => (
+                <TableRow key={r.row}>
+                  <TableCell className="pl-4 tabular-nums">{rows[r.row - 1]?.line ?? r.row}</TableCell>
+                  <TableCell className={cn('text-xs font-medium uppercase', r.status === 'error' ? 'text-destructive' : 'text-warning-text')}>
+                    {r.status}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {r.errors.length ? r.errors.map((e) => e.message).join('; ') : `Matches an existing record by ${r.duplicateRule ?? 'key'}`}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
+
+      <div className="flex flex-wrap gap-2">
+        {saved ? (
+          <Button asChild>
+            <Link href={`/masters/${kind}`}>Back to {cfg.title.toLowerCase()}</Link>
+          </Button>
+        ) : (
+          <>
+            <Button variant="outline" onClick={onBack} disabled={busy}>
+              Back
+            </Button>
+            <Button data-testid="import-commit" disabled={busy || !preview || willSave === 0} onClick={() => run(false)}>
+              Import {willSave.toLocaleString('en-IN')} {cfg.title.toLowerCase()}
+            </Button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

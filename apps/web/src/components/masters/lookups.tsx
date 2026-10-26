@@ -15,7 +15,7 @@ export type Lookups = {
 const empty: Lookups = { territories: [], specialties: [], categories: [], byId: new Map(), ready: false };
 const Ctx = createContext<Lookups>(empty);
 
-/** Reference data used for labels, selects and import matching (max 200 each, the API's page limit). */
+/** Reference data used for labels, filters, selects and import matching. Territories page through every cursor. */
 export function LookupsProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<Omit<Lookups, 'byId' | 'ready'> | null>(null);
   useEffect(() => {
@@ -23,8 +23,19 @@ export function LookupsProvider({ children }: { children: React.ReactNode }) {
     void (async () => {
       await apiReady();
       const q = { params: { query: { limit: 200 } } };
+      const allTerritories = async () => {
+        const items = [];
+        let cursor: string | undefined;
+        for (let i = 0; i < 50; i++) {
+          const r = await api.GET('/v1/territories', { params: { query: { limit: 200, cursor } } });
+          items.push(...(r.data?.items ?? []));
+          cursor = r.data?.nextCursor ?? undefined;
+          if (!cursor) break;
+        }
+        return { data: { items } };
+      };
       const [t, s, c] = await Promise.all([
-        api.GET('/v1/territories', q),
+        allTerritories(),
         api.GET('/v1/specialties', q),
         api.GET('/v1/doctor-categories', q),
       ]);

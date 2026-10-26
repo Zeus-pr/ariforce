@@ -41,6 +41,15 @@ for (const view of ['desktop', 'mobile'])
     await page.locator(rowSel(view)).first().waitFor({ timeout: 15000 });
     check(await page.locator(rowSel(view)).filter({ hasText: 'Dr. A. Sen' }).first().isVisible(), `${view}/${theme}: doctors list shows contract fixture`);
     await page.screenshot({ path: path.join(OUT, `doctors-${view}.png`) });
+    const status = await page.getByTestId('page-status').first().textContent();
+    check(/of\s*[\d,]+/.test(status ?? ''), `${view}: pager shows a real total ("${status}")`);
+    if (view === 'desktop') {
+      await page.getByRole('button', { name: /^Name/ }).first().click();
+      await page.waitForURL(/sort=name/, { timeout: 5000 });
+      check(true, `${view}: sort by name goes to the URL/server`);
+      await page.goto(`${BASE}/masters/doctors`, { waitUntil: 'networkidle' });
+      await page.locator(rowSel(view)).first().waitFor({ timeout: 15000 });
+    }
     if (theme === 'light') {
       await page.getByRole('button', { name: /Add doctor/ }).click();
       await page.getByRole('button', { name: 'Add', exact: true }).click();
@@ -118,7 +127,7 @@ for (const view of ['desktop', 'mobile']) {
   await ctx.close();
 }
 
-// 3. Import wizard (CSV): auto-match, row validation against the contract, commit blocked on the missing bulk API.
+// 3. Import wizard (CSV): auto-match, client validation, server dry run, then save.
 for (const view of ['desktop', 'mobile']) {
   const { ctx, page } = await open(view, 'light');
   await page.goto(`${BASE}/masters/doctors/import`, { waitUntil: 'networkidle' });
@@ -143,7 +152,15 @@ for (const view of ['desktop', 'mobile']) {
   check(await page.getByText(/Name is required/).isVisible(), `${view}: missing name flagged`);
   await page.screenshot({ path: path.join(OUT, `import-review-${view}.png`), fullPage: true });
   await page.getByRole('button', { name: /Continue with 1 rows/ }).click();
-  check(await page.getByTestId('import-commit').isDisabled(), `${view}: commit disabled until bulk import API exists`);
+  await page.getByTestId('import-totals').waitFor({ timeout: 10000 });
+  const pre = await page.getByTestId('import-totals').textContent();
+  check(/Rows1/.test(pre) && /Valid1/.test(pre), `${view}: server dry run totals "${pre}"`);
+  await page.screenshot({ path: path.join(OUT, `import-dryrun-${view}.png`), fullPage: true });
+  await page.getByTestId('import-commit').click();
+  await page.getByRole('link', { name: /Back to doctors/ }).waitFor({ timeout: 10000 });
+  const post = await page.getByTestId('import-totals').textContent();
+  check(/Created1/.test(post), `${view}: import saved (dryRun:false) "${post}"`);
+  await page.screenshot({ path: path.join(OUT, `import-saved-${view}.png`), fullPage: true });
   await ctx.close();
 }
 

@@ -61,6 +61,13 @@ function useColumns(kind: MasterKind): Column<MasterRow>[] {
       territory,
       place,
       { id: 'phone', header: 'Phone', mobile: 'secondary', cell: (r) => r.phone ?? dash },
+      {
+        id: 'updated',
+        header: 'Updated',
+        className: 'whitespace-nowrap tabular-nums text-muted-foreground',
+        mobile: 'hidden',
+        cell: (r) => new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }).format(new Date(r.updatedAt)),
+      },
     ];
   }, [kind, byId]);
 }
@@ -71,12 +78,14 @@ function Inner({ kind }: { kind: MasterKind }) {
   const [open, setOpen] = useState(false);
   const [row, setRow] = useState<MasterRow | null>(null);
   const [reload, setReload] = useState(0);
+  const lk = useLookups();
+  const source = useMemo(() => masterSource(kind, lk), [kind, lk]);
 
   return (
     <>
       <DataTable
         label={cfg.title.toLowerCase()}
-        source={masterSource(kind)}
+        source={source}
         columns={columns}
         rowKey={(r) => r.id}
         reloadKey={reload}
