@@ -1,0 +1,5 @@
+{
+  "extends": "@ariforce/config/tsconfig/node.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "dist", "types": ["node"] },
+  "include": ["src"]
+}

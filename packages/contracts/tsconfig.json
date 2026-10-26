@@ -1,0 +1,1 @@
+{ "extends": "@ariforce/config/tsconfig/library.json", "include": ["src", "test", "*.ts"] }

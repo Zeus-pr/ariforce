@@ -1,0 +1,19 @@
+# Local Postgres + PostGIS. Data volume is a bind mount on the SSD (never a Docker-managed volume
+# on the internal disk). Docker Desktop itself must also keep its disk image on the SSD
+# (Settings > Resources > Disk image location); see docs/SETUP.md.
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    container_name: ariforce-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ariforce
+    ports:
+      - '5432:5432'
+    volumes:
+      - ${ARIFORCE_PGDATA:-/Volumes/Prajesh_ext_512/.data-ariforce/pgdata}:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      retries: 10

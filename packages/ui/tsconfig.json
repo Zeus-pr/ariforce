@@ -1,0 +1,5 @@
+{
+  "extends": "@ariforce/config/tsconfig/nextjs.json",
+  "compilerOptions": { "baseUrl": ".", "paths": { "@ariforce/ui/*": ["./src/*"] } },
+  "include": ["src"]
+}
