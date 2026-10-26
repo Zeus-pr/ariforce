@@ -29,11 +29,12 @@ confirms or adjusts it.
 | Monorepo         | pnpm workspaces + Turborepo                                                                                                                                               | Confirmed                                                                                                                 |
 | API              | NestJS (Express adapter), REST `/v1`, zod contracts in `packages/contracts`, OpenAPI 3.1 generated from zod                                                               | Confirmed; **added**: contracts are zod-first (not Nest decorators) so the Android team can codegen from the same OpenAPI |
 | ORM / migrations | Drizzle ORM + drizzle-kit; hand-written SQL migrations for RLS, triggers, grants                                                                                          | Confirmed                                                                                                                 |
-| Database         | PostgreSQL 17 + PostGIS 3.5, hosted in an India region (AWS `ap-south-1` Mumbai / `ap-south-2` Hyderabad, or GCP `asia-south1`)                                           | Confirmed                                                                                                                 |
+| Database         | **Supabase Postgres, Mumbai `ap-south-1`** (project `ariforce`), PostGIS + pgcrypto in schema `extensions`; local/CI on PostGIS 17-3.5 with the same migrations           | Decided                                                                                                                   |
 | Tenancy          | `company_id NOT NULL` on every tenant table + Postgres RLS keyed on `current_setting('app.current_company_id')`, app connects as a non-superuser role without `BYPASSRLS` | Confirmed                                                                                                                 |
 | Auth             | better-auth (email+password, DB sessions, bearer plugin for Android, phone OTP plugin later)                                                                              | Confirmed                                                                                                                 |
 | Authorization    | Own RBAC: roles + permissions in DB, hierarchy scoping via territory materialised path, Nest guards                                                                       | Confirmed                                                                                                                 |
 | Web              | Next.js (App Router) + Tailwind v4 + shadcn/ui; typed client + MSW mocks from contracts                                                                                   | Confirmed                                                                                                                 |
+| Files            | **Cloudflare R2** (S3 API) with short-lived presigned upload/download URLs; never D1                                                                                      | Decided                                                                                                                   |
 | IDs              | UUIDv7 (time-ordered; client-generatable offline)                                                                                                                         | Added                                                                                                                     |
 | Audit            | Append-only `audit_log` table (no UPDATE/DELETE grants + blocking trigger)                                                                                                | Added                                                                                                                     |
 
@@ -65,6 +66,25 @@ confirms or adjusts it.
 - Keycloak: powerful but heavy to run for a small team.
 - better-auth's own `organization`/`access` plugins were **not** adopted for RBAC: our access is territory-hierarchy based, which is easier to express (and enforce in SQL) with our own tables.
 
+### Supabase Auth vs better-auth
+
+Supabase is used **only as managed Postgres**. Supabase Auth is **off**; we keep better-auth + own RBAC because:
+
+- Our authorization is territory-hierarchy + company scoped and enforced by RLS keyed on `app.current_company_id` set per transaction. Supabase Auth's model (JWT claims + `auth.uid()` policies via PostgREST) would push us to the Data API or to re-verify JWTs in Nest anyway.
+- The API connects as a dedicated non-bypass role through the transaction pooler; Supabase Auth expects `anon`/`authenticated` roles and PostgREST, which we lock down instead.
+- Portability: the auth tables live in our schema and migrations, so leaving Supabase (or self-hosting in India) is a `pg_dump`, not an identity migration.
+- Android: better-auth bearer sessions are revocable server-side; phone OTP plugin is available for field reps.
+- Cost: Supabase Auth is free at our scale, so this is not a cost decision. Revisit if we ever adopt the Data API/Realtime directly from clients.
+
+### Hosting: Supabase + R2 notes
+
+- **Connections:** API uses `DATABASE_URL` = Supavisor **transaction pooler** (port 6543, user `ariforce_app.<project-ref>`), every request inside `withTenant()` = one transaction with `set_config('app.current_company_id', $1, true)`; no session state, no `SET`, prepared statements not relied on. Migrations use `DIRECT_URL` (owner, direct/session connection).
+- **Roles:** `ariforce_app` is created by migration SQL: `NOSUPERUSER NOBYPASSRLS`, no password in git (set once in the Supabase SQL editor). Never `postgres`/`service_role` for requests.
+- **RLS:** `ENABLE` + `FORCE` on every tenant table; policies are `TO ariforce_app` only.
+- **API lockdown:** we do not use PostgREST. Migration 0003 revokes all table/sequence/function privileges and default privileges from `anon` and `authenticated`, which also have no policies. Supabase's Data API can additionally be disabled in project settings.
+- **Migrations:** plain, ordered, idempotent SQL in `packages/db/migrations/` (generated from Drizzle), applied by `db:migrate` or by hand / Supabase connector.
+- **R2 residency caveat:** R2 has no India jurisdiction; use location hint APAC and store only documents we may hold outside India, or move to an India S3-compatible bucket later (the storage module is S3-API, so it is a config change).
+
 ### Web
 
 - **Next.js + Tailwind + shadcn/ui (chosen)**: matches the brief (free UI collections), App Router for portal pages.
@@ -82,6 +102,7 @@ confirms or adjusts it.
 | Soft delete with grace + purge job (`accountDeletion.ts`, `accountPurge.ts`)                                                                               | `deleted_at` tombstones + retention purge jobs (DPDP, #36)                                        |
 | Admin surface isolated (loopback listener, strong secret)                                                                                                  | Admin role in RBAC; ops-only endpoints never public                                               |
 | Knowledge docs kept current (ARCHITECTURE.md, RULES.md, MEMORY.md, PRD.md)                                                                                 | `docs/` (ADR, DATA-MODEL, RBAC, API-CONVENTIONS, WEB-LAYOUT) updated in the same PR as the change |
+| Env discipline: secrets only in git-ignored `.env`, `.env.example` names only                                                                              | Same; R2 + DB URLs + `BETTER_AUTH_SECRET`                                                         |
 | Monorepo-adjacent split (app / backend / admin / site)                                                                                                     | `apps/web`, `apps/api`, later `apps/android` on one API                                           |
 
 Not borrowed, with reasons: CUTLY's hand-rolled JWT auth (we use better-auth sessions, revocable, bearer for Android), Prisma (see ORM above), Express without modules (Nest gives guards/DI for RBAC + tenancy), Neon us-east-2 (India residency).
@@ -96,7 +117,7 @@ Good:
 
 Bad / risks:
 
-- Every request runs in a transaction that does `SET LOCAL app.current_company_id`; connection poolers must be in **transaction mode** (PgBouncer) and code must never use the pool outside `withTenant()`.
+- Every request runs in a transaction that does `SET LOCAL app.current_company_id`; connection poolers must be in **transaction mode** (Supavisor 6543) and code must never use the pool outside `withTenant()`.
 - RLS adds query-planner overhead; keep `company_id` as the leading column of hot indexes.
 - better-auth is younger than Auth.js/Keycloak; pin versions and keep the auth module thin so it can be swapped.
 - Drizzle-kit does not generate RLS/trigger SQL; those live in reviewed custom migrations.
