@@ -14,10 +14,10 @@ const check = (c, m) => {
   if (!c) ok = false;
 };
 // Update as pages ship.
-const MANAGER_NAV = ['Dashboard', 'Attendance', 'DCR', 'Tour Plans', 'Exceptions'];
-const MANAGER_SECTIONS = ['workspace', 'field', 'intelligence'];
-const MANAGER_ONLY = [];
-const GATED = '/masters';
+const MANAGER_NAV = ['Dashboard', 'Attendance', 'DCR', 'Tour Plans', 'Team Performance', 'Exceptions'];
+const MANAGER_SECTIONS = ['workspace', 'field', 'performance', 'intelligence'];
+const MANAGER_ONLY = ['Team Performance'];
+const GATED = '/team';
 const navLabels = (page) =>
   page.$$eval('[data-sidebar="menu-button"]', (els) => els.map((e) => e.textContent.trim()).filter(Boolean));
 

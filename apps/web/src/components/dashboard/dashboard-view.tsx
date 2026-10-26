@@ -73,7 +73,7 @@ export function DashboardView() {
   return <Dashboard role={role} month={month} />;
 }
 
-function useKpis(month: string, rollup: Rollup, kpis?: readonly string[]) {
+export function useKpis(month: string, rollup: Rollup, kpis?: readonly string[]) {
   const [data, setData] = useState<KpiReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const key = kpis?.join(',');
@@ -138,7 +138,7 @@ function Dashboard({ role, month }: { role: Role; month: string }) {
   );
 }
 
-function KpiCards({ metrics, error, loading }: { metrics: Metric[]; error: string | null; loading: boolean }) {
+export function KpiCards({ metrics, error, loading }: { metrics: Metric[]; error: string | null; loading: boolean }) {
   const [open, setOpen] = useState(false);
   if (error) return <p role="alert" className="text-sm text-destructive">{error}</p>;
   return (
