@@ -43,6 +43,13 @@
       "when": 1793040315099,
       "tag": "0005_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793042015318,
+      "tag": "0006_role_hierarchy",
+      "breakpoints": true
     }
   ]
 }

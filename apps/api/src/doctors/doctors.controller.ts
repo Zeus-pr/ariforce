@@ -114,8 +114,11 @@ export class DoctorsController {
           id: uuidv7(),
           companyId: p.companyId,
           location: location ? { x: location.lng, y: location.lat } : null,
-          // Field-added doctors need manager approval (#26); admins add approved masters.
-          approvalStatus: p.roles.includes('admin') ? 'approved' : 'pending',
+          // Field-added doctors need manager approval (#26); system admin / director add approved masters.
+          approvalStatus:
+            p.roles.includes('system_admin') || p.roles.includes('director')
+              ? 'approved'
+              : 'pending',
         })
         .returning();
       const dto = toDto(row!);

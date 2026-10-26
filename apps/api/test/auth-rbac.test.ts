@@ -66,21 +66,21 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
   });
 
   it('rejects a wrong password', async () => {
-    const res = await signIn('rep@demo.ariforce.in', 'wrong-password-123');
+    const res = await signIn('bm@demo.ariforce.in', 'wrong-password-123');
     expect(res.status).toBe(401);
   });
 
   it('GET /v1/me returns roles, permissions and territories', async () => {
-    const auth = await token('rep@demo.ariforce.in');
+    const auth = await token('bm@demo.ariforce.in');
     const res = await http().get('/v1/me').set('authorization', auth);
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ companyId: DEMO_COMPANY_ID, roles: ['rep'] });
+    expect(res.body).toMatchObject({ companyId: DEMO_COMPANY_ID, roles: ['business_manager'] });
     expect(res.body.permissions).toContain('masters:read');
     expect(res.body.territoryIds).toEqual([T.hq]);
   });
 
-  it('rep sees only doctors in their HQ subtree', async () => {
-    const auth = await token('rep@demo.ariforce.in');
+  it('business manager sees only doctors in their HQ subtree', async () => {
+    const auth = await token('bm@demo.ariforce.in');
     const res = await http().get('/v1/doctors').set('authorization', auth);
     expect(res.status).toBe(200);
     const ids = res.body.items.map((d: { id: string }) => d.id);
@@ -92,7 +92,7 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
     ).toBe(404);
   });
 
-  it('area manager: own area yes, sibling area no (out-of-hierarchy = 404)', async () => {
+  it('area business manager: own area yes, sibling area no (out-of-hierarchy = 404)', async () => {
     const auth = await token('abm@demo.ariforce.in');
     expect((await http().get(`/v1/doctors/${HQ_DOC}`).set('authorization', auth)).status).toBe(200);
     expect(
@@ -100,8 +100,8 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
     ).toBe(404);
   });
 
-  it('admin sees the whole company but never another tenant (RLS)', async () => {
-    const auth = await token('admin@demo.ariforce.in');
+  it('system admin sees all masters but never another tenant (RLS)', async () => {
+    const auth = await token('sysadmin@demo.ariforce.in');
     expect(
       (await http().get(`/v1/doctors/${OTHER_AREA_DOC}`).set('authorization', auth)).status,
     ).toBe(200);
@@ -112,8 +112,28 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
     ).toBe(true);
   });
 
-  it('rep cannot create a doctor outside their hierarchy (403); inside = 201 + audit row', async () => {
-    const auth = await token('rep@demo.ariforce.in');
+  it('reporting line: RBM sees both teams, director sees all, system admin has no field permissions', async () => {
+    const rbm = await token('rbm@demo.ariforce.in');
+    expect(
+      (await http().get(`/v1/doctors/${OTHER_AREA_DOC}`).set('authorization', rbm)).status,
+    ).toBe(200);
+    expect((await http().get(`/v1/doctors/${HQ_DOC}`).set('authorization', rbm)).status).toBe(200);
+    const dir = await token('director@demo.ariforce.in');
+    expect(
+      (await http().get(`/v1/doctors/${OTHER_AREA_DOC}`).set('authorization', dir)).status,
+    ).toBe(200);
+    const me = await http().get('/v1/me').set('authorization', dir);
+    expect(me.body.roles).toEqual(['director']);
+    const sys = await http()
+      .get('/v1/me')
+      .set('authorization', await token('sysadmin@demo.ariforce.in'));
+    expect(sys.body.roles).toEqual(['system_admin']);
+    expect(sys.body.permissions).not.toContain('field:read');
+    expect(sys.body.managerId).toBeNull();
+  });
+
+  it('business manager cannot create a doctor outside their hierarchy (403); inside = 201 + audit row', async () => {
+    const auth = await token('bm@demo.ariforce.in');
     const body = {
       name: 'Dr. New Field',
       qualification: null,
@@ -145,12 +165,12 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
   });
 
   it('writes sign-in and sign-out to the audit log', async () => {
-    const auth = await token('rsm@demo.ariforce.in');
+    const auth = await token('rbm@demo.ariforce.in');
     const out = await http().post('/v1/auth/sign-out').set('authorization', auth).send({});
     expect(out.status).toBe(200);
     const { rows } = await owner.query(
       `select action from audit_log a join users u on u.id = a.actor_user_id
-       where u.email = 'rsm@demo.ariforce.in' and action like 'auth.%'`,
+       where u.email = 'rbm@demo.ariforce.in' and action like 'auth.%'`,
     );
     const actions = rows.map((r) => r.action);
     expect(actions).toContain('auth.sign_in');
@@ -159,7 +179,7 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
   });
 
   it('validation failures are 422 with the error shape', async () => {
-    const auth = await token('admin@demo.ariforce.in');
+    const auth = await token('sysadmin@demo.ariforce.in');
     const res = await http().post('/v1/doctors').set('authorization', auth).send({ name: '' });
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('VALIDATION_FAILED');

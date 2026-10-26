@@ -8,29 +8,34 @@ if (!url) throw new Error('DIRECT_URL (direct owner connection, migrations only)
 const pool = new Pool({ connectionString: url });
 const db = drizzle(pool, { schema: s });
 
+const BASE = ['me:read', 'roles:read', 'territories:read', 'masters:read'];
+const MANAGER = [
+  ...BASE,
+  'users:read',
+  'masters:write',
+  'field:read',
+  'approvals:decide',
+  'reports:read',
+];
+/** Mirrors DEFAULT_ROLE_PERMISSIONS in @ariforce/contracts. */
 const PERMS: Record<string, string[]> = {
-  rep: ['me:read', 'roles:read', 'territories:read', 'masters:read', 'masters:write'],
-  manager: [
-    'me:read',
-    'roles:read',
-    'territories:read',
-    'users:read',
-    'masters:read',
-    'masters:write',
-    'approvals:decide',
-  ],
-  admin: [
-    'me:read',
-    'roles:read',
-    'territories:read',
+  business_manager: [...BASE, 'masters:write', 'field:read', 'field:write', 'reports:read'],
+  area_business_manager: MANAGER,
+  regional_business_manager: MANAGER,
+  zonal_business_manager: MANAGER,
+  sales_manager: MANAGER,
+  general_manager: MANAGER,
+  vice_president: MANAGER,
+  director: [...MANAGER, 'imports:write', 'settings:write', 'audit:read'],
+  system_admin: [
+    ...BASE,
     'territories:write',
     'users:read',
     'users:write',
-    'masters:read',
     'masters:write',
-    'approvals:decide',
-    'audit:read',
+    'imports:write',
     'settings:write',
+    'audit:read',
   ],
 };
 
@@ -48,7 +53,7 @@ await db.transaction(async (tx) => {
         key: r.key,
         name: r.name,
         rank: r.rank,
-        permissions: PERMS[r.key === 'rep' || r.key === 'admin' ? r.key : 'manager']!,
+        permissions: PERMS[r.key]!,
       })),
     )
     .onConflictDoNothing();
@@ -108,39 +113,68 @@ await db.transaction(async (tx) => {
     .values(terr.map((t) => ({ ...t, companyId: C })))
     .onConflictDoNothing();
 
+  // One user per hierarchy role (reporting line via manager_id) plus the system admin.
+  // role = index into ROLE_DEFS.
   const people = [
     {
-      id: U.admin,
-      email: 'admin@demo.ariforce.in',
-      name: 'Demo Admin',
-      code: 'ADM001',
+      id: U.sysadmin,
+      email: 'sysadmin@demo.ariforce.in',
+      name: 'Sam System Admin',
+      code: 'SYS001',
       role: 5,
       terr: T.national,
       mgr: null,
     },
     {
-      id: U.national,
-      email: 'nsm@demo.ariforce.in',
-      name: 'Nita National',
-      code: 'NSM001',
+      id: U.director,
+      email: 'director@demo.ariforce.in',
+      name: 'Dipa Director',
+      code: 'DIR001',
       role: 4,
       terr: T.national,
       mgr: null,
     },
     {
+      id: U.vp,
+      email: 'vp@demo.ariforce.in',
+      name: 'Vikram VP',
+      code: 'VP001',
+      role: 8,
+      terr: T.national,
+      mgr: U.director,
+    },
+    {
+      id: U.gm,
+      email: 'gm@demo.ariforce.in',
+      name: 'Gita GM',
+      code: 'GM001',
+      role: 7,
+      terr: T.national,
+      mgr: U.vp,
+    },
+    {
+      id: U.sm,
+      email: 'sm@demo.ariforce.in',
+      name: 'Sanjay Sales Manager',
+      code: 'SM001',
+      role: 6,
+      terr: T.national,
+      mgr: U.gm,
+    },
+    {
       id: U.zonal,
-      email: 'zsm@demo.ariforce.in',
-      name: 'Zubin Zonal',
-      code: 'ZSM001',
+      email: 'zbm@demo.ariforce.in',
+      name: 'Zubin ZBM',
+      code: 'ZBM001',
       role: 3,
       terr: T.zone,
-      mgr: U.national,
+      mgr: U.sm,
     },
     {
       id: U.regional,
-      email: 'rsm@demo.ariforce.in',
-      name: 'Rina Regional',
-      code: 'RSM001',
+      email: 'rbm@demo.ariforce.in',
+      name: 'Rina RBM',
+      code: 'RBM001',
       role: 2,
       terr: T.region,
       mgr: U.zonal,
@@ -148,7 +182,7 @@ await db.transaction(async (tx) => {
     {
       id: U.area,
       email: 'abm@demo.ariforce.in',
-      name: 'Arup Area',
+      name: 'Arup ABM',
       code: 'ABM001',
       role: 1,
       terr: T.area,
@@ -156,18 +190,18 @@ await db.transaction(async (tx) => {
     },
     {
       id: U.rep,
-      email: 'rep@demo.ariforce.in',
-      name: 'Riya Rep',
-      code: 'MR001',
+      email: 'bm@demo.ariforce.in',
+      name: 'Riya BM',
+      code: 'BM001',
       role: 0,
       terr: T.hq,
       mgr: U.area,
     },
     {
       id: U.otherRep,
-      email: 'rep2@demo.ariforce.in',
-      name: 'Sourav Rep',
-      code: 'MR002',
+      email: 'bm2@demo.ariforce.in',
+      name: 'Sourav BM',
+      code: 'BM002',
       role: 0,
       terr: T.otherArea,
       mgr: U.regional,

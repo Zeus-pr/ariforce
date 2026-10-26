@@ -70,7 +70,7 @@ erDiagram
 
 ## Seed (`pnpm -F @ariforce/db db:seed`)
 
-One demo company, territory chain India > East Zone > West Bengal > Kolkata North > Shyambazar HQ (+ Kolkata South), one user per role (+ a second rep outside the area manager's subtree for denial tests), specialties, A/B/C grades, work types, sample doctors/chemist/stockist.
+One demo company, territory chain India > East Zone > West Bengal > Kolkata North > Shyambazar HQ (+ Kolkata South), one user per role on a single reporting line (BM → ABM → RBM → ZBM → SM → GM → VP → Director) plus a System Admin with no manager, and a second BM reporting to the RBM (outside the ABM's team) for denial tests. Roles: see docs/RBAC.md (migration 0006 renames the original enum values), specialties, A/B/C grades, work types, sample doctors/chemist/stockist.
 
 ## Tests
 

@@ -44,6 +44,7 @@ export class MeController {
         key: r.key,
         name: r.name,
         rank: r.rank,
+        inHierarchy: r.rank > 0,
         permissions: r.permissions.filter((x) => x.includes(':')) as Permission[],
       })),
     };

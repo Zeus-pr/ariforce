@@ -31,13 +31,20 @@ export const companies = pgTable('companies', {
   ...syncCols(),
 });
 
+/**
+ * Sales hierarchy (rank 1..8) plus the technical system_admin (rank 0, outside the hierarchy).
+ * Renamed from the 0001 values in migration 0006_role_hierarchy (applied DBs keep their rows).
+ */
 export const roleKey = pgEnum('role_key', [
-  'rep',
-  'area_manager',
-  'regional_manager',
-  'zonal_manager',
-  'national_head',
-  'admin',
+  'business_manager',
+  'area_business_manager',
+  'regional_business_manager',
+  'zonal_business_manager',
+  'sales_manager',
+  'general_manager',
+  'vice_president',
+  'director',
+  'system_admin',
 ]);
 
 export const roles = pgTable(
