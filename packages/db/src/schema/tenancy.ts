@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  date,
   boolean,
   geometry,
   index,
@@ -87,6 +88,8 @@ export const users = pgTable(
     employeeCode: text('employee_code'),
     /** Free-text job title from HR (e.g. "Distribution Head"); independent of the RBAC role. */
     designation: text('designation'),
+    /** Date of joining (from HR import); nullable. */
+    joinedOn: date('joined_on'),
     /** Reporting manager (people hierarchy; may differ from territory hierarchy). */
     managerId: uuid('manager_id'),
     status: userStatus('status').notNull().default('active'),

@@ -19,6 +19,7 @@ type Emp = {
   phone: string | null;
   employeeCode: string | null;
   designation: string | null;
+  joinedOn: string | null;
   roles: RoleKey[];
   managerId: string | null;
   territoryIds: string[];
@@ -32,6 +33,7 @@ const emps: Emp[] = fx.mockUsers.map((u) => ({
   phone: null,
   employeeCode: u.employeeCode,
   designation: null,
+  joinedOn: null,
   roles: u.roles,
   managerId: u.managerId,
   territoryIds: u.territoryIds,
@@ -80,6 +82,7 @@ function node(u: Emp, depth: number): TeamNode {
     role: top,
     roles: u.roles,
     designation: u.designation,
+    joinedOn: u.joinedOn,
     employeeCode: u.employeeCode,
     phone: u.phone,
     email: u.email,
@@ -172,6 +175,7 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
         phone: b.data.phone,
         employeeCode: b.data.employeeCode,
         designation: b.data.designation,
+        joinedOn: b.data.joinedOn,
         roles: [b.data.role],
         managerId: mgrId,
         territoryIds: b.data.territoryIds,

@@ -42,6 +42,7 @@ type Person = {
   phone: string | null;
   employeeCode: string | null;
   designation: string | null;
+  joinedOn: string | null;
   managerId: string | null;
   status: 'invited' | 'active' | 'suspended';
   version: number;
@@ -90,6 +91,7 @@ export class TeamService {
           phone: u.phone,
           employeeCode: u.employeeCode,
           designation: u.designation,
+          joinedOn: u.joinedOn,
           managerId: u.managerId,
           status: u.status,
           version: u.version,
@@ -158,6 +160,7 @@ export class TeamService {
         role: top,
         roles: u.roles,
         designation: u.designation,
+        joinedOn: u.joinedOn,
         employeeCode: u.employeeCode,
         phone: u.phone,
         email: u.email,
@@ -333,6 +336,7 @@ export class TeamService {
           phone: b.phone,
           employeeCode: b.employeeCode,
           designation: b.designation,
+          joinedOn: b.joinedOn,
           managerId: mgrId,
           status: 'invited',
         })
@@ -378,6 +382,7 @@ export class TeamService {
         name: b.name,
         phone: b.phone,
         designation: b.designation,
+        joinedOn: b.joinedOn,
         managerId: b.managerId,
         status: b.status,
         updatedAt: new Date(),

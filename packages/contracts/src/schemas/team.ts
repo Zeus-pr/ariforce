@@ -45,6 +45,7 @@ export const TeamNode = z
     roles: z.array(RoleKey),
     designation: z.string().nullable().meta({ description: 'Free-text HR title, not a role' }),
     employeeCode: z.string().nullable(),
+    joinedOn: z.iso.date().nullable().meta({ description: 'Date of joining' }),
     phone: z.string().nullable(),
     email: z.string(),
     status: UserStatus,
@@ -80,6 +81,7 @@ export const EmployeeCreate = z
     phone: Phone.nullable().default(null),
     employeeCode: z.string().trim().min(1).max(50).nullable().default(null),
     designation: z.string().trim().max(100).nullable().default(null),
+    joinedOn: z.iso.date().nullable().default(null),
     role: RoleKey.meta({ description: "Must be a hierarchy role strictly below the caller's" }),
     territoryIds: z.array(Id).min(1).meta({ description: "Within the caller's territory subtree" }),
     managerId: Id.nullable()
@@ -94,6 +96,7 @@ export const EmployeeUpdate = z
     name: z.string().trim().min(1).max(200).optional(),
     phone: Phone.nullable().optional(),
     designation: z.string().trim().max(100).nullable().optional(),
+    joinedOn: z.iso.date().nullable().optional(),
     role: RoleKey.optional(),
     territoryIds: z.array(Id).min(1).optional(),
     managerId: Id.optional().meta({ description: 'Move within the subtree' }),

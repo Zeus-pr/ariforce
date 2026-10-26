@@ -1501,6 +1501,8 @@ export interface components {
       employeeCode: string | null;
       /** @default null */
       designation: string | null;
+      /** @default null */
+      joinedOn: string | null;
       /** @description Must be a hierarchy role strictly below the caller's */
       role: components['schemas']['RoleKey'];
       /** @description Within the caller's territory subtree */
@@ -1516,6 +1518,7 @@ export interface components {
       name?: string;
       phone?: string | null;
       designation?: string | null;
+      joinedOn?: string | null;
       role?: components['schemas']['RoleKey'];
       territoryIds?: string[];
       /**
@@ -2316,6 +2319,9 @@ export interface components {
       name: string;
       email: string;
       employeeCode: string | null;
+      phone?: string | null;
+      designation?: string | null;
+      joinedOn?: string | null;
       roles: components['schemas']['RoleKey'][];
       managerId: string | null;
       territoryIds: string[];
@@ -2792,6 +2798,8 @@ export interface components {
       /** @description Free-text HR title, not a role */
       designation: string | null;
       employeeCode: string | null;
+      /** @description Date of joining */
+      joinedOn: string | null;
       phone: string | null;
       email: string;
       status: components['schemas']['UserStatus'];
