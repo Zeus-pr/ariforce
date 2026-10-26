@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as s from '../src/schema';
+import { rolePermissionMatrix } from '../src/role-permissions-sql';
 import { DEMO_COMPANY_ID as C, ROLE_DEFS, T, U, roleId, seedIds } from '../src/seed-data';
 
 const url = process.env.DIRECT_URL;
@@ -8,45 +9,8 @@ if (!url) throw new Error('DIRECT_URL (direct owner connection, migrations only)
 const pool = new Pool({ connectionString: url });
 const db = drizzle(pool, { schema: s });
 
-const BASE = [
-  'me:read',
-  'roles:read',
-  'territories:read',
-  'masters:read',
-  'stockists:read',
-  'products:read',
-];
-const MANAGER = [...BASE, 'users:read', 'field:read', 'approvals:decide', 'reports:read'];
-const MASTERS_WRITE = ['masters:write', 'territories:write', 'imports:write'];
-const SENIOR = [...MANAGER, ...MASTERS_WRITE];
-/** Mirrors DEFAULT_ROLE_PERMISSIONS in @ariforce/contracts (masters write = RBM and above). */
-const PERMS: Record<string, string[]> = {
-  business_manager: [...BASE, 'field:read', 'field:write', 'reports:read'],
-  area_business_manager: MANAGER,
-  regional_business_manager: SENIOR,
-  zonal_business_manager: SENIOR,
-  sales_manager: SENIOR,
-  general_manager: SENIOR,
-  vice_president: SENIOR,
-  director: [...SENIOR, 'settings:write', 'audit:read'],
-  system_admin: [
-    ...BASE,
-    ...MASTERS_WRITE,
-    'users:read',
-    'users:write',
-    'settings:write',
-    'audit:read',
-  ],
-  distribution_head: [
-    'me:read',
-    'roles:read',
-    'territories:read',
-    'stockists:read',
-    'products:read',
-    'sales:read',
-  ],
-  accountant: ['me:read', 'roles:read', 'territories:read', 'products:read', 'finance:read'],
-};
+/** Single source of truth: DEFAULT_ROLE_PERMISSIONS (same matrix as migration 0019). */
+const PERMS = rolePermissionMatrix();
 
 await db.transaction(async (tx) => {
   await tx

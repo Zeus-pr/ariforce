@@ -82,7 +82,7 @@ export const UserSummary = z
     roles: z.array(RoleKey),
     managerId: Id.nullable(),
     territoryIds: z.array(Id),
-    status: z.enum(['invited', 'active', 'suspended']),
+    status: z.enum(['invited', 'active', 'suspended', 'pending', 'rejected']),
   })
   .meta({ id: 'UserSummary' });
 export type UserSummary = z.infer<typeof UserSummary>;
@@ -90,7 +90,7 @@ export const UserListQuery = listQuery(['name', 'employeeCode'] as const, {
   role: RoleKey.optional(),
   managerId: Id.optional().meta({ description: 'Direct reports of this user' }),
   territoryId: Id.optional().meta({ description: 'Users assigned in this territory subtree' }),
-  status: z.enum(['invited', 'active', 'suspended']).optional(),
+  status: z.enum(['invited', 'active', 'suspended', 'pending', 'rejected']).optional(),
 }).meta({ description: 'Caller plus their reporting line; company-wide roles see everyone' });
 
 export const AttendanceDay = z

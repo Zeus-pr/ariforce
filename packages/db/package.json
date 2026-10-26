@@ -32,6 +32,8 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:studio": "drizzle-kit studio",
     "db:sql": "tsx scripts/sql-files.ts",
+    "db:role-perms": "tsx scripts/role-perms-sql.ts && tsx scripts/sql-files.ts",
+    "db:role-perms:check": "tsx scripts/role-perms-sql.ts --check",
     "db:sql:check": "tsx scripts/sql-files.ts --check"
   },
   "devDependencies": {

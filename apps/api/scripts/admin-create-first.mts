@@ -4,6 +4,12 @@
  *   pnpm -F @ariforce/api admin:create-first --company arighna --email admin@arighna.example \
  *     --name "System Admin" [--demo-users --demo-domain demo.arighna.example] [--territory <code>]
  *
+ *   Any role (creates the user, or links an existing users row with that email to a login):
+ *   pnpm -F @ariforce/api admin:create-first --company arighna --role director \
+ *     --email someone@example.com --name "Name" [--territory <code>]
+ *   --role defaults to system_admin. A non-admin role never gets system_admin. Directors and
+ *   system admins have no manager; other roles are created without one (assign it in My Team).
+ *
  * Connects with DATABASE_URL (the non-bypass app role; loaded from apps/api/.env when present) and
  * writes inside a tenant transaction, so RLS applies. Passwords come from ARIFORCE_ADMIN_PASSWORD /
  * ARIFORCE_DEMO_PASSWORD or a hidden prompt; they are never printed or logged. Idempotent: existing
@@ -32,7 +38,8 @@ const { values: a } = parseArgs({
     company: { type: 'string' },
     'company-id': { type: 'string' },
     email: { type: 'string' },
-    name: { type: 'string', default: 'System Admin' },
+    name: { type: 'string' },
+    role: { type: 'string', default: 'system_admin' },
     'demo-users': { type: 'boolean', default: false },
     'demo-domain': { type: 'string', default: 'demo.ariforce.in' },
     territory: { type: 'string' },
@@ -45,6 +52,10 @@ const fail = (m: string): never => {
 };
 if (!a.email) fail('--email is required');
 if (!a.company && !a['company-id']) fail('--company <slug> or --company-id <uuid> is required');
+if (!(ROLE_KEYS as readonly string[]).includes(a.role!))
+  fail(`--role must be one of: ${ROLE_KEYS.join(', ')}`);
+const role = a.role as RoleKey;
+const roleLabel = ROLE_NAMES[role];
 const url = process.env.DATABASE_URL ?? fail('DATABASE_URL is not set');
 
 function prompt(label: string): Promise<string> {
@@ -70,7 +81,7 @@ async function password(env: string, label: string) {
   return v;
 }
 
-const adminPw = await password('ARIFORCE_ADMIN_PASSWORD', 'System Admin password');
+const adminPw = await password('ARIFORCE_ADMIN_PASSWORD', `${roleLabel} password`);
 const demoPw = a['demo-users']
   ? await password('ARIFORCE_DEMO_PASSWORD', 'Demo users password')
   : '';
@@ -195,7 +206,11 @@ try {
            values ($1, $2, 'credential', $2, $3)`,
           [randomUUID(), authId, hash],
         );
-      await c.query('update users set auth_user_id = $1 where id = $2', [authId, userId]);
+      await c.query(
+        `update users set auth_user_id = $1,
+           status = case when status = 'invited' then 'active' else status end where id = $2`,
+        [authId, userId],
+      );
     }
     await c.query(
       `insert into audit_log (company_id, actor_user_id, action, entity_type, entity_id, after)
@@ -213,12 +228,12 @@ try {
 
   await ensureUser({
     email: a.email!,
-    name: a.name!,
+    name: a.name ?? roleLabel,
     code: null,
-    role: 'system_admin',
+    role,
     managerId: null,
     pw: adminPw,
-    territory: false,
+    territory: role !== 'system_admin',
   });
   if (a['demo-users']) {
     let manager: string | null = null;

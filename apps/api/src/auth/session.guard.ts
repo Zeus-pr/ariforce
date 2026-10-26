@@ -10,7 +10,8 @@ import { Reflector } from '@nestjs/core';
 import { fromNodeHeaders } from 'better-auth/node';
 import { randomUUID } from 'node:crypto';
 import type { Request } from 'express';
-import { PERMISSIONS, type Permission, type RoleKey } from '@ariforce/contracts';
+import { AUTH_STATE_CODES, PERMISSIONS, type Permission, type RoleKey } from '@ariforce/contracts';
+import { err } from '../field/checkins.service';
 import { roles, territories, userRoles, userTerritories, withTenant, type Db } from '@ariforce/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { DB } from '../db/db.module';
@@ -37,7 +38,18 @@ export class SessionGuard implements CanActivate {
     const s = await this.authService.auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
     if (!s) throw new UnauthorizedException('Sign in required');
     const m = await this.authService.audit.resolveMembership(s.user.id);
-    if (!m) throw new ForbiddenException('No active AriForce user for this identity');
+    if (!m) {
+      // Pending/rejected self sign-ups hold a login but no data access (cookie or bearer alike).
+      const st = await this.db.execute<{ s: string | null }>(
+        sql`select auth_account_status(${s.user.id}) as s`,
+      );
+      const status = st.rows[0]?.s;
+      if (status === 'pending')
+        throw err(403, AUTH_STATE_CODES.pending, 'Your account is awaiting approval');
+      if (status === 'rejected')
+        throw err(403, AUTH_STATE_CODES.rejected, 'Your sign-up request was not approved');
+      throw new ForbiddenException('No active AriForce user for this identity');
+    }
 
     const p = await withTenant(this.db, m, async (tx) => {
       const rs = await tx

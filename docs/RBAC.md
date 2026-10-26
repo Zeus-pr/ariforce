@@ -55,6 +55,10 @@ Territory levels are a separate, geographic hierarchy (`national > zone > region
 
 Field-added doctors are `pending` unless created by a director or system admin.
 
+### Baseline sync (migration 0019)
+
+`packages/db/migrations/0019_role_permissions_baseline.sql` SETs the full array above for every role in every company (re-run converges, only `roles.permissions` changes). It is generated from `DEFAULT_ROLE_PERMISSIONS` by `pnpm -F @ariforce/db db:role-perms`; the seed uses the same matrix and `packages/db/test/role-permissions.test.ts` fails if they drift. DCR, attendance, tour plans and check-ins are `field:read`/`field:write`; KPIs are `reports:read`; team tree and employees are `users:read`/`users:write`; imports are `imports:write`.
+
 ### Masters permissions (lead rule, 2026-10-27)
 
 - **Write** (create, edit, import dry-run and save, deactivate) on doctors, chemists, stockists, products, divisions, territories, work types, HQ mappings and imports: RBM and above (rank >= 3: RBM, ZBM, SM, GM, VP, Director) and System Admin. Constant: `MASTERS_WRITE` / `MASTERS_WRITE_MIN_RANK = 3` in `packages/contracts/src/schemas/roles.ts`.
@@ -135,3 +139,27 @@ The server enforces every rule in `apps/api/src/team/team.service.ts`, and the m
 - `designation` is free text from HR and has no effect on permissions.
 - No payroll or HR-sensitive data (PAN, bank, CTC, nominee) is stored in app tables or contracts.
 - Chemists are an independent master with no doctor link, and the chemist import does not need one.
+
+### System admin creates directors and other employees (2026-10-27)
+
+- A `system_admin` holding `users:write` may create (`POST /v1/employees`), edit and re-invite **any hierarchy role, including `director`**. Every action is audit-logged (`employee.created`, `employee.invited`).
+- The system admin is outside the reporting line, so no manager is set by default. A `director` never has a manager: passing `managerId` for a director returns 422.
+- Other managers keep the strict rule: they can only create roles below their own, inside their own subtree.
+- `POST /v1/employees/{id}/invite` also works for an existing employee row that has no login yet (for example imported users). The row goes back to `invited` until the invite is accepted. Users who already have a login get 409.
+- `INVITE_RETURN_LINK=true` (read per request; restart the API after changing it) returns `inviteUrl` = `<WEB_ORIGIN>/invite?token=...`. The web app has no `/invite` page yet; accept with `POST /v1/invites/accept {token,password}`.
+- CLI: `pnpm -F @ariforce/api admin:create-first --company <slug> --role <key> --email ... --name ... [--territory <code>]` creates or links a user with that role and sets the password (hidden prompt or `ARIFORCE_ADMIN_PASSWORD`). It is idempotent and never grants `system_admin` unless `--role system_admin` (the default) is used.
+
+## Sign-up requests
+
+- Anyone can call `POST /v1/auth/sign-up-request` (company `arighna`, set by `SIGNUP_COMPANY_SLUG`). It creates the login and a `users` row with status `pending`. If the email matches one of the loaded employees that has no login yet, it links to that row. The requested role, territory and manager are stored only in `signup_requests`. No role is granted at this point.
+- `pending` and `rejected` users cannot sign in (403 `ACCOUNT_PENDING_APPROVAL` / `ACCOUNT_REJECTED`). Any existing session or bearer token gets the same 403 from every data endpoint.
+- Who decides:
+  - A **system admin** sees every request and can grant any role, including functional roles.
+  - **ABM and above** see requests for hierarchy roles below their own, where the requested territory or manager is in their subtree. They can grant only roles below their own, on territories in their scope.
+  - BM and functional roles cannot review requests. Nobody can approve their own request.
+- On approval:
+  - Hierarchy roles need at least one territory.
+  - Directors and functional roles have no manager.
+  - For other roles, the manager defaults to the requested one, or else to the approver.
+- Audit actions: `signup.requested`, `signup.approved`, `signup.rejected`.
+- Table: `signup_requests`, created by migration `0020_signup_requests.sql`, with RLS `tenant_isolation`; only `ariforce_app` has grants.

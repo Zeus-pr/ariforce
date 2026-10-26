@@ -4664,7 +4664,9 @@
               "enum": [
                 "invited",
                 "active",
-                "suspended"
+                "suspended",
+                "pending",
+                "rejected"
               ]
             }
           }
@@ -7251,6 +7253,332 @@
         }
       }
     },
+    "/v1/auth/sign-up-request": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "operationId": "requestSignUp",
+        "summary": "Public. Self sign-up for company arighna: creates the login and a pending employee. The role is only a request; the account cannot sign in until approved. Sign-in then returns 403 code ACCOUNT_PENDING_APPROVAL (or ACCOUNT_REJECTED).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupRequestCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Request stored (status pending)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupRequestAccepted"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CAPTCHA_FAILED (only when TURNSTILE_SECRET is set)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "SIGNUP_UNAVAILABLE: generic, also for emails that already have a login",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (password min 12; system_admin cannot be requested)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED (per IP and per email)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "SIGNUP_DISABLED: company not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/signup-requests": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Team"
+        ],
+        "operationId": "listSignupRequests",
+        "summary": "System admin: all requests. ABM and above: requests for a hierarchy role below theirs whose territory or manager is in their subtree.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "default": "pending",
+              "$ref": "#/components/schemas/SignupStatus"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupRequestList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "BM and functional roles cannot review sign-ups",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/signup-requests/{id}/approve": {
+      "post": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Team"
+        ],
+        "operationId": "approveSignupRequest",
+        "summary": "Grant a role (may differ from the request) within your authority; activates the account. Directors and functional roles have no manager.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupApprove"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Approved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role above your authority, territory outside your scope, or your own request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not visible to you",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already decided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation (no territory for a hierarchy role, manager for a director, ...)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/signup-requests/{id}/reject": {
+      "post": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Team"
+        ],
+        "operationId": "rejectSignupRequest",
+        "summary": "Reject; the login stays blocked (sign-in returns ACCOUNT_REJECTED)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupReject"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Your own request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not visible to you",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already decided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/approvals/{id}/decision": {
       "post": {
         "security": [
@@ -9589,6 +9917,164 @@
           "token",
           "password"
         ]
+      },
+      "SignupRequestCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email",
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          },
+          "phone": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 6,
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 128
+          },
+          "requestedRole": {
+            "$ref": "#/components/schemas/SignupRoleKey"
+          },
+          "territoryId": {
+            "default": null,
+            "description": "Optional HQ/territory",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "managerId": {
+            "default": null,
+            "description": "Optional requested manager",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "turnstileToken": {
+            "description": "Required only when the server has TURNSTILE_SECRET set",
+            "type": "string",
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "password",
+          "requestedRole"
+        ]
+      },
+      "SignupRoleKey": {
+        "type": "string",
+        "enum": [
+          "business_manager",
+          "area_business_manager",
+          "regional_business_manager",
+          "zonal_business_manager",
+          "sales_manager",
+          "general_manager",
+          "vice_president",
+          "director",
+          "distribution_head",
+          "accountant"
+        ]
+      },
+      "SignupStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "approved",
+          "rejected"
+        ]
+      },
+      "SignupApprove": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "description": "May differ from the requested role; within your authority",
+            "$ref": "#/components/schemas/SignupRoleKey"
+          },
+          "territoryIds": {
+            "description": "Default: the requested territory",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "managerId": {
+            "description": "Default: requested manager, else you (managers). Directors have none.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "role"
+        ]
+      },
+      "SignupReject": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
       },
       "ApprovalDecision": {
         "type": "object",
@@ -12119,7 +12605,9 @@
             "enum": [
               "invited",
               "active",
-              "suspended"
+              "suspended",
+              "pending",
+              "rejected"
             ]
           }
         },
@@ -13797,6 +14285,169 @@
         "required": [
           "userId",
           "email"
+        ],
+        "additionalProperties": false
+      },
+      "SignupRequestAccepted": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "pending"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "SignupRequestList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SignupRequest"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "SignupRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requestedRole": {
+            "$ref": "#/components/schemas/RoleKey"
+          },
+          "requestedTerritoryId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requestedManagerId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/SignupStatus"
+          },
+          "approvedRole": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decidedBy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decidedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "ISO-8601 timestamp (UTC)"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "name",
+          "email",
+          "phone",
+          "requestedRole",
+          "requestedTerritoryId",
+          "requestedManagerId",
+          "status",
+          "approvedRole",
+          "decidedBy",
+          "decidedAt",
+          "reason",
+          "createdAt"
         ],
         "additionalProperties": false
       },
