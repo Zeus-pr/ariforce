@@ -1,9 +1,5 @@
 import * as z from 'zod';
-import { Id, Syncable } from './common';
-
-const GeoPoint = z
-  .object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) })
-  .meta({ id: 'GeoPoint' });
+import { GeoPoint, Id, Syncable, listQuery } from './common';
 
 export const Specialty = Syncable.extend({
   code: z.string().max(32),
@@ -79,3 +75,16 @@ export type ChemistCreate = z.infer<typeof ChemistCreate>;
 export type ChemistUpdate = z.infer<typeof ChemistUpdate>;
 export type StockistCreate = z.infer<typeof StockistCreate>;
 export type StockistUpdate = z.infer<typeof StockistUpdate>;
+
+const territoryFilter = Id.optional().meta({
+  description: 'Only rows in this territory or any descendant (within the caller scope)',
+});
+export const DoctorListQuery = listQuery(['name', 'city', 'updatedAt', 'createdAt'] as const, {
+  territoryId: territoryFilter,
+  specialtyId: Id.optional(),
+  categoryId: Id.optional(),
+});
+export const OutletListQuery = listQuery(['name', 'city', 'updatedAt', 'createdAt'] as const, {
+  territoryId: territoryFilter,
+});
+export const CodeNameListQuery = listQuery(['code', 'name', 'updatedAt'] as const, {});

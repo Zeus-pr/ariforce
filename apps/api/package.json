@@ -8,7 +8,7 @@
     "start": "node dist/main.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "test": "vitest run",
+    "test": "sh ../../scripts/vitest.sh run",
     "db:seed": "tsx scripts/seed-auth.mts"
   },
   "dependencies": {

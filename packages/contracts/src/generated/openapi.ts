@@ -104,7 +104,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Territories in the caller's subtree */
+    /** Territories in the caller's subtree (cursor-paginated, no 200 cap overall) */
     get: operations['listTerritories'];
     put?: never;
     post?: never;
@@ -137,6 +137,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Read-only in v1 */
     get: operations['listSpecialties'];
     put?: never;
     post?: never;
@@ -153,6 +154,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Read-only in v1 */
     get: operations['listDoctorCategories'];
     put?: never;
     post?: never;
@@ -230,6 +232,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/doctors/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Bulk import doctors from Excel/CSV rows (dry-run first)
+     * @description Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.
+     */
+    post: operations['importDoctors'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/doctors': {
     parameters: {
       query?: never;
@@ -262,6 +284,26 @@ export interface paths {
     options?: never;
     head?: never;
     patch: operations['updateDoctor'];
+    trace?: never;
+  };
+  '/v1/chemists/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Bulk import chemists from Excel/CSV rows (dry-run first)
+     * @description Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.
+     */
+    post: operations['importChemists'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   '/v1/chemists': {
@@ -298,6 +340,26 @@ export interface paths {
     patch: operations['updateChemist'];
     trace?: never;
   };
+  '/v1/stockists/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Bulk import stockists from Excel/CSV rows (dry-run first)
+     * @description Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.
+     */
+    post: operations['importStockists'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/stockists': {
     parameters: {
       query?: never;
@@ -332,6 +394,341 @@ export interface paths {
     patch: operations['updateStockist'];
     trace?: never;
   };
+  '/v1/products/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Bulk import products from Excel/CSV rows (dry-run first)
+     * @description Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.
+     */
+    post: operations['importProducts'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/products': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List products visible to the caller (own territory subtree) */
+    get: operations['listProducts'];
+    put?: never;
+    post: operations['createProduct'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/products/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['getProduct'];
+    put?: never;
+    post?: never;
+    /** Soft delete (sets deletedAt tombstone) */
+    delete: operations['deleteProduct'];
+    options?: never;
+    head?: never;
+    patch: operations['updateProduct'];
+    trace?: never;
+  };
+  '/v1/work-types': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List worktypes visible to the caller (own territory subtree) */
+    get: operations['listWorkTypes'];
+    put?: never;
+    post: operations['createWorkType'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/work-types/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['getWorkType'];
+    put?: never;
+    post?: never;
+    /** Soft delete (sets deletedAt tombstone) */
+    delete: operations['deleteWorkType'];
+    options?: never;
+    head?: never;
+    patch: operations['updateWorkType'];
+    trace?: never;
+  };
+  '/v1/divisions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['listDivisions'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/product-hq-mappings': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['listProductHqMappings'];
+    put?: never;
+    post: operations['createProductHqMapping'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/imports/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['getImportJob'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/check-ins': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Check-ins of the caller and their reporting-line team */
+    get: operations['listCheckIns'];
+    put?: never;
+    /** Punch-in, visit or punch-out with a single GPS fix (no continuous tracking) */
+    post: operations['createCheckIn'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/attendance': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** One row per user per day */
+    get: operations['listAttendance'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/settings/geofence': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['getGeofenceSettings'];
+    /** Requires settings:write */
+    put: operations['putGeofenceSettings'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/me/consent': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['getConsentState'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/tour-plans': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['listTourPlans'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/tour-plans/{month}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Caller's plan for the month (or userId's, if in team). Used for DCR prefill. */
+    get: operations['getTourPlan'];
+    put: operations['upsertTourPlan'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/tour-plans/{month}/copy': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['copyTourPlan'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/tour-plans/{month}/submit': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['submitTourPlan'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/dcrs': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['listDcrs'];
+    /** Create or update the caller's DCR for a date (idempotent on date + call clientIds) */
+    put: operations['upsertDcr'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/dcrs/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['getDcr'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/approvals': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['listApprovals'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/approvals/{id}/decision': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Approve or reject. Only a manager above the requester in the reporting line (approvals:decide). */
+    post: operations['decideApproval'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -342,6 +739,8 @@ export interface components {
       password: string;
       rememberMe?: boolean;
     };
+    /** @enum {string} */
+    TerritoryLevel: 'national' | 'zone' | 'region' | 'area' | 'headquarter';
     UploadUrlRequest: {
       purpose: components['schemas']['FilePurpose'];
       /** @enum {string} */
@@ -377,6 +776,26 @@ export interface components {
     };
     /** @enum {string} */
     ConsentPurpose: 'personal_device_enrolment' | 'location_checkin';
+    ImportRequest: {
+      /**
+       * @description true = validate and detect duplicates only, write nothing (preview)
+       * @default true
+       */
+      dryRun: boolean;
+      /** @description Uploaded source file (R2) kept for audit */
+      fileId?: string | null;
+      fileName?: string;
+      /**
+       * @description What to do with rows matching an existing record
+       * @default skip
+       * @enum {string}
+       */
+      onDuplicate: 'skip' | 'update' | 'error';
+      /** @description Parsed rows keyed by template column (see docs/IMPORT.md) */
+      rows: {
+        [key: string]: unknown;
+      }[];
+    };
     DoctorCreate: {
       /**
        * Format: uuid
@@ -490,6 +909,271 @@ export interface components {
       phone?: string | null;
       version: number;
     };
+    ProductCreate: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      divisionId: string;
+      /** @description Company SKU code, unique per company */
+      code: string;
+      name: string;
+      brand: string | null;
+      composition: string | null;
+      /** @example 10 x 10 tablets */
+      packSize: string | null;
+      form: ('tablet' | 'capsule' | 'syrup' | 'injection' | 'cream' | 'drops' | 'other') | null;
+      /** @description MRP in INR */
+      mrp: number | null;
+      /** @description Price to retailer, INR */
+      ptr: number | null;
+      /** @description Price to stockist, INR */
+      pts: number | null;
+      /** @description Can be given as a physician sample */
+      isSample: boolean;
+      active: boolean;
+    };
+    ProductUpdate: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      divisionId?: string;
+      /** @description Company SKU code, unique per company */
+      code?: string;
+      name?: string;
+      brand?: string | null;
+      composition?: string | null;
+      /** @example 10 x 10 tablets */
+      packSize?: string | null;
+      form?: ('tablet' | 'capsule' | 'syrup' | 'injection' | 'cream' | 'drops' | 'other') | null;
+      /** @description MRP in INR */
+      mrp?: number | null;
+      /** @description Price to retailer, INR */
+      ptr?: number | null;
+      /** @description Price to stockist, INR */
+      pts?: number | null;
+      /** @description Can be given as a physician sample */
+      isSample?: boolean;
+      active?: boolean;
+      version: number;
+    };
+    WorkTypeCreate: {
+      /** @example FIELD */
+      code: string;
+      name: string;
+      /** @enum {string} */
+      kind: 'field' | 'non_field' | 'leave' | 'holiday';
+      /** @description DCR must have at least one call */
+      requiresCalls: boolean;
+      active: boolean;
+    };
+    WorkTypeUpdate: {
+      /** @example FIELD */
+      code?: string;
+      name?: string;
+      /** @enum {string} */
+      kind?: 'field' | 'non_field' | 'leave' | 'holiday';
+      /** @description DCR must have at least one call */
+      requiresCalls?: boolean;
+      active?: boolean;
+      version: number;
+    };
+    ProductHqMappingCreate: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      divisionId: string;
+      /** @description Null = whole division */
+      productId: string | null;
+    };
+    /** @enum {string} */
+    CheckInKind: 'punch_in' | 'visit' | 'punch_out';
+    CheckInCreate: {
+      /**
+       * Format: uuid
+       * @description Client-generated UUIDv7 (offline idempotency)
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      clientId: string;
+      kind: components['schemas']['CheckInKind'];
+      outletKind?: components['schemas']['OutletKind'];
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      outletId?: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      selfieFileId?: string;
+      location: components['schemas']['GeoPoint'];
+      accuracyM: number;
+      /**
+       * Format: date-time
+       * @description Device clock at capture
+       */
+      capturedAt: string;
+      /**
+       * @description Mock-location flag from the OS
+       * @default false
+       */
+      isMock: boolean;
+    };
+    /** @enum {string} */
+    OutletKind: 'doctor' | 'chemist' | 'stockist';
+    GeofenceSettings: {
+      /** @description Default visit geofence radius (#24) */
+      radiusM: number;
+      maxAccuracyM: number;
+      /** @description false = allow and flag */
+      blockOutOfFence: boolean;
+      blockMockLocation: boolean;
+      version: number;
+    };
+    /** @enum {string} */
+    ApprovalStatus: 'draft' | 'submitted' | 'approved' | 'rejected' | 'recalled';
+    TourPlanUpsert: {
+      days: components['schemas']['TourPlanDay'][];
+      version?: number;
+    };
+    TourPlanDay: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      entries: components['schemas']['TourPlanEntry'][];
+    };
+    TourPlanEntry: {
+      /**
+       * @description Multi-session days (#21)
+       * @enum {string}
+       */
+      session: 'full' | 'am' | 'pm';
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      /** @description Patches/territories to work */
+      territoryIds: string[];
+      /** @default [] */
+      jointWorkUserIds: string[];
+      /** @default [] */
+      plannedDoctorIds: string[];
+      /** @default [] */
+      plannedChemistIds: string[];
+      notes?: string | null;
+    };
+    /** @description STP to MTP copy (#20) */
+    TourPlanCopy: {
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      fromMonth?: string;
+      /** @default true */
+      fromStp: boolean;
+    };
+    DcrUpsert: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      territoryIds: string[];
+      deviationReason?: string | null;
+      calls: components['schemas']['DcrCallInput'][];
+      /** @default false */
+      submit: boolean;
+      version?: number;
+    };
+    DcrCallInput: {
+      outletKind: components['schemas']['OutletKind'];
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      outletId: string;
+      /** @description Visit check-in (GPS) for this call */
+      checkInId: string | null;
+      jointWorkUserIds: string[];
+      productsDetailed: components['schemas']['DetailedProduct'][];
+      samples: components['schemas']['SampleGiven'][];
+      pob: components['schemas']['PobLine'][];
+      remarks: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      calledAt: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      clientId: string;
+    };
+    DetailedProduct: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      /** @description Detailing sequence */
+      order: number;
+      feedback?: ('positive' | 'neutral' | 'negative') | null;
+    };
+    SampleGiven: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      quantity: number;
+    };
+    /** @description Personal order booking line */
+    PobLine: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      quantity: number;
+      stockistId?: string | null;
+      /** @description INR, at PTR */
+      value?: number | null;
+    };
+    ApprovalDecision: {
+      /** @enum {string} */
+      decision: 'approve' | 'reject';
+      comment?: string;
+    };
     Error: {
       error: {
         /** @example FORBIDDEN */
@@ -541,7 +1225,15 @@ export interface components {
     };
     /** @enum {string} */
     RoleKey:
-      'rep' | 'area_manager' | 'regional_manager' | 'zonal_manager' | 'national_head' | 'admin';
+      | 'business_manager'
+      | 'area_business_manager'
+      | 'regional_business_manager'
+      | 'zonal_business_manager'
+      | 'sales_manager'
+      | 'general_manager'
+      | 'vice_president'
+      | 'director'
+      | 'system_admin';
     /** @enum {string} */
     Permission:
       | 'me:read'
@@ -552,6 +1244,12 @@ export interface components {
       | 'users:write'
       | 'masters:read'
       | 'masters:write'
+      | 'imports:write'
+      | 'field:read'
+      | 'field:write'
+      | 'approvals:decide'
+      | 'reports:read'
+      | 'settings:write'
       | 'audit:read';
     RoleList: {
       items: components['schemas']['Role'][];
@@ -565,7 +1263,9 @@ export interface components {
       id: string;
       key: components['schemas']['RoleKey'];
       name: string;
+      /** @description 1..8 sales hierarchy; 0 = system_admin */
       rank: number;
+      inHierarchy: boolean;
       permissions: components['schemas']['Permission'][];
     };
     TerritoryPage: {
@@ -576,6 +1276,8 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
     };
     Territory: {
       /**
@@ -615,8 +1317,6 @@ export interface components {
         lng: number;
       } | null;
     };
-    /** @enum {string} */
-    TerritoryLevel: 'national' | 'zone' | 'region' | 'area' | 'headquarter';
     SpecialtyPage: {
       items: components['schemas']['Specialty'][];
       nextCursor: string | null;
@@ -625,6 +1325,8 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
     };
     Specialty: {
       /**
@@ -664,6 +1366,8 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
     };
     DoctorCategory: {
       /**
@@ -795,6 +1499,75 @@ export interface components {
        */
       at: string;
     };
+    ImportJob: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      entity: components['schemas']['ImportEntity'];
+      dryRun: boolean;
+      /** @enum {string} */
+      status: 'validated' | 'completed' | 'failed';
+      fileName: string | null;
+      totals: {
+        rows: number;
+        valid: number;
+        created: number;
+        updated: number;
+        duplicate: number;
+        skipped: number;
+        error: number;
+      };
+      results: components['schemas']['ImportRowResult'][];
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      createdBy: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+    };
+    /** @enum {string} */
+    ImportEntity:
+      | 'doctors'
+      | 'chemists'
+      | 'stockists'
+      | 'products'
+      | 'divisions'
+      | 'product_hq'
+      | 'territories'
+      | 'users';
+    ImportRowResult: {
+      /** @description 1-based row number in the request (sheet row - 1) */
+      row: number;
+      status: components['schemas']['ImportRowStatus'];
+      errors: {
+        column: string | null;
+        code: string;
+        message: string;
+      }[];
+      /** @description Created/updated id, or the matched id for duplicates */
+      id: string | null;
+      /** @description Existing record matched by the duplicate rule (#26) */
+      duplicateOf: string | null;
+      duplicateRule:
+        | ('registration_no' | 'name_pincode' | 'gstin' | 'drug_license_no' | 'code' | 'in_file')
+        | null;
+    };
+    /** @enum {string} */
+    ImportRowStatus: 'valid' | 'created' | 'updated' | 'duplicate' | 'skipped' | 'error';
     DoctorPage: {
       items: components['schemas']['Doctor'][];
       nextCursor: string | null;
@@ -803,6 +1576,8 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
     };
     Doctor: {
       /**
@@ -857,6 +1632,8 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
     };
     Chemist: {
       /**
@@ -909,6 +1686,8 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
     };
     Stockist: {
       /**
@@ -953,9 +1732,620 @@ export interface components {
       location: components['schemas']['GeoPointOutput'] | null;
       phone: string | null;
     };
+    ProductPage: {
+      items: components['schemas']['Product'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    Product: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Tombstone: set when soft-deleted */
+      deletedAt: string | null;
+      /** @description Row version, incremented on every update (optimistic concurrency) */
+      version: number;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      divisionId: string;
+      /** @description Company SKU code, unique per company */
+      code: string;
+      name: string;
+      brand: string | null;
+      composition: string | null;
+      /** @example 10 x 10 tablets */
+      packSize: string | null;
+      form: ('tablet' | 'capsule' | 'syrup' | 'injection' | 'cream' | 'drops' | 'other') | null;
+      /** @description MRP in INR */
+      mrp: number | null;
+      /** @description Price to retailer, INR */
+      ptr: number | null;
+      /** @description Price to stockist, INR */
+      pts: number | null;
+      /** @description Can be given as a physician sample */
+      isSample: boolean;
+      active: boolean;
+    };
+    WorkTypePage: {
+      items: components['schemas']['WorkType'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    WorkType: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Tombstone: set when soft-deleted */
+      deletedAt: string | null;
+      /** @description Row version, incremented on every update (optimistic concurrency) */
+      version: number;
+      /** @example FIELD */
+      code: string;
+      name: string;
+      /** @enum {string} */
+      kind: 'field' | 'non_field' | 'leave' | 'holiday';
+      /** @description DCR must have at least one call */
+      requiresCalls: boolean;
+      active: boolean;
+    };
+    DivisionPage: {
+      items: components['schemas']['Division'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    Division: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Tombstone: set when soft-deleted */
+      deletedAt: string | null;
+      /** @description Row version, incremented on every update (optimistic concurrency) */
+      version: number;
+      code: string;
+      name: string;
+      active: boolean;
+    };
+    ProductHqMappingPage: {
+      items: components['schemas']['ProductHqMapping'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    ProductHqMapping: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Tombstone: set when soft-deleted */
+      deletedAt: string | null;
+      /** @description Row version, incremented on every update (optimistic concurrency) */
+      version: number;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      divisionId: string;
+      /** @description Null = whole division */
+      productId: string | null;
+    };
+    CheckInPage: {
+      items: components['schemas']['CheckIn'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    CheckIn: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Tombstone: set when soft-deleted */
+      deletedAt: string | null;
+      /** @description Row version, incremented on every update (optimistic concurrency) */
+      version: number;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      territoryId: string | null;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      kind: components['schemas']['CheckInKind'];
+      outletKind: components['schemas']['OutletKind'] | null;
+      outletId: string | null;
+      location: components['schemas']['GeoPointOutput'];
+      accuracyM: number;
+      /**
+       * Format: date-time
+       * @description Device clock at capture
+       */
+      capturedAt: string;
+      /**
+       * @description Mock-location flag from the OS
+       * @default false
+       */
+      isMock: boolean;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      receivedAt: string;
+      /** @description Distance to the outlet geo-tag */
+      distanceM: number | null;
+      /** @description Within the geofence radius; null if outlet not geo-tagged */
+      inFence: boolean | null;
+      selfieFileId: string | null;
+    };
+    AttendanceDayPage: {
+      items: components['schemas']['AttendanceDay'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    AttendanceDay: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      userName: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      /** @enum {string} */
+      status: 'present' | 'absent' | 'leave' | 'holiday' | 'incomplete';
+      punchIn: components['schemas']['CheckIn'] | null;
+      punchOut: components['schemas']['CheckIn'] | null;
+      visits: number;
+      workTypeId: string | null;
+    };
+    ConsentState: {
+      deviceId: string | null;
+      ownership: ('company' | 'personal') | null;
+      currentNoticeVersion: string;
+      noticeUrl: string;
+      consents: {
+        /** @enum {string} */
+        purpose: 'personal_device_enrolment' | 'location_checkin';
+        granted: boolean;
+        noticeVersion: string;
+        /**
+         * Format: date-time
+         * @description ISO-8601 timestamp (UTC)
+         */
+        at: string;
+      }[];
+      /** @description False until required consents are granted */
+      canCheckIn: boolean;
+    };
+    TourPlanPage: {
+      items: components['schemas']['TourPlan'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    TourPlan: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Tombstone: set when soft-deleted */
+      deletedAt: string | null;
+      /** @description Row version, incremented on every update (optimistic concurrency) */
+      version: number;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      /**
+       * @description Standard (template) or monthly plan
+       * @enum {string}
+       */
+      kind: 'stp' | 'mtp';
+      status: components['schemas']['ApprovalStatus'];
+      days: components['schemas']['TourPlanDayOutput'][];
+      submittedAt: string | null;
+      decidedAt: string | null;
+      decidedBy: string | null;
+      decisionComment: string | null;
+    };
+    DcrPage: {
+      items: components['schemas']['Dcr'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    Dcr: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Tombstone: set when soft-deleted */
+      deletedAt: string | null;
+      /** @description Row version, incremented on every update (optimistic concurrency) */
+      version: number;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      territoryIds: string[];
+      tourPlanId: string | null;
+      /** @description Required when worked differs from the approved TP (#22) */
+      deviationReason: string | null;
+      /**
+       * @description Locked after the day-lock cut-off (#23)
+       * @enum {string}
+       */
+      status: 'draft' | 'submitted' | 'locked';
+      calls: components['schemas']['DcrCall'][];
+      submittedAt: string | null;
+    };
+    DcrCall: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      outletKind: components['schemas']['OutletKind'];
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      outletId: string;
+      /** @description Visit check-in (GPS) for this call */
+      checkInId: string | null;
+      jointWorkUserIds: string[];
+      productsDetailed: components['schemas']['DetailedProductOutput'][];
+      samples: components['schemas']['SampleGivenOutput'][];
+      pob: components['schemas']['PobLineOutput'][];
+      remarks: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      calledAt: string;
+    };
+    ApprovalPage: {
+      items: components['schemas']['Approval'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    Approval: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /** @enum {string} */
+      subjectType:
+        'tour_plan' | 'doctor' | 'chemist' | 'stockist' | 'dcr_unlock' | 'leave' | 'device';
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      subjectId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      requestedBy: string;
+      requestedByName: string;
+      /** @description Reporting manager; null = any authorised manager */
+      approverId: string | null;
+      /** @enum {string} */
+      status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+      summary: string;
+      comment: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      decidedAt: string | null;
+      decidedBy: string | null;
+    };
     GeoPointOutput: {
       lat: number;
       lng: number;
+    };
+    GeofenceSettingsOutput: {
+      /** @description Default visit geofence radius (#24) */
+      radiusM: number;
+      maxAccuracyM: number;
+      /** @description false = allow and flag */
+      blockOutOfFence: boolean;
+      blockMockLocation: boolean;
+      version: number;
+    };
+    TourPlanDayOutput: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      entries: components['schemas']['TourPlanEntryOutput'][];
+    };
+    TourPlanEntryOutput: {
+      /**
+       * @description Multi-session days (#21)
+       * @enum {string}
+       */
+      session: 'full' | 'am' | 'pm';
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      /** @description Patches/territories to work */
+      territoryIds: string[];
+      /** @default [] */
+      jointWorkUserIds: string[];
+      /** @default [] */
+      plannedDoctorIds: string[];
+      /** @default [] */
+      plannedChemistIds: string[];
+      notes?: string | null;
+    };
+    DetailedProductOutput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      /** @description Detailing sequence */
+      order: number;
+      feedback?: ('positive' | 'neutral' | 'negative') | null;
+    };
+    SampleGivenOutput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      quantity: number;
+    };
+    /** @description Personal order booking line */
+    PobLineOutput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      quantity: number;
+      stockistId?: string | null;
+      /** @description INR, at PTR */
+      value?: number | null;
     };
   };
   responses: never;
@@ -1188,8 +2578,19 @@ export interface operations {
         cursor?: string;
         /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
         updatedSince?: string;
-        /** @description Free-text search */
+        /** @description Free-text search (name, code) */
         q?: string;
+        /** @description Sort: code, name, level, updatedAt (prefix - for descending) */
+        sort?:
+          'code' | '-code' | 'name' | '-name' | 'level' | '-level' | 'updatedAt' | '-updatedAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        level?: components['schemas']['TerritoryLevel'];
+        parentId?: string;
+        /** @description Only descendants of this territory */
+        ancestorId?: string;
+        /** @description Exact code match (import lookup) */
+        code?: string;
       };
       header?: never;
       path?: never;
@@ -1284,8 +2685,12 @@ export interface operations {
         cursor?: string;
         /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
         updatedSince?: string;
-        /** @description Free-text search */
+        /** @description Free-text search (name, code) */
         q?: string;
+        /** @description Sort: code, name, updatedAt (prefix - for descending) */
+        sort?: 'code' | '-code' | 'name' | '-name' | 'updatedAt' | '-updatedAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
       };
       header?: never;
       path?: never;
@@ -1330,8 +2735,12 @@ export interface operations {
         cursor?: string;
         /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
         updatedSince?: string;
-        /** @description Free-text search */
+        /** @description Free-text search (name, code) */
         q?: string;
+        /** @description Sort: code, name, updatedAt (prefix - for descending) */
+        sort?: 'code' | '-code' | 'name' | '-name' | 'updatedAt' | '-updatedAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
       };
       header?: never;
       path?: never;
@@ -1631,6 +3040,78 @@ export interface operations {
       };
     };
   };
+  importDoctors: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Client-generated key; safe retries for POST */
+        'idempotency-key'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ImportRequest'];
+      };
+    };
+    responses: {
+      /** @description Dry-run preview */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Import applied */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description More than 5,000 rows */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Request malformed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   listDoctors: {
     parameters: {
       query?: {
@@ -1639,8 +3120,24 @@ export interface operations {
         cursor?: string;
         /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
         updatedSince?: string;
-        /** @description Free-text search */
+        /** @description Free-text search (name, code) */
         q?: string;
+        /** @description Sort: name, city, updatedAt, createdAt (prefix - for descending) */
+        sort?:
+          | 'name'
+          | '-name'
+          | 'city'
+          | '-city'
+          | 'updatedAt'
+          | '-updatedAt'
+          | 'createdAt'
+          | '-createdAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        /** @description Only rows in this territory or any descendant (within the caller scope) */
+        territoryId?: string;
+        specialtyId?: string;
+        categoryId?: string;
       };
       header?: never;
       path?: never;
@@ -1901,6 +3398,78 @@ export interface operations {
       };
     };
   };
+  importChemists: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Client-generated key; safe retries for POST */
+        'idempotency-key'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ImportRequest'];
+      };
+    };
+    responses: {
+      /** @description Dry-run preview */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Import applied */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description More than 5,000 rows */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Request malformed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   listChemists: {
     parameters: {
       query?: {
@@ -1909,8 +3478,22 @@ export interface operations {
         cursor?: string;
         /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
         updatedSince?: string;
-        /** @description Free-text search */
+        /** @description Free-text search (name, code) */
         q?: string;
+        /** @description Sort: name, city, updatedAt, createdAt (prefix - for descending) */
+        sort?:
+          | 'name'
+          | '-name'
+          | 'city'
+          | '-city'
+          | 'updatedAt'
+          | '-updatedAt'
+          | 'createdAt'
+          | '-createdAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        /** @description Only rows in this territory or any descendant (within the caller scope) */
+        territoryId?: string;
       };
       header?: never;
       path?: never;
@@ -2171,6 +3754,78 @@ export interface operations {
       };
     };
   };
+  importStockists: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Client-generated key; safe retries for POST */
+        'idempotency-key'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ImportRequest'];
+      };
+    };
+    responses: {
+      /** @description Dry-run preview */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Import applied */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description More than 5,000 rows */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Request malformed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   listStockists: {
     parameters: {
       query?: {
@@ -2179,8 +3834,22 @@ export interface operations {
         cursor?: string;
         /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
         updatedSince?: string;
-        /** @description Free-text search */
+        /** @description Free-text search (name, code) */
         q?: string;
+        /** @description Sort: name, city, updatedAt, createdAt (prefix - for descending) */
+        sort?:
+          | 'name'
+          | '-name'
+          | 'city'
+          | '-city'
+          | 'updatedAt'
+          | '-updatedAt'
+          | 'createdAt'
+          | '-createdAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        /** @description Only rows in this territory or any descendant (within the caller scope) */
+        territoryId?: string;
       };
       header?: never;
       path?: never;
@@ -2432,6 +4101,1690 @@ export interface operations {
       };
       /** @description Validation failed */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  importProducts: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Client-generated key; safe retries for POST */
+        'idempotency-key'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ImportRequest'];
+      };
+    };
+    responses: {
+      /** @description Dry-run preview */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Import applied */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description More than 5,000 rows */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Request malformed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listProducts: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
+        updatedSince?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description Sort: code, name, updatedAt (prefix - for descending) */
+        sort?: 'code' | '-code' | 'name' | '-name' | 'updatedAt' | '-updatedAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        divisionId?: string;
+        /** @description Only products mapped to this HQ territory */
+        territoryId?: string;
+        active?: 'true' | 'false';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProductPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createProduct: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Client-generated key; safe retries for POST */
+        'idempotency-key'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ProductCreate'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Product'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getProduct: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Product'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteProduct: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  updateProduct: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ProductUpdate'];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Product'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Version conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listWorkTypes: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
+        updatedSince?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description Sort: code, name, updatedAt (prefix - for descending) */
+        sort?: 'code' | '-code' | 'name' | '-name' | 'updatedAt' | '-updatedAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['WorkTypePage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createWorkType: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Client-generated key; safe retries for POST */
+        'idempotency-key'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['WorkTypeCreate'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['WorkType'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getWorkType: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['WorkType'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteWorkType: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  updateWorkType: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['WorkTypeUpdate'];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['WorkType'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Version conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listDivisions: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
+        updatedSince?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description Sort: code, name, updatedAt (prefix - for descending) */
+        sort?: 'code' | '-code' | 'name' | '-name' | 'updatedAt' | '-updatedAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DivisionPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listProductHqMappings: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
+        updatedSince?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description Sort: code, name, updatedAt (prefix - for descending) */
+        sort?: 'code' | '-code' | 'name' | '-name' | 'updatedAt' | '-updatedAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        divisionId?: string;
+        /** @description Only products mapped to this HQ territory */
+        territoryId?: string;
+        active?: 'true' | 'false';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProductHqMappingPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createProductHqMapping: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ProductHqMappingCreate'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProductHqMapping'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getImportJob: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Job with per-row results */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listCheckIns: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
+        updatedSince?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description Sort: date, createdAt, updatedAt (prefix - for descending) */
+        sort?: 'date' | '-date' | 'createdAt' | '-createdAt' | 'updatedAt' | '-updatedAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        from?: string;
+        to?: string;
+        /** @description Must be the caller or someone in their team */
+        userId?: string;
+        /** @description Territory incl. descendants */
+        territoryId?: string;
+        kind?: components['schemas']['CheckInKind'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CheckInPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createCheckIn: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Client-generated key; safe retries for POST */
+        'idempotency-key'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['CheckInCreate'];
+      };
+    };
+    responses: {
+      /** @description Already recorded (same clientId) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CheckIn'];
+        };
+      };
+      /** @description Recorded */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CheckIn'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Sequence error (e.g. visit before punch-in, second punch-in) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Consent missing (DPDP) */
+      412: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed, out of fence or mock location when blocked */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listAttendance: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
+        updatedSince?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description Sort: date, createdAt, updatedAt (prefix - for descending) */
+        sort?: 'date' | '-date' | 'createdAt' | '-createdAt' | 'updatedAt' | '-updatedAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        from?: string;
+        to?: string;
+        /** @description Must be the caller or someone in their team */
+        userId?: string;
+        /** @description Territory incl. descendants */
+        territoryId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AttendanceDayPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getGeofenceSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['GeofenceSettingsOutput'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  putGeofenceSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['GeofenceSettings'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['GeofenceSettingsOutput'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Version conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getConsentState: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Consent state for this device */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ConsentState'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listTourPlans: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
+        updatedSince?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description Sort: date, createdAt, updatedAt (prefix - for descending) */
+        sort?: 'date' | '-date' | 'createdAt' | '-createdAt' | 'updatedAt' | '-updatedAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        from?: string;
+        to?: string;
+        /** @description Must be the caller or someone in their team */
+        userId?: string;
+        /** @description Territory incl. descendants */
+        territoryId?: string;
+        month?: string;
+        status?: components['schemas']['ApprovalStatus'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlanPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getTourPlan: {
+    parameters: {
+      query?: {
+        userId?: string;
+      };
+      header?: never;
+      path: {
+        /** @description Month (YYYY-MM) */
+        month: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlan'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description No plan */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  upsertTourPlan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Month (YYYY-MM) */
+        month: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['TourPlanUpsert'];
+      };
+    };
+    responses: {
+      /** @description Saved draft */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlan'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not editable (submitted/approved) or version conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  copyTourPlan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Month (YYYY-MM) */
+        month: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['TourPlanCopy'];
+      };
+    };
+    responses: {
+      /** @description Draft created from STP/previous month */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlan'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  submitTourPlan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Month (YYYY-MM) */
+        month: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Submitted; approval created */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlan'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not in draft */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listDcrs: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
+        updatedSince?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description Sort: date, createdAt, updatedAt (prefix - for descending) */
+        sort?: 'date' | '-date' | 'createdAt' | '-createdAt' | 'updatedAt' | '-updatedAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        from?: string;
+        to?: string;
+        /** @description Must be the caller or someone in their team */
+        userId?: string;
+        /** @description Territory incl. descendants */
+        territoryId?: string;
+        status?: 'draft' | 'submitted' | 'locked';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DcrPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  upsertDcr: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DcrUpsert'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Dcr'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Day locked or version conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed (e.g. deviation reason missing) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getDcr: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Dcr'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listApprovals: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
+        updatedSince?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description Sort: createdAt (prefix - for descending) */
+        sort?: 'createdAt' | '-createdAt';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        status?: 'pending' | 'approved' | 'rejected' | 'cancelled';
+        subjectType?:
+          'tour_plan' | 'doctor' | 'chemist' | 'stockist' | 'dcr_unlock' | 'leave' | 'device';
+        mine?: 'to_decide' | 'requested';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApprovalPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  decideApproval: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ApprovalDecision'];
+      };
+    };
+    responses: {
+      /** @description Decided */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Approval'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Already decided */
+      409: {
         headers: {
           [name: string]: unknown;
         };
