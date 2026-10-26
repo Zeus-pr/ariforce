@@ -91,7 +91,9 @@ const pathOf = (p) => new URL(p.url()).pathname;
   await page.waitForURL(BASE + '/', { timeout: 10000 }).catch(() => {});
   check(pathOf(page) === '/', `Business Manager lands on dashboard (${pathOf(page)})`);
   await page.goto(BASE + '/masters/doctors', { waitUntil: 'networkidle' });
-  check(pathOf(page) === '/', `Business Manager cannot open masters (${pathOf(page)})`);
+  check(pathOf(page) === '/masters/doctors' && (await page.getByTestId('master-add').count()) === 0, `Business Manager opens masters read-only (${pathOf(page)})`);
+  await page.goto(BASE + '/masters/doctors/import', { waitUntil: 'networkidle' });
+  check(pathOf(page) === '/', `Business Manager cannot open masters import (${pathOf(page)})`);
   await ctx.close();
 }
 

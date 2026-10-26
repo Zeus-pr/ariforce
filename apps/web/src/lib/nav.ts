@@ -169,8 +169,12 @@ export function homeFor(role: Role): string {
  * Longest prefix wins.
  */
 export const GUARDS: { href: string; roles: readonly Role[] }[] = [
-  ...NAV,
-  { href: '/masters/doctors', roles: ROLES },
+  // Masters lists are readable by every role (System Admin reaches them from Administration).
+  ...NAV.filter((i) => !i.href.startsWith('/masters/')),
+  ...(['doctors', 'chemists', 'stockists'] as const).map((k) => ({
+    href: `/masters/${k}`,
+    roles: ROLES,
+  })),
   ...WRITE_ROUTES,
 ];
 

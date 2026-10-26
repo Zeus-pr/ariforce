@@ -84,6 +84,14 @@ function Planner({ initialMonth }: { initialMonth: string }) {
       params: { path: { month } },
       body: fromMonth ? { fromMonth, fromStp: false } : { fromStp: true },
     });
+    if (r.error && !fromMonth && r.response.status === 404) {
+      // No standard tour plan saved yet: start a blank draft instead of failing.
+      const blank = await api.PUT('/v1/tour-plans/{month}', { params: { path: { month } }, body: { days: [] } });
+      setBusy(false);
+      if (blank.error) return toast.error(toApiError(blank).message);
+      toast.info('No standard plan saved yet, so this month starts blank.');
+      return setPlan(blank.data);
+    }
     setBusy(false);
     if (r.error) return toast.error(toApiError(r).message);
     setPlan(r.data);
