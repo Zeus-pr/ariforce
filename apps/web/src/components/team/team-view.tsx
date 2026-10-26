@@ -192,7 +192,7 @@ export function TeamView() {
       <KpiCards metrics={scope?.rows[0]?.metrics ?? []} error={null} loading={!scope} />
 
       {!person && (
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           <Card className="gap-0 py-0 shadow-xs">
             <CardHeader className="border-b px-4 py-4">
               <CardTitle className="text-base" data-testid="team-list-title">
