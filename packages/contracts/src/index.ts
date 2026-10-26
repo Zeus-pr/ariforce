@@ -3,6 +3,8 @@ export * from './schemas/roles';
 export * from './schemas/territories';
 export * from './schemas/masters';
 export * from './schemas/auth';
+export * from './schemas/files';
+export * from './schemas/devices';
 export { buildOpenApiDocument, type OpenApiDocument } from './openapi';
 export { createApiClient, type ApiClient } from './client';
 export type { paths, components } from './generated/openapi';

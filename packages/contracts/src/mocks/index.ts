@@ -102,6 +102,21 @@ function crud<
 export function createHandlers(baseUrl = '') {
   return [
     http.get(`${baseUrl}/v1/health`, () => HttpResponse.json({ status: 'ok' })),
+    http.post(`${baseUrl}/v1/files/upload-url`, () =>
+      HttpResponse.json({
+        fileKey: 'mock/doctor_photo/2026/10/mock.jpg',
+        uploadUrl: 'https://mock-r2.invalid/upload',
+        method: 'PUT',
+        headers: { 'content-type': 'image/jpeg' },
+        expiresAt: new Date(Date.now() + 600_000).toISOString(),
+      }),
+    ),
+    http.post(`${baseUrl}/v1/files/download-url`, () =>
+      HttpResponse.json({
+        downloadUrl: 'https://mock-r2.invalid/download',
+        expiresAt: new Date(Date.now() + 300_000).toISOString(),
+      }),
+    ),
     http.post(`${baseUrl}/v1/auth/sign-in/email`, () =>
       HttpResponse.json({
         token: 'mock-token',

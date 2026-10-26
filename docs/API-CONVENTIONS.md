@@ -66,3 +66,11 @@ const { data, error } = await api.GET('/v1/doctors', { params: { query: { limit:
 Mock mode (no API needed): `@ariforce/contracts/mocks` exports `createHandlers(baseUrl)` (MSW v2). In the browser:
 `pnpm -F @ariforce/web exec msw init public` once, then `setupWorker(...createHandlers(apiUrl)).start()` when
 `NEXT_PUBLIC_API_MOCKING=enabled`. Responses are parsed through the zod schemas, so mocks match the contract.
+
+## Files
+
+Uploads/downloads use presigned R2 URLs. See [STORAGE.md](STORAGE.md).
+
+## Devices and consent
+
+`/v1/devices` (enrol company or personal phone) and `/v1/devices/{id}/consents` (append-only DPDP ledger) are contract-first. The implementation lands with the mobile app. GPS is sent only as point captures (`GeoCapture`) on punch-in, visit, punch-out and geo-tag, never as a continuous trail.
