@@ -8,7 +8,7 @@ import { configureApp } from '../src/bootstrap';
 describe('health', () => {
   it('GET /v1/health', async () => {
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    const app = configureApp(mod.createNestApplication());
+    const app = configureApp(mod.createNestApplication({ bodyParser: false }));
     await app.init();
     const res = await request(app.getHttpServer()).get('/v1/health');
     expect(res.status).toBe(200);
@@ -20,7 +20,7 @@ describe('health', () => {
 describe('openapi', () => {
   it('serves /openapi.json and /docs', async () => {
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    const app = configureApp(mod.createNestApplication());
+    const app = configureApp(mod.createNestApplication({ bodyParser: false }));
     await app.init();
     const res = await request(app.getHttpServer()).get('/openapi.json');
     expect(res.status).toBe(200);

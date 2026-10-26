@@ -58,7 +58,8 @@ jobs:
         run: |
           pnpm -r --if-present run db:migrate
           pnpm -r --if-present run db:migrate   # second run proves the SQL files are idempotent
-          pnpm -r --if-present run db:seed
+          pnpm turbo run build --filter=@ariforce/db
+          pnpm -r --if-present run db:seed      # db: tenant data; api: better-auth demo identities
       - name: Unit + DB/RLS/API integration tests
         run: pnpm test
       - run: pnpm build

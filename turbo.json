@@ -2,10 +2,30 @@
   "$schema": "https://turborepo.com/schema.json",
   "globalEnv": ["NODE_ENV", "DATABASE_URL", "DIRECT_URL"],
   "tasks": {
-    "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**", "!.next/cache/**"] },
-    "dev": { "dependsOn": ["^build"], "cache": false, "persistent": true },
-    "lint": { "dependsOn": ["^build"] },
-    "typecheck": { "dependsOn": ["^build"] },
-    "test": { "dependsOn": ["^build"], "env": ["DATABASE_URL", "DIRECT_URL"] }
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^build"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "env": [
+        "DATABASE_URL",
+        "DIRECT_URL",
+        "BETTER_AUTH_SECRET",
+        "BETTER_AUTH_URL",
+        "DEMO_PASSWORD"
+      ]
+    }
   }
 }

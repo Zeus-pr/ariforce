@@ -8,16 +8,24 @@
     "start": "node dist/main.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:seed": "tsx scripts/seed-auth.mts"
   },
   "dependencies": {
     "@ariforce/contracts": "workspace:*",
+    "@ariforce/db": "workspace:*",
     "@nestjs/common": "^12.2.0",
     "@nestjs/core": "^12.2.0",
     "@nestjs/platform-express": "^12.2.0",
     "@scalar/nestjs-api-reference": "^1.2.31",
+    "better-auth": "^1.7.13",
+    "drizzle-orm": "^0.45.4",
+    "express": "^5.3.0",
+    "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "uuid": "^14.0.3",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@ariforce/config": "workspace:*",
@@ -26,10 +34,15 @@
     "@nestjs/testing": "^12.2.0",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
     "eslint": "^10.13.0",
     "supertest": "^7.3.1",
+    "tsx": "^4.23.15",
     "typescript": "~5.9.3",
     "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=22.12"
   }
 }
