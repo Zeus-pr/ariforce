@@ -141,6 +141,13 @@
       "when": 1793048427973,
       "tag": "0019_role_permissions_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793051497935,
+      "tag": "0020_signup_requests",
+      "breakpoints": true
     }
   ]
 }

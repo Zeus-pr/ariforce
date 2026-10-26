@@ -148,3 +148,18 @@ The server enforces every rule in `apps/api/src/team/team.service.ts`, and the m
 - `POST /v1/employees/{id}/invite` also works for an existing employee row that has no login yet (for example imported users). The row goes back to `invited` until the invite is accepted. Users who already have a login get 409.
 - `INVITE_RETURN_LINK=true` (read per request; restart the API after changing it) returns `inviteUrl` = `<WEB_ORIGIN>/invite?token=...`. The web app has no `/invite` page yet; accept with `POST /v1/invites/accept {token,password}`.
 - CLI: `pnpm -F @ariforce/api admin:create-first --company <slug> --role <key> --email ... --name ... [--territory <code>]` creates or links a user with that role and sets the password (hidden prompt or `ARIFORCE_ADMIN_PASSWORD`). It is idempotent and never grants `system_admin` unless `--role system_admin` (the default) is used.
+
+## Sign-up requests
+
+- Anyone can call `POST /v1/auth/sign-up-request` (company `arighna`, set by `SIGNUP_COMPANY_SLUG`). It creates the login and a `users` row with status `pending`. If the email matches one of the loaded employees that has no login yet, it links to that row. The requested role, territory and manager are stored only in `signup_requests`. No role is granted at this point.
+- `pending` and `rejected` users cannot sign in (403 `ACCOUNT_PENDING_APPROVAL` / `ACCOUNT_REJECTED`). Any existing session or bearer token gets the same 403 from every data endpoint.
+- Who decides:
+  - A **system admin** sees every request and can grant any role, including functional roles.
+  - **ABM and above** see requests for hierarchy roles below their own, where the requested territory or manager is in their subtree. They can grant only roles below their own, on territories in their scope.
+  - BM and functional roles cannot review requests. Nobody can approve their own request.
+- On approval:
+  - Hierarchy roles need at least one territory.
+  - Directors and functional roles have no manager.
+  - For other roles, the manager defaults to the requested one, or else to the approver.
+- Audit actions: `signup.requested`, `signup.approved`, `signup.rejected`.
+- Table: `signup_requests`, created by migration `0020_signup_requests.sql`, with RLS `tenant_isolation`; only `ariforce_app` has grants.

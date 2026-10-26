@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   EmployeeCreate,
   EmployeeUpdate,
+  SignupApprove,
   MIN_MANAGER_RANK,
   ROLE_RANK,
   hierarchyRank,
@@ -14,6 +15,7 @@ import {
   authAccount,
   authUser,
   roles,
+  signupRequests,
   territories,
   userInvites,
   userRoles,
@@ -84,7 +86,9 @@ export class TeamService {
       .from(users)
       .leftJoin(userRoles, eq(userRoles.userId, users.id))
       .leftJoin(roles, eq(roles.id, userRoles.roleId))
-      .where(isNull(users.deletedAt))
+      .where(
+        and(isNull(users.deletedAt), sql`${users.status}::text not in ('pending', 'rejected')`),
+      )
       .groupBy(users.id);
     return new Map(
       rows.map(({ u, roles: r }) => [
@@ -98,7 +102,7 @@ export class TeamService {
           designation: u.designation,
           joinedOn: u.joinedOn,
           managerId: u.managerId,
-          status: u.status,
+          status: u.status as Person['status'], // pending/rejected filtered out above
           hasLogin: !!u.authUserId,
           version: u.version,
           roles: r,
@@ -517,6 +521,169 @@ export class TeamService {
         { entityType: 'user', entityId: u.id, after: { inviteId: m.invite_id } },
       );
       return { userId: u.id, email: u.email };
+    });
+  }
+
+  // ---- Sign-up requests (docs/RBAC.md "Sign-up requests") ----
+
+  /** Admin: everything. ABM+: hierarchy roles below theirs whose territory/manager is in their subtree. */
+  private async canDecide(
+    tx: Tx,
+    p: Principal,
+    all: Map<string, Person>,
+    r: typeof signupRequests.$inferSelect,
+  ) {
+    if (isAdmin(p)) return true;
+    const myRank = hierarchyRank(p.roles);
+    if (myRank < MIN_MANAGER_RANK) return false;
+    const rr = ROLE_RANK[r.requestedRole];
+    if (!(rr > 0 && rr < myRank && isHierarchyRole(r.requestedRole))) return false;
+    if (r.requestedManagerId && this.subtree(all, p.userId).has(r.requestedManagerId)) return true;
+    if (r.requestedTerritoryId)
+      return (await this.scopedTerritoryIds(tx, p, [r.requestedTerritoryId])).has(
+        r.requestedTerritoryId,
+      );
+    return false;
+  }
+
+  private signupView(r: typeof signupRequests.$inferSelect, u: typeof users.$inferSelect) {
+    return {
+      id: r.id,
+      userId: r.userId,
+      name: u.name,
+      email: u.email,
+      phone: u.phone,
+      requestedRole: r.requestedRole,
+      requestedTerritoryId: r.requestedTerritoryId,
+      requestedManagerId: r.requestedManagerId,
+      status: r.status,
+      approvedRole: r.approvedRole,
+      decidedBy: r.decidedBy,
+      decidedAt: r.decidedAt?.toISOString() ?? null,
+      reason: r.reason,
+      createdAt: r.createdAt.toISOString(),
+    };
+  }
+
+  private assertCanApproveAtAll(p: Principal) {
+    if (!isAdmin(p) && hierarchyRank(p.roles) < MIN_MANAGER_RANK)
+      throw err(403, 'FORBIDDEN', 'Only system admins and ABM and above review sign-ups');
+  }
+
+  listSignups(p: Principal, status: 'pending' | 'approved' | 'rejected') {
+    return this.tenant.run(p, async (tx) => {
+      this.assertCanApproveAtAll(p);
+      const rows = await tx
+        .select({ r: signupRequests, u: users })
+        .from(signupRequests)
+        .innerJoin(users, eq(users.id, signupRequests.userId))
+        .where(and(eq(signupRequests.status, status), isNull(signupRequests.deletedAt)))
+        .orderBy(signupRequests.createdAt);
+      const all = await this.people(tx);
+      const items = [];
+      for (const { r, u } of rows)
+        if (r.userId !== p.userId && (await this.canDecide(tx, p, all, r)))
+          items.push(this.signupView(r, u));
+      return { items };
+    });
+  }
+
+  private async pendingSignup(tx: Tx, p: Principal, id: string) {
+    this.assertCanApproveAtAll(p);
+    const [row] = await tx
+      .select({ r: signupRequests, u: users })
+      .from(signupRequests)
+      .innerJoin(users, eq(users.id, signupRequests.userId))
+      .where(and(eq(signupRequests.id, id), isNull(signupRequests.deletedAt)));
+    if (!row) throw err(404, 'NOT_FOUND', 'Sign-up request not found');
+    if (row.r.userId === p.userId)
+      throw err(403, 'FORBIDDEN', 'You cannot decide your own sign-up request');
+    const all = await this.people(tx);
+    if (!(await this.canDecide(tx, p, all, row.r)))
+      throw err(404, 'NOT_FOUND', 'Sign-up request not found');
+    if (row.r.status !== 'pending') throw err(409, 'CONFLICT', 'Request was already decided');
+    return { ...row, all };
+  }
+
+  approveSignup(p: Principal, id: string, b: z.infer<typeof SignupApprove>) {
+    return this.tenant.run(p, async (tx) => {
+      const { r, u, all } = await this.pendingSignup(tx, p, id);
+      const admin = isAdmin(p);
+      const role = b.role;
+      const hierarchy = isHierarchyRole(role);
+      if (!hierarchy && !admin)
+        throw err(403, 'FORBIDDEN', 'Only a system admin can grant this role');
+      if (hierarchy) this.assertRole(p, role);
+      const tids = b.territoryIds ?? (r.requestedTerritoryId ? [r.requestedTerritoryId] : []);
+      if (hierarchy && !tids.length)
+        throw err(422, 'VALIDATION', 'At least one territory is required for this role');
+      if (tids.length) await this.assertTerritories(tx, p, tids);
+      let mgrId: string | null;
+      if (!hierarchy || role === 'director') {
+        if (b.managerId) throw err(422, 'VALIDATION', 'This role has no manager');
+        mgrId = null;
+      } else {
+        mgrId =
+          b.managerId !== undefined
+            ? b.managerId
+            : (r.requestedManagerId ?? (admin ? null : p.userId));
+        if (!mgrId && !admin) mgrId = p.userId;
+        if (mgrId) {
+          if (mgrId === u.id) throw err(422, 'VALIDATION', 'Reporting cycle');
+          this.assertManager(p, all, mgrId, ROLE_RANK[role]);
+        }
+      }
+      await tx
+        .update(users)
+        .set({ status: 'active', managerId: mgrId, updatedAt: new Date() })
+        .where(eq(users.id, u.id));
+      await tx.delete(userRoles).where(eq(userRoles.userId, u.id));
+      await tx
+        .insert(userRoles)
+        .values({ companyId: p.companyId, userId: u.id, roleId: await this.roleId(tx, role) });
+      await tx.delete(userTerritories).where(eq(userTerritories.userId, u.id));
+      if (tids.length)
+        await tx.insert(userTerritories).values(
+          tids.map((territoryId, i) => ({
+            companyId: p.companyId,
+            userId: u.id,
+            territoryId,
+            isPrimary: i === 0,
+          })),
+        );
+      const [done] = await tx
+        .update(signupRequests)
+        .set({ status: 'approved', approvedRole: role, decidedBy: p.userId, decidedAt: new Date() })
+        .where(eq(signupRequests.id, r.id))
+        .returning();
+      await this.audit.record(tx, p, 'signup.approved', {
+        entityType: 'signup_request',
+        entityId: r.id,
+        before: { requestedRole: r.requestedRole },
+        after: { userId: u.id, role, territoryIds: tids, managerId: mgrId },
+      });
+      return this.signupView(done!, { ...u, status: 'active' });
+    });
+  }
+
+  rejectSignup(p: Principal, id: string, reason: string | null) {
+    return this.tenant.run(p, async (tx) => {
+      const { r, u } = await this.pendingSignup(tx, p, id);
+      await tx
+        .update(users)
+        .set({ status: 'rejected', updatedAt: new Date() })
+        .where(eq(users.id, u.id));
+      const [done] = await tx
+        .update(signupRequests)
+        .set({ status: 'rejected', reason, decidedBy: p.userId, decidedAt: new Date() })
+        .where(eq(signupRequests.id, r.id))
+        .returning();
+      await this.audit.record(tx, p, 'signup.rejected', {
+        entityType: 'signup_request',
+        entityId: r.id,
+        after: { userId: u.id, reason },
+      });
+      return this.signupView(done!, u);
     });
   }
 }

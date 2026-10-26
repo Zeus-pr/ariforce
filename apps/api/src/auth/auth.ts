@@ -1,6 +1,9 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { APIError } from 'better-auth/api';
 import { bearer } from 'better-auth/plugins';
+import { sql } from 'drizzle-orm';
+import { AUTH_STATE_CODES } from '@ariforce/contracts';
 import { authAccount, authSession, authUser, authVerification, type Db } from '@ariforce/db';
 import type { AuditService } from '../common/audit.service';
 
@@ -14,7 +17,8 @@ export const webOrigins = () =>
 
 /**
  * better-auth: email + password, DB sessions (revocable), bearer tokens for mobile.
- * Sign-up is disabled: identities are provisioned by admins/seed and linked to a tenant user.
+ * better-auth sign-up is disabled: identities come from admins/seed/invites or POST
+ * /v1/auth/sign-up-request (pending until approved; see docs/RBAC.md).
  */
 export function createAuth(db: Db, audit: AuditService) {
   const secret = process.env.BETTER_AUTH_SECRET;
@@ -42,6 +46,23 @@ export function createAuth(db: Db, audit: AuditService) {
     databaseHooks: {
       session: {
         create: {
+          // Runs after the password check: pending/rejected sign-ups get a clear state, no session.
+          before: async (session) => {
+            const r = await db.execute<{ s: string | null }>(
+              sql`select auth_account_status(${session.userId}) as s`,
+            );
+            const st = r.rows[0]?.s;
+            if (st === 'pending')
+              throw new APIError('FORBIDDEN', {
+                code: AUTH_STATE_CODES.pending,
+                message: 'Your account is awaiting approval',
+              });
+            if (st === 'rejected')
+              throw new APIError('FORBIDDEN', {
+                code: AUTH_STATE_CODES.rejected,
+                message: 'Your sign-up request was not approved',
+              });
+          },
           after: async (session) => {
             await audit.recordForAuthUser(session.userId, 'auth.sign_in', {
               entityType: 'session',

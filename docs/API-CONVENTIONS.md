@@ -114,3 +114,16 @@ The MSW mock mirrors better-auth: `POST /v1/auth/sign-in/email` accepts any pass
 `set-auth-token: mock:<role_key>` and a `better-auth.session_token` cookie. Requests are resolved as:
 `x-mock-user` header (role key, email or local part; `none` = signed out) > bearer/cookie token >
 default persona (director). The real API ignores `x-mock-user`.
+
+## Sign-up and account-state codes
+
+| Code                       | Status | Where                                                                                                                        |
+| -------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `ACCOUNT_PENDING_APPROVAL` | 403    | sign-in (`{code,message}`), any data endpoint (`{error:{code,message}}`)                                                     |
+| `ACCOUNT_REJECTED`         | 403    | same as above                                                                                                                |
+| `SIGNUP_UNAVAILABLE`       | 409    | `POST /v1/auth/sign-up-request`. Deliberately generic so emails can't be enumerated.                                         |
+| `RATE_LIMITED`             | 429    | sign-up request; limits are per IP (`SIGNUP_RATE_PER_IP`, default 10/h) and per email (`SIGNUP_RATE_PER_EMAIL`, default 3/h) |
+| `CAPTCHA_FAILED`           | 403    | sign-up request; only when `TURNSTILE_SECRET` is set (send `turnstileToken`)                                                 |
+| `SIGNUP_DISABLED`          | 503    | the sign-up company slug is not configured                                                                                   |
+
+See docs/SIGNUP.md for the screen states.

@@ -80,6 +80,15 @@ import {
   TeamNode,
   TeamTree,
 } from './schemas/team';
+import {
+  SignupApprove,
+  SignupReject,
+  SignupRequest,
+  SignupRequestAccepted,
+  SignupRequestCreate,
+  SignupRequestList,
+  SignupRequestQuery,
+} from './schemas/signup';
 import { ConsentGrant, ConsentRecord, Device, DeviceEnrol } from './schemas/devices';
 
 const json = <T extends z.ZodType>(schema: T) => ({ content: { 'application/json': { schema } } });
@@ -799,6 +808,75 @@ function buildDocument(): OpenApiDocument {
             '404': err('Invalid, used, revoked or expired invite'),
           },
         },
+      },
+      '/v1/auth/sign-up-request': {
+        post: {
+          tags: ['Auth'],
+          operationId: 'requestSignUp',
+          summary:
+            'Public. Self sign-up for company arighna: creates the login and a pending employee. The role is only a request; the account cannot sign in until approved. Sign-in then returns 403 code ACCOUNT_PENDING_APPROVAL (or ACCOUNT_REJECTED).',
+          requestBody: json(SignupRequestCreate),
+          responses: {
+            '202': {
+              description: 'Request stored (status pending)',
+              ...json(SignupRequestAccepted),
+            },
+            '403': err('CAPTCHA_FAILED (only when TURNSTILE_SECRET is set)'),
+            '409': err('SIGNUP_UNAVAILABLE: generic, also for emails that already have a login'),
+            '422': err('Validation failed (password min 12; system_admin cannot be requested)'),
+            '429': err('RATE_LIMITED (per IP and per email)'),
+            '503': err('SIGNUP_DISABLED: company not configured'),
+          },
+        },
+      },
+      '/v1/signup-requests': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'listSignupRequests',
+          summary:
+            'System admin: all requests. ABM and above: requests for a hierarchy role below theirs whose territory or manager is in their subtree.',
+          requestParams: { query: SignupRequestQuery },
+          responses: {
+            '200': { description: 'Requests', ...json(SignupRequestList) },
+            '403': err('BM and functional roles cannot review sign-ups'),
+          },
+        }),
+      },
+      '/v1/signup-requests/{id}/approve': {
+        post: op({
+          tags: ['Team'],
+          operationId: 'approveSignupRequest',
+          summary:
+            'Grant a role (may differ from the request) within your authority; activates the account. Directors and functional roles have no manager.',
+          requestParams: { path: IdParam },
+          requestBody: json(SignupApprove),
+          responses: {
+            '200': { description: 'Approved', ...json(SignupRequest) },
+            '403': err(
+              'Role above your authority, territory outside your scope, or your own request',
+            ),
+            '404': err('Not found or not visible to you'),
+            '409': err('Already decided'),
+            '422': err(
+              'Validation (no territory for a hierarchy role, manager for a director, ...)',
+            ),
+          },
+        }),
+      },
+      '/v1/signup-requests/{id}/reject': {
+        post: op({
+          tags: ['Team'],
+          operationId: 'rejectSignupRequest',
+          summary: 'Reject; the login stays blocked (sign-in returns ACCOUNT_REJECTED)',
+          requestParams: { path: IdParam },
+          requestBody: json(SignupReject),
+          responses: {
+            '200': { description: 'Rejected', ...json(SignupRequest) },
+            '403': err('Your own request'),
+            '404': err('Not found or not visible to you'),
+            '409': err('Already decided'),
+          },
+        }),
       },
       '/v1/approvals/{id}/decision': {
         post: op({

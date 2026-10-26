@@ -1033,6 +1033,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/auth/sign-up-request': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Public. Self sign-up for company arighna: creates the login and a pending employee. The role is only a request; the account cannot sign in until approved. Sign-in then returns 403 code ACCOUNT_PENDING_APPROVAL (or ACCOUNT_REJECTED). */
+    post: operations['requestSignUp'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/signup-requests': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** System admin: all requests. ABM and above: requests for a hierarchy role below theirs whose territory or manager is in their subtree. */
+    get: operations['listSignupRequests'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/signup-requests/{id}/approve': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Grant a role (may differ from the request) within your authority; activates the account. Directors and functional roles have no manager. */
+    post: operations['approveSignupRequest'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/signup-requests/{id}/reject': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reject; the login stays blocked (sign-in returns ACCOUNT_REJECTED) */
+    post: operations['rejectSignupRequest'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/approvals/{id}/decision': {
     parameters: {
       query?: never;
@@ -1609,6 +1677,53 @@ export interface components {
     InviteAccept: {
       token: string;
       password: string;
+    };
+    SignupRequestCreate: {
+      name: string;
+      /** Format: email */
+      email: string;
+      /** @default null */
+      phone: string | null;
+      password: string;
+      requestedRole: components['schemas']['SignupRoleKey'];
+      /**
+       * @description Optional HQ/territory
+       * @default null
+       */
+      territoryId: string | null;
+      /**
+       * @description Optional requested manager
+       * @default null
+       */
+      managerId: string | null;
+      /** @description Required only when the server has TURNSTILE_SECRET set */
+      turnstileToken?: string;
+    };
+    /** @enum {string} */
+    SignupRoleKey:
+      | 'business_manager'
+      | 'area_business_manager'
+      | 'regional_business_manager'
+      | 'zonal_business_manager'
+      | 'sales_manager'
+      | 'general_manager'
+      | 'vice_president'
+      | 'director'
+      | 'distribution_head'
+      | 'accountant';
+    /** @enum {string} */
+    SignupStatus: 'pending' | 'approved' | 'rejected';
+    SignupApprove: {
+      /** @description May differ from the requested role; within your authority */
+      role: components['schemas']['SignupRoleKey'];
+      /** @description Default: the requested territory */
+      territoryIds?: string[];
+      /** @description Default: requested manager, else you (managers). Directors have none. */
+      managerId?: string | null;
+    };
+    SignupReject: {
+      /** @default null */
+      reason: string | null;
     };
     ApprovalDecision: {
       /** @enum {string} */
@@ -2401,7 +2516,7 @@ export interface components {
       managerId: string | null;
       territoryIds: string[];
       /** @enum {string} */
-      status: 'invited' | 'active' | 'suspended';
+      status: 'invited' | 'active' | 'suspended' | 'pending' | 'rejected';
     };
     CheckInPage: {
       items: components['schemas']['CheckIn'][];
@@ -2935,6 +3050,44 @@ export interface components {
        */
       userId: string;
       email: string;
+    };
+    SignupRequestAccepted: {
+      /** @constant */
+      status: 'pending';
+      message: string;
+    };
+    SignupRequestList: {
+      items: components['schemas']['SignupRequest'][];
+    };
+    SignupRequest: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      name: string;
+      email: string;
+      phone: string | null;
+      requestedRole: components['schemas']['RoleKey'];
+      requestedTerritoryId: string | null;
+      requestedManagerId: string | null;
+      status: components['schemas']['SignupStatus'];
+      approvedRole: components['schemas']['RoleKey'] | null;
+      decidedBy: string | null;
+      decidedAt: string | null;
+      reason: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
     };
     GeoPointOutput: {
       lat: number;
@@ -5835,7 +5988,7 @@ export interface operations {
         managerId?: string;
         /** @description Users assigned in this territory subtree */
         territoryId?: string;
-        status?: 'invited' | 'active' | 'suspended';
+        status?: 'invited' | 'active' | 'suspended' | 'pending' | 'rejected';
       };
       header?: never;
       path?: never;
@@ -7308,6 +7461,250 @@ export interface operations {
       };
       /** @description Invalid, used, revoked or expired invite */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  requestSignUp: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['SignupRequestCreate'];
+      };
+    };
+    responses: {
+      /** @description Request stored (status pending) */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SignupRequestAccepted'];
+        };
+      };
+      /** @description CAPTCHA_FAILED (only when TURNSTILE_SECRET is set) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description SIGNUP_UNAVAILABLE: generic, also for emails that already have a login */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed (password min 12; system_admin cannot be requested) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description RATE_LIMITED (per IP and per email) */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description SIGNUP_DISABLED: company not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listSignupRequests: {
+    parameters: {
+      query?: {
+        status?: components['schemas']['SignupStatus'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Requests */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SignupRequestList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description BM and functional roles cannot review sign-ups */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  approveSignupRequest: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['SignupApprove'];
+      };
+    };
+    responses: {
+      /** @description Approved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SignupRequest'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Role above your authority, territory outside your scope, or your own request */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found or not visible to you */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Already decided */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation (no territory for a hierarchy role, manager for a director, ...) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  rejectSignupRequest: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['SignupReject'];
+      };
+    };
+    responses: {
+      /** @description Rejected */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SignupRequest'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Your own request */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found or not visible to you */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Already decided */
+      409: {
         headers: {
           [name: string]: unknown;
         };

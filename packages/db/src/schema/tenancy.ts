@@ -73,7 +73,14 @@ export const roles = pgTable(
   (t) => [uniqueIndex('roles_company_key_uq').on(t.companyId, t.key)],
 );
 
-export const userStatus = pgEnum('user_status', ['invited', 'active', 'suspended']);
+/** pending/rejected: self sign-up awaiting or refused approval (no data access, cannot sign in). */
+export const userStatus = pgEnum('user_status', [
+  'invited',
+  'active',
+  'suspended',
+  'pending',
+  'rejected',
+]);
 
 /** Tenant user / employee profile. `authUserId` links to better-auth identity (#6). */
 export const users = pgTable(
@@ -188,5 +195,37 @@ export const userInvites = pgTable(
   (t) => [
     uniqueIndex('user_invites_token_uq').on(t.tokenHash),
     index('user_invites_user_idx').on(t.companyId, t.userId),
+  ],
+);
+
+/**
+ * Self sign-up requests (public POST /v1/auth/sign-up-request). The requested role is only a request;
+ * roles are granted on approval by a system admin or a manager above the requested role.
+ */
+export const signupRequests = pgTable(
+  'signup_requests',
+  {
+    id: pk(),
+    companyId: companyId().references(() => companies.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    requestedRole: roleKey('requested_role').notNull(),
+    requestedTerritoryId: uuid('requested_territory_id').references(() => territories.id),
+    requestedManagerId: uuid('requested_manager_id').references(() => users.id),
+    status: text('status', { enum: ['pending', 'approved', 'rejected'] })
+      .notNull()
+      .default('pending'),
+    approvedRole: roleKey('approved_role'),
+    decidedBy: uuid('decided_by').references(() => users.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    reason: text('reason'),
+    ...syncCols(),
+  },
+  (t) => [
+    index('signup_requests_status_idx').on(t.companyId, t.status),
+    uniqueIndex('signup_requests_pending_user_uq')
+      .on(t.userId)
+      .where(sql`status = 'pending'`),
   ],
 );
