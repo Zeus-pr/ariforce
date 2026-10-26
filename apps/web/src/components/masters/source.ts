@@ -23,7 +23,9 @@ export function masterSource(kind: MasterKind, lk: Lookups): DataSource<MasterRo
     fetch = cursorPager<MasterRow>(async ({ limit, cursor, q, query: tq }, signal) => {
       await apiReady();
       const sortKey = tq.sort ? SORT_KEYS[tq.sort.id] : undefined;
-      const filters = Object.fromEntries(FILTER_PARAMS[kind].filter((k) => tq.filters[k]).map((k) => [k, tq.filters[k]]));
+      const filters = Object.fromEntries(
+        FILTER_PARAMS[kind].filter((k) => tq.filters[k]).map((k) => [k, tq.filters[k]]),
+      );
       const query = {
         limit,
         cursor,
@@ -33,13 +35,23 @@ export function masterSource(kind: MasterKind, lk: Lookups): DataSource<MasterRo
         ...filters,
       };
       const { data, error } = await api.GET(path, { params: { query }, signal });
-      if (error || !data) throw new Error((error as { error?: { message?: string } })?.error?.message ?? 'Could not load.');
-      return { items: data.items.filter((r) => !r.deletedAt), nextCursor: data.nextCursor, total: data.total };
+      if (error || !data)
+        throw new Error(
+          (error as { error?: { message?: string } })?.error?.message ?? 'Could not load.',
+        );
+      return {
+        items: data.items.filter((r) => !r.deletedAt),
+        nextCursor: data.nextCursor,
+        total: data.total,
+      };
     });
     fetchers.set(kind, fetch);
   }
-  const opt = (rows: { id: string; name: string }[]) => rows.map((r) => ({ value: r.id, label: r.name }));
-  const filters: FilterDef[] = [{ id: 'territoryId', label: 'Territory', options: opt(lk.territories) }];
+  const opt = (rows: { id: string; name: string }[]) =>
+    rows.map((r) => ({ value: r.id, label: r.name }));
+  const filters: FilterDef[] = [
+    { id: 'territoryId', label: 'Territory', options: opt(lk.territories) },
+  ];
   if (kind === 'doctors')
     filters.push(
       { id: 'specialtyId', label: 'Specialty', options: opt(lk.specialties) },

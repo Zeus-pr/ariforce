@@ -71,7 +71,9 @@ async function readFile(file: File): Promise<Sheet> {
   else {
     const { readSheet } = await import('read-excel-file/browser');
     const raw = await readSheet(file);
-    data = raw.map((r) => r.map((c) => (c == null ? '' : c instanceof Date ? c.toISOString().slice(0, 10) : String(c))));
+    data = raw.map((r) =>
+      r.map((c) => (c == null ? '' : c instanceof Date ? c.toISOString().slice(0, 10) : String(c))),
+    );
   }
   const nonEmpty = data.filter((r) => r.some((c) => c.trim() !== ''));
   const [headers = [], ...rows] = nonEmpty;
@@ -81,7 +83,9 @@ async function readFile(file: File): Promise<Sheet> {
 function autoMatch(fields: FieldDef[], headers: string[]): Record<string, number | null> {
   const out: Record<string, number | null> = {};
   for (const f of fields) {
-    const i = headers.findIndex((h) => f.aliases.includes(normHeader(h)) || normHeader(h) === normHeader(f.label));
+    const i = headers.findIndex(
+      (h) => f.aliases.includes(normHeader(h)) || normHeader(h) === normHeader(f.label),
+    );
     out[f.key] = i >= 0 ? i : null;
   }
   return out;
@@ -90,7 +94,13 @@ function autoMatch(fields: FieldDef[], headers: string[]): Record<string, number
 /** Resolve a lookup cell by code or name (case-insensitive). */
 function resolver(lk: Lookups, type: FieldDef['type']) {
   const list =
-    type === 'territory' ? lk.territories : type === 'specialty' ? lk.specialties : type === 'category' ? lk.categories : [];
+    type === 'territory'
+      ? lk.territories
+      : type === 'specialty'
+        ? lk.specialties
+        : type === 'category'
+          ? lk.categories
+          : [];
   const map = new Map<string, string>();
   for (const r of list) {
     map.set(normHeader(r.name), r.id);
@@ -99,7 +109,12 @@ function resolver(lk: Lookups, type: FieldDef['type']) {
   return (v: string) => map.get(normHeader(v));
 }
 
-function check(kind: MasterKind, sheet: Sheet, mapping: Record<string, number | null>, lk: Lookups): Checked[] {
+function check(
+  kind: MasterKind,
+  sheet: Sheet,
+  mapping: Record<string, number | null>,
+  lk: Lookups,
+): Checked[] {
   const cfg = MASTERS[kind];
   const resolvers = Object.fromEntries(cfg.fields.map((f) => [f.key, resolver(lk, f.type)]));
   return sheet.rows.map((cells, i) => {
@@ -124,7 +139,11 @@ function check(kind: MasterKind, sheet: Sheet, mapping: Record<string, number | 
         const f = cfg.fields.find((x) => x.key === issue.path[0]);
         const label = f?.label ?? String(issue.path[0]);
         const msg =
-          f?.type === 'pincode' ? `${label} must be 6 digits` : issue.code === 'too_small' || body[f?.key ?? ''] === '' ? `${label} is required` : `${label}: ${issue.message}`;
+          f?.type === 'pincode'
+            ? `${label} must be 6 digits`
+            : issue.code === 'too_small' || body[f?.key ?? ''] === ''
+              ? `${label} is required`
+              : `${label}: ${issue.message}`;
         if (!errors.some((e) => e.startsWith(label))) errors.push(msg);
       }
     return { line: i + 2, ok: errors.length === 0, errors, body };
@@ -145,7 +164,11 @@ function Stepper({ step }: { step: number }) {
   return (
     <ol className="flex items-center gap-2 text-sm" aria-label="Import steps">
       {STEPS.map((s, i) => (
-        <li key={s} className="flex items-center gap-2" aria-current={i === step ? 'step' : undefined}>
+        <li
+          key={s}
+          className="flex items-center gap-2"
+          aria-current={i === step ? 'step' : undefined}
+        >
           <span
             className={cn(
               'grid size-6 place-items-center rounded-md border text-xs tabular-nums',
@@ -155,7 +178,11 @@ function Stepper({ step }: { step: number }) {
           >
             {i < step ? <Check className="size-3.5" /> : i + 1}
           </span>
-          <span className={cn('hidden sm:inline', i === step ? 'font-medium' : 'text-muted-foreground')}>{s}</span>
+          <span
+            className={cn('hidden sm:inline', i === step ? 'font-medium' : 'text-muted-foreground')}
+          >
+            {s}
+          </span>
           {i < STEPS.length - 1 && <span className="h-px w-4 bg-border sm:w-8" />}
         </li>
       ))}
@@ -185,8 +212,12 @@ function Wizard({ kind }: { kind: MasterKind }) {
     setFileError(null);
     try {
       const s = await readFile(file);
-      if (!s.headers.length || !s.rows.length) throw new Error('The first sheet has no rows under a header row.');
-      if (s.rows.length > MAX_ROWS) throw new Error(`Up to ${MAX_ROWS.toLocaleString('en-IN')} rows per file. Split the sheet and import in parts.`);
+      if (!s.headers.length || !s.rows.length)
+        throw new Error('The first sheet has no rows under a header row.');
+      if (s.rows.length > MAX_ROWS)
+        throw new Error(
+          `Up to ${MAX_ROWS.toLocaleString('en-IN')} rows per file. Split the sheet and import in parts.`,
+        );
       setSheet(s);
       setMapping(autoMatch(cfg.fields, s.headers));
       setStep(1);
@@ -212,7 +243,8 @@ function Wizard({ kind }: { kind: MasterKind }) {
             <Upload className="size-6 text-muted-foreground" />
             <span className="font-medium">Choose an Excel or CSV file</span>
             <span className="text-sm text-muted-foreground">
-              .xlsx or .csv, first sheet, one header row. Up to {MAX_ROWS.toLocaleString('en-IN')} rows.
+              .xlsx or .csv, first sheet, one header row. Up to {MAX_ROWS.toLocaleString('en-IN')}{' '}
+              rows.
             </span>
             <input
               ref={input}
@@ -238,7 +270,8 @@ function Wizard({ kind }: { kind: MasterKind }) {
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
             <FileSpreadsheet className="mr-1 inline size-4" />
-            {sheet.fileName} · {sheet.rows.length.toLocaleString('en-IN')} rows. Match each AriForce field to a column in your sheet.
+            {sheet.fileName} · {sheet.rows.length.toLocaleString('en-IN')} rows. Match each AriForce
+            field to a column in your sheet.
           </p>
           <div className="grid gap-2 rounded-lg border bg-card p-4 sm:grid-cols-2">
             {cfg.fields.map((f) => (
@@ -249,7 +282,9 @@ function Wizard({ kind }: { kind: MasterKind }) {
                 </span>
                 <Select
                   value={mapping[f.key] == null ? SKIP : String(mapping[f.key])}
-                  onValueChange={(v) => setMapping((m) => ({ ...m, [f.key]: v === SKIP ? null : Number(v) }))}
+                  onValueChange={(v) =>
+                    setMapping((m) => ({ ...m, [f.key]: v === SKIP ? null : Number(v) }))
+                  }
                 >
                   <SelectTrigger className="w-full" aria-label={`Column for ${f.label}`}>
                     <SelectValue />
@@ -267,7 +302,9 @@ function Wizard({ kind }: { kind: MasterKind }) {
             ))}
           </div>
           {missingRequired.length > 0 && (
-            <p className="text-sm text-danger">Match the required fields: {missingRequired.map((f) => f.label).join(', ')}.</p>
+            <p className="text-sm text-danger">
+              Match the required fields: {missingRequired.map((f) => f.label).join(', ')}.
+            </p>
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setStep(0)}>
@@ -283,10 +320,19 @@ function Wizard({ kind }: { kind: MasterKind }) {
       {step === 2 && sheet && (
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-2" data-testid="import-summary">
-            <Badge className="bg-success-soft text-success">{valid.toLocaleString('en-IN')} ready</Badge>
-            <Badge className="bg-danger-soft text-danger">{(results.length - valid).toLocaleString('en-IN')} with problems</Badge>
+            <Badge className="bg-success-soft text-success">
+              {valid.toLocaleString('en-IN')} ready
+            </Badge>
+            <Badge className="bg-danger-soft text-danger">
+              {(results.length - valid).toLocaleString('en-IN')} with problems
+            </Badge>
             <label className="ml-auto flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={onlyErrors} onChange={(e) => setOnlyErrors(e.target.checked)} className="size-4" />
+              <input
+                type="checkbox"
+                checked={onlyErrors}
+                onChange={(e) => setOnlyErrors(e.target.checked)}
+                className="size-4"
+              />
               Only rows with problems
             </label>
           </div>
@@ -331,7 +377,12 @@ function Wizard({ kind }: { kind: MasterKind }) {
       )}
 
       {step === 3 && sheet && (
-        <ServerImport kind={kind} fileName={sheet.fileName} rows={results.filter((r) => r.ok)} onBack={() => setStep(2)} />
+        <ServerImport
+          kind={kind}
+          fileName={sheet.fileName}
+          rows={results.filter((r) => r.ok)}
+          onBack={() => setStep(2)}
+        />
       )}
     </div>
   );
@@ -344,7 +395,17 @@ type Job = components['schemas']['ImportJob'];
  * validation and duplicate detection, then the same request with dryRun:false and the same
  * Idempotency-Key to save. See docs/IMPORT.md.
  */
-function ServerImport({ kind, fileName, rows, onBack }: { kind: MasterKind; fileName: string; rows: Checked[]; onBack: () => void }) {
+function ServerImport({
+  kind,
+  fileName,
+  rows,
+  onBack,
+}: {
+  kind: MasterKind;
+  fileName: string;
+  rows: Checked[];
+  onBack: () => void;
+}) {
   const cfg = MASTERS[kind];
   const [onDuplicate, setOnDuplicate] = useState<'skip' | 'update' | 'error'>('skip');
   const [preview, setPreview] = useState<Job | null>(null);
@@ -359,8 +420,15 @@ function ServerImport({ kind, fileName, rows, onBack }: { kind: MasterKind; file
     try {
       await apiReady();
       const { data, error: e } = await api.POST(`${cfg.path}/import`, {
-        params: { header: { 'idempotency-key': dryRun ? `${key.current}-dry-${onDuplicate}` : key.current } },
-        body: { dryRun, onDuplicate, fileName, rows: rows.map((r) => r.body as Record<string, unknown>) },
+        params: {
+          header: { 'idempotency-key': dryRun ? `${key.current}-dry-${onDuplicate}` : key.current },
+        },
+        body: {
+          dryRun,
+          onDuplicate,
+          fileName,
+          rows: rows.map((r) => r.body as Record<string, unknown>),
+        },
       });
       if (e || !data) throw new Error(toApiError(e).message);
       if (dryRun) setPreview(data);
@@ -378,7 +446,8 @@ function ServerImport({ kind, fileName, rows, onBack }: { kind: MasterKind; file
   }, [onDuplicate]);
 
   const job = saved ?? preview;
-  const problems = job?.results.filter((r) => r.status === 'error' || r.status === 'duplicate') ?? [];
+  const problems =
+    job?.results.filter((r) => r.status === 'error' || r.status === 'duplicate') ?? [];
   const t = job?.totals;
   const willSave = t ? t.valid : 0;
 
@@ -387,7 +456,11 @@ function ServerImport({ kind, fileName, rows, onBack }: { kind: MasterKind; file
       <div className="flex flex-wrap items-end gap-4">
         <div className="grid gap-1.5">
           <span className="text-sm font-medium">Rows that match an existing record</span>
-          <Select value={onDuplicate} onValueChange={(v) => setOnDuplicate(v as typeof onDuplicate)} disabled={busy || !!saved}>
+          <Select
+            value={onDuplicate}
+            onValueChange={(v) => setOnDuplicate(v as typeof onDuplicate)}
+            disabled={busy || !!saved}
+          >
             <SelectTrigger className="w-56" aria-label="Rows that match an existing record">
               <SelectValue />
             </SelectTrigger>
@@ -399,14 +472,27 @@ function ServerImport({ kind, fileName, rows, onBack }: { kind: MasterKind; file
           </Select>
         </div>
         <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-          {busy ? (saved ? 'Saving' : 'Checking on the server') : saved ? 'Saved' : preview ? 'Server check done. Nothing saved yet.' : ''}
+          {busy
+            ? saved
+              ? 'Saving'
+              : 'Checking on the server'
+            : saved
+              ? 'Saved'
+              : preview
+                ? 'Server check done. Nothing saved yet.'
+                : ''}
         </p>
       </div>
 
-      {error && <p className="border-l-2 border-destructive pl-3 text-sm text-destructive">{error}</p>}
+      {error && (
+        <p className="border-l-2 border-destructive pl-3 text-sm text-destructive">{error}</p>
+      )}
 
       {t && (
-        <dl className="grid grid-cols-2 divide-y rounded-lg border sm:grid-cols-5 sm:divide-x sm:divide-y-0" data-testid="import-totals">
+        <dl
+          className="grid grid-cols-2 divide-y rounded-lg border sm:grid-cols-5 sm:divide-x sm:divide-y-0"
+          data-testid="import-totals"
+        >
           {(
             [
               ['Rows', t.rows],
@@ -437,12 +523,21 @@ function ServerImport({ kind, fileName, rows, onBack }: { kind: MasterKind; file
             <TableBody>
               {problems.slice(0, 100).map((r) => (
                 <TableRow key={r.row}>
-                  <TableCell className="pl-4 tabular-nums">{rows[r.row - 1]?.line ?? r.row}</TableCell>
-                  <TableCell className={cn('text-xs font-medium uppercase', r.status === 'error' ? 'text-destructive' : 'text-warning-text')}>
+                  <TableCell className="pl-4 tabular-nums">
+                    {rows[r.row - 1]?.line ?? r.row}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      'text-xs font-medium uppercase',
+                      r.status === 'error' ? 'text-destructive' : 'text-warning-text',
+                    )}
+                  >
                     {r.status}
                   </TableCell>
                   <TableCell className="text-sm">
-                    {r.errors.length ? r.errors.map((e) => e.message).join('; ') : `Matches an existing record by ${r.duplicateRule ?? 'key'}`}
+                    {r.errors.length
+                      ? r.errors.map((e) => e.message).join('; ')
+                      : `Matches an existing record by ${r.duplicateRule ?? 'key'}`}
                   </TableCell>
                 </TableRow>
               ))}
@@ -461,7 +556,11 @@ function ServerImport({ kind, fileName, rows, onBack }: { kind: MasterKind; file
             <Button variant="outline" onClick={onBack} disabled={busy}>
               Back
             </Button>
-            <Button data-testid="import-commit" disabled={busy || !preview || willSave === 0} onClick={() => run(false)}>
+            <Button
+              data-testid="import-commit"
+              disabled={busy || !preview || willSave === 0}
+              onClick={() => run(false)}
+            >
               Import {willSave.toLocaleString('en-IN')} {cfg.title.toLowerCase()}
             </Button>
           </>
@@ -481,7 +580,9 @@ export function ImportWizard({ kind }: { kind: MasterKind }) {
             <ArrowLeft /> {cfg.title}
           </Link>
         </Button>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Import {cfg.title.toLowerCase()}</h1>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+          Import {cfg.title.toLowerCase()}
+        </h1>
       </div>
       <LookupsProvider>
         <Wizard kind={kind} />

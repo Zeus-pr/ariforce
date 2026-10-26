@@ -1,5 +1,7 @@
 'use client';
 
+import { PlaceholderTag } from '@/components/masters/placeholder';
+
 import { ArrowLeft, MapPin, Phone } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -42,13 +44,16 @@ function DoctorList() {
       header: 'Doctor',
       mobile: 'primary',
       cell: (d) => (
-        <Link
-          href={`/doctors?id=${d.id}`}
-          className="font-medium underline-offset-4 hover:underline"
-          data-testid="doctor-link"
-        >
-          {d.name}
-        </Link>
+        <>
+          <Link
+            href={`/doctors?id=${d.id}`}
+            className="font-medium underline-offset-4 hover:underline"
+            data-testid="doctor-link"
+          >
+            {d.name}
+          </Link>
+          <PlaceholderTag name={d.name} />
+        </>
       ),
     },
     {

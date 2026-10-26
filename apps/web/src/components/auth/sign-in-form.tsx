@@ -10,7 +10,8 @@ import { Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
-import { MOCK_PASSWORD, MOCK_USERS, signIn, type SignInError } from '@/lib/mock-auth';
+import { MOCK_PASSWORD, MOCK_USERS, signIn, signInReal, type SignInError } from '@/lib/mock-auth';
+import { REAL } from '@/lib/api';
 import { canSee, homeFor } from '@/lib/nav';
 import { ROLE_LABEL } from '@/lib/roles';
 
@@ -26,9 +27,12 @@ export function SignInForm() {
   const passwordRef = useRef<HTMLInputElement>(null);
   const id = useId();
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = signIn(email, password);
+    if (pending) return;
+    setPending(REAL);
+    const result = REAL ? await signInReal(email, password) : signIn(email, password);
+    if ('field' in result) setPending(false);
     if ('field' in result) {
       setError(result);
       (result.field === 'email' ? emailRef : passwordRef).current?.focus();
@@ -37,7 +41,13 @@ export function SignInForm() {
     setError(null);
     setPending(true);
     const next = params.get('next');
-    const safe = next && next.startsWith('/') && !next.startsWith('//') && canSee(result.role, next.split('?')[0] ?? next) ? next : null;
+    const safe =
+      next &&
+      next.startsWith('/') &&
+      !next.startsWith('//') &&
+      canSee(result.role, next.split('?')[0] ?? next)
+        ? next
+        : null;
     router.replace(safe ?? homeFor(result.role));
   };
 
@@ -53,18 +63,23 @@ export function SignInForm() {
   return (
     <>
       <div className="af-page rounded-lg border bg-card p-5 shadow-xs sm:p-6">
-        <p
-          role="note"
-          data-testid="mock-note"
-          className="af-enter af-enter-form mb-5 border-l-2 border-warning pl-3 text-[13px] leading-snug text-warning-text"
-          style={{ '--i': 0 } as React.CSSProperties}
-        >
-          Mock sign-in. Demo accounts only, nothing leaves this browser. Password for every account:{' '}
-          <span className="font-medium">{MOCK_PASSWORD}</span>
-        </p>
+        {!REAL && (
+          <p
+            role="note"
+            data-testid="mock-note"
+            className="af-enter af-enter-form mb-5 border-l-2 border-warning pl-3 text-[13px] leading-snug text-warning-text"
+            style={{ '--i': 0 } as React.CSSProperties}
+          >
+            Mock sign-in. Demo accounts only, nothing leaves this browser. Password for every
+            account: <span className="font-medium">{MOCK_PASSWORD}</span>
+          </p>
+        )}
 
         <form onSubmit={submit} noValidate className="grid gap-4">
-          <div className="af-enter af-enter-form grid gap-1.5" style={{ '--i': 1 } as React.CSSProperties}>
+          <div
+            className="af-enter af-enter-form grid gap-1.5"
+            style={{ '--i': 1 } as React.CSSProperties}
+          >
             <Label htmlFor={`${id}-email`}>Work email</Label>
             <Input
               ref={emailRef}
@@ -88,7 +103,10 @@ export function SignInForm() {
             )}
           </div>
 
-          <div className="af-enter af-enter-form grid gap-1.5" style={{ '--i': 2 } as React.CSSProperties}>
+          <div
+            className="af-enter af-enter-form grid gap-1.5"
+            style={{ '--i': 2 } as React.CSSProperties}
+          >
             <Label htmlFor={`${id}-password`}>Password</Label>
             <div className="relative">
               <Input
@@ -130,25 +148,30 @@ export function SignInForm() {
           </div>
         </form>
 
-        <details className="af-enter af-enter-form group mt-5 border-t pt-4" style={{ '--i': 4 } as React.CSSProperties}>
-          <summary className="cursor-pointer list-none text-sm font-medium text-primary outline-none focus-visible:underline [&::-webkit-details-marker]:hidden">
-            Demo accounts (one per role)
-          </summary>
-          <ul className="mt-3 grid gap-0.5" data-testid="mock-users">
-            {MOCK_USERS.map((u) => (
-              <li key={u.id}>
-                <button
-                  type="button"
-                  onClick={() => pick(u.email)}
-                  className="flex w-full items-baseline justify-between gap-3 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors duration-(--duration-fast) hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-                >
-                  <span className="truncate font-medium">{ROLE_LABEL[u.role]}</span>
-                  <span className="shrink-0 text-muted-foreground tabular-nums">{u.email}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </details>
+        {!REAL && (
+          <details
+            className="af-enter af-enter-form group mt-5 border-t pt-4"
+            style={{ '--i': 4 } as React.CSSProperties}
+          >
+            <summary className="cursor-pointer list-none text-sm font-medium text-primary outline-none focus-visible:underline [&::-webkit-details-marker]:hidden">
+              Demo accounts (one per role)
+            </summary>
+            <ul className="mt-3 grid gap-0.5" data-testid="mock-users">
+              {MOCK_USERS.map((u) => (
+                <li key={u.id}>
+                  <button
+                    type="button"
+                    onClick={() => pick(u.email)}
+                    className="flex w-full items-baseline justify-between gap-3 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors duration-(--duration-fast) hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                  >
+                    <span className="truncate font-medium">{ROLE_LABEL[u.role]}</span>
+                    <span className="shrink-0 text-muted-foreground tabular-nums">{u.email}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </div>
     </>
   );

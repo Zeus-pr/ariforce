@@ -33,7 +33,11 @@ export function FieldInput({
       : field.type === 'specialty'
         ? lk.specialties.map((s) => ({ value: s.id, label: s.name, group: '' }))
         : field.type === 'category'
-          ? lk.categories.map((c) => ({ value: c.id, label: `${c.name} · ${c.visitsPerMonth}/month`, group: '' }))
+          ? lk.categories.map((c) => ({
+              value: c.id,
+              label: `${c.name} · ${c.visitsPerMonth}/month`,
+              group: '',
+            }))
           : null;
 
   if (options) {
@@ -44,14 +48,18 @@ export function FieldInput({
         disabled={!lk.ready}
       >
         <SelectTrigger id={id} className="w-full" aria-invalid={invalid || undefined}>
-          <SelectValue placeholder={lk.ready ? `Choose ${field.label.toLowerCase()}` : 'Loading…'} />
+          <SelectValue
+            placeholder={lk.ready ? `Choose ${field.label.toLowerCase()}` : 'Loading…'}
+          />
         </SelectTrigger>
         <SelectContent>
           {!field.required && <SelectItem value={NONE}>None</SelectItem>}
           {options.map((o) => (
             <SelectItem key={o.value} value={o.value}>
               {o.label}
-              {o.group && <span className="ml-1 text-xs text-muted-foreground capitalize">{o.group}</span>}
+              {o.group && (
+                <span className="ml-1 text-xs text-muted-foreground capitalize">{o.group}</span>
+              )}
             </SelectItem>
           ))}
         </SelectContent>

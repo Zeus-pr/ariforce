@@ -1,5 +1,7 @@
 'use client';
 
+import { PlaceholderTag } from './placeholder';
+
 import { FileSpreadsheet, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense, useMemo, useState } from 'react';
@@ -36,13 +38,27 @@ function useColumns(kind: MasterKind): Column<MasterRow>[] {
       header: 'Name',
       mobile: 'primary',
       className: 'font-medium',
-      cell: (r) => r.name,
+      cell: (r) => (
+        <>
+          {r.name}
+          {kind === 'doctors' && <PlaceholderTag name={r.name} />}
+        </>
+      ),
     };
     if (kind === 'doctors')
       return [
         title,
-        { id: 'qualification', header: 'Qualification', cell: (r) => ('qualification' in r && r.qualification) || dash },
-        { id: 'specialty', header: 'Specialty', mobile: 'secondary', cell: (r) => name('specialtyId' in r ? r.specialtyId : null) },
+        {
+          id: 'qualification',
+          header: 'Qualification',
+          cell: (r) => ('qualification' in r && r.qualification) || dash,
+        },
+        {
+          id: 'specialty',
+          header: 'Specialty',
+          mobile: 'secondary',
+          cell: (r) => name('specialtyId' in r ? r.specialtyId : null),
+        },
         {
           id: 'category',
           header: 'Category',
@@ -56,8 +72,17 @@ function useColumns(kind: MasterKind): Column<MasterRow>[] {
       ];
     return [
       title,
-      { id: 'gstin', header: 'GSTIN', className: 'font-mono text-xs', cell: (r) => ('gstin' in r && r.gstin) || dash },
-      { id: 'dl', header: 'Drug licence', cell: (r) => ('drugLicenseNo' in r && r.drugLicenseNo) || dash },
+      {
+        id: 'gstin',
+        header: 'GSTIN',
+        className: 'font-mono text-xs',
+        cell: (r) => ('gstin' in r && r.gstin) || dash,
+      },
+      {
+        id: 'dl',
+        header: 'Drug licence',
+        cell: (r) => ('drugLicenseNo' in r && r.drugLicenseNo) || dash,
+      },
       territory,
       place,
       { id: 'phone', header: 'Phone', mobile: 'secondary', cell: (r) => r.phone ?? dash },
@@ -66,7 +91,13 @@ function useColumns(kind: MasterKind): Column<MasterRow>[] {
         header: 'Updated',
         className: 'whitespace-nowrap tabular-nums text-muted-foreground',
         mobile: 'hidden',
-        cell: (r) => new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }).format(new Date(r.updatedAt)),
+        cell: (r) =>
+          new Intl.DateTimeFormat('en-IN', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            timeZone: 'Asia/Kolkata',
+          }).format(new Date(r.updatedAt)),
       },
     ];
   }, [kind, byId]);
@@ -112,7 +143,13 @@ function Inner({ kind }: { kind: MasterKind }) {
           </>
         }
       />
-      <RecordSheet kind={kind} open={open} row={row} onOpenChange={setOpen} onSaved={() => setReload((n) => n + 1)} />
+      <RecordSheet
+        kind={kind}
+        open={open}
+        row={row}
+        onOpenChange={setOpen}
+        onSaved={() => setReload((n) => n + 1)}
+      />
     </>
   );
 }

@@ -12,7 +12,13 @@ export type Lookups = {
   ready: boolean;
 };
 
-const empty: Lookups = { territories: [], specialties: [], categories: [], byId: new Map(), ready: false };
+const empty: Lookups = {
+  territories: [],
+  specialties: [],
+  categories: [],
+  byId: new Map(),
+  ready: false,
+};
 const Ctx = createContext<Lookups>(empty);
 
 /** Reference data used for labels, filters, selects and import matching. Territories page through every cursor. */
@@ -53,7 +59,8 @@ export function LookupsProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Lookups>(() => {
     if (!data) return empty;
     const byId = new Map<string, string>();
-    for (const r of [...data.territories, ...data.specialties, ...data.categories]) byId.set(r.id, r.name);
+    for (const r of [...data.territories, ...data.specialties, ...data.categories])
+      byId.set(r.id, r.name);
     return { ...data, byId, ready: true };
   }, [data]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

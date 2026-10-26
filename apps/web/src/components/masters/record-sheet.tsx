@@ -51,7 +51,9 @@ export function RecordSheet({
   useEffect(() => {
     if (!open) return;
     const base = blankRecord(kind);
-    if (row) for (const k of Object.keys(base)) base[k] = ((row as Record<string, unknown>)[k] as string | null) ?? base[k]!;
+    if (row)
+      for (const k of Object.keys(base))
+        base[k] = ((row as Record<string, unknown>)[k] as string | null) ?? base[k]!;
     setValues(base);
     setErrors({});
   }, [open, row, kind]);
@@ -69,7 +71,12 @@ export function RecordSheet({
       const errs: Record<string, string> = {};
       for (const issue of parsed.error.issues) {
         const k = String(issue.path[0] ?? '');
-        errs[k] ??= k === 'pincode' ? 'Use a 6-digit PIN code.' : issue.code === 'too_small' ? 'Required.' : issue.message;
+        errs[k] ??=
+          k === 'pincode'
+            ? 'Use a 6-digit PIN code.'
+            : issue.code === 'too_small'
+              ? 'Required.'
+              : issue.message;
       }
       setErrors(errs);
       return;
@@ -87,8 +94,10 @@ export function RecordSheet({
     setBusy(false);
     if (res.error) {
       const err = toApiError(res.error);
-      if (err.code === 'VERSION_CONFLICT') toast.error('Someone else changed this record. Close and reopen it to see the latest.');
-      else if (err.code === 'VALIDATION') toast.error('The server rejected some fields. Check them and try again.');
+      if (err.code === 'VERSION_CONFLICT')
+        toast.error('Someone else changed this record. Close and reopen it to see the latest.');
+      else if (err.code === 'VALIDATION')
+        toast.error('The server rejected some fields. Check them and try again.');
       else toast.error(err.message);
       return;
     }
@@ -115,11 +124,14 @@ export function RecordSheet({
         <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
           <SheetHeader className="border-b">
             <SheetTitle>{row ? `Edit ${cfg.singular}` : `Add ${cfg.singular}`}</SheetTitle>
-            <SheetDescription>
-              {row ? row.name : `Fields marked * are required.`}
-            </SheetDescription>
+            <SheetDescription>{row ? row.name : `Fields marked * are required.`}</SheetDescription>
           </SheetHeader>
-          <form id="record-form" onSubmit={save} noValidate className="flex-1 overflow-y-auto overscroll-contain p-4">
+          <form
+            id="record-form"
+            onSubmit={save}
+            noValidate
+            className="flex-1 overflow-y-auto overscroll-contain p-4"
+          >
             <div className="grid gap-4">
               {cfg.fields.map((f) => {
                 const id = `f-${f.key}`;
@@ -147,11 +159,22 @@ export function RecordSheet({
           </form>
           <SheetFooter className="flex-row border-t pb-[max(1rem,env(safe-area-inset-bottom))]">
             {row && (
-              <Button type="button" variant="ghost" className="mr-auto text-danger" onClick={() => setConfirm(true)} disabled={busy}>
+              <Button
+                type="button"
+                variant="ghost"
+                className="mr-auto text-danger"
+                onClick={() => setConfirm(true)}
+                disabled={busy}
+              >
                 <Trash2 /> Remove
               </Button>
             )}
-            <Button type="button" variant="outline" className={row ? '' : 'ml-auto'} onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              className={row ? '' : 'ml-auto'}
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" form="record-form" disabled={busy}>
@@ -166,7 +189,8 @@ export function RecordSheet({
           <DialogHeader>
             <DialogTitle>Remove {row?.name}?</DialogTitle>
             <DialogDescription>
-              It disappears from lists and reps&apos; phones. History (calls, samples) keeps the record.
+              It disappears from lists and reps&apos; phones. History (calls, samples) keeps the
+              record.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
