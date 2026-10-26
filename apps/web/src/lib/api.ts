@@ -27,6 +27,11 @@ export const setUnauthenticatedHandler = (fn: () => void) => {
   onUnauthenticated = fn;
 };
 api.use({
+  // A hung or unreachable API must end in an error state, never an endless spinner.
+  onRequest({ request }) {
+    if (REAL && !request.signal?.aborted) return new Request(request, { signal: AbortSignal.timeout(8000) });
+    return request;
+  },
   onResponse({ response, request }) {
     if (REAL && response.status === 401 && !new URL(request.url).pathname.startsWith('/v1/auth/'))
       onUnauthenticated?.();

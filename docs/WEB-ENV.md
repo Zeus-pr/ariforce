@@ -29,3 +29,9 @@ NEXT_PUBLIC_API_MODE=real NEXT_PUBLIC_API_BASE_URL=http://localhost:4000 pnpm ex
 ```
 
 `NEXT_PUBLIC_*` values are baked in at build time, so rebuild when switching. Port 3000 stays on mock mode.
+
+Real-mode builds go to `apps/web/.next-real` (mock builds stay in `.next`), so set `NEXT_PUBLIC_API_MODE=real` for both `build` and `start`. Never run a second `next build` into the folder a running `next start` is serving: it deletes the chunks the open page asks for (500s), the page never hydrates and the splash stays up. `NEXT_DIST_DIR` overrides the folder.
+
+Smoke test (fresh browser, bogus credential only, API up and simulated down): `BROWSER=chromium node e2e/real-smoke.mjs` (and `BROWSER=webkit`).
+
+Failsafes: the splash overlay never takes clicks and is hidden after 4s by CSS and by the inline boot script even if no JS chunk loads; every real-mode API call times out after 8s; `app/error.tsx` and `app/global-error.tsx` show a retry instead of a blank or stuck page.

@@ -10,6 +10,26 @@ html.af-splash .af-splash-overlay {
 }
 html.af-splash .af-page {
   opacity: 0;
+  /* Failsafe without JS: if the splash never exits (script error, chunk load failure), show the page after 4s. */
+  animation: af-splash-failsafe 0s linear 4s forwards;
+}
+/* The splash is decoration only: it never takes clicks. */
+.af-splash-overlay {
+  pointer-events: none;
+}
+html.af-splash .af-splash-overlay {
+  animation: af-splash-failsafe-hide 0s linear 4s forwards;
+}
+@keyframes af-splash-failsafe {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes af-splash-failsafe-hide {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
 }
 html.af-splash [data-af-header-logo] {
   opacity: 0;

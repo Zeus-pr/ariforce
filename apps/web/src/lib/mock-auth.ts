@@ -158,6 +158,7 @@ export async function signInReal(email: string, password: string): Promise<MockU
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: e, password }),
+      signal: AbortSignal.timeout(8000),
     });
     if (res.status === 401 || res.status === 400 || res.status === 403)
       return { field: 'password', message: 'Email or password is wrong.' };

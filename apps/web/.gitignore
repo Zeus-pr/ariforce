@@ -5,3 +5,4 @@ playwright-report/
 next-env.d.ts
 *.tsbuildinfo
 public/vendor/
+.next-real/
