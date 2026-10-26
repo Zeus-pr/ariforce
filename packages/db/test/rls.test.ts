@@ -153,28 +153,24 @@ describe.skipIf(!OWNER || !APP)('Postgres RLS tenant isolation (app role, non-su
           installId: 'test-install-1',
         })
         .onConflictDoNothing();
-      await tx
-        .insert(consentRecords)
-        .values({
-          companyId: A,
-          userId: U.rep,
-          deviceId: dev,
-          purpose: 'location_checkin',
-          noticeVersion: 'loc-2026-10',
-          granted: true,
-        });
-      await tx
-        .insert(geoCaptures)
-        .values({
-          companyId: A,
-          userId: U.rep,
-          deviceId: dev,
-          kind: 'punch_in',
-          location: { x: 72.8777, y: 19.076 },
-          accuracyM: 12,
-          source: 'gps',
-          capturedAt: new Date(),
-        });
+      await tx.insert(consentRecords).values({
+        companyId: A,
+        userId: U.rep,
+        deviceId: dev,
+        purpose: 'location_checkin',
+        noticeVersion: 'loc-2026-10',
+        granted: true,
+      });
+      await tx.insert(geoCaptures).values({
+        companyId: A,
+        userId: U.rep,
+        deviceId: dev,
+        kind: 'punch_in',
+        location: { x: 72.8777, y: 19.076 },
+        accuracyM: 12,
+        source: 'gps',
+        capturedAt: new Date(),
+      });
     });
     await expect(
       withTenant(db(), { companyId: A }, (tx) => tx.update(consentRecords).set({ granted: false })),
