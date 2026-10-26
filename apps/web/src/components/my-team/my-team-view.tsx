@@ -52,7 +52,7 @@ export function MyTeamView() {
     void load();
   }, [load]);
 
-  const hqMap = useMemo(() => new Map(teamAdapter.allHqs().map((h) => [h.id, h])), []);
+  const hqMap = useMemo(() => new Map(teamAdapter.allHqs().map((h) => [h.id, h])), [tree]);
   const below = useMemo(() => (tree ? tree.nodes.filter((e) => e.id !== tree.rootId) : []), [tree]);
   const managers = useMemo(
     () => (tree ? tree.nodes.filter((e) => e.role !== 'business_manager' && e.active) : []),

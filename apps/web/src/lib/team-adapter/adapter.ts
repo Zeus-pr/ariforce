@@ -4,6 +4,8 @@
  * new roles strictly below the caller, HQs and managers only from the caller's subtree.
  */
 import { roleLevel, type Role, type SalesRole } from '@/lib/roles';
+import { REAL } from '@/lib/api';
+import { apiTeamAdapter } from './api-adapter';
 import { HQS, ME_BY_ROLE, seedOrg } from './mock-org';
 import {
   AdapterError,
@@ -34,7 +36,7 @@ export function subtreeIds(all: Employee[], rootId: string) {
 }
 
 function me(role: Role) {
-  const id = role === 'system_admin' ? undefined : ME_BY_ROLE[role];
+  const id = ME_BY_ROLE[role as SalesRole];
   const self = rows().find((e) => e.id === id);
   if (!self) throw new AdapterError('My Team is for Area Business Managers and above.');
   return self;
@@ -83,7 +85,7 @@ function hqsFor(selfId: string): Hq[] {
   return HQS.filter((h) => ids.has(h.id));
 }
 
-export const teamAdapter = {
+const mockTeamAdapter = {
   /** GET /v1/org/tree */
   async tree(role: Role): Promise<OrgTree> {
     await delay();
@@ -159,3 +161,6 @@ export const teamAdapter = {
     ).filter((r) => roleLevel(r) < lvl);
   },
 };
+
+/** Mock mode: the in-memory sample org. Real mode: the API (NEXT_PUBLIC_API_MODE=real). */
+export const teamAdapter = REAL ? apiTeamAdapter : mockTeamAdapter;

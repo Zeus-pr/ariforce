@@ -23,6 +23,8 @@ export const ROLE_LABEL: Record<Role, string> = {
   vice_president: 'Vice President',
   director: 'Director',
   system_admin: 'System Admin',
+  distribution_head: 'Distribution Head',
+  accountant: 'Accountant',
 };
 
 export const ROLE_SHORT: Record<Role, string> = {
@@ -35,11 +37,13 @@ export const ROLE_SHORT: Record<Role, string> = {
   vice_president: 'VP',
   director: 'Director',
   system_admin: 'Admin',
+  distribution_head: 'DH',
+  accountant: 'Accounts',
 };
 
-/** 1 = Business Manager ... 8 = Director. System Admin has no sales level (0). */
+/** 1 = Business Manager ... 8 = Director. System Admin and the functional roles (distribution head, accountant) have no sales level (0). */
 export function roleLevel(role: Role): number {
-  return role === 'system_admin' ? 0 : SALES_LADDER.indexOf(role) + 1;
+  return (SALES_LADDER as readonly string[]).indexOf(role) + 1;
 }
 
 export const isFieldRole = (r: Role) => r === 'business_manager';

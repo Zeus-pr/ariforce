@@ -11,5 +11,9 @@ const subscribe = (cb: () => void) => {
 
 /** True when the OS asks for reduced motion (charts then render without animating). */
 export function useReducedMotion() {
-  return useSyncExternalStore(subscribe, () => window.matchMedia(q).matches, () => true);
+  return useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(q).matches,
+    () => true,
+  );
 }

@@ -15,7 +15,7 @@ export { SESSION_KEY };
 
 export type MockUser = { id: string; name: string; email: string; role: Role; territory: string };
 
-const NAMES: Record<Role, [string, string]> = {
+const NAMES: Partial<Record<Role, [string, string]>> = {
   business_manager: ['Rahul Sen', 'Kolkata South HQ'],
   area_business_manager: ['Priya Ghosh', 'Kolkata Area'],
   regional_business_manager: ['Arjun Das', 'East Bengal Region'],
@@ -27,7 +27,7 @@ const NAMES: Record<Role, [string, string]> = {
   system_admin: ['System Admin', 'Head office'],
 };
 
-const EMAIL: Record<Role, string> = {
+const EMAIL: Partial<Record<Role, string>> = {
   business_manager: 'bm',
   area_business_manager: 'abm',
   regional_business_manager: 'rbm',
@@ -39,10 +39,11 @@ const EMAIL: Record<Role, string> = {
   system_admin: 'admin',
 };
 
-export const MOCK_USERS: MockUser[] = ROLES.map((role) => ({
+/** Demo users for the web's roles (the functional roles have no web pages yet). */
+export const MOCK_USERS: MockUser[] = ROLES.filter((r) => NAMES[r] && EMAIL[r]).map((role) => ({
   id: `mock-${EMAIL[role]}`,
-  name: NAMES[role][0],
-  territory: NAMES[role][1],
+  name: NAMES[role]![0],
+  territory: NAMES[role]![1],
   email: `${EMAIL[role]}@demo.ariforce.test`,
   role,
 }));
