@@ -1,9 +1,11 @@
-import { NAV, homeFor } from './nav';
+import { GUARDS, homeFor } from './nav';
 import { ROLES } from './roles';
 
 export const SESSION_KEY = 'af:mock-session';
 
-const ROUTES = [...NAV].sort((a, b) => b.href.length - a.href.length).map((n) => [n.href, n.roles]);
+const ROUTES = [...GUARDS]
+  .sort((a, b) => b.href.length - a.href.length)
+  .map((n) => [n.href, n.roles]);
 const HOME = Object.fromEntries(ROLES.map((r) => [r, homeFor(r)]));
 
 /**

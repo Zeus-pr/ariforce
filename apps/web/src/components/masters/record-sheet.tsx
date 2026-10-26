@@ -25,6 +25,7 @@ import { toast } from '@ariforce/ui/components/sonner';
 import { api, toApiError } from '@/lib/api';
 import { blankRecord, MASTERS, type MasterKind, type MasterRow } from './config';
 import { FieldInput } from './field-input';
+import { useLookups } from './lookups';
 
 type Values = Record<string, string | null>;
 
@@ -35,7 +36,10 @@ export function RecordSheet({
   row,
   onOpenChange,
   onSaved,
+  readOnly = false,
 }: {
+  /** Read-only roles (lib/permissions canWriteMasters): details only, no form or write buttons. */
+  readOnly?: boolean;
   kind: MasterKind;
   open: boolean;
   row: MasterRow | null;
@@ -123,65 +127,83 @@ export function RecordSheet({
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
           <SheetHeader className="border-b">
-            <SheetTitle>{row ? `Edit ${cfg.singular}` : `Add ${cfg.singular}`}</SheetTitle>
-            <SheetDescription>{row ? row.name : `Fields marked * are required.`}</SheetDescription>
+            <SheetTitle>
+              {readOnly
+                ? (row?.name ?? cfg.singular)
+                : row
+                  ? `Edit ${cfg.singular}`
+                  : `Add ${cfg.singular}`}
+            </SheetTitle>
+            <SheetDescription>
+              {readOnly
+                ? `${cfg.singular[0]!.toUpperCase()}${cfg.singular.slice(1)} details`
+                : row
+                  ? row.name
+                  : `Fields marked * are required.`}
+            </SheetDescription>
           </SheetHeader>
-          <form
-            id="record-form"
-            onSubmit={save}
-            noValidate
-            className="flex-1 overflow-y-auto overscroll-contain p-4"
-          >
-            <div className="grid gap-4">
-              {cfg.fields.map((f) => {
-                const id = `f-${f.key}`;
-                return (
-                  <div key={f.key} className="grid gap-1.5">
-                    <Label htmlFor={id}>
-                      {f.label}
-                      {f.required && <span className="text-danger">*</span>}
-                    </Label>
-                    <FieldInput
-                      id={id}
-                      field={f}
-                      value={values[f.key] ?? null}
-                      invalid={!!errors[f.key]}
-                      onChange={(v) => {
-                        setValues((s) => ({ ...s, [f.key]: v }));
-                        if (errors[f.key]) setErrors(({ [f.key]: _, ...rest }) => rest);
-                      }}
-                    />
-                    {errors[f.key] && <p className="text-xs text-danger">{errors[f.key]}</p>}
-                  </div>
-                );
-              })}
-            </div>
-          </form>
-          <SheetFooter className="flex-row border-t pb-[max(1rem,env(safe-area-inset-bottom))]">
-            {row && (
+          {readOnly ? (
+            <ReadOnlyDetails kind={kind} values={values} />
+          ) : (
+            <form
+              id="record-form"
+              onSubmit={save}
+              noValidate
+              className="flex-1 overflow-y-auto overscroll-contain p-4"
+            >
+              <div className="grid gap-4">
+                {cfg.fields.map((f) => {
+                  const id = `f-${f.key}`;
+                  return (
+                    <div key={f.key} className="grid gap-1.5">
+                      <Label htmlFor={id}>
+                        {f.label}
+                        {f.required && <span className="text-danger">*</span>}
+                      </Label>
+                      <FieldInput
+                        id={id}
+                        field={f}
+                        value={values[f.key] ?? null}
+                        invalid={!!errors[f.key]}
+                        onChange={(v) => {
+                          setValues((s) => ({ ...s, [f.key]: v }));
+                          if (errors[f.key]) setErrors(({ [f.key]: _, ...rest }) => rest);
+                        }}
+                      />
+                      {errors[f.key] && <p className="text-xs text-danger">{errors[f.key]}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            </form>
+          )}
+          {!readOnly && (
+            <SheetFooter className="flex-row border-t pb-[max(1rem,env(safe-area-inset-bottom))]">
+              {row && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="mr-auto text-danger"
+                  onClick={() => setConfirm(true)}
+                  disabled={busy}
+                >
+                  <Trash2 /> Remove
+                </Button>
+              )}
               <Button
                 type="button"
-                variant="ghost"
-                className="mr-auto text-danger"
-                onClick={() => setConfirm(true)}
-                disabled={busy}
+                variant="outline"
+                className={row ? '' : 'ml-auto'}
+                onClick={() => onOpenChange(false)}
               >
-                <Trash2 /> Remove
+                Cancel
               </Button>
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              className={row ? '' : 'ml-auto'}
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" form="record-form" disabled={busy}>
-              {busy && <Loader2 className="animate-spin" />}
-              {row ? 'Save' : 'Add'}
-            </Button>
-          </SheetFooter>
+              <Button type="submit" form="record-form" disabled={busy}>
+                {busy && <Loader2 className="animate-spin" />}
+                {row ? 'Save' : 'Add'}
+              </Button>
+            </SheetFooter>
+          )}
         </SheetContent>
       </Sheet>
       <Dialog open={confirm} onOpenChange={setConfirm}>
@@ -204,6 +226,30 @@ export function RecordSheet({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function ReadOnlyDetails({ kind, values }: { kind: MasterKind; values: Values }) {
+  const { byId } = useLookups();
+  return (
+    <dl
+      className="grid flex-1 content-start gap-3 overflow-y-auto p-4 text-sm"
+      data-testid="master-details"
+    >
+      {MASTERS[kind].fields.map((f) => {
+        const raw = values[f.key];
+        const v =
+          raw && ['territory', 'specialty', 'category'].includes(f.type)
+            ? (byId.get(raw) ?? raw)
+            : raw;
+        return (
+          <div key={f.key} className="grid gap-0.5">
+            <dt className="text-xs text-muted-foreground">{f.label}</dt>
+            <dd>{v || '—'}</dd>
+          </div>
+        );
+      })}
+    </dl>
   );
 }
 

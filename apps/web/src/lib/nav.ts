@@ -1,6 +1,8 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   CalendarRange,
+  Pill,
+  Package,
   Network,
   FileSpreadsheet,
   Stethoscope,
@@ -14,6 +16,7 @@ import {
   MapPin,
 } from 'lucide-react';
 
+import { WRITE_ROUTES } from './permissions';
 import { ROLES, isApprover, isSystemAdmin, type Role } from './roles';
 
 export { ROLE_LABEL, type Role } from './roles';
@@ -82,6 +85,22 @@ export const NAV: NavItem[] = [
     section: 'business',
   },
   {
+    slug: 'chemists',
+    title: 'Chemists',
+    href: '/masters/chemists',
+    icon: Pill,
+    roles: SALES,
+    section: 'business',
+  },
+  {
+    slug: 'stockists',
+    title: 'Stockists',
+    href: '/masters/stockists',
+    icon: Package,
+    roles: SALES,
+    section: 'business',
+  },
+  {
     slug: 'sales',
     title: 'Sales',
     href: '/sales',
@@ -144,8 +163,19 @@ export function homeFor(role: Role): string {
   return NAV.find((n) => n.roles.includes(role))?.href ?? '/';
 }
 
+/**
+ * Route guard table: the sidebar items, the masters lists (readable by every sales role; the sidebar
+ * shows Doctors at /doctors, Chemists and Stockists here) and the write-only routes from lib/permissions.
+ * Longest prefix wins.
+ */
+export const GUARDS: { href: string; roles: readonly Role[] }[] = [
+  ...NAV,
+  { href: '/masters/doctors', roles: ROLES },
+  ...WRITE_ROUTES,
+];
+
 export function canSee(role: Role, pathname: string): boolean {
-  const item = [...NAV]
+  const item = [...GUARDS]
     .sort((a, b) => b.href.length - a.href.length)
     .find((n) => (n.href === '/' ? pathname === '/' : pathname.startsWith(n.href)));
   return !item || item.roles.includes(role);

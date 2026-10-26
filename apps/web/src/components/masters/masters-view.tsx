@@ -14,6 +14,8 @@ import { MASTERS, type MasterKind, type MasterRow } from './config';
 import { LookupsProvider, useLookups } from './lookups';
 import { RecordSheet } from './record-sheet';
 import { masterSource } from './source';
+import { useRole } from '@/components/shell/role-context';
+import { canWriteMasters } from '@/lib/permissions';
 
 const dash = <span className="text-muted-foreground">—</span>;
 
@@ -111,6 +113,15 @@ function Inner({ kind }: { kind: MasterKind }) {
   const [reload, setReload] = useState(0);
   const lk = useLookups();
   const source = useMemo(() => masterSource(kind, lk), [kind, lk]);
+  const { role } = useRole();
+  const canWrite = canWriteMasters(role);
+  const importLink = (
+    <Button variant="outline" asChild>
+      <Link href={`/masters/${kind}/import`} data-testid="master-import">
+        <FileSpreadsheet /> Import
+      </Link>
+    </Button>
+  );
 
   return (
     <>
@@ -125,22 +136,33 @@ function Inner({ kind }: { kind: MasterKind }) {
           setRow(r);
           setOpen(true);
         }}
+        empty={
+          <div className="flex flex-col items-center gap-3 py-6" data-testid="master-empty">
+            <p>No {cfg.title.toLowerCase()} yet.</p>
+            {canWrite && (
+              <Button asChild>
+                <Link href={`/masters/${kind}/import`}>
+                  <FileSpreadsheet /> Import {cfg.title.toLowerCase()}
+                </Link>
+              </Button>
+            )}
+          </div>
+        }
         actions={
-          <>
-            <Button variant="outline" asChild>
-              <Link href={`/masters/${kind}/import`}>
-                <FileSpreadsheet /> Import
-              </Link>
-            </Button>
-            <Button
-              onClick={() => {
-                setRow(null);
-                setOpen(true);
-              }}
-            >
-              <Plus /> Add {cfg.singular}
-            </Button>
-          </>
+          canWrite ? (
+            <>
+              {importLink}
+              <Button
+                data-testid="master-add"
+                onClick={() => {
+                  setRow(null);
+                  setOpen(true);
+                }}
+              >
+                <Plus /> Add {cfg.singular}
+              </Button>
+            </>
+          ) : undefined
         }
       />
       <RecordSheet
@@ -148,6 +170,7 @@ function Inner({ kind }: { kind: MasterKind }) {
         open={open}
         row={row}
         onOpenChange={setOpen}
+        readOnly={!canWrite}
         onSaved={() => setReload((n) => n + 1)}
       />
     </>

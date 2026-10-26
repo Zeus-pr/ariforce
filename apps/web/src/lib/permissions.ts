@@ -1,0 +1,21 @@
+/**
+ * ONE place for "who may change master data" (docs/PERMISSIONS.md).
+ * Owner rule: Regional Business Manager and above (ZBM, SM, GM, VP, Director) and System Admin
+ * read AND write masters (add, edit, import, remove). Area Business Manager and Business Manager
+ * are read-only. The API returns 403 on writes for ABM/BM (Architect, in progress on their side).
+ */
+import { ROLES, isSystemAdmin, roleLevel, type Role } from './roles';
+
+export const MASTER_KINDS = ['doctors', 'chemists', 'stockists'] as const;
+
+export function canWriteMasters(role: Role): boolean {
+  return isSystemAdmin(role) || roleLevel(role) >= roleLevel('regional_business_manager');
+}
+
+export const MASTER_WRITERS: Role[] = ROLES.filter(canWriteMasters);
+
+/** Write-only routes and who may open them (used by the route guard and the pre-paint script). */
+export const WRITE_ROUTES: { href: string; roles: Role[] }[] = MASTER_KINDS.map((k) => ({
+  href: `/masters/${k}/import`,
+  roles: MASTER_WRITERS,
+}));

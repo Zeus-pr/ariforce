@@ -45,11 +45,14 @@ export function apiReady(): Promise<void> {
   if (typeof window === 'undefined' || !MOCKING) return Promise.resolve();
   readyPromise ??= (async () => {
     try {
-      const [{ setupWorker }, { createHandlers }] = await Promise.all([
+      const [{ setupWorker }, { createHandlers }, { mastersWriteGuard }] = await Promise.all([
         import('msw/browser'),
         import('@ariforce/contracts/mocks'),
+        import('./mock-permissions'),
       ]);
-      await setupWorker(...createHandlers(API_URL)).start({ quiet: true });
+      await setupWorker(...mastersWriteGuard(API_URL), ...createHandlers(API_URL)).start({
+        quiet: true,
+      });
     } catch {
       /* fall through to the network */
     }

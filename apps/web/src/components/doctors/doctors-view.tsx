@@ -2,7 +2,10 @@
 
 import { PlaceholderTag } from '@/components/masters/placeholder';
 
-import { ArrowLeft, MapPin, Phone } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, MapPin, Pencil, Phone } from 'lucide-react';
+import { Button } from '@ariforce/ui/components/button';
+import { useRole } from '@/components/shell/role-context';
+import { canWriteMasters } from '@/lib/permissions';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -35,6 +38,7 @@ export function DoctorsView() {
 }
 
 function DoctorList() {
+  const { role } = useRole();
   const lk = useLookups();
   const router = useRouter();
   const source = useMemo(() => masterSource('doctors', lk), [lk]);
@@ -71,6 +75,7 @@ function DoctorList() {
     { id: 'territory', header: 'Territory', cell: (d) => lk.byId.get(d.territoryId) ?? '—' },
     { id: 'city', header: 'City', mobile: 'secondary', cell: (d) => d.city ?? '—' },
   ];
+  const canWrite = canWriteMasters(role);
   if (!lk.ready) return <div className="h-96" aria-busy="true" />;
   return (
     <DataTable
@@ -80,6 +85,22 @@ function DoctorList() {
       rowKey={(d) => d.id}
       onRowClick={(d) => router.push(`/doctors?id=${d.id}`)}
       searchPlaceholder="Search doctors"
+      actions={
+        canWrite ? (
+          <>
+            <Button variant="outline" asChild>
+              <Link href="/masters/doctors/import" data-testid="master-import">
+                <FileSpreadsheet /> Import
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link href="/masters/doctors" data-testid="manage-doctors">
+                <Pencil /> Add or edit
+              </Link>
+            </Button>
+          </>
+        ) : undefined
+      }
       empty={<p className="py-10 text-center text-sm text-muted-foreground">No doctors match.</p>}
     />
   );
