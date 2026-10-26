@@ -85,6 +85,7 @@ import {
   SignupReject,
   SignupRequest,
   SignupRequestAccepted,
+  SignupOptions,
   SignupRequestCreate,
   SignupRequestList,
   SignupRequestQuery,
@@ -806,6 +807,19 @@ function buildDocument(): OpenApiDocument {
               ...json(InviteAccepted),
             },
             '404': err('Invalid, used, revoked or expired invite'),
+          },
+        },
+      },
+      '/v1/auth/sign-up-options': {
+        get: {
+          tags: ['Auth'],
+          operationId: 'getSignUpOptions',
+          summary:
+            'Public. Pick-lists for the sign-up form: territories {id,name,code} and possible managers {id,name,role} (active ABM-and-above hierarchy users only; no emails or phones).',
+          responses: {
+            '200': { description: 'Options', ...json(SignupOptions) },
+            '429': err('RATE_LIMITED (per IP)'),
+            '503': err('SIGNUP_DISABLED: company not configured'),
           },
         },
       },

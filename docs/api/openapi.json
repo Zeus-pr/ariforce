@@ -7253,6 +7253,47 @@
         }
       }
     },
+    "/v1/auth/sign-up-options": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "operationId": "getSignUpOptions",
+        "summary": "Public. Pick-lists for the sign-up form: territories {id,name,code} and possible managers {id,name,role} (active ABM-and-above hierarchy users only; no emails or phones).",
+        "responses": {
+          "200": {
+            "description": "Options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupOptions"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED (per IP)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "SIGNUP_DISABLED: company not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/auth/sign-up-request": {
       "post": {
         "tags": [
@@ -14285,6 +14326,71 @@
         "required": [
           "userId",
           "email"
+        ],
+        "additionalProperties": false
+      },
+      "SignupOptions": {
+        "type": "object",
+        "properties": {
+          "territories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUIDv7 identifier",
+                  "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "code"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "managers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUIDv7 identifier",
+                  "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "role": {
+                  "description": "Highest hierarchy role (ABM and above)",
+                  "$ref": "#/components/schemas/RoleKey"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "role"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "territories",
+          "managers"
         ],
         "additionalProperties": false
       },

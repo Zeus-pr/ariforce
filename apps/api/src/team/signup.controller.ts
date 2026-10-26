@@ -32,6 +32,12 @@ export class SignupController {
     return this.signup.submit(b, req.ip ?? null);
   }
 
+  @Public()
+  @Get('auth/sign-up-options')
+  options(@Req() req: Request) {
+    return this.signup.options(req.ip ?? null);
+  }
+
   @Get('signup-requests')
   list(
     @CurrentPrincipal() p: Principal,

@@ -7,6 +7,7 @@ import {
   SignupApprove,
   SignupReject,
   SignupRequest,
+  SignupOptions,
   SignupRequestCreate,
 } from '../schemas/signup';
 import { MIN_MANAGER_RANK, hierarchyRank, isHierarchyRole } from '../schemas/team';
@@ -14,7 +15,8 @@ import * as fx from './fixtures';
 
 /**
  * Mock sign-up requests. Same states and error codes as the API. Simplification: an ABM+ sees
- * requests for roles below theirs regardless of territory (the API also checks the subtree).
+ * requests for roles below theirs regardless of territory/manager (the API shows unassigned
+ * requests to every ABM+ above the role, and assigned ones only within the approver's subtree).
  */
 type Req = z.infer<typeof SignupRequest> & { password: string };
 const reqs: Req[] = [];
@@ -46,6 +48,22 @@ export function signupHandlers(baseUrl: string, who: (r: Request) => Me | undefi
     return { r };
   };
   return [
+    http.get(`${baseUrl}/v1/auth/sign-up-options`, () =>
+      HttpResponse.json(
+        SignupOptions.parse({
+          territories: fx.territories.map((t) => ({ id: t.id, name: t.name, code: t.code })),
+          managers: fx.mockUsers
+            .filter((u) =>
+              u.roles.some((r) => isHierarchyRole(r) && ROLE_RANK[r] >= MIN_MANAGER_RANK),
+            )
+            .map((u) => ({
+              id: u.id,
+              name: u.name,
+              role: u.roles.reduce((a, b) => (ROLE_RANK[b] > ROLE_RANK[a] ? b : a)),
+            })),
+        }),
+      ),
+    ),
     http.post(`${baseUrl}/v1/auth/sign-up-request`, async ({ request }) => {
       const b = SignupRequestCreate.safeParse(await request.json().catch(() => null));
       if (!b.success) return e(422, 'VALIDATION', 'Invalid sign-up request');

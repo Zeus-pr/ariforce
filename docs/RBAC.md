@@ -155,11 +155,15 @@ The server enforces every rule in `apps/api/src/team/team.service.ts`, and the m
 - `pending` and `rejected` users cannot sign in (403 `ACCOUNT_PENDING_APPROVAL` / `ACCOUNT_REJECTED`). Any existing session or bearer token gets the same 403 from every data endpoint.
 - Who decides:
   - A **system admin** sees every request and can grant any role, including functional roles.
-  - **ABM and above** see requests for hierarchy roles below their own, where the requested territory or manager is in their subtree. They can grant only roles below their own, on territories in their scope.
+  - **ABM and above** see a request only for a hierarchy role strictly below their own, and then only if:
+    - the request names **no manager** (unassigned): it is visible to every ABM+ above the requested role, so a new joiner without a reporting line is never stuck; or
+    - the requested manager is the reviewer or in their subtree, or the requested territory is in their territory scope.
+  - Visibility and approval authority are the same rule: a request you cannot see returns 404 on approve/reject.
+  - Approvers grant only roles strictly below their own (system admin: any), on territories in their scope.
   - BM and functional roles cannot review requests. Nobody can approve their own request.
 - On approval:
   - Hierarchy roles need at least one territory.
   - Directors and functional roles have no manager.
-  - For other roles, the manager defaults to the requested one, or else to the approver.
+  - For other roles, the manager defaults to the requested one, or else to the approver. A system admin approving without a manager leaves it empty.
 - Audit actions: `signup.requested`, `signup.approved`, `signup.rejected`.
 - Table: `signup_requests`, created by migration `0020_signup_requests.sql`, with RLS `tenant_isolation`; only `ariforce_app` has grants.

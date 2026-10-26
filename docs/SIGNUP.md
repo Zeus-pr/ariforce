@@ -25,6 +25,21 @@ The API, contracts and mocks are done. The UI is not built yet; Dev owns it.
 - 422: validation. 429 `RATE_LIMITED`. 403 `CAPTCHA_FAILED`. 503 `SIGNUP_DISABLED`.
 - Turnstile: render the widget and send `turnstileToken`. The server enforces it only when `TURNSTILE_SECRET` is set.
 
+### Pick-lists: `GET /v1/auth/sign-up-options`
+
+Public, no session; rate-limited per IP like sign-up. Type `SignupOptions`.
+
+```json
+{
+  "territories": [{ "id": "...", "name": "Kolkata HQ", "code": "KOL" }],
+  "managers": [{ "id": "...", "name": "...", "role": "area_business_manager" }]
+}
+```
+
+- `managers` lists only active users whose highest hierarchy role is ABM or above (no system admin, functional, pending or inactive users). It has no emails or phones.
+- 429 `RATE_LIMITED`, 503 `SIGNUP_DISABLED`.
+- Both fields stay optional in the form. Leaving the manager empty is fine: see section 3.
+
 ## 2. Signing in before approval
 
 `POST /v1/auth/sign-in/email` uses better-auth's body shape, without the `error` wrapper:
@@ -38,6 +53,10 @@ A token that already exists for such a user gets 403 `{ "error": { "code": "ACCO
 ## 3. Approval screen (system admin, ABM and above)
 
 - `GET /v1/signup-requests?status=pending|approved|rejected` (default `pending`) returns `{ items: SignupRequest[] }`.
+- Who sees a request (and may decide it; same rule):
+  - system admin: all;
+  - ABM+ with a rank strictly above the requested role, when the request has no manager (unassigned), or when the requested manager or territory is in their subtree/scope.
+- Approving an unassigned request without `managerId` makes the approver the manager (directors and functional roles get none).
 - `POST /v1/signup-requests/{id}/approve` with `{ role, territoryIds?, managerId? }` returns 200 `SignupRequest`.
   - 403: role or territory is outside your authority, or it is your own request.
   - 404: not visible. 409: already decided. 422: e.g. no territory, or a manager given for a director.

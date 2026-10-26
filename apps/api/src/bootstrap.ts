@@ -4,7 +4,11 @@ import { toNodeHandler } from 'better-auth/node';
 import express, { type Express } from 'express';
 import { AUTH_BASE_PATH, webOrigins } from './auth/auth';
 
-const SIGNUP_REQUEST_PATH = `${AUTH_BASE_PATH}/sign-up-request`;
+/** Our own public routes under /v1/auth, handled by Nest rather than better-auth. */
+const NEST_AUTH_PATHS = new Set([
+  `${AUTH_BASE_PATH}/sign-up-request`,
+  `${AUTH_BASE_PATH}/sign-up-options`,
+]);
 import { AuthService } from './auth/auth.service';
 
 /**
@@ -19,7 +23,7 @@ export function configureApp(app: INestApplication) {
   const authHandler = toNodeHandler(app.get(AuthService).auth);
   // Our own public sign-up request route lives under /v1/auth but is handled by Nest.
   server.all(`${AUTH_BASE_PATH}/*splat`, (req, res, next) =>
-    req.path === SIGNUP_REQUEST_PATH ? next() : authHandler(req, res),
+    NEST_AUTH_PATHS.has(req.path) ? next() : authHandler(req, res),
   );
   app.use(express.json({ limit: '1mb' }));
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });

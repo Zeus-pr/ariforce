@@ -1033,6 +1033,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/auth/sign-up-options': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Public. Pick-lists for the sign-up form: territories {id,name,code} and possible managers {id,name,role} (active ABM-and-above hierarchy users only; no emails or phones). */
+    get: operations['getSignUpOptions'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/auth/sign-up-request': {
     parameters: {
       query?: never;
@@ -3050,6 +3067,29 @@ export interface components {
        */
       userId: string;
       email: string;
+    };
+    SignupOptions: {
+      territories: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+        code: string;
+      }[];
+      managers: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+        /** @description Highest hierarchy role (ABM and above) */
+        role: components['schemas']['RoleKey'];
+      }[];
     };
     SignupRequestAccepted: {
       /** @constant */
@@ -7461,6 +7501,44 @@ export interface operations {
       };
       /** @description Invalid, used, revoked or expired invite */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getSignUpOptions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Options */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SignupOptions'];
+        };
+      };
+      /** @description RATE_LIMITED (per IP) */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description SIGNUP_DISABLED: company not configured */
+      503: {
         headers: {
           [name: string]: unknown;
         };

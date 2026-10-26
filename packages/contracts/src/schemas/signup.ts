@@ -84,3 +84,18 @@ export const SignupApprove = z
 export const SignupReject = z
   .object({ reason: z.string().trim().max(500).nullable().default(null) })
   .meta({ id: 'SignupReject' });
+
+/** Public pick-lists for the sign-up form (GET /v1/auth/sign-up-options). No PII. */
+export const SignupOptions = z
+  .object({
+    territories: z.array(z.object({ id: Id, name: z.string(), code: z.string() })),
+    managers: z.array(
+      z.object({
+        id: Id,
+        name: z.string(),
+        role: RoleKey.meta({ description: 'Highest hierarchy role (ABM and above)' }),
+      }),
+    ),
+  })
+  .meta({ id: 'SignupOptions' });
+export type SignupOptions = z.infer<typeof SignupOptions>;

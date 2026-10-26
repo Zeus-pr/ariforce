@@ -86,3 +86,18 @@ describe('sign-up request contracts', () => {
     expect(((await s2.json()) as any).code).toBe(AUTH_STATE_CODES.rejected);
   });
 });
+
+describe('SignupOptions', () => {
+  it('accepts the documented shape only', async () => {
+    const { SignupOptions } = await import('../src');
+    const id = '01930000-0000-7000-8000-000000000001';
+    const ok = {
+      territories: [{ id, name: 'HQ', code: 'HQ' }],
+      managers: [{ id, name: 'A', role: 'area_business_manager' }],
+    };
+    expect(SignupOptions.safeParse(ok).success).toBe(true);
+    expect(
+      SignupOptions.safeParse({ ...ok, managers: [{ id, name: 'A', role: 'nope' }] }).success,
+    ).toBe(false);
+  });
+});
