@@ -16,3 +16,17 @@ describe('health', () => {
     await app.close();
   });
 });
+
+describe('openapi', () => {
+  it('serves /openapi.json and /docs', async () => {
+    const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const app = configureApp(mod.createNestApplication());
+    await app.init();
+    const res = await request(app.getHttpServer()).get('/openapi.json');
+    expect(res.status).toBe(200);
+    expect(res.body.openapi).toBe('3.1.0');
+    const docs = await request(app.getHttpServer()).get('/docs');
+    expect(docs.status).toBe(200);
+    await app.close();
+  });
+});

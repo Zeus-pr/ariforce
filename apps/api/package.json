@@ -11,9 +11,11 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ariforce/contracts": "workspace:*",
     "@nestjs/common": "^12.2.0",
     "@nestjs/core": "^12.2.0",
     "@nestjs/platform-express": "^12.2.0",
+    "@scalar/nestjs-api-reference": "^1.2.31",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },

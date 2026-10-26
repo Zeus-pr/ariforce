@@ -16,6 +16,16 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./mocks": {
+      "import": {
+        "types": "./dist/mocks.d.ts",
+        "default": "./dist/mocks.js"
+      },
+      "require": {
+        "types": "./dist/mocks.d.cts",
+        "default": "./dist/mocks.cjs"
+      }
     }
   },
   "files": [
@@ -26,13 +36,33 @@
     "dev": "tsup --watch",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run",
+    "openapi": "tsx scripts/openapi.ts",
+    "openapi:check": "tsx scripts/openapi.ts --check"
   },
   "devDependencies": {
     "@ariforce/config": "workspace:*",
+    "@types/node": "^26.6.5",
     "eslint": "^10.13.0",
+    "msw": "^3.0.3",
+    "openapi-typescript": "^7.13.0",
+    "prettier": "^3.9.10",
     "tsup": "^9.0.0",
+    "tsx": "^4.23.15",
     "typescript": "~5.9.3",
     "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.17.0",
+    "zod": "^4.6.7",
+    "zod-openapi": "^6.0.2"
+  },
+  "peerDependencies": {
+    "msw": "^2"
+  },
+  "peerDependenciesMeta": {
+    "msw": {
+      "optional": true
+    }
   }
 }
