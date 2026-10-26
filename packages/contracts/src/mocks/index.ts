@@ -23,6 +23,7 @@ import { duplicateKeys, mapImportRow, type ImportLookup } from '../import/templa
 import type { ImportEntity } from '../schemas/imports';
 import { SignInEmailBody } from '../schemas/auth';
 import { kpiReport, productKpiReport } from './kpis';
+import { teamHandlers } from './team';
 import {
   Approval,
   ApprovalDecision,
@@ -450,6 +451,7 @@ export function createHandlers(baseUrl = '') {
     ...crud(baseUrl, '/v1/products', Product, ProductCreate, fx.products),
     ...crud(baseUrl, '/v1/work-types', WorkType, WorkTypeCreate, fx.workTypes),
     ...fieldHandlers(baseUrl),
+    ...teamHandlers(baseUrl, mockPrincipal),
   ];
 }
 

@@ -15,3 +15,4 @@ export type { paths, components } from './generated/openapi';
 export const API_VERSION = 'v1';
 export * from './import/templates';
 export * from './tour-plan';
+export * from './schemas/team';
