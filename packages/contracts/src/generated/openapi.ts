@@ -162,6 +162,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/files/upload-url': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Presigned R2 PUT URL (10 min). Upload directly to R2, then save fileKey on the record. */
+    post: operations['createUploadUrl'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/files/download-url': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Presigned R2 GET URL (5 min) for a fileKey owned by the caller company */
+    post: operations['createDownloadUrl'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/devices': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['listMyDevices'];
+    put?: never;
+    /** Enrol this install (company or personal phone) */
+    post: operations['enrolDevice'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/devices/{id}/consents': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Grant or withdraw consent (append-only DPDP ledger) */
+    post: operations['recordConsent'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/doctors': {
     parameters: {
       query?: never;
@@ -274,6 +342,41 @@ export interface components {
       password: string;
       rememberMe?: boolean;
     };
+    UploadUrlRequest: {
+      purpose: components['schemas']['FilePurpose'];
+      /** @enum {string} */
+      contentType: 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf';
+      sizeBytes: number;
+      fileName?: string;
+    };
+    /** @enum {string} */
+    FilePurpose: 'doctor_photo' | 'visit_attachment' | 'expense_receipt' | 'avatar';
+    DownloadUrlRequest: {
+      fileKey: string;
+    };
+    /** @description Personal phones stay `pending_consent` until both consents are granted; company phones are `active` immediately. */
+    DeviceEnrol: {
+      ownership: components['schemas']['DeviceOwnership'];
+      platform: components['schemas']['DevicePlatform'];
+      installId: string;
+      model: string | null;
+      osVersion: string | null;
+      appVersion: string | null;
+      assetTag: string | null;
+    };
+    /** @enum {string} */
+    DeviceOwnership: 'company' | 'personal';
+    /** @enum {string} */
+    DevicePlatform: 'android' | 'ios';
+    ConsentGrant: {
+      purpose: components['schemas']['ConsentPurpose'];
+      /** @description Version of the DPDP notice shown */
+      noticeVersion: string;
+      /** @description false = withdrawal (append-only ledger) */
+      granted: boolean;
+    };
+    /** @enum {string} */
+    ConsentPurpose: 'personal_device_enrolment' | 'location_checkin';
     DoctorCreate: {
       /**
        * Format: uuid
@@ -592,6 +695,105 @@ export interface components {
       code: string;
       name: string;
       visitsPerMonth: number;
+    };
+    UploadUrlResponse: {
+      /** @description Store this on the owning record; tenant-prefixed */
+      fileKey: string;
+      /** Format: uri */
+      uploadUrl: string;
+      /** @constant */
+      method: 'PUT';
+      /** @description Send exactly these headers with the PUT */
+      headers: {
+        [key: string]: string;
+      };
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      expiresAt: string;
+    };
+    DownloadUrlResponse: {
+      /** Format: uri */
+      downloadUrl: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      expiresAt: string;
+    };
+    DeviceList: {
+      items: components['schemas']['Device'][];
+    };
+    Device: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Tombstone: set when soft-deleted */
+      deletedAt: string | null;
+      /** @description Row version, incremented on every update (optimistic concurrency) */
+      version: number;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      ownership: components['schemas']['DeviceOwnership'];
+      platform: components['schemas']['DevicePlatform'];
+      installId: string;
+      model: string | null;
+      osVersion: string | null;
+      appVersion: string | null;
+      assetTag: string | null;
+      status: components['schemas']['DeviceStatus'];
+      enrolledAt: string | null;
+    };
+    /** @enum {string} */
+    DeviceStatus: 'pending_consent' | 'active' | 'revoked';
+    ConsentRecord: {
+      purpose: components['schemas']['ConsentPurpose'];
+      /** @description Version of the DPDP notice shown */
+      noticeVersion: string;
+      /** @description false = withdrawal (append-only ledger) */
+      granted: boolean;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      deviceId: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      at: string;
     };
     DoctorPage: {
       items: components['schemas']['Doctor'][];
@@ -1157,6 +1359,269 @@ export interface operations {
       };
       /** @description Signed in but not allowed (role, hierarchy or tenant) */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createUploadUrl: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['UploadUrlRequest'];
+      };
+    };
+    responses: {
+      /** @description Presigned upload */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['UploadUrlResponse'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed (type/size) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Storage not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createDownloadUrl: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DownloadUrlRequest'];
+      };
+    };
+    responses: {
+      /** @description Presigned download */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DownloadUrlResponse'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Unknown or foreign file */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Storage not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listMyDevices: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Caller devices */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DeviceList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  enrolDevice: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DeviceEnrol'];
+      };
+    };
+    responses: {
+      /** @description Enrolled */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Device'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  recordConsent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ConsentGrant'];
+      };
+    };
+    responses: {
+      /** @description Recorded */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ConsentRecord'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };

@@ -21,6 +21,13 @@ import {
   StockistCreate,
   StockistUpdate,
 } from './schemas/masters';
+import {
+  DownloadUrlRequest,
+  DownloadUrlResponse,
+  UploadUrlRequest,
+  UploadUrlResponse,
+} from './schemas/files';
+import { ConsentGrant, ConsentRecord, Device, DeviceEnrol } from './schemas/devices';
 
 const json = <T extends z.ZodType>(schema: T) => ({ content: { 'application/json': { schema } } });
 const err = (description: string) => ({ description, ...json(ErrorBody) });
@@ -195,6 +202,68 @@ export function buildOpenApiDocument(): OpenApiDocument {
           requestParams: { query: ListQuery },
           responses: {
             '200': { description: 'Page', ...json(page(DoctorCategory, 'DoctorCategoryPage')) },
+          },
+        }),
+      },
+      '/v1/files/upload-url': {
+        post: op({
+          tags: ['Files'],
+          operationId: 'createUploadUrl',
+          summary:
+            'Presigned R2 PUT URL (10 min). Upload directly to R2, then save fileKey on the record.',
+          requestBody: json(UploadUrlRequest),
+          responses: {
+            '200': { description: 'Presigned upload', ...json(UploadUrlResponse) },
+            '422': err('Validation failed (type/size)'),
+            '503': err('Storage not configured'),
+          },
+        }),
+      },
+      '/v1/files/download-url': {
+        post: op({
+          tags: ['Files'],
+          operationId: 'createDownloadUrl',
+          summary: 'Presigned R2 GET URL (5 min) for a fileKey owned by the caller company',
+          requestBody: json(DownloadUrlRequest),
+          responses: {
+            '200': { description: 'Presigned download', ...json(DownloadUrlResponse) },
+            '404': err('Unknown or foreign file'),
+            '503': err('Storage not configured'),
+          },
+        }),
+      },
+      '/v1/devices': {
+        get: op({
+          tags: ['Devices'],
+          operationId: 'listMyDevices',
+          responses: {
+            '200': {
+              description: 'Caller devices',
+              ...json(z.object({ items: z.array(Device) }).meta({ id: 'DeviceList' })),
+            },
+          },
+        }),
+        post: op({
+          tags: ['Devices'],
+          operationId: 'enrolDevice',
+          summary: 'Enrol this install (company or personal phone)',
+          requestBody: json(DeviceEnrol),
+          responses: {
+            '201': { description: 'Enrolled', ...json(Device) },
+            '422': err('Validation failed'),
+          },
+        }),
+      },
+      '/v1/devices/{id}/consents': {
+        post: op({
+          tags: ['Devices'],
+          operationId: 'recordConsent',
+          summary: 'Grant or withdraw consent (append-only DPDP ledger)',
+          requestParams: { path: IdParam },
+          requestBody: json(ConsentGrant),
+          responses: {
+            '201': { description: 'Recorded', ...json(ConsentRecord) },
+            '404': err('Not found'),
           },
         }),
       },
