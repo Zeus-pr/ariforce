@@ -1,5 +1,12 @@
 {
   "extends": "@ariforce/config/tsconfig/node.json",
-  "compilerOptions": { "rootDir": "src", "outDir": "dist", "types": ["node"] },
+  "compilerOptions": {
+    // NodeNext: CJS output that may require() ESM-only deps (better-auth) on Node >= 22.12.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"]
+  },
   "include": ["src"]
 }

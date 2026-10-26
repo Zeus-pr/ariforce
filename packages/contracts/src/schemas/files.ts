@@ -1,0 +1,50 @@
+import * as z from 'zod';
+import { Timestamp } from './common';
+
+export const FILE_PURPOSES = [
+  'doctor_photo',
+  'visit_attachment',
+  'expense_receipt',
+  'avatar',
+] as const;
+export const FilePurpose = z.enum(FILE_PURPOSES).meta({ id: 'FilePurpose' });
+export const ALLOWED_CONTENT_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+] as const;
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+export const UploadUrlRequest = z
+  .object({
+    purpose: FilePurpose,
+    contentType: z.enum(ALLOWED_CONTENT_TYPES),
+    sizeBytes: z.int().min(1).max(MAX_UPLOAD_BYTES),
+    fileName: z.string().min(1).max(200).optional(),
+  })
+  .meta({ id: 'UploadUrlRequest' });
+export type UploadUrlRequest = z.infer<typeof UploadUrlRequest>;
+
+export const UploadUrlResponse = z
+  .object({
+    fileKey: z.string().meta({ description: 'Store this on the owning record; tenant-prefixed' }),
+    uploadUrl: z.url(),
+    method: z.literal('PUT'),
+    headers: z
+      .record(z.string(), z.string())
+      .meta({ description: 'Send exactly these headers with the PUT' }),
+    expiresAt: Timestamp,
+  })
+  .meta({ id: 'UploadUrlResponse' });
+export type UploadUrlResponse = z.infer<typeof UploadUrlResponse>;
+
+export const DownloadUrlRequest = z
+  .object({ fileKey: z.string().min(1).max(300) })
+  .meta({ id: 'DownloadUrlRequest' });
+export type DownloadUrlRequest = z.infer<typeof DownloadUrlRequest>;
+
+export const DownloadUrlResponse = z
+  .object({ downloadUrl: z.url(), expiresAt: Timestamp })
+  .meta({ id: 'DownloadUrlResponse' });
+export type DownloadUrlResponse = z.infer<typeof DownloadUrlResponse>;

@@ -66,3 +66,43 @@ const { data, error } = await api.GET('/v1/doctors', { params: { query: { limit:
 Mock mode (no API needed): `@ariforce/contracts/mocks` exports `createHandlers(baseUrl)` (MSW v2). In the browser:
 `pnpm -F @ariforce/web exec msw init public` once, then `setupWorker(...createHandlers(apiUrl)).start()` when
 `NEXT_PUBLIC_API_MOCKING=enabled`. Responses are parsed through the zod schemas, so mocks match the contract.
+
+## Files
+
+Uploads/downloads use presigned R2 URLs. See [STORAGE.md](STORAGE.md).
+
+## Devices and consent
+
+`/v1/devices` (enrol company or personal phone) and `/v1/devices/{id}/consents` (append-only DPDP ledger) are contract-first. The implementation lands with the mobile app. GPS is sent only as point captures (`GeoCapture`) on punch-in, visit, punch-out and geo-tag, never as a continuous trail.
+
+## Lists: search, sort, filters, totals
+
+Every list takes `limit` (≤200), `cursor`, `updatedSince`, `q`, `sort` (`field` / `-field`, allow-list per
+endpoint, unknown → 422) and `includeTotal=true` (adds `total`; ignored with `updatedSince`). Resource
+filters (`territoryId` includes descendants, `specialtyId`, `categoryId`, `from`/`to`, `userId`, `status`)
+are listed per operation in openapi.json. Territories page with the cursor past 200; `code=` gives an exact
+lookup for imports. Specialties and doctor categories are read-only in v1. The MSW mocks honour all of these.
+
+## Roles
+
+Sales hierarchy (rank 1→8): business_manager, area_business_manager, regional_business_manager,
+zonal_business_manager, sales_manager, general_manager, vice_president, director. Each user sees their own
+reporting-line subtree (`manager_id`); director sees the company. `system_admin` (rank 0) is outside the
+hierarchy: users, masters, imports and settings, but no field data unless granted. Territory levels
+(national/zone/region/area/headquarter) are independent of role names.
+
+## Imports
+
+`POST /v1/{doctors|chemists|stockists|products}/import` with `dryRun` (default true), `onDuplicate`
+(skip/update/error) and ≤5,000 rows. Returns an `ImportJob` with per-row `{row, status, errors, id,
+duplicateOf, duplicateRule}`. Duplicate rules (#26): doctors by registrationNo then name+pincode; chemists
+and stockists by GSTIN, drug licence, then name+pincode; products by code; repeats inside the file are
+`in_file` errors. See docs/IMPORT.md.
+
+## Field: check-ins, attendance, tour plan, DCR, approvals
+
+GPS only at `punch_in`, `visit` and `punch_out` (`POST /v1/check-ins`, idempotent on `clientId`); 409 on
+sequence errors, 412 without DPDP consent (`GET /v1/me/consent`), geofence from `/v1/settings/geofence`.
+`GET /v1/attendance` is one row per user-day. Tour plans are per month (`PUT`, `/copy` for STP→MTP,
+`/submit` creates an approval). `PUT /v1/dcrs` upserts the day's DCR; each call carries products detailed
+(ordered), samples (qty) and POB lines. `POST /v1/approvals/{id}/decision` (reject needs a comment).

@@ -7,8 +7,15 @@ import type {
   Specialty,
   Stockist,
   Territory,
+  Division,
+  Product,
+  ProductHqMapping,
+  WorkType,
+  GeofenceSettings,
+  ConsentState,
+  Approval,
 } from '../index';
-import { ROLE_KEYS, ROLE_RANK } from '../schemas/roles';
+import { DEFAULT_ROLE_PERMISSIONS, ROLE_KEYS, ROLE_NAMES, ROLE_RANK } from '../schemas/roles';
 
 export const COMPANY_ID = '01930000-0000-7000-8000-000000000001';
 const now = '2026-10-26T00:00:00.000Z';
@@ -61,42 +68,21 @@ export const territories: Territory[] = [
 export const roles: Role[] = ROLE_KEYS.map((key, i) => ({
   id: `01930000-0000-7000-8000-0000000002${String(i).padStart(2, '0')}`,
   key,
-  name: key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+  name: ROLE_NAMES[key],
   rank: ROLE_RANK[key],
-  permissions:
-    key === 'admin'
-      ? [
-          'me:read',
-          'roles:read',
-          'territories:read',
-          'territories:write',
-          'users:read',
-          'users:write',
-          'masters:read',
-          'masters:write',
-          'audit:read',
-        ]
-      : key === 'rep'
-        ? ['me:read', 'roles:read', 'territories:read', 'masters:read', 'masters:write']
-        : [
-            'me:read',
-            'roles:read',
-            'territories:read',
-            'users:read',
-            'masters:read',
-            'masters:write',
-          ],
+  inHierarchy: ROLE_RANK[key] > 0,
+  permissions: DEFAULT_ROLE_PERMISSIONS[key],
 }));
 
 export const me: Me = {
   id: '01930000-0000-7000-8000-000000000301',
   companyId: COMPANY_ID,
   companyName: 'Arighna Pharmaceutical (demo)',
-  email: 'admin@demo.ariforce.in',
-  name: 'Demo Admin',
-  employeeCode: 'ADM001',
-  roles: ['admin'],
-  permissions: roles.find((r) => r.key === 'admin')!.permissions,
+  email: 'director@demo.ariforce.in',
+  name: 'Demo Director',
+  employeeCode: 'DIR001',
+  roles: ['director'],
+  permissions: DEFAULT_ROLE_PERMISSIONS.director,
   territoryIds: [tid(1)],
   managerId: null,
 };
@@ -162,5 +148,111 @@ export const stockists: Stockist[] = [
     name: 'Bengal Pharma Distributors',
     gstin: '19ABCDE1234F1Z5',
     drugLicenseNo: 'WB/KOL/21B-9',
+  },
+];
+
+// ---- Products, work types, field data ----
+const fid = (block: number, n: number) =>
+  `01930000-0000-7000-8000-000000000${block}${String(n).padStart(2, '0')}`;
+export const divisions: Division[] = [
+  { ...base, id: fid(9, 1), code: 'CARDIO', name: 'Cardio-Diabetic', active: true },
+  { ...base, id: fid(9, 2), code: 'GEN', name: 'General Care', active: true },
+];
+export const products: Product[] = [
+  {
+    ...base,
+    id: fid(9, 11),
+    divisionId: fid(9, 1),
+    code: 'ARI-ATV10',
+    name: 'Atorvastatin 10 mg',
+    brand: 'Arilip',
+    composition: 'Atorvastatin 10 mg',
+    packSize: '10 x 10 tablets',
+    form: 'tablet',
+    mrp: 120,
+    ptr: 96,
+    pts: 86.4,
+    isSample: true,
+    active: true,
+  },
+  {
+    ...base,
+    id: fid(9, 12),
+    divisionId: fid(9, 2),
+    code: 'ARI-PCM650',
+    name: 'Paracetamol 650 mg',
+    brand: 'Arifev',
+    composition: 'Paracetamol 650 mg',
+    packSize: '15 tablets',
+    form: 'tablet',
+    mrp: 30,
+    ptr: 24,
+    pts: 21.6,
+    isSample: false,
+    active: true,
+  },
+];
+export const productHqMappings: ProductHqMapping[] = [
+  { ...base, id: fid(9, 21), territoryId: tid(4), divisionId: fid(9, 1), productId: null },
+];
+export const workTypes: WorkType[] = [
+  {
+    ...base,
+    id: fid(9, 31),
+    code: 'FIELD',
+    name: 'Field work',
+    kind: 'field',
+    requiresCalls: true,
+    active: true,
+  },
+  {
+    ...base,
+    id: fid(9, 32),
+    code: 'MEET',
+    name: 'Meeting',
+    kind: 'non_field',
+    requiresCalls: false,
+    active: true,
+  },
+  {
+    ...base,
+    id: fid(9, 33),
+    code: 'LEAVE',
+    name: 'Leave',
+    kind: 'leave',
+    requiresCalls: false,
+    active: true,
+  },
+];
+export const geofence: GeofenceSettings = {
+  radiusM: 150,
+  maxAccuracyM: 100,
+  blockOutOfFence: false,
+  blockMockLocation: true,
+  version: 1,
+};
+export const consentState: ConsentState = {
+  deviceId: fid(9, 41),
+  ownership: 'company',
+  currentNoticeVersion: '2026-10-v1',
+  noticeUrl: '/legal/dpdp-notice/2026-10-v1',
+  consents: [{ purpose: 'location_checkin', granted: true, noticeVersion: '2026-10-v1', at: now }],
+  canCheckIn: true,
+};
+export const approvals: Approval[] = [
+  {
+    id: fid(9, 51),
+    companyId: COMPANY_ID,
+    subjectType: 'tour_plan',
+    subjectId: fid(9, 61),
+    requestedBy: '01930000-0000-7000-8000-000000000302',
+    requestedByName: 'Demo Business Manager',
+    approverId: me.id,
+    status: 'pending',
+    summary: 'Tour plan 2026-12 (demo BM)',
+    comment: null,
+    createdAt: now,
+    decidedAt: null,
+    decidedBy: null,
   },
 ];

@@ -28,9 +28,9 @@ Option C, existing Homebrew `postgresql@16` with a data dir on the SSD (`initdb 
 Then:
 
 ```bash
-pnpm -F @ariforce/db db:migrate   # uses DATABASE_URL (owner role)
+pnpm -F @ariforce/db db:migrate   # uses DIRECT_URL (owner, direct connection)
 pnpm -F @ariforce/db db:seed
-DATABASE_URL=... DATABASE_URL_APP=... pnpm test
+DIRECT_URL=... DATABASE_URL=... pnpm test   # DATABASE_URL = ariforce_app (RLS enforced)
 ```
 
 ## 4. Leak check
@@ -40,3 +40,10 @@ find ~/.npm ~/.cache ~/.pnpm-store ~/Library/pnpm ~/Library/Caches ~/.corepack -
 ```
 
 Should print nothing (or only unrelated apps).
+
+## 5. Production database (Supabase, Mumbai) and files (Cloudflare R2)
+
+- Connection details arrive via a secure route; put them only in git-ignored `.env` files (names in `.env.example`).
+- Once per project, as owner over `DIRECT_URL`: `pnpm -F @ariforce/db db:migrate` (creates PostGIS, tables, RLS, the `ariforce_app` role), then in the Supabase SQL editor give the role a login: `ALTER ROLE ariforce_app LOGIN PASSWORD '<secret>'`. The API's `DATABASE_URL` is the **transaction pooler** URL with user `ariforce_app.<project-ref>`.
+- Leave Supabase Auth and the Data API unused (see ADR 0001).
+- R2: create a private bucket + an API token scoped to it; set `R2_*`. Files are uploaded/downloaded with short-lived presigned URLs from the API.
