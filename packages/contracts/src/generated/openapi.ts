@@ -725,6 +725,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/tour-plans/standard': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Caller's standard plan (STP), or userId's if in team. Empty days when none saved. */
+    get: operations['getStandardTourPlan'];
+    /** Replace the caller's standard plan */
+    put: operations['upsertStandardTourPlan'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/tour-plans/{month}': {
     parameters: {
       query?: never;
@@ -1201,16 +1219,13 @@ export interface components {
     };
     /** @enum {string} */
     ApprovalStatus: 'draft' | 'submitted' | 'approved' | 'rejected' | 'recalled';
-    TourPlanUpsert: {
-      days: components['schemas']['TourPlanDay'][];
+    StandardTourPlanUpsert: {
+      days: components['schemas']['StandardTourPlanDay'][];
       version?: number;
     };
-    TourPlanDay: {
-      /**
-       * Format: date
-       * @description Calendar date (YYYY-MM-DD, IST)
-       */
-      date: string;
+    StandardTourPlanDay: {
+      week: number;
+      weekday: number;
       entries: components['schemas']['TourPlanEntry'][];
     };
     TourPlanEntry: {
@@ -1235,14 +1250,29 @@ export interface components {
       plannedChemistIds: string[];
       notes?: string | null;
     };
-    /** @description STP to MTP copy (#20) */
+    TourPlanUpsert: {
+      days: components['schemas']['TourPlanDay'][];
+      version?: number;
+    };
+    TourPlanDay: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      entries: components['schemas']['TourPlanEntry'][];
+    };
+    /** @description Fills a draft (new, draft or rejected plan) from the STP or another month (#20). Dates map by week of month + weekday. */
     TourPlanCopy: {
       /**
-       * @description Month (YYYY-MM)
+       * @description Copy this month (same week + weekday); wins over fromStp
        * @example 2026-11
        */
       fromMonth?: string;
-      /** @default true */
+      /**
+       * @description true = copy the standard plan; false (no fromMonth) = copy the previous month
+       * @default true
+       */
       fromStp: boolean;
     };
     DcrUpsert: {
@@ -2362,6 +2392,41 @@ export interface components {
       decidedBy: string | null;
       decisionComment: string | null;
     };
+    StandardTourPlan: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Tombstone: set when soft-deleted */
+      deletedAt: string | null;
+      /** @description Row version, incremented on every update (optimistic concurrency) */
+      version: number;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      days: components['schemas']['StandardTourPlanDayOutput'][];
+    };
     DcrPage: {
       items: components['schemas']['Dcr'][];
       nextCursor: string | null;
@@ -2552,6 +2617,11 @@ export interface components {
       /** @default [] */
       plannedChemistIds: string[];
       notes?: string | null;
+    };
+    StandardTourPlanDayOutput: {
+      week: number;
+      weekday: number;
+      entries: components['schemas']['TourPlanEntryOutput'][];
     };
     DetailedProductOutput: {
       /**
@@ -5933,6 +6003,106 @@ export interface operations {
       };
     };
   };
+  getStandardTourPlan: {
+    parameters: {
+      query?: {
+        userId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StandardTourPlan'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description User outside your team */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  upsertStandardTourPlan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['StandardTourPlanUpsert'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StandardTourPlan'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Version conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed (duplicate week/weekday, unknown work type or territory) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   getTourPlan: {
     parameters: {
       query?: {
@@ -6037,6 +6207,15 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
+      /** @description Validation failed (date outside month, duplicate date, unknown work type/territory) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
     };
   };
   copyTourPlan: {
@@ -6055,7 +6234,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Draft created from STP/previous month */
+      /** @description Draft filled from the STP or another month */
       200: {
         headers: {
           [name: string]: unknown;
@@ -6075,6 +6254,24 @@ export interface operations {
       };
       /** @description Signed in but not allowed (role, hierarchy or tenant) */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Source plan not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Target plan is submitted or approved */
+      409: {
         headers: {
           [name: string]: unknown;
         };
@@ -6123,8 +6320,26 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
+      /** @description No plan for the month */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
       /** @description Not in draft */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Dates without an entry (details.missingDates) */
+      422: {
         headers: {
           [name: string]: unknown;
         };
@@ -6318,6 +6533,7 @@ export interface operations {
         status?: 'pending' | 'approved' | 'rejected' | 'cancelled';
         subjectType?:
           'tour_plan' | 'doctor' | 'chemist' | 'stockist' | 'dcr_unlock' | 'leave' | 'device';
+        /** @description to_decide = pending requests from your reporting line that you may decide (never your own); requested = yours */
         mine?: 'to_decide' | 'requested';
       };
       header?: never;
@@ -6389,7 +6605,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      /** @description Own request, or requester not below you in the reporting line */
       403: {
         headers: {
           [name: string]: unknown;

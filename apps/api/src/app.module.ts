@@ -5,11 +5,12 @@ import { FilesModule } from './files/files.module';
 import { HealthController } from './health/health.controller';
 import { FieldModule } from './field/field.module';
 import { MastersModule } from './masters/masters.module';
+import { PlansModule } from './plans/plans.module';
 import { MeController } from './me/me.controller';
 import { OpenApiController } from './openapi/openapi.controller';
 
 @Module({
-  imports: [DbModule, AuthModule, FilesModule, MastersModule, FieldModule],
+  imports: [DbModule, AuthModule, FilesModule, MastersModule, FieldModule, PlansModule],
   controllers: [HealthController, OpenApiController, MeController],
 })
 export class AppModule {}

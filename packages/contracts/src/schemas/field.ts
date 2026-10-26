@@ -171,8 +171,36 @@ export const TourPlanUpsert = z
   .object({ days: z.array(TourPlanDay), version: z.int().min(1).optional() })
   .meta({ id: 'TourPlanUpsert' });
 export const TourPlanCopy = z
-  .object({ fromMonth: Month.optional(), fromStp: z.boolean().default(true) })
-  .meta({ id: 'TourPlanCopy', description: 'STP to MTP copy (#20)' });
+  .object({
+    fromMonth: Month.optional().meta({
+      description: 'Copy this month (same week + weekday); wins over fromStp',
+    }),
+    fromStp: z.boolean().default(true).meta({
+      description: 'true = copy the standard plan; false (no fromMonth) = copy the previous month',
+    }),
+  })
+  .meta({
+    id: 'TourPlanCopy',
+    description:
+      'Fills a draft (new, draft or rejected plan) from the STP or another month (#20). Dates map by week of month + weekday.',
+  });
+
+/** Standard tour plan (STP): weekly pattern by week of month (1-5) and ISO weekday (Mon=1). */
+export const StandardTourPlanDay = z
+  .object({
+    week: z.int().min(1).max(5),
+    weekday: z.int().min(1).max(7),
+    entries: z.array(TourPlanEntry).max(3),
+  })
+  .meta({ id: 'StandardTourPlanDay' });
+export const StandardTourPlan = Syncable.extend({
+  userId: Id,
+  days: z.array(StandardTourPlanDay),
+}).meta({ id: 'StandardTourPlan' });
+export type StandardTourPlan = z.infer<typeof StandardTourPlan>;
+export const StandardTourPlanUpsert = z
+  .object({ days: z.array(StandardTourPlanDay).max(35), version: z.int().min(1).optional() })
+  .meta({ id: 'StandardTourPlanUpsert' });
 export const TourPlanListQuery = FieldListQuery.extend({
   month: Month.optional(),
   status: ApprovalStatus.optional(),
@@ -292,5 +320,8 @@ export const ApprovalDecision = z
 export const ApprovalListQuery = listQuery(['createdAt'] as const, {
   status: z.enum(['pending', 'approved', 'rejected', 'cancelled']).optional(),
   subjectType: Approval.shape.subjectType.optional(),
-  mine: z.enum(['to_decide', 'requested']).optional(),
-});
+  mine: z.enum(['to_decide', 'requested']).optional().meta({
+    description:
+      'to_decide = pending requests from your reporting line that you may decide (never your own); requested = yours',
+  }),
+}).meta({ description: 'Visible: your own requests and those of your reporting line' });

@@ -41,8 +41,15 @@ import {
   Product,
   ProductCreate,
   ProductHqMapping,
+  StandardTourPlan,
+  StandardTourPlanUpsert,
   TourPlan,
+  TourPlanCopy,
   TourPlanUpsert,
+  copyFromMonth,
+  copyFromStandard,
+  missingDates,
+  prevMonth,
   WorkType,
   WorkTypeCreate,
 } from '../index';
@@ -64,6 +71,7 @@ const FILTER_SKIP = new Set([
   'includeTotal',
   'unlinked',
   'role',
+  'mine',
 ]);
 const encodeCursor = (n: number) => btoa(`o:${n}`);
 const decodeCursor = (c: string | null) => {
@@ -445,6 +453,7 @@ export function createHandlers(baseUrl = '') {
 function fieldHandlers(baseUrl: string) {
   const checkIns: CheckIn[] = [];
   const tourPlans: TourPlan[] = [];
+  let stp: StandardTourPlan | null = null;
   const dcrs: Dcr[] = [];
   const approvals = structuredClone(fx.approvals);
   let geofence = { ...fx.geofence };
@@ -642,6 +651,20 @@ function fieldHandlers(baseUrl: string) {
     http.get(`${baseUrl}/v1/tour-plans`, ({ request }) =>
       list(TourPlan, tourPlans, new URL(request.url)),
     ),
+    http.get(`${baseUrl}/v1/tour-plans/standard`, () =>
+      HttpResponse.json(stp ?? { ...stamp(), id: crypto.randomUUID(), userId: fx.me.id, days: [] }),
+    ),
+    http.put(`${baseUrl}/v1/tour-plans/standard`, async ({ request }) => {
+      const b = StandardTourPlanUpsert.safeParse(await request.json());
+      if (!b.success) return validation('Invalid plan', z.treeifyError(b.error));
+      const keys = b.data.days.map((d) => `${d.week}|${d.weekday}`);
+      if (new Set(keys).size !== keys.length) return validation('Duplicate week/weekday');
+      if (stp && b.data.version && b.data.version !== stp.version) return conflict('Stale version');
+      stp = stp
+        ? { ...stp, days: b.data.days, version: stp.version + 1, updatedAt: serverTime() }
+        : { ...stamp(), id: crypto.randomUUID(), userId: fx.me.id, days: b.data.days };
+      return HttpResponse.json(StandardTourPlan.parse(stp));
+    }),
     http.get(`${baseUrl}/v1/tour-plans/:month`, ({ params }) => {
       const p = tourPlans.find((t) => t.month === params.month && t.userId === fx.me.id);
       return p ? HttpResponse.json(p) : notFound();
@@ -659,18 +682,37 @@ function fieldHandlers(baseUrl: string) {
       Object.assign(p, { days: b.data.days, status: 'draft', updatedAt: serverTime() });
       return HttpResponse.json(TourPlan.parse(p));
     }),
-    http.post(`${baseUrl}/v1/tour-plans/:month/copy`, ({ params }) => {
+    http.post(`${baseUrl}/v1/tour-plans/:month/copy`, async ({ params, request }) => {
+      const b = TourPlanCopy.safeParse(await request.json().catch(() => ({})));
+      if (!b.success) return validation('Invalid copy', z.treeifyError(b.error));
       const month = String(params.month);
-      if (tourPlans.some((t) => t.month === month && t.userId === fx.me.id))
-        return conflict('Plan exists');
-      const p = emptyPlan(month);
-      tourPlans.push(p);
-      return HttpResponse.json(p);
+      let p = tourPlans.find((t) => t.month === month && t.userId === fx.me.id);
+      if (p && !['draft', 'rejected', 'recalled'].includes(p.status))
+        return conflict('Plan not editable');
+      let days: TourPlan['days'];
+      if (b.data.fromMonth || !b.data.fromStp) {
+        const from = b.data.fromMonth ?? prevMonth(month);
+        const src = tourPlans.find((t) => t.month === from && t.userId === fx.me.id);
+        if (!src) return notFound();
+        days = copyFromMonth(month, src.days);
+      } else {
+        if (!stp) return notFound();
+        days = copyFromStandard(month, stp.days);
+      }
+      if (!p) tourPlans.push((p = emptyPlan(month)));
+      else p.version += 1;
+      Object.assign(p, { days, status: 'draft', updatedAt: serverTime() });
+      return HttpResponse.json(TourPlan.parse(p));
     }),
     http.post(`${baseUrl}/v1/tour-plans/:month/submit`, ({ params }) => {
       const p = tourPlans.find((t) => t.month === params.month && t.userId === fx.me.id);
       if (!p) return notFound();
       if (p.status !== 'draft') return conflict('Not in draft');
+      const missing = missingDates(p.month, p.days);
+      if (missing.length)
+        return validation(`${missing.length} date(s) have no plan entry`, {
+          missingDates: missing,
+        });
       Object.assign(p, { status: 'submitted', submittedAt: serverTime(), version: p.version + 1 });
       approvals.push({
         id: crypto.randomUUID(),
@@ -730,14 +772,27 @@ function fieldHandlers(baseUrl: string) {
       });
       return HttpResponse.json(Dcr.parse(d));
     }),
-    http.get(`${baseUrl}/v1/approvals`, ({ request }) =>
-      list(Approval, approvals, new URL(request.url)),
-    ),
+    http.get(`${baseUrl}/v1/approvals`, ({ request }) => {
+      const url = new URL(request.url);
+      const mine = url.searchParams.get('mine');
+      const rows =
+        mine === 'to_decide'
+          ? approvals.filter((a) => a.status === 'pending' && a.requestedBy !== fx.me.id)
+          : mine === 'requested'
+            ? approvals.filter((a) => a.requestedBy === fx.me.id)
+            : approvals;
+      return list(Approval, rows, url);
+    }),
     http.post(`${baseUrl}/v1/approvals/:id/decision`, async ({ params, request }) => {
       const a = approvals.find((x) => x.id === params.id);
       if (!a) return notFound();
       const b = ApprovalDecision.safeParse(await request.json());
       if (!b.success) return validation('Invalid decision', z.treeifyError(b.error));
+      if (a.requestedBy === fx.me.id)
+        return HttpResponse.json(
+          { error: { code: 'FORBIDDEN', message: 'You cannot decide your own request' } },
+          { status: 403 },
+        );
       if (a.status !== 'pending') return conflict('Already decided');
       Object.assign(a, {
         status: b.data.decision === 'approve' ? 'approved' : 'rejected',

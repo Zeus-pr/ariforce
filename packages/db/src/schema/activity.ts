@@ -4,6 +4,7 @@ import {
   check,
   date,
   index,
+  jsonb,
   integer,
   numeric,
   pgEnum,
@@ -38,12 +39,31 @@ export const tourPlans = pgTable(
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     decidedBy: uuid('decided_by').references(() => users.id),
+    /** Canonical plan (TourPlanDay[]); plan_sessions + tour_plan_visits are derived from it on save. */
+    days: jsonb('days').$type<unknown[]>().notNull().default([]),
+    decisionComment: text('decision_comment'),
     ...syncCols(),
   },
   (t) => [
     uniqueIndex('tour_plans_user_month_uq').on(t.companyId, t.userId, t.month),
     check('tour_plans_month_first', sql`extract(day from ${t.month}) = 1`),
   ],
+);
+
+/** Standard tour plan (STP, #20): one weekly-pattern template per user, copied into monthly plans. */
+export const standardTourPlans = pgTable(
+  'standard_tour_plans',
+  {
+    id: pk(),
+    companyId: companyId().references(() => companies.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    /** StandardTourPlanDay[]: { week 1-5, weekday 1-7 (ISO, Mon=1), entries }. */
+    days: jsonb('days').$type<unknown[]>().notNull().default([]),
+    ...syncCols(),
+  },
+  (t) => [uniqueIndex('standard_tour_plans_user_uq').on(t.companyId, t.userId)],
 );
 
 export const tourPlanVisits = pgTable(

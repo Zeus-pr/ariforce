@@ -5637,6 +5637,138 @@
         }
       }
     },
+    "/v1/tour-plans/standard": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "TourPlans"
+        ],
+        "operationId": "getStandardTourPlan",
+        "summary": "Caller's standard plan (STP), or userId's if in team. Empty days when none saved.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "userId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandardTourPlan"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "User outside your team",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "TourPlans"
+        ],
+        "operationId": "upsertStandardTourPlan",
+        "summary": "Replace the caller's standard plan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StandardTourPlanUpsert"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandardTourPlan"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (duplicate week/weekday, unknown work type or territory)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/tour-plans/{month}": {
       "get": {
         "security": [
@@ -5790,6 +5922,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation failed (date outside month, duplicate date, unknown work type/territory)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -5830,7 +5972,7 @@
         },
         "responses": {
           "200": {
-            "description": "Draft created from STP/previous month",
+            "description": "Draft filled from the STP or another month",
             "content": {
               "application/json": {
                 "schema": {
@@ -5851,6 +5993,26 @@
           },
           "403": {
             "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source plan not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Target plan is submitted or approved",
             "content": {
               "application/json": {
                 "schema": {
@@ -5918,8 +6080,28 @@
               }
             }
           },
+          "404": {
+            "description": "No plan for the month",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "409": {
             "description": "Not in draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dates without an entry (details.missingDates)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6358,12 +6540,14 @@
             "in": "query",
             "name": "mine",
             "schema": {
+              "description": "to_decide = pending requests from your reporting line that you may decide (never your own); requested = yours",
               "type": "string",
               "enum": [
                 "to_decide",
                 "requested"
               ]
-            }
+            },
+            "description": "to_decide = pending requests from your reporting line that you may decide (never your own); requested = yours"
           }
         ],
         "responses": {
@@ -6458,7 +6642,7 @@
             }
           },
           "403": {
-            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "description": "Own request, or requester not below you in the reporting line",
             "content": {
               "application/json": {
                 "schema": {
@@ -8050,13 +8234,14 @@
           "recalled"
         ]
       },
-      "TourPlanUpsert": {
+      "StandardTourPlanUpsert": {
         "type": "object",
         "properties": {
           "days": {
+            "maxItems": 35,
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/TourPlanDay"
+              "$ref": "#/components/schemas/StandardTourPlanDay"
             }
           },
           "version": {
@@ -8069,14 +8254,18 @@
           "days"
         ]
       },
-      "TourPlanDay": {
+      "StandardTourPlanDay": {
         "type": "object",
         "properties": {
-          "date": {
-            "type": "string",
-            "format": "date",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
-            "description": "Calendar date (YYYY-MM-DD, IST)"
+          "week": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "weekday": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7
           },
           "entries": {
             "maxItems": 3,
@@ -8087,7 +8276,8 @@
           }
         },
         "required": [
-          "date",
+          "week",
+          "weekday",
           "entries"
         ]
       },
@@ -8172,21 +8362,63 @@
           "territoryIds"
         ]
       },
+      "TourPlanUpsert": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TourPlanDay"
+            }
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "days"
+        ]
+      },
+      "TourPlanDay": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Calendar date (YYYY-MM-DD, IST)"
+          },
+          "entries": {
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TourPlanEntry"
+            }
+          }
+        },
+        "required": [
+          "date",
+          "entries"
+        ]
+      },
       "TourPlanCopy": {
         "type": "object",
         "properties": {
           "fromMonth": {
+            "description": "Copy this month (same week + weekday); wins over fromStp",
             "type": "string",
             "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
-            "description": "Month (YYYY-MM)",
             "example": "2026-11"
           },
           "fromStp": {
             "default": true,
+            "description": "true = copy the standard plan; false (no fromMonth) = copy the previous month",
             "type": "boolean"
           }
         },
-        "description": "STP to MTP copy (#20)"
+        "description": "Fills a draft (new, draft or rejected plan) from the STP or another month (#20). Dates map by week of month + weekday."
       },
       "DcrUpsert": {
         "type": "object",
@@ -11784,6 +12016,81 @@
         ],
         "additionalProperties": false
       },
+      "StandardTourPlan": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "companyId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "ISO-8601 timestamp (UTC)"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "ISO-8601 timestamp (UTC)"
+          },
+          "deletedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tombstone: set when soft-deleted"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "description": "Row version, incremented on every update (optimistic concurrency)"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StandardTourPlanDayOutput"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "companyId",
+          "createdAt",
+          "updatedAt",
+          "deletedAt",
+          "version",
+          "userId",
+          "days"
+        ],
+        "additionalProperties": false
+      },
       "DcrPage": {
         "type": "object",
         "properties": {
@@ -12393,6 +12700,34 @@
           "jointWorkUserIds",
           "plannedDoctorIds",
           "plannedChemistIds"
+        ],
+        "additionalProperties": false
+      },
+      "StandardTourPlanDayOutput": {
+        "type": "object",
+        "properties": {
+          "week": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "weekday": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7
+          },
+          "entries": {
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TourPlanEntryOutput"
+            }
+          }
+        },
+        "required": [
+          "week",
+          "weekday",
+          "entries"
         ],
         "additionalProperties": false
       },

@@ -35,6 +35,8 @@ import {
   FieldListQuery,
   GeofenceSettings,
   TourPlan,
+  StandardTourPlan,
+  StandardTourPlanUpsert,
   TourPlanCopy,
   TourPlanListQuery,
   TourPlanUpsert,
@@ -515,6 +517,32 @@ export function buildOpenApiDocument(): OpenApiDocument {
           responses: { '200': { description: 'Page', ...json(page(TourPlan, 'TourPlanPage')) } },
         }),
       },
+      '/v1/tour-plans/standard': {
+        get: op({
+          tags: ['TourPlans'],
+          operationId: 'getStandardTourPlan',
+          summary:
+            "Caller's standard plan (STP), or userId's if in team. Empty days when none saved.",
+          requestParams: { query: z.object({ userId: IdParam.shape.id.optional() }) },
+          responses: {
+            '200': { description: 'OK', ...json(StandardTourPlan) },
+            '403': err('User outside your team'),
+          },
+        }),
+        put: op({
+          tags: ['TourPlans'],
+          operationId: 'upsertStandardTourPlan',
+          summary: "Replace the caller's standard plan",
+          requestBody: json(StandardTourPlanUpsert),
+          responses: {
+            '200': { description: 'Saved', ...json(StandardTourPlan) },
+            '409': err('Version conflict'),
+            '422': err(
+              'Validation failed (duplicate week/weekday, unknown work type or territory)',
+            ),
+          },
+        }),
+      },
       '/v1/tour-plans/{month}': {
         get: op({
           tags: ['TourPlans'],
@@ -534,6 +562,9 @@ export function buildOpenApiDocument(): OpenApiDocument {
           responses: {
             '200': { description: 'Saved draft', ...json(TourPlan) },
             '409': err('Not editable (submitted/approved) or version conflict'),
+            '422': err(
+              'Validation failed (date outside month, duplicate date, unknown work type/territory)',
+            ),
           },
         }),
       },
@@ -544,7 +575,9 @@ export function buildOpenApiDocument(): OpenApiDocument {
           requestParams: { path: z.object({ month: Month }) },
           requestBody: json(TourPlanCopy),
           responses: {
-            '200': { description: 'Draft created from STP/previous month', ...json(TourPlan) },
+            '200': { description: 'Draft filled from the STP or another month', ...json(TourPlan) },
+            '404': err('Source plan not found'),
+            '409': err('Target plan is submitted or approved'),
           },
         }),
       },
@@ -555,7 +588,9 @@ export function buildOpenApiDocument(): OpenApiDocument {
           requestParams: { path: z.object({ month: Month }) },
           responses: {
             '200': { description: 'Submitted; approval created', ...json(TourPlan) },
+            '404': err('No plan for the month'),
             '409': err('Not in draft'),
+            '422': err('Dates without an entry (details.missingDates)'),
           },
         }),
       },
@@ -605,6 +640,7 @@ export function buildOpenApiDocument(): OpenApiDocument {
           requestBody: json(ApprovalDecision),
           responses: {
             '200': { description: 'Decided', ...json(Approval) },
+            '403': err('Own request, or requester not below you in the reporting line'),
             '404': err('Not found'),
             '409': err('Already decided'),
           },
