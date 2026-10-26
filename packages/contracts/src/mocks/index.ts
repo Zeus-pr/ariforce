@@ -29,6 +29,7 @@ import {
   AttendanceDay,
   CheckIn,
   CheckInCreate,
+  UserSummary,
   ConsentState,
   Dcr,
   DcrUpsert,
@@ -54,7 +55,16 @@ const serverTime = () => new Date().toISOString();
 const notFound = () =>
   HttpResponse.json({ error: { code: 'NOT_FOUND', message: 'Not found' } }, { status: 404 });
 
-const FILTER_SKIP = new Set(['limit', 'cursor', 'updatedSince', 'q', 'sort', 'includeTotal']);
+const FILTER_SKIP = new Set([
+  'limit',
+  'cursor',
+  'updatedSince',
+  'q',
+  'sort',
+  'includeTotal',
+  'unlinked',
+  'role',
+]);
 const encodeCursor = (n: number) => btoa(`o:${n}`);
 const decodeCursor = (c: string | null) => {
   if (!c) return 0;
@@ -76,6 +86,9 @@ function inTerritory(row: Record<string, unknown>, territoryId: string) {
  * Generic list: honours updatedSince, q (name/code/city), field filters (exact match;
  * territoryId/ancestorId include descendants; from/to on `date`), sort, limit, cursor, includeTotal.
  */
+const nextDay = (d: string) =>
+  new Date(Date.parse(`${d}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+
 export function list<T extends { id: string }>(schema: z.ZodType<T>, rows: T[], url: URL) {
   const sp = url.searchParams;
   const since = sp.get('updatedSince');
@@ -492,9 +505,45 @@ function fieldHandlers(baseUrl: string) {
     http.get(`${baseUrl}/v1/me/consent`, () =>
       HttpResponse.json(ConsentState.parse(fx.consentState)),
     ),
-    http.get(`${baseUrl}/v1/check-ins`, ({ request }) =>
-      list(CheckIn, checkIns, new URL(request.url)),
-    ),
+    http.get(`${baseUrl}/v1/check-ins`, ({ request }) => {
+      const url = new URL(request.url);
+      // gap #9: unlinked = visit check-ins no DCR call points at yet
+      const linked = new Set(dcrs.flatMap((d) => d.calls.map((c) => c.checkInId)));
+      const rows =
+        url.searchParams.get('unlinked') === 'true'
+          ? checkIns.filter((c) => c.kind === 'visit' && !linked.has(c.id))
+          : checkIns;
+      return list(CheckIn, rows, url);
+    }),
+    http.get(`${baseUrl}/v1/users`, ({ request }) => {
+      const url = new URL(request.url);
+      const p = mockPrincipal(request);
+      if (!p) return unauthenticated();
+      const wide = p.roles.includes('director') || p.roles.includes('system_admin');
+      const team = new Set([p.id]);
+      for (let grew = true; grew;) {
+        grew = false;
+        for (const u of fx.mockUsers)
+          if (u.managerId && team.has(u.managerId) && !team.has(u.id)) {
+            team.add(u.id);
+            grew = true;
+          }
+      }
+      const role = url.searchParams.get('role');
+      const rows = fx.mockUsers
+        .filter((u) => (wide || team.has(u.id)) && (!role || u.roles.includes(role as never)))
+        .map((u) => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          employeeCode: u.employeeCode,
+          roles: u.roles,
+          managerId: u.managerId,
+          territoryIds: u.territoryIds,
+          status: 'active' as const,
+        }));
+      return list(UserSummary, rows, url);
+    }),
     http.post(`${baseUrl}/v1/check-ins`, async ({ request }) => {
       const b = CheckInCreate.safeParse(await request.json());
       if (!b.success) return validation('Invalid check-in', z.treeifyError(b.error));
@@ -534,7 +583,7 @@ function fieldHandlers(baseUrl: string) {
         receivedAt: serverTime(),
         distanceM,
         inFence,
-        selfieFileId: b.data.selfieFileId ?? null,
+        selfieFileKey: b.data.selfieFileKey ?? null,
       });
       checkIns.push(row);
       return HttpResponse.json(row, { status: 201 });
@@ -559,6 +608,31 @@ function fieldHandlers(baseUrl: string) {
         d.status = d.punchIn && d.punchOut ? 'present' : 'incomplete';
         days.set(k, d);
       }
+      // Like the API: every team member gets a row per day; no punch-in = absent (or leave/holiday
+      // from the DCR work type).
+      const sp = new URL(request.url).searchParams;
+      const from = sp.get('from') ?? today();
+      const to = sp.get('to') ?? from;
+      const who = sp.get('userId')
+        ? fx.mockUsers.filter((u) => u.id === sp.get('userId'))
+        : [fx.me];
+      for (let d = from; d <= to; d = nextDay(d))
+        for (const u of who) {
+          const k = `${u.id}|${d}`;
+          if (days.has(k)) continue;
+          const dcr = dcrs.find((x) => x.userId === u.id && x.date === d);
+          const kind = fx.workTypes.find((w) => w.id === dcr?.workTypeId)?.kind;
+          days.set(k, {
+            userId: u.id,
+            userName: u.name,
+            date: d,
+            status: kind === 'leave' ? 'leave' : kind === 'holiday' ? 'holiday' : 'absent',
+            punchIn: null,
+            punchOut: null,
+            visits: 0,
+            workTypeId: dcr?.workTypeId ?? null,
+          });
+        }
       return list(
         AttendanceDay as unknown as z.ZodType<{ id: string }>,
         [...days.values()].map((d) => ({ ...d, id: `${d.userId}|${d.date}` })) as never,

@@ -4384,6 +4384,165 @@
         }
       }
     },
+    "/v1/users": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Users"
+        ],
+        "operationId": "listUsers",
+        "summary": "Team directory: the caller and their reporting line (gap #3)",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "Opaque cursor from `nextCursor`",
+              "type": "string"
+            },
+            "description": "Opaque cursor from `nextCursor`"
+          },
+          {
+            "in": "query",
+            "name": "updatedSince",
+            "schema": {
+              "description": "Delta sync: only rows with updatedAt > this (includes tombstones)",
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            "description": "Delta sync: only rows with updatedAt > this (includes tombstones)"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Free-text search (name, code)",
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "Free-text search (name, code)"
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "description": "Sort: name, employeeCode (prefix - for descending)",
+              "type": "string",
+              "enum": [
+                "name",
+                "-name",
+                "employeeCode",
+                "-employeeCode"
+              ]
+            },
+            "description": "Sort: name, employeeCode (prefix - for descending)"
+          },
+          {
+            "in": "query",
+            "name": "includeTotal",
+            "schema": {
+              "description": "When `true`, the page carries `total` (ignored with updatedSince)",
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "When `true`, the page carries `total` (ignored with updatedSince)"
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "schema": {
+              "$ref": "#/components/schemas/RoleKey"
+            }
+          },
+          {
+            "in": "query",
+            "name": "managerId",
+            "schema": {
+              "description": "Direct reports of this user",
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "description": "Direct reports of this user"
+          },
+          {
+            "in": "query",
+            "name": "territoryId",
+            "schema": {
+              "description": "Users assigned in this territory subtree",
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "description": "Users assigned in this territory subtree"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "invited",
+                "active",
+                "suspended"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserSummaryPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/check-ins": {
       "get": {
         "security": [
@@ -4517,6 +4676,37 @@
             "schema": {
               "$ref": "#/components/schemas/CheckInKind"
             }
+          },
+          {
+            "in": "query",
+            "name": "outletKind",
+            "schema": {
+              "$ref": "#/components/schemas/OutletKind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outletId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          {
+            "in": "query",
+            "name": "unlinked",
+            "schema": {
+              "description": "true = only visit check-ins not yet linked to a DCR call (DCR call picker, gap #9)",
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "true = only visit check-ins not yet linked to a DCR call (DCR call picker, gap #9)"
           }
         ],
         "responses": {
@@ -4625,6 +4815,16 @@
               }
             }
           },
+          "404": {
+            "description": "Outlet not found or outside your territories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "409": {
             "description": "Sequence error (e.g. visit before punch-in, second punch-in)",
             "content": {
@@ -4636,7 +4836,7 @@
             }
           },
           "412": {
-            "description": "Consent missing (DPDP)",
+            "description": "No active enrolled device (DEVICE_NOT_ACTIVE) or consent missing (CONSENT_REQUIRED)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4646,7 +4846,7 @@
             }
           },
           "422": {
-            "description": "Validation failed, out of fence or mock location when blocked",
+            "description": "Validation failed; LOW_ACCURACY, MOCK_LOCATION or OUT_OF_FENCE when the company policy blocks",
             "content": {
               "application/json": {
                 "schema": {
@@ -7679,12 +7879,34 @@
           "productId"
         ]
       },
+      "RoleKey": {
+        "type": "string",
+        "enum": [
+          "business_manager",
+          "area_business_manager",
+          "regional_business_manager",
+          "zonal_business_manager",
+          "sales_manager",
+          "general_manager",
+          "vice_president",
+          "director",
+          "system_admin"
+        ]
+      },
       "CheckInKind": {
         "type": "string",
         "enum": [
           "punch_in",
           "visit",
           "punch_out"
+        ]
+      },
+      "OutletKind": {
+        "type": "string",
+        "enum": [
+          "doctor",
+          "chemist",
+          "stockist"
         ]
       },
       "CheckInCreate": {
@@ -7710,11 +7932,15 @@
             "description": "UUIDv7 identifier",
             "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
           },
-          "selfieFileId": {
+          "selfieFileKey": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "deviceId": {
+            "description": "Enrolled device; may be omitted when the user has exactly one active device",
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUIDv7 identifier",
             "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
           },
           "location": {
@@ -7743,14 +7969,6 @@
           "location",
           "accuracyM",
           "capturedAt"
-        ]
-      },
-      "OutletKind": {
-        "type": "string",
-        "enum": [
-          "doctor",
-          "chemist",
-          "stockist"
         ]
       },
       "KpiRollup": {
@@ -8416,20 +8634,6 @@
           "managerId"
         ],
         "additionalProperties": false
-      },
-      "RoleKey": {
-        "type": "string",
-        "enum": [
-          "business_manager",
-          "area_business_manager",
-          "regional_business_manager",
-          "zonal_business_manager",
-          "sales_manager",
-          "general_manager",
-          "vice_president",
-          "director",
-          "system_admin"
-        ]
       },
       "Permission": {
         "type": "string",
@@ -10654,6 +10858,114 @@
         ],
         "additionalProperties": false
       },
+      "UserSummaryPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserSummary"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "serverTime": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "ISO-8601 timestamp (UTC)"
+          },
+          "total": {
+            "description": "Rows matching the filters; present when includeTotal=true",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "serverTime"
+        ],
+        "additionalProperties": false
+      },
+      "UserSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "employeeCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleKey"
+            }
+          },
+          "managerId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "territoryIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "invited",
+              "active",
+              "suspended"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "employeeCode",
+          "roles",
+          "managerId",
+          "territoryIds",
+          "status"
+        ],
+        "additionalProperties": false
+      },
       "CheckInPage": {
         "type": "object",
         "properties": {
@@ -10831,18 +11143,11 @@
               "null"
             ]
           },
-          "selfieFileId": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                "description": "UUIDv7 identifier",
-                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
-              },
-              {
-                "type": "null"
-              }
+          "selfieFileKey": {
+            "description": "R2 key (upload purpose visit_attachment)",
+            "type": [
+              "string",
+              "null"
             ]
           }
         },
@@ -10866,7 +11171,7 @@
           "receivedAt",
           "distanceM",
           "inFence",
-          "selfieFileId"
+          "selfieFileKey"
         ],
         "additionalProperties": false
       },

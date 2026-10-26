@@ -113,11 +113,16 @@ export const geoCaptures = pgTable(
     entityId: uuid('entity_id'),
     /** Distance to the target's geofence centre, computed server-side. */
     distanceM: bigint('distance_m', { mode: 'number' }),
+    /** Territory the capture counts for (visited outlet's territory, else the user's first). */
+    territoryId: uuid('territory_id'),
+    /** Optional selfie (R2 key, purpose visit_attachment). */
+    selfieFileKey: text('selfie_file_key'),
     capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
     receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('geo_captures_user_at_idx').on(t.companyId, t.userId, t.capturedAt),
     index('geo_captures_entity_idx').on(t.companyId, t.entityType, t.entityId),
+    index('geo_captures_territory_idx').on(t.companyId, t.territoryId, t.capturedAt),
   ],
 );

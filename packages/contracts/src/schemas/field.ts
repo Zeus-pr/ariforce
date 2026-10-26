@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { DateOnly, GeoPoint, Id, Month, Syncable, Timestamp, listQuery } from './common';
+import { RoleKey } from './roles';
 
 const Capture = z.object({
   location: GeoPoint,
@@ -26,7 +27,10 @@ export const CheckIn = Syncable.extend({
     .boolean()
     .nullable()
     .meta({ description: 'Within the geofence radius; null if outlet not geo-tagged' }),
-  selfieFileId: Id.nullable(),
+  selfieFileKey: z
+    .string()
+    .nullable()
+    .meta({ description: 'R2 key (upload purpose visit_attachment)' }),
 }).meta({ id: 'CheckIn' });
 export type CheckIn = z.infer<typeof CheckIn>;
 
@@ -36,7 +40,10 @@ export const CheckInCreate = z
     kind: CheckInKind,
     outletKind: OutletKind.optional(),
     outletId: Id.optional(),
-    selfieFileId: Id.optional(),
+    selfieFileKey: z.string().max(300).optional(),
+    deviceId: Id.optional().meta({
+      description: 'Enrolled device; may be omitted when the user has exactly one active device',
+    }),
     ...Capture.shape,
   })
   .refine((b) => b.kind !== 'visit' || (b.outletKind && b.outletId), {
@@ -52,7 +59,36 @@ export const FieldListQuery = listQuery(['date', 'createdAt', 'updatedAt'] as co
   userId: Id.optional().meta({ description: 'Must be the caller or someone in their team' }),
   territoryId: Id.optional().meta({ description: 'Territory incl. descendants' }),
 });
-export const CheckInListQuery = FieldListQuery.extend({ kind: CheckInKind.optional() });
+export const CheckInListQuery = FieldListQuery.extend({
+  kind: CheckInKind.optional(),
+  outletKind: OutletKind.optional(),
+  outletId: Id.optional(),
+  unlinked: z.enum(['true', 'false']).optional().meta({
+    description:
+      'true = only visit check-ins not yet linked to a DCR call (DCR call picker, gap #9)',
+  }),
+});
+
+// ---- Users (team directory, gap #3) ----
+export const UserSummary = z
+  .object({
+    id: Id,
+    name: z.string(),
+    email: z.string(),
+    employeeCode: z.string().nullable(),
+    roles: z.array(RoleKey),
+    managerId: Id.nullable(),
+    territoryIds: z.array(Id),
+    status: z.enum(['invited', 'active', 'suspended']),
+  })
+  .meta({ id: 'UserSummary' });
+export type UserSummary = z.infer<typeof UserSummary>;
+export const UserListQuery = listQuery(['name', 'employeeCode'] as const, {
+  role: RoleKey.optional(),
+  managerId: Id.optional().meta({ description: 'Direct reports of this user' }),
+  territoryId: Id.optional().meta({ description: 'Users assigned in this territory subtree' }),
+  status: z.enum(['invited', 'active', 'suspended']).optional(),
+}).meta({ description: 'Caller plus their reporting line; company-wide roles see everyone' });
 
 export const AttendanceDay = z
   .object({

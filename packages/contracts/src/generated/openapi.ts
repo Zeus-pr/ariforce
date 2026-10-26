@@ -590,6 +590,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/users': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Team directory: the caller and their reporting line (gap #3) */
+    get: operations['listUsers'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/check-ins': {
     parameters: {
       query?: never;
@@ -1099,7 +1116,20 @@ export interface components {
       productId: string | null;
     };
     /** @enum {string} */
+    RoleKey:
+      | 'business_manager'
+      | 'area_business_manager'
+      | 'regional_business_manager'
+      | 'zonal_business_manager'
+      | 'sales_manager'
+      | 'general_manager'
+      | 'vice_president'
+      | 'director'
+      | 'system_admin';
+    /** @enum {string} */
     CheckInKind: 'punch_in' | 'visit' | 'punch_out';
+    /** @enum {string} */
+    OutletKind: 'doctor' | 'chemist' | 'stockist';
     CheckInCreate: {
       /**
        * Format: uuid
@@ -1115,12 +1145,13 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       outletId?: string;
+      selfieFileKey?: string;
       /**
        * Format: uuid
-       * @description UUIDv7 identifier
+       * @description Enrolled device; may be omitted when the user has exactly one active device
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
-      selfieFileId?: string;
+      deviceId?: string;
       location: components['schemas']['GeoPoint'];
       accuracyM: number;
       /**
@@ -1134,8 +1165,6 @@ export interface components {
        */
       isMock: boolean;
     };
-    /** @enum {string} */
-    OutletKind: 'doctor' | 'chemist' | 'stockist';
     /**
      * @description company is Director-only; team/byUser need a reporting line
      * @enum {string}
@@ -1349,17 +1378,6 @@ export interface components {
       territoryIds: string[];
       managerId: string | null;
     };
-    /** @enum {string} */
-    RoleKey:
-      | 'business_manager'
-      | 'area_business_manager'
-      | 'regional_business_manager'
-      | 'zonal_business_manager'
-      | 'sales_manager'
-      | 'general_manager'
-      | 'vice_president'
-      | 'director'
-      | 'system_admin';
     /** @enum {string} */
     Permission:
       | 'me:read'
@@ -2065,6 +2083,33 @@ export interface components {
       /** @description Null = whole division */
       productId: string | null;
     };
+    UserSummaryPage: {
+      items: components['schemas']['UserSummary'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    UserSummary: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      email: string;
+      employeeCode: string | null;
+      roles: components['schemas']['RoleKey'][];
+      managerId: string | null;
+      territoryIds: string[];
+      /** @enum {string} */
+      status: 'invited' | 'active' | 'suspended';
+    };
     CheckInPage: {
       items: components['schemas']['CheckIn'][];
       nextCursor: string | null;
@@ -2139,7 +2184,8 @@ export interface components {
       distanceM: number | null;
       /** @description Within the geofence radius; null if outlet not geo-tagged */
       inFence: boolean | null;
-      selfieFileId: string | null;
+      /** @description R2 key (upload purpose visit_attachment) */
+      selfieFileKey: string | null;
     };
     KpiReport: {
       /**
@@ -5339,6 +5385,62 @@ export interface operations {
       };
     };
   };
+  listUsers: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Delta sync: only rows with updatedAt > this (includes tombstones) */
+        updatedSince?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description Sort: name, employeeCode (prefix - for descending) */
+        sort?: 'name' | '-name' | 'employeeCode' | '-employeeCode';
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        role?: components['schemas']['RoleKey'];
+        /** @description Direct reports of this user */
+        managerId?: string;
+        /** @description Users assigned in this territory subtree */
+        territoryId?: string;
+        status?: 'invited' | 'active' | 'suspended';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['UserSummaryPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   listCheckIns: {
     parameters: {
       query?: {
@@ -5360,6 +5462,10 @@ export interface operations {
         /** @description Territory incl. descendants */
         territoryId?: string;
         kind?: components['schemas']['CheckInKind'];
+        outletKind?: components['schemas']['OutletKind'];
+        outletId?: string;
+        /** @description true = only visit check-ins not yet linked to a DCR call (DCR call picker, gap #9) */
+        unlinked?: 'true' | 'false';
       };
       header?: never;
       path?: never;
@@ -5448,6 +5554,15 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
+      /** @description Outlet not found or outside your territories */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
       /** @description Sequence error (e.g. visit before punch-in, second punch-in) */
       409: {
         headers: {
@@ -5457,7 +5572,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Consent missing (DPDP) */
+      /** @description No active enrolled device (DEVICE_NOT_ACTIVE) or consent missing (CONSENT_REQUIRED) */
       412: {
         headers: {
           [name: string]: unknown;
@@ -5466,7 +5581,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Validation failed, out of fence or mock location when blocked */
+      /** @description Validation failed; LOW_ACCURACY, MOCK_LOCATION or OUT_OF_FENCE when the company policy blocks */
       422: {
         headers: {
           [name: string]: unknown;

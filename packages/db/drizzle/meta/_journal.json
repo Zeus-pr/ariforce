@@ -78,6 +78,13 @@
       "when": 1793043963490,
       "tag": "0010_company_lookup",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793045079398,
+      "tag": "0011_field_settings",
+      "breakpoints": true
     }
   ]
 }

@@ -26,6 +26,8 @@ import {
   CheckIn,
   CheckInCreate,
   CheckInListQuery,
+  UserListQuery,
+  UserSummary,
   ConsentState,
   Dcr,
   DcrListQuery,
@@ -410,6 +412,17 @@ export function buildOpenApiDocument(): OpenApiDocument {
           },
         }),
       },
+      '/v1/users': {
+        get: op({
+          tags: ['Users'],
+          operationId: 'listUsers',
+          summary: 'Team directory: the caller and their reporting line (gap #3)',
+          requestParams: { query: UserListQuery },
+          responses: {
+            '200': { description: 'Page', ...json(page(UserSummary, 'UserSummaryPage')) },
+          },
+        }),
+      },
       '/v1/check-ins': {
         get: op({
           tags: ['Attendance'],
@@ -428,8 +441,13 @@ export function buildOpenApiDocument(): OpenApiDocument {
             '201': { description: 'Recorded', ...json(CheckIn) },
             '200': { description: 'Already recorded (same clientId)', ...json(CheckIn) },
             '409': err('Sequence error (e.g. visit before punch-in, second punch-in)'),
-            '412': err('Consent missing (DPDP)'),
-            '422': err('Validation failed, out of fence or mock location when blocked'),
+            '404': err('Outlet not found or outside your territories'),
+            '412': err(
+              'No active enrolled device (DEVICE_NOT_ACTIVE) or consent missing (CONSENT_REQUIRED)',
+            ),
+            '422': err(
+              'Validation failed; LOW_ACCURACY, MOCK_LOCATION or OUT_OF_FENCE when the company policy blocks',
+            ),
           },
         }),
       },
