@@ -119,14 +119,10 @@ export const Role = z
     id: Id,
     key: RoleKey,
     name: z.string(),
-    rank: z
-      .int()
-      .min(0)
-      .max(8)
-      .meta({
-        description:
-          '1..8 sales hierarchy; 0 = outside it (system_admin, distribution_head, accountant)',
-      }),
+    rank: z.int().min(0).max(8).meta({
+      description:
+        '1..8 sales hierarchy; 0 = outside it (system_admin, distribution_head, accountant)',
+    }),
     inHierarchy: z.boolean(),
     permissions: z.array(Permission),
   })
