@@ -548,6 +548,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/kpis': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** KPI report (docs/kpi-definitions.md). Requires reports:read; scoped to the reporting line */
+    get: operations['getKpis'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/kpis/products': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Product-wise detailing, samples and POB */
+    get: operations['getProductKpis'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/attendance': {
     parameters: {
       query?: never;
@@ -1035,6 +1069,31 @@ export interface components {
     };
     /** @enum {string} */
     OutletKind: 'doctor' | 'chemist' | 'stockist';
+    /**
+     * @description company is Director-only; team/byUser need a reporting line
+     * @enum {string}
+     */
+    KpiRollup: 'self' | 'team' | 'byUser' | 'byTerritory' | 'company';
+    /** @enum {string} */
+    KpiKey:
+      | 'call_average'
+      | 'chemist_call_average'
+      | 'coverage_pct'
+      | 'frequency_compliance_pct'
+      | 'missed_doctor_pct'
+      | 'unique_doctors_seen'
+      | 'doctor_visits_per_day'
+      | 'dcr_compliance_pct'
+      | 'dcr_on_time_pct'
+      | 'tp_adherence_pct'
+      | 'msl_size'
+      | 'pob_value'
+      | 'pob_achievement_pct'
+      | 'primary_sales_value'
+      | 'primary_achievement_pct'
+      | 'secondary_sales_value'
+      | 'secondary_achievement_pct'
+      | 'growth_vs_ly_pct';
     GeofenceSettings: {
       /** @description Default visit geofence radius (#24) */
       radiusM: number;
@@ -2011,6 +2070,70 @@ export interface components {
       /** @description Within the geofence radius; null if outlet not geo-tagged */
       inFence: boolean | null;
       selfieFileId: string | null;
+    };
+    KpiReport: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+      rollup: components['schemas']['KpiRollup'];
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      generatedAt: string;
+      rows: components['schemas']['KpiRow'][];
+    };
+    KpiRow: {
+      userId: string | null;
+      territoryId: string | null;
+      label: string;
+      metrics: components['schemas']['KpiValue'][];
+    };
+    KpiValue: {
+      kpi: components['schemas']['KpiKey'];
+      /** @description null when the denominator is 0/absent */
+      value: number | null;
+      numerator: number | null;
+      denominator: number | null;
+      unit: components['schemas']['KpiUnit'];
+      target: number | null;
+    };
+    /** @enum {string} */
+    KpiUnit: 'count' | 'ratio' | 'percent' | 'inr';
+    ProductKpiReport: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+      rows: components['schemas']['ProductKpiRow'][];
+    };
+    ProductKpiRow: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      productName: string;
+      detailedCalls: number;
+      firstPositionCalls: number;
+      detailingSharePct: number | null;
+      sampleQty: number;
+      pobQty: number;
+      pobValue: number;
     };
     AttendanceDayPage: {
       items: components['schemas']['AttendanceDay'][];
@@ -5059,6 +5182,106 @@ export interface operations {
       };
       /** @description Validation failed, out of fence or mock location when blocked */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getKpis: {
+    parameters: {
+      query?: {
+        month?: string;
+        from?: string;
+        to?: string;
+        rollup?: components['schemas']['KpiRollup'];
+        userId?: string;
+        /** @description Includes descendant territories */
+        territoryId?: string;
+        divisionId?: string;
+        productId?: string;
+        /** @description Comma-separated KPI keys; default all */
+        kpis?: components['schemas']['KpiKey'][];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['KpiReport'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getProductKpis: {
+    parameters: {
+      query?: {
+        month?: string;
+        from?: string;
+        to?: string;
+        rollup?: components['schemas']['KpiRollup'];
+        userId?: string;
+        /** @description Includes descendant territories */
+        territoryId?: string;
+        divisionId?: string;
+        productId?: string;
+        /** @description Comma-separated KPI keys; default all */
+        kpis?: components['schemas']['KpiKey'][];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProductKpiReport'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
         headers: {
           [name: string]: unknown;
         };

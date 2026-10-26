@@ -8,6 +8,7 @@ export * from './schemas/devices';
 export * from './schemas/products';
 export * from './schemas/imports';
 export * from './schemas/field';
+export * from './schemas/kpis';
 export { buildOpenApiDocument, type OpenApiDocument } from './openapi';
 export { createApiClient, type ApiClient } from './client';
 export type { paths, components } from './generated/openapi';
