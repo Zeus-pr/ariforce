@@ -14,3 +14,27 @@ html.af-splash .af-page {
 html.af-splash [data-af-header-logo] {
   opacity: 0;
 }
+
+/* Theme cross-fade (View Transitions). Short, opacity-only by default. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* List / row enter: 4px rise + fade, staggered by --i (capped so long pages don't drag). */
+@keyframes af-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.af-enter {
+  animation: af-enter 200ms var(--ease-out) both;
+  animation-delay: calc(min(var(--i, 0), 12) * 18ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .af-enter {
+    animation: none;
+  }
+}

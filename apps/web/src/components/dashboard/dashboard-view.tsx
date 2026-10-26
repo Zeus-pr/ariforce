@@ -5,8 +5,7 @@ import { ArrowDownRight, ArrowRight, ArrowUpRight, ChevronRight, Minus } from 'l
 import { toast } from '@ariforce/ui/components/sonner';
 import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ariforce/ui/components/card';
-import { CircularProgress } from '@ariforce/ui/components/circular-progress';
+import { Card, CardDescription, CardHeader, CardTitle } from '@ariforce/ui/components/card';
 import {
   Dialog,
   DialogContent,
@@ -30,10 +29,10 @@ import {
   type Severity,
 } from '@/mocks/dashboard';
 
-const SEVERITY: Record<Severity, { label: string; dot: string; badge: string }> = {
-  high: { label: 'High', dot: 'bg-danger', badge: 'bg-danger-soft text-danger' },
-  medium: { label: 'Medium', dot: 'bg-warning', badge: 'bg-warning-soft text-foreground' },
-  low: { label: 'Low', dot: 'bg-muted-foreground', badge: 'bg-muted text-muted-foreground' },
+const SEVERITY: Record<Severity, { label: string; text: string }> = {
+  high: { label: 'High', text: 'text-danger' },
+  medium: { label: 'Medium', text: 'text-warning-text' },
+  low: { label: 'Low', text: 'text-muted-foreground' },
 };
 
 function MockBadge() {
@@ -89,22 +88,23 @@ export function DashboardView() {
         <MockBadge />
       </div>
 
-      <section aria-label="Key metrics" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section
+        aria-label="Key metrics"
+        className="grid grid-cols-2 divide-border overflow-hidden rounded-lg border bg-card max-xl:[&>*:nth-child(-n+2)]:border-b max-xl:[&>*:nth-child(odd)]:border-r xl:grid-cols-4 xl:divide-x"
+      >
         {MOCK_KPIS.map((k) => {
           const Trend = k.trend === 'up' ? ArrowUpRight : k.trend === 'down' ? ArrowDownRight : Minus;
           return (
-            <Card key={k.key} className="gap-2 py-4 shadow-xs">
-              <CardHeader className="px-4">
-                <CardDescription>{k.label}</CardDescription>
-              </CardHeader>
-              <CardContent className="px-4">
+            <div key={k.key} className="min-w-0 px-4 py-3.5">
+              <p className="truncate text-xs font-medium text-muted-foreground">{k.label}</p>
+              <div className="mt-1">
                 <NumberTicker
                   value={k.value}
                   decimalPlaces={k.decimals ?? 0}
                   suffix={k.suffix}
-                  className="text-3xl font-semibold tracking-tight"
+                  className="text-2xl font-semibold tracking-tight tabular-nums sm:text-[28px]"
                 />
-                <div className="mt-2 flex items-center justify-between text-xs">
+                <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 text-xs">
                   <span className="text-muted-foreground">{k.target}</span>
                   <span
                     className={cn(
@@ -118,8 +118,8 @@ export function DashboardView() {
                     {k.delta}
                   </span>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           );
         })}
       </section>
@@ -131,16 +131,13 @@ export function DashboardView() {
             <CardDescription>Sorted by severity. Each item links to the rep or record.</CardDescription>
           </CardHeader>
           <ul className="divide-y">
-            {MOCK_ATTENTION.map((a) => (
-              <li key={a.id} className="flex items-start gap-3 px-4 py-3.5">
-                <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', SEVERITY[a.severity].dot)} aria-hidden />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium">{a.title}</p>
-                    <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium', SEVERITY[a.severity].badge)}>
-                      {SEVERITY[a.severity].label}
-                    </span>
-                  </div>
+            {MOCK_ATTENTION.map((a, i) => (
+              <li key={a.id} style={{ '--i': i } as React.CSSProperties} className="af-enter grid grid-cols-[4.5rem_1fr_auto] items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/40">
+                <span className={cn('pt-0.5 text-xs font-medium tracking-wide uppercase', SEVERITY[a.severity].text)}>
+                  {SEVERITY[a.severity].label}
+                </span>
+                <div className="min-w-0">
+                  <p className="font-medium">{a.title}</p>
                   <p className="mt-0.5 text-sm text-muted-foreground">{a.detail}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {a.who} · {a.area} · {a.age}
@@ -175,8 +172,8 @@ export function DashboardView() {
                     <p className="px-4 py-10 text-center text-sm text-muted-foreground">Nothing waiting.</p>
                   ) : (
                     <ul className="divide-y">
-                      {rows.map((a) => (
-                        <li key={a.id} className="px-4 py-3">
+                      {rows.map((a, i) => (
+                        <li key={a.id} style={{ '--i': i } as React.CSSProperties} className="af-enter px-4 py-3">
                           <div className="flex items-center justify-between gap-2">
                             <p className="truncate text-sm font-medium">{a.rep}</p>
                             <Badge variant="secondary" className="font-normal">
@@ -234,7 +231,22 @@ export function DashboardView() {
                 <TableCell className="text-right tabular-nums">{r.calls}</TableCell>
                 <TableCell className="text-right tabular-nums">{r.callAvg.toFixed(1)}</TableCell>
                 <TableCell>
-                  <CircularProgress value={r.coverage} label={`${r.rep} coverage`} size={34} />
+                  <div className="flex items-center gap-2">
+                    <div
+                      role="progressbar"
+                      aria-valuenow={r.coverage}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`${r.rep} coverage`}
+                      className="h-1.5 w-20 overflow-hidden rounded-sm bg-muted"
+                    >
+                      <div
+                        className="h-full origin-left bg-primary transition-transform duration-(--duration-slow) ease-(--ease-out)"
+                        style={{ transform: `scaleX(${r.coverage / 100})` }}
+                      />
+                    </div>
+                    <span className="text-xs tabular-nums text-muted-foreground">{r.coverage}%</span>
+                  </div>
                 </TableCell>
                 <TableCell className={cn('text-right tabular-nums', r.missedA >= 10 && 'font-medium text-danger')}>
                   {r.missedA}

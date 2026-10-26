@@ -3,7 +3,7 @@
 Clean, data-dense, fast. Built for managers scanning exceptions and reps logging calls, not a marketing site.
 
 ## Where things live
-- `packages/ui/src/tokens.css`: **every raw value** (colours, shadows, radius, motion). Brand navy `#0B1F4D` and teal `#00A9C4` are **provisional**; change `--brand-navy` / `--brand-teal` here and every scale and component follows.
+- `packages/ui/src/tokens.css`: **every raw value** (colours, shadows, radius, motion). Brand navy `#0B1F4D` and teal `#00A9C4` are **approved** (2026-10-27); change `--brand-navy` / `--brand-teal` here and every scale and component follows.
 - `packages/ui/src/globals.css`: Tailwind v4 `@theme inline` mapping tokens to utilities, plus base styles.
 - `packages/ui/src/components/*`: shadcn/ui components (`components.json` in `packages/ui`) and borrowed pieces. Import as `@ariforce/ui/components/<name>`.
 - `apps/web/src/components/shell/*`: app shell (header, sidebar, role context). `apps/web/src/app/globals.css` imports the UI globals and adds the splash rules.

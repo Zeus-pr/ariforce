@@ -1,10 +1,10 @@
 /*
  * AriForce design tokens. The ONLY file where raw colour values live.
- * Brand colours are PROVISIONAL (sampled from brand/ariforce-logo.png); change
+ * Brand colours navy #0B1F4D and teal #00A9C4 are approved by the owner; change
  * --brand-navy / --brand-teal here and every scale, semantic token and component follows.
  */
 :root {
-  /* ---- Brand (provisional) ---- */
+  /* ---- Brand (approved by the owner, 2026-10-27) ---- */
   --brand-navy: #0b1f4d;
   --brand-teal: #00a9c4;
 
@@ -49,6 +49,7 @@
   --success-soft: oklch(0.96 0.03 155);
   --warning: oklch(0.7 0.14 70);
   --warning-soft: oklch(0.97 0.04 85);
+  --warning-text: oklch(0.5 0.12 65);
   --danger: oklch(0.58 0.2 27);
   --danger-soft: oklch(0.96 0.025 27);
   --info: var(--accent-600);
@@ -134,6 +135,7 @@
   --sidebar-border: oklch(1 0 0 / 0.1);
   --success-soft: oklch(0.32 0.06 155);
   --warning-soft: oklch(0.34 0.07 75);
+  --warning-text: oklch(0.82 0.12 80);
   --danger-soft: oklch(0.33 0.08 27);
   --info-soft: color-mix(in oklch, var(--brand-teal) 22%, var(--neutral-900));
   --success: oklch(0.72 0.14 155);

@@ -146,7 +146,7 @@ function Stepper({ step }: { step: number }) {
         <li key={s} className="flex items-center gap-2" aria-current={i === step ? 'step' : undefined}>
           <span
             className={cn(
-              'grid size-6 place-items-center rounded-full border text-xs tabular-nums',
+              'grid size-6 place-items-center rounded-md border text-xs tabular-nums',
               i < step && 'border-primary bg-primary text-primary-foreground',
               i === step && 'border-primary text-primary',
             )}
@@ -205,7 +205,7 @@ function Wizard({ kind }: { kind: MasterKind }) {
               e.preventDefault();
               void onFile(e.dataTransfer.files[0]);
             }}
-            className="flex cursor-pointer flex-col items-center gap-3 rounded-xl border border-dashed bg-card p-10 text-center transition-colors hover:bg-muted/40"
+            className="flex cursor-pointer flex-col items-center gap-3 rounded-lg border border-dashed bg-card p-10 text-center transition-colors hover:bg-muted/40"
           >
             <Upload className="size-6 text-muted-foreground" />
             <span className="font-medium">Choose an Excel or CSV file</span>
@@ -238,7 +238,7 @@ function Wizard({ kind }: { kind: MasterKind }) {
             <FileSpreadsheet className="mr-1 inline size-4" />
             {sheet.fileName} · {sheet.rows.length.toLocaleString('en-IN')} rows. Match each AriForce field to a column in your sheet.
           </p>
-          <div className="grid gap-2 rounded-xl border bg-card p-4 sm:grid-cols-2">
+          <div className="grid gap-2 rounded-lg border bg-card p-4 sm:grid-cols-2">
             {cfg.fields.map((f) => (
               <div key={f.key} className="grid grid-cols-[8rem_1fr] items-center gap-3">
                 <span className="text-sm">
@@ -288,7 +288,7 @@ function Wizard({ kind }: { kind: MasterKind }) {
               Only rows with problems
             </label>
           </div>
-          <div className="max-h-[50dvh] overflow-auto rounded-xl border bg-card">
+          <div className="max-h-[50dvh] overflow-auto rounded-lg border bg-card">
             <Table>
               <TableHeader className="sticky top-0 bg-muted">
                 <TableRow>
@@ -330,7 +330,7 @@ function Wizard({ kind }: { kind: MasterKind }) {
 
       {step === 3 && (
         <div className="flex flex-col gap-4">
-          <div role="status" className="flex gap-3 rounded-xl border border-warning/40 bg-warning-soft p-4 text-sm">
+          <div role="status" className="flex gap-3 rounded-lg border border-warning/40 bg-warning-soft p-4 text-sm">
             <AlertTriangle className="size-5 shrink-0 text-warning" />
             <div>
               <p className="font-medium">Import isn&apos;t switched on yet</p>

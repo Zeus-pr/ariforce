@@ -149,7 +149,7 @@ export function DataTable<T>({
       </div>
 
       {state.status === 'error' ? (
-        <div role="alert" className="flex flex-col items-center gap-3 rounded-xl border bg-card p-8 text-center">
+        <div role="alert" className="flex flex-col items-center gap-3 rounded-lg border bg-card p-8 text-center">
           <p className="font-medium">Couldn&apos;t load {label}</p>
           <p className="text-sm text-muted-foreground">{state.message}</p>
           <Button variant="outline" size="sm" onClick={() => setRetry((n) => n + 1)}>
@@ -159,7 +159,7 @@ export function DataTable<T>({
       ) : (
         <>
           {/* Desktop / tablet */}
-          <div className="hidden overflow-hidden rounded-xl border bg-card md:block">
+          <div className="hidden overflow-hidden rounded-lg border bg-card md:block">
             <Table>
               <TableHeader className="bg-muted/50">
                 <TableRow>
@@ -204,9 +204,10 @@ export function DataTable<T>({
                         ))}
                       </TableRow>
                     ))
-                  : data.items.map((row) => (
+                  : data.items.map((row, i) => (
                       <TableRow
                         key={rowKey(row)}
+                        style={{ '--i': i } as React.CSSProperties}
                         data-testid="table-row"
                         tabIndex={onRowClick ? 0 : undefined}
                         onClick={onRowClick && (() => onRowClick(row))}
@@ -216,7 +217,7 @@ export function DataTable<T>({
                             if (e.key === 'Enter') onRowClick(row);
                           })
                         }
-                        className={cn(onRowClick && 'cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none')}
+                        className={cn('af-enter', onRowClick && 'cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none')}
                       >
                         {columns.map((c) => (
                           <TableCell key={c.id} className={c.className}>
@@ -233,21 +234,21 @@ export function DataTable<T>({
           <ul className={cn('flex flex-col gap-2 md:hidden', loading && data && 'opacity-60')}>
             {!data
               ? Array.from({ length: 4 }, (_, i) => (
-                  <li key={i} className="rounded-xl border bg-card p-4">
+                  <li key={i} className="rounded-lg border bg-card p-4">
                     <Skeleton className="h-4 w-1/2" />
                     <Skeleton className="mt-2 h-3 w-3/4" />
                   </li>
                 ))
-              : data.items.map((row) => {
+              : data.items.map((row, i) => {
                   const primary = columns.find((c) => c.mobile === 'primary') ?? columns[0]!;
                   const rest = columns.filter((c) => c !== primary && c.mobile === 'secondary');
                   return (
-                    <li key={rowKey(row)} data-testid="card-row">
+                    <li key={rowKey(row)} data-testid="card-row" className="af-enter" style={{ '--i': i } as React.CSSProperties}>
                       <button
                         type="button"
                         disabled={!onRowClick}
                         onClick={onRowClick && (() => onRowClick(row))}
-                        className="w-full rounded-xl border bg-card p-4 text-left active:bg-muted/60"
+                        className="w-full rounded-lg border bg-card p-4 text-left transition-transform duration-(--duration-fast) ease-(--ease-out) active:scale-[0.99] active:bg-muted/60 motion-reduce:active:scale-100"
                       >
                         <div className="font-medium">{primary.cell(row)}</div>
                         <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
@@ -265,7 +266,7 @@ export function DataTable<T>({
           </ul>
 
           {data && data.items.length === 0 && !loading && (
-            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               {query.query || Object.keys(query.filters).length ? (
                 <>
                   No {label} match these filters.{' '}
