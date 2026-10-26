@@ -1,11 +1,21 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { SignupRequestCreate, AUTH_STATE_CODES } from '@ariforce/contracts';
+import {
+  AUTH_STATE_CODES,
+  MIN_MANAGER_RANK,
+  ROLE_RANK,
+  SignupRequestCreate,
+  isHierarchyRole,
+  type RoleKey,
+  type SignupOptions,
+} from '@ariforce/contracts';
 import {
   auditLog,
   authAccount,
   authUser,
+  roles,
   signupRequests,
   territories,
+  userRoles,
   users,
   withTenant,
   type Db,
@@ -67,6 +77,49 @@ export class SignupService {
   readonly limiter = new RateLimiter();
   constructor(@Inject(DB) private readonly db: Db) {}
 
+  private async companyId() {
+    const slug = process.env.SIGNUP_COMPANY_SLUG ?? 'arighna';
+    const c = await this.db.execute<{ id: string | null }>(
+      sql`select company_id_by_slug(${slug}) as id`,
+    );
+    const companyId = c.rows[0]?.id;
+    if (!companyId) throw err(503, 'SIGNUP_DISABLED', 'Sign-up is not available right now');
+    return companyId;
+  }
+
+  /**
+   * Public pick-lists for the sign-up form: active territories, and active ABM+ hierarchy users as
+   * possible managers. Only id/name/code/role: no email, phone or other PII.
+   */
+  async options(ip: string | null): Promise<SignupOptions> {
+    const perIp = Number(process.env.SIGNUP_RATE_PER_IP ?? 10);
+    if (!this.limiter.hit(`options-ip:${ip ?? '?'}`, perIp * 6))
+      throw err(429, AUTH_STATE_CODES.rateLimited, 'Too many requests; try again later');
+    const companyId = await this.companyId();
+    return withTenant(this.db, { companyId, userId: null }, async (tx) => {
+      const ts = await tx
+        .select({ id: territories.id, name: territories.name, code: territories.code })
+        .from(territories)
+        .where(isNull(territories.deletedAt))
+        .orderBy(territories.name);
+      const rows = await tx
+        .select({ id: users.id, name: users.name, role: roles.key })
+        .from(users)
+        .innerJoin(userRoles, eq(userRoles.userId, users.id))
+        .innerJoin(roles, eq(roles.id, userRoles.roleId))
+        .where(and(eq(users.status, 'active'), isNull(users.deletedAt)))
+        .orderBy(users.name);
+      const best = new Map<string, { id: string; name: string; role: RoleKey }>();
+      for (const r of rows) {
+        const k = r.role as RoleKey;
+        if (!isHierarchyRole(k) || ROLE_RANK[k] < MIN_MANAGER_RANK) continue;
+        const cur = best.get(r.id);
+        if (!cur || ROLE_RANK[k] > ROLE_RANK[cur.role]) best.set(r.id, { ...r, role: k });
+      }
+      return { territories: ts, managers: [...best.values()] };
+    });
+  }
+
   async submit(b: z.infer<typeof SignupRequestCreate>, ip: string | null) {
     const email = b.email.trim().toLowerCase();
     const perIp = Number(process.env.SIGNUP_RATE_PER_IP ?? 10);
@@ -79,12 +132,7 @@ export class SignupService {
     if (!(await verifyTurnstile(b.turnstileToken, ip)))
       throw err(403, AUTH_STATE_CODES.captcha, 'Verification failed; please retry');
 
-    const slug = process.env.SIGNUP_COMPANY_SLUG ?? 'arighna';
-    const c = await this.db.execute<{ id: string | null }>(
-      sql`select company_id_by_slug(${slug}) as id`,
-    );
-    const companyId = c.rows[0]?.id;
-    if (!companyId) throw err(503, 'SIGNUP_DISABLED', 'Sign-up is not available right now');
+    const companyId = await this.companyId();
     const hash = await hashPassword(b.password);
 
     return withTenant(this.db, { companyId, userId: null }, async (tx) => {

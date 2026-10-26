@@ -526,7 +526,16 @@ export class TeamService {
 
   // ---- Sign-up requests (docs/RBAC.md "Sign-up requests") ----
 
-  /** Admin: everything. ABM+: hierarchy roles below theirs whose territory/manager is in their subtree. */
+  /**
+   * Visibility = approval authority (one rule for both):
+   * - system admin: every request;
+   * - ABM+ with rank strictly above the requested hierarchy role, and either
+   *   - the request names no manager (unassigned: visible to every such approver until reporting
+   *     lines exist), or
+   *   - the requested manager is the approver or in their subtree, or the requested territory is in
+   *     their territory scope.
+   * Own requests are never decidable (checked by callers).
+   */
   private async canDecide(
     tx: Tx,
     p: Principal,
@@ -538,7 +547,9 @@ export class TeamService {
     if (myRank < MIN_MANAGER_RANK) return false;
     const rr = ROLE_RANK[r.requestedRole];
     if (!(rr > 0 && rr < myRank && isHierarchyRole(r.requestedRole))) return false;
-    if (r.requestedManagerId && this.subtree(all, p.userId).has(r.requestedManagerId)) return true;
+    if (!r.requestedManagerId) return true;
+    if (r.requestedManagerId === p.userId || this.subtree(all, p.userId).has(r.requestedManagerId))
+      return true;
     if (r.requestedTerritoryId)
       return (await this.scopedTerritoryIds(tx, p, [r.requestedTerritoryId])).has(
         r.requestedTerritoryId,

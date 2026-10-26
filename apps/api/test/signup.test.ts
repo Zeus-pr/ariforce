@@ -51,7 +51,7 @@ describe.skipIf(!OWNER || !APP)('Sign-up requests (real API)', () => {
     app = configureApp(mod.createNestApplication({ bodyParser: false }));
     await app.init();
     owner = new Pool({ connectionString: OWNER });
-    for (const who of ['sysadmin', 'director', 'abm', 'bm', 'dh']) {
+    for (const who of ['sysadmin', 'director', 'gm', 'abm', 'bm', 'dh']) {
       const res = await signIn(`${who}@demo.ariforce.in`, PASSWORD);
       tok[who] = `Bearer ${res.headers['set-auth-token']}`;
     }
@@ -128,7 +128,9 @@ describe.skipIf(!OWNER || !APP)('Sign-up requests (real API)', () => {
 
   it('ABM does not see or decide requests outside their subtree or at/above their level', async () => {
     const out = email('out');
-    expect((await submit({ email: out, territoryId: T.otherArea })).status).toBe(202);
+    expect(
+      (await submit({ email: out, territoryId: T.otherArea, managerId: U.regional })).status,
+    ).toBe(202);
     const high = email('high');
     expect((await submit({ email: high, requestedRole: 'regional_business_manager' })).status).toBe(
       202,
@@ -278,6 +280,102 @@ describe.skipIf(!OWNER || !APP)('Sign-up requests (real API)', () => {
       for (let i = 0; i < 3; i++) r.push((await submit({})).status);
       expect(r).toEqual([202, 202, 429]);
       expect((await submit({})).body.error.code).toBe('RATE_LIMITED');
+    } finally {
+      process.env.SIGNUP_RATE_PER_IP = '1000';
+    }
+  });
+
+  const listed = async (who: string) =>
+    ((await http().get('/v1/signup-requests').set(as(who))).body.items ?? []).map(
+      (x: { id: string }) => x.id,
+    ) as string[];
+  /** Visibility and approval authority must agree: hidden => 404 on decide. */
+  const decideStatus = async (who: string, id: string) =>
+    (await http().post(`/v1/signup-requests/${id}/reject`).set(as(who)).send({ reason: 'probe' }))
+      .status;
+
+  it('unassigned requests (no manager): every ABM+ above the role sees them; BM cannot review', async () => {
+    const e = email('unassigned');
+    expect((await submit({ email: e, territoryId: null, managerId: null })).status).toBe(202);
+    const id = await reqId(e);
+    for (const who of ['sysadmin', 'director', 'gm', 'abm'])
+      expect(await listed(who)).toContain(id);
+    expect((await http().get('/v1/signup-requests').set(as('bm'))).status).toBe(403);
+    // Unassigned ABM request: equal rank for ABM (hidden, 404), visible to GM.
+    const ea = email('unassigned-abm');
+    expect(
+      (
+        await submit({
+          email: ea,
+          requestedRole: 'area_business_manager',
+          territoryId: null,
+          managerId: null,
+        })
+      ).status,
+    ).toBe(202);
+    const ida = await reqId(ea);
+    expect(await listed('abm')).not.toContain(ida);
+    expect(await listed('gm')).toContain(ida);
+    expect(await decideStatus('abm', ida)).toBe(404);
+    // Director approves the unassigned BM: manager defaults to the director.
+    const ok = await http()
+      .post(`/v1/signup-requests/${id}/approve`)
+      .set(as('director'))
+      .send({ role: 'business_manager', territoryIds: [T.hq] });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    const { rows } = await owner.query(
+      `select u.manager_id from users u join signup_requests r on r.user_id = u.id where r.id = $1`,
+      [id],
+    );
+    expect(rows[0].manager_id).toBe(U.director);
+    expect(await decideStatus('gm', ida)).toBe(200);
+  });
+
+  it('assigned requests: visible and decidable only inside the approver subtree', async () => {
+    const mine = email('mine');
+    expect((await submit({ email: mine, managerId: U.area, territoryId: null })).status).toBe(202);
+    const above = email('above');
+    expect(
+      (await submit({ email: above, managerId: U.regional, territoryId: T.otherArea })).status,
+    ).toBe(202);
+    const idMine = await reqId(mine);
+    const idAbove = await reqId(above);
+    expect(await listed('abm')).toContain(idMine);
+    expect(await listed('abm')).not.toContain(idAbove);
+    for (const who of ['sysadmin', 'director', 'gm']) {
+      expect(await listed(who)).toContain(idMine);
+      expect(await listed(who)).toContain(idAbove);
+    }
+    expect(await decideStatus('abm', idAbove)).toBe(404);
+    expect(await decideStatus('gm', idAbove)).toBe(200);
+    expect(await decideStatus('abm', idMine)).toBe(200);
+  });
+
+  it('GET /v1/auth/sign-up-options: public pick-lists without PII', async () => {
+    const r = await http().get('/v1/auth/sign-up-options');
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.territories.length).toBeGreaterThan(0);
+    for (const t of r.body.territories)
+      expect(Object.keys(t).sort()).toEqual(['code', 'id', 'name']);
+    for (const m of r.body.managers) expect(Object.keys(m).sort()).toEqual(['id', 'name', 'role']);
+    const ids = r.body.managers.map((m: { id: string }) => m.id);
+    for (const u of [U.director, U.gm, U.area, U.regional]) expect(ids).toContain(u);
+    for (const u of [U.sysadmin, U.rep, U.otherRep, U.dh, U.accountant])
+      expect(ids).not.toContain(u);
+    expect(JSON.stringify(r.body)).not.toContain('@');
+    process.env.SIGNUP_COMPANY_SLUG = 'no-such-company';
+    try {
+      const d = await http().get('/v1/auth/sign-up-options');
+      expect(d.status).toBe(503);
+      expect(d.body.error.code).toBe('SIGNUP_DISABLED');
+    } finally {
+      process.env.SIGNUP_COMPANY_SLUG = 'demo';
+    }
+    process.env.SIGNUP_RATE_PER_IP = '1';
+    try {
+      const codes = [];
+      for (let i = 0; i < 8; i++) codes.push((await http().get('/v1/auth/sign-up-options')).status);
+      expect(codes).toContain(429);
     } finally {
       process.env.SIGNUP_RATE_PER_IP = '1000';
     }
