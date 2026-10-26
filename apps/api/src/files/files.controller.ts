@@ -11,6 +11,7 @@ import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { ZodPipe } from '../common/zod.pipe';
 import { StorageService } from './storage.service';
+import { err } from '../field/checkins.service';
 
 /** Presigned R2 URLs. Any signed-in tenant user; per-record checks happen where fileKey is attached. */
 @Controller({ path: 'files', version: '1' })
@@ -27,6 +28,12 @@ export class FilesController {
     @CurrentPrincipal() p: Principal,
     @Body(new ZodPipe(UploadUrlRequest)) body: UploadUrlRequest,
   ): Promise<UploadUrlResponse> {
+    if (body.purpose === 'expense_receipt')
+      throw err(
+        422,
+        'VALIDATION',
+        'Expense receipts use POST /v1/expense-claims/{id}/lines/{lineId}/attachments',
+      );
     if (body.purpose === 'import_source' && !p.permissions.includes('imports:write'))
       throw new ForbiddenException('Missing permission: imports:write');
     const res = await this.storage.uploadUrl(p.companyId, body);

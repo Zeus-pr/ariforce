@@ -25,6 +25,7 @@ import { SignInEmailBody } from '../schemas/auth';
 import { kpiReport, productKpiReport } from './kpis';
 import { teamHandlers } from './team';
 import { signupHandlers } from './signup';
+import { expenseHandlers } from './expenses';
 import { mastersGuardHandlers } from './masters-guard';
 import {
   Approval,
@@ -368,6 +369,7 @@ export function createHandlers(baseUrl = '') {
   return [
     ...mastersGuardHandlers(baseUrl, mockPrincipal),
     ...signupHandlers(baseUrl, mockPrincipal),
+    ...expenseHandlers(baseUrl, mockPrincipal),
     http.get(`${baseUrl}/v1/health`, () => HttpResponse.json({ status: 'ok' })),
     http.post(`${baseUrl}/v1/files/upload-url`, () =>
       HttpResponse.json({

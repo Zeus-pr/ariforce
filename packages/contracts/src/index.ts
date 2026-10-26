@@ -17,3 +17,4 @@ export * from './import/templates';
 export * from './tour-plan';
 export * from './schemas/team';
 export * from './schemas/signup';
+export * from './schemas/expenses';

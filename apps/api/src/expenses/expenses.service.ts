@@ -1,0 +1,793 @@
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  type OnModuleInit,
+} from '@nestjs/common';
+import {
+  EXPENSE_MAX_FILES_PER_LINE,
+  type ExpenseCategory,
+  type ExpenseAttachmentCreate,
+  type ExpenseClaim,
+  type ExpenseDecision,
+  type ExpenseLineInput,
+  type ExpenseReconciliation,
+  type ExpenseStatus,
+} from '@ariforce/contracts';
+import {
+  dcrs,
+  expenseAttachments,
+  expenseClaims,
+  expenseLines,
+  tourPlans,
+  users,
+  workTypes,
+  type Tx,
+} from '@ariforce/db';
+import { and, asc, eq, gte, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { v7 as uuidv7 } from 'uuid';
+import type * as z from 'zod';
+import type { Principal } from '../auth/principal';
+import { AuditService } from '../common/audit.service';
+import { TenantService } from '../common/tenant.service';
+import { err } from '../field/checkins.service';
+import { StorageService } from '../files/storage.service';
+import { ApprovalsService } from '../plans/approvals.service';
+import { keyExt, sniffMatches } from './files.util';
+
+type ClaimRow = typeof expenseClaims.$inferSelect;
+type LineRow = typeof expenseLines.$inferSelect;
+type AttRow = typeof expenseAttachments.$inferSelect;
+export type Decision = z.infer<typeof ExpenseDecision>;
+export type Category = ExpenseCategory;
+
+const EDITABLE = ['draft', 'rejected'];
+const FINANCE_VISIBLE: ExpenseStatus[] = ['approved', 'paid'];
+const monthStart = (m: string) => `${m}-01`;
+const nextMonth = (m: string) => {
+  const [y, mm] = m.split('-').map(Number) as [number, number];
+  return mm === 12 ? `${y + 1}-01-01` : `${y}-${String(mm + 1).padStart(2, '0')}-01`;
+};
+const num = (v: string | number | null) => (v === null ? null : Number(v));
+const iso = (d: Date | null) => d?.toISOString() ?? null;
+const r2 = (n: number) => Math.round(n * 100) / 100;
+export const approvalLevels = () => Math.max(1, Number(process.env.EXPENSE_APPROVAL_LEVELS ?? 2));
+
+/**
+ * Expense claims (#52). One claim per user per month; edit while draft or rejected; submission goes
+ * through the generic approval engine (entity `expense`) up the reporting line; accountant reads
+ * approved/paid claims company-wide (finance:read) and marks them paid (finance:write).
+ */
+@Injectable()
+export class ExpensesService implements OnModuleInit {
+  constructor(
+    private readonly tenant: TenantService,
+    private readonly audit: AuditService,
+    private readonly approvals: ApprovalsService,
+    private readonly storage: StorageService,
+  ) {}
+
+  onModuleInit() {
+    this.approvals.register(
+      'expense',
+      async (tx, p, req, approved, comment) => {
+        await tx
+          .update(expenseClaims)
+          .set({
+            status: approved ? 'approved' : 'rejected',
+            decidedAt: new Date(),
+            decidedBy: p.userId,
+            decisionComment: comment,
+          })
+          .where(and(eq(expenseClaims.id, req.entityId), eq(expenseClaims.status, 'submitted')));
+        await this.audit.record(tx, p, approved ? 'expense.approved' : 'expense.rejected', {
+          entityType: 'expense_claim',
+          entityId: req.entityId,
+          after: { comment, step: req.currentStep },
+        });
+      },
+      {
+        levels: approvalLevels(),
+        permission: 'expenses:approve',
+        onStep: async (tx, p, req, nextStep, nextApproverId) => {
+          await this.audit.record(tx, p, 'expense.step_approved', {
+            entityType: 'expense_claim',
+            entityId: req.entityId,
+            after: { step: req.currentStep, nextStep, nextApproverId },
+          });
+        },
+      },
+    );
+  }
+
+  // ---- visibility ----
+
+  /** SQL filter for claims the caller may read. */
+  private readable(p: Principal): SQL {
+    const parts: SQL[] = [];
+    if (p.permissions.includes('expenses:read')) parts.push(eq(expenseClaims.userId, p.userId));
+    if (p.permissions.includes('expenses:approve'))
+      parts.push(
+        and(
+          sql`${expenseClaims.status} <> 'draft'`,
+          p.teamUserIds ? inArray(expenseClaims.userId, p.teamUserIds) : undefined,
+        )!,
+      );
+    if (p.permissions.includes('finance:read'))
+      parts.push(inArray(expenseClaims.status, FINANCE_VISIBLE));
+    return parts.length ? or(...parts)! : sql`false`;
+  }
+
+  private async claimRow(tx: Tx, p: Principal, id: string, lock = false): Promise<ClaimRow> {
+    const q = tx
+      .select()
+      .from(expenseClaims)
+      .where(and(eq(expenseClaims.id, id), isNull(expenseClaims.deletedAt), this.readable(p)));
+    const [c] = lock ? await q.for('update') : await q;
+    if (!c) throw new NotFoundException('Expense claim not found');
+    return c;
+  }
+
+  private async ownEditable(tx: Tx, p: Principal, id: string) {
+    const c = await this.claimRow(tx, p, id, true);
+    if (c.userId !== p.userId) throw new ForbiddenException('Only the owner can edit a claim');
+    if (!EDITABLE.includes(c.status))
+      throw err(
+        409,
+        'EXPENSE_NOT_EDITABLE',
+        `Claim is ${c.status}; only draft or rejected can change`,
+      );
+    return c;
+  }
+
+  // ---- DTOs ----
+
+  private async toDto(tx: Tx, c: ClaimRow): Promise<ExpenseClaim> {
+    const lines = await tx
+      .select()
+      .from(expenseLines)
+      .where(and(eq(expenseLines.claimId, c.id), isNull(expenseLines.deletedAt)))
+      .orderBy(asc(expenseLines.date), asc(expenseLines.id));
+    const atts = lines.length
+      ? await tx
+          .select()
+          .from(expenseAttachments)
+          .where(
+            and(
+              inArray(
+                expenseAttachments.lineId,
+                lines.map((l) => l.id),
+              ),
+              isNull(expenseAttachments.deletedAt),
+            ),
+          )
+          .orderBy(asc(expenseAttachments.createdAt))
+      : [];
+    const [u] = await tx.select({ name: users.name }).from(users).where(eq(users.id, c.userId));
+    const step = c.approvalRequestId
+      ? ((
+          await tx.execute<{ s: number }>(
+            sql`select current_step as s from approval_requests where id = ${c.approvalRequestId}`,
+          )
+        ).rows[0]?.s ?? null)
+      : null;
+    return {
+      ...this.summary(c, u?.name ?? ''),
+      approvalStep: c.status === 'submitted' ? step : null,
+      lines: lines.map((l) => this.lineDto(l, atts)),
+    };
+  }
+
+  private summary(c: ClaimRow, userName: string) {
+    return {
+      id: c.id,
+      userId: c.userId,
+      userName,
+      month: c.month.slice(0, 7),
+      status: c.status,
+      total: Number(c.total),
+      currency: 'INR' as const,
+      approvalId: c.approvalRequestId,
+      approvalStep: null as number | null,
+      submittedAt: iso(c.submittedAt),
+      decidedAt: iso(c.decidedAt),
+      decidedBy: c.decidedBy,
+      decisionComment: c.decisionComment,
+      paidAt: iso(c.paidAt),
+      paymentRef: c.paymentRef,
+      version: c.version,
+    };
+  }
+
+  private lineDto(l: LineRow, atts: AttRow[]) {
+    return {
+      id: l.id,
+      claimId: l.claimId,
+      date: l.date,
+      category: l.category,
+      amount: Number(l.amount),
+      notes: l.notes,
+      mileageKm: num(l.mileageKm),
+      dcrId: l.dcrId,
+      tourPlanId: l.tourPlanId,
+      attachments: atts.filter((a) => a.lineId === l.id).map((a) => this.attDto(a)),
+      version: l.version,
+    };
+  }
+
+  private attDto(a: AttRow) {
+    return {
+      id: a.id,
+      lineId: a.lineId,
+      contentType: a.contentType as never,
+      sizeBytes: a.sizeBytes,
+      status: a.status,
+      createdAt: a.createdAt.toISOString(),
+      confirmedAt: iso(a.confirmedAt),
+    };
+  }
+
+  private async recomputeTotal(tx: Tx, claimId: string) {
+    await tx.execute(sql`update expense_claims set total = coalesce((
+      select sum(amount) from expense_lines where claim_id = ${claimId} and deleted_at is null), 0)
+      where id = ${claimId}`);
+  }
+
+  // ---- claims ----
+
+  list(p: Principal, q: { month?: string; userId?: string; status?: ExpenseStatus }) {
+    return this.tenant.run(p, async (tx) => {
+      const rows = await tx
+        .select({ c: expenseClaims, name: users.name })
+        .from(expenseClaims)
+        .innerJoin(users, eq(users.id, expenseClaims.userId))
+        .where(
+          and(
+            this.readable(p),
+            isNull(expenseClaims.deletedAt),
+            q.month ? eq(expenseClaims.month, monthStart(q.month)) : undefined,
+            q.userId ? eq(expenseClaims.userId, q.userId) : undefined,
+            q.status ? eq(expenseClaims.status, q.status) : undefined,
+          ),
+        )
+        .orderBy(sql`${expenseClaims.month} desc`, asc(users.name));
+      const counts = rows.length
+        ? await tx
+            .select({ id: expenseLines.claimId, n: sql<number>`count(*)::int` })
+            .from(expenseLines)
+            .where(
+              and(
+                inArray(
+                  expenseLines.claimId,
+                  rows.map((r) => r.c.id),
+                ),
+                isNull(expenseLines.deletedAt),
+              ),
+            )
+            .groupBy(expenseLines.claimId)
+        : [];
+      return {
+        items: rows.map((r) => ({
+          ...this.summary(r.c, r.name),
+          lineCount: counts.find((x) => x.id === r.c.id)?.n ?? 0,
+        })),
+      };
+    });
+  }
+
+  get(p: Principal, id: string) {
+    return this.tenant.run(p, async (tx) => this.toDto(tx, await this.claimRow(tx, p, id)));
+  }
+
+  /** Creates your claim for the month, or returns the existing one (created = false). */
+  create(p: Principal, month: string) {
+    return this.tenant.run(p, async (tx) => {
+      const today = new Date().toISOString().slice(0, 7);
+      if (month > today) throw err(422, 'VALIDATION', 'Cannot claim for a future month');
+      const [cur] = await tx
+        .select()
+        .from(expenseClaims)
+        .where(and(eq(expenseClaims.userId, p.userId), eq(expenseClaims.month, monthStart(month))));
+      if (cur) return { created: false, claim: await this.toDto(tx, cur) };
+      const [c] = await tx
+        .insert(expenseClaims)
+        .values({
+          id: uuidv7(),
+          companyId: p.companyId,
+          userId: p.userId,
+          month: monthStart(month),
+        })
+        .returning();
+      await this.audit.record(tx, p, 'expense.created', {
+        entityType: 'expense_claim',
+        entityId: c!.id,
+        after: { month },
+      });
+      return { created: true, claim: await this.toDto(tx, c!) };
+    });
+  }
+
+  private async checkLine(tx: Tx, p: Principal, c: ClaimRow, l: ExpenseLineInput) {
+    const m = c.month.slice(0, 7);
+    if (l.date.slice(0, 7) !== m)
+      throw err(422, 'VALIDATION', `date must be in ${m}`, { field: 'date' });
+    if (l.date > new Date().toISOString().slice(0, 10))
+      throw err(422, 'VALIDATION', 'date cannot be in the future', { field: 'date' });
+    if (l.dcrId) {
+      const [d] = await tx
+        .select({ date: dcrs.date })
+        .from(dcrs)
+        .where(and(eq(dcrs.id, l.dcrId), eq(dcrs.userId, p.userId), isNull(dcrs.deletedAt)));
+      if (!d) throw err(422, 'VALIDATION', 'dcrId must be your own DCR', { field: 'dcrId' });
+      if (d.date !== l.date)
+        throw err(422, 'VALIDATION', 'dcrId must be the DCR for the same date', { field: 'dcrId' });
+    }
+    if (l.tourPlanId) {
+      const [t] = await tx
+        .select({ month: tourPlans.month })
+        .from(tourPlans)
+        .where(and(eq(tourPlans.id, l.tourPlanId), eq(tourPlans.userId, p.userId)));
+      if (!t || t.month !== c.month)
+        throw err(422, 'VALIDATION', 'tourPlanId must be your tour plan for the month', {
+          field: 'tourPlanId',
+        });
+    }
+  }
+
+  private lineValues(l: ExpenseLineInput) {
+    return {
+      date: l.date,
+      category: l.category,
+      amount: l.amount.toFixed(2),
+      notes: l.notes,
+      mileageKm: l.mileageKm === null ? null : l.mileageKm.toFixed(2),
+      dcrId: l.dcrId,
+      tourPlanId: l.tourPlanId,
+    };
+  }
+
+  addLine(p: Principal, id: string, l: ExpenseLineInput) {
+    return this.tenant.run(p, async (tx) => {
+      const c = await this.ownEditable(tx, p, id);
+      await this.checkLine(tx, p, c, l);
+      const lineId = uuidv7();
+      await tx
+        .insert(expenseLines)
+        .values({ id: lineId, companyId: p.companyId, claimId: c.id, ...this.lineValues(l) });
+      await this.recomputeTotal(tx, c.id);
+      await this.audit.record(tx, p, 'expense.line_added', {
+        entityType: 'expense_claim',
+        entityId: c.id,
+        after: { lineId, category: l.category, amount: l.amount, date: l.date },
+      });
+      return this.toDto(tx, (await this.claimRow(tx, p, c.id))!);
+    });
+  }
+
+  private async lineRow(tx: Tx, claimId: string, lineId: string) {
+    const [l] = await tx
+      .select()
+      .from(expenseLines)
+      .where(
+        and(
+          eq(expenseLines.id, lineId),
+          eq(expenseLines.claimId, claimId),
+          isNull(expenseLines.deletedAt),
+        ),
+      )
+      .for('update');
+    if (!l) throw new NotFoundException('Expense line not found');
+    return l;
+  }
+
+  updateLine(p: Principal, id: string, lineId: string, l: ExpenseLineInput, version: number) {
+    return this.tenant.run(p, async (tx) => {
+      const c = await this.ownEditable(tx, p, id);
+      const cur = await this.lineRow(tx, c.id, lineId);
+      if (cur.version !== version)
+        throw err(409, 'VERSION_CONFLICT', 'Stale version', this.lineDto(cur, []));
+      await this.checkLine(tx, p, c, l);
+      await tx.update(expenseLines).set(this.lineValues(l)).where(eq(expenseLines.id, lineId));
+      await this.recomputeTotal(tx, c.id);
+      await this.audit.record(tx, p, 'expense.line_updated', {
+        entityType: 'expense_claim',
+        entityId: c.id,
+        before: { lineId, amount: Number(cur.amount), category: cur.category, date: cur.date },
+        after: { lineId, amount: l.amount, category: l.category, date: l.date },
+      });
+      return this.toDto(tx, await this.claimRow(tx, p, c.id));
+    });
+  }
+
+  deleteLine(p: Principal, id: string, lineId: string) {
+    return this.tenant.run(p, async (tx) => {
+      const c = await this.ownEditable(tx, p, id);
+      await this.lineRow(tx, c.id, lineId);
+      const now = new Date();
+      await tx.update(expenseLines).set({ deletedAt: now }).where(eq(expenseLines.id, lineId));
+      await tx
+        .update(expenseAttachments)
+        .set({ deletedAt: now })
+        .where(and(eq(expenseAttachments.lineId, lineId), isNull(expenseAttachments.deletedAt)));
+      await this.recomputeTotal(tx, c.id);
+      await this.audit.record(tx, p, 'expense.line_deleted', {
+        entityType: 'expense_claim',
+        entityId: c.id,
+        after: { lineId },
+      });
+      return this.toDto(tx, await this.claimRow(tx, p, c.id));
+    });
+  }
+
+  submit(p: Principal, id: string) {
+    return this.tenant.run(p, async (tx) => {
+      const c = await this.ownEditable(tx, p, id);
+      const dto = await this.toDto(tx, c);
+      if (!dto.lines.length) throw err(422, 'EXPENSE_EMPTY', 'Add at least one line first');
+      const noReceipt = dto.lines.filter(
+        (l) => l.category === 'hotel' && !l.attachments.some((a) => a.status === 'confirmed'),
+      );
+      if (noReceipt.length)
+        throw err(422, 'RECEIPT_REQUIRED', 'Hotel lines need a confirmed receipt', {
+          lineIds: noReceipt.map((l) => l.id),
+        });
+      const resubmit = c.status === 'rejected';
+      const reqId = await this.approvals.request(tx, p, 'expense', c.id, null, {
+        month: dto.month,
+        total: dto.total,
+      });
+      await tx
+        .update(expenseClaims)
+        .set({
+          status: 'submitted',
+          submittedAt: new Date(),
+          approvalRequestId: reqId,
+          decidedAt: null,
+          decidedBy: null,
+          decisionComment: null,
+        })
+        .where(eq(expenseClaims.id, c.id));
+      await this.audit.record(tx, p, resubmit ? 'expense.resubmitted' : 'expense.submitted', {
+        entityType: 'expense_claim',
+        entityId: c.id,
+        after: { total: dto.total, lines: dto.lines.length, approvalId: reqId },
+      });
+      return this.toDto(tx, await this.claimRow(tx, p, c.id));
+    });
+  }
+
+  async decide(p: Principal, id: string, b: Decision) {
+    const reqId = await this.tenant.run(p, async (tx) => {
+      const c = await this.claimRow(tx, p, id);
+      if (c.status !== 'submitted' || !c.approvalRequestId)
+        throw err(409, 'CONFLICT', `Claim is ${c.status}`);
+      return c.approvalRequestId;
+    });
+    await this.approvals.decide(p, reqId, b);
+    return this.get(p, id);
+  }
+
+  pay(p: Principal, id: string, paymentRef: string) {
+    return this.tenant.run(p, async (tx) => {
+      const c = await this.claimRow(tx, p, id, true);
+      if (c.userId === p.userId) throw new ForbiddenException('You cannot pay your own claim');
+      if (c.status !== 'approved') throw err(409, 'CONFLICT', `Claim is ${c.status}`);
+      await tx
+        .update(expenseClaims)
+        .set({ status: 'paid', paidAt: new Date(), paidBy: p.userId, paymentRef })
+        .where(eq(expenseClaims.id, c.id));
+      await this.audit.record(tx, p, 'expense.paid', {
+        entityType: 'expense_claim',
+        entityId: c.id,
+        after: { paymentRef, total: Number(c.total) },
+      });
+      return this.toDto(tx, await this.claimRow(tx, p, c.id));
+    });
+  }
+
+  // ---- attachments ----
+
+  createAttachment(p: Principal, id: string, lineId: string, b: ExpenseAttachmentCreate) {
+    return this.tenant.run(p, async (tx) => {
+      const c = await this.ownEditable(tx, p, id);
+      await this.lineRow(tx, c.id, lineId);
+      const [n] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(expenseAttachments)
+        .where(and(eq(expenseAttachments.lineId, lineId), isNull(expenseAttachments.deletedAt)));
+      if (n!.n >= EXPENSE_MAX_FILES_PER_LINE)
+        throw err(422, 'TOO_MANY_FILES', `At most ${EXPENSE_MAX_FILES_PER_LINE} files per line`);
+      const up = await this.storage.presignPut(
+        p.companyId,
+        'expense_receipt',
+        b.contentType,
+        b.sizeBytes,
+        keyExt(b.contentType),
+      );
+      const [a] = await tx
+        .insert(expenseAttachments)
+        .values({
+          id: uuidv7(),
+          companyId: p.companyId,
+          lineId,
+          fileKey: up.fileKey,
+          contentType: b.contentType,
+          sizeBytes: b.sizeBytes,
+          uploadedBy: p.userId,
+        })
+        .returning();
+      await this.audit.record(tx, p, 'expense.attachment_requested', {
+        entityType: 'expense_attachment',
+        entityId: a!.id,
+        after: { claimId: c.id, lineId, contentType: b.contentType, sizeBytes: b.sizeBytes },
+      });
+      return {
+        attachment: this.attDto(a!),
+        uploadUrl: up.uploadUrl,
+        method: up.method,
+        headers: up.headers,
+        expiresAt: up.expiresAt,
+      };
+    });
+  }
+
+  /** Attachment + its claim, if the caller may read that claim. */
+  private async attachment(tx: Tx, p: Principal, attId: string) {
+    const [row] = await tx
+      .select({ a: expenseAttachments, claimId: expenseLines.claimId })
+      .from(expenseAttachments)
+      .innerJoin(expenseLines, eq(expenseLines.id, expenseAttachments.lineId))
+      .where(
+        and(
+          eq(expenseAttachments.id, attId),
+          isNull(expenseAttachments.deletedAt),
+          isNull(expenseLines.deletedAt),
+        ),
+      );
+    if (!row) throw new NotFoundException('Attachment not found');
+    const c = await this.claimRow(tx, p, row.claimId).catch(() => {
+      throw new NotFoundException('Attachment not found');
+    });
+    return { a: row.a, c };
+  }
+
+  /** Completion step: the object must exist with the declared size/type and matching magic bytes. */
+  async confirmAttachment(p: Principal, attId: string) {
+    // A rejected upload is removed and audited in a committed transaction, then the 422 is thrown.
+    const r = await this.tenant.run(p, async (tx) => {
+      const { a, c } = await this.attachment(tx, p, attId);
+      if (c.userId !== p.userId) throw new ForbiddenException('Only the owner can confirm');
+      if (!EDITABLE.includes(c.status))
+        throw err(409, 'EXPENSE_NOT_EDITABLE', `Claim is ${c.status}`);
+      if (a.status === 'confirmed') return { ok: this.attDto(a) };
+      const head = await this.storage.head(a.fileKey);
+      if (!head) throw err(409, 'UPLOAD_MISSING', 'Upload not found; PUT the file first');
+      const reject = async (code: string, message: string) => {
+        await this.storage.remove(a.fileKey).catch(() => undefined);
+        await tx
+          .update(expenseAttachments)
+          .set({ deletedAt: new Date() })
+          .where(eq(expenseAttachments.id, a.id));
+        await this.audit.record(tx, p, 'expense.attachment_rejected', {
+          entityType: 'expense_attachment',
+          entityId: a.id,
+          after: { code },
+        });
+        return { error: err(422, code, message) };
+      };
+      if (head.sizeBytes !== a.sizeBytes || head.sizeBytes > 10 * 1024 * 1024)
+        return await reject('UPLOAD_SIZE_MISMATCH', 'Uploaded size differs from the declared size');
+      if (head.contentType && head.contentType.split(';')[0]!.trim() !== a.contentType)
+        return await reject('UPLOAD_TYPE_MISMATCH', 'Uploaded content type differs from declared');
+      const bytes = await this.storage.firstBytes(a.fileKey, 512);
+      if (!sniffMatches(a.contentType as never, bytes))
+        return await reject('UPLOAD_FORMAT_INVALID', 'File content does not match its type');
+      const [ok] = await tx
+        .update(expenseAttachments)
+        .set({ status: 'confirmed', confirmedAt: new Date() })
+        .where(eq(expenseAttachments.id, a.id))
+        .returning();
+      await this.audit.record(tx, p, 'expense.attachment_confirmed', {
+        entityType: 'expense_attachment',
+        entityId: a.id,
+        after: { claimId: c.id },
+      });
+      return { ok: this.attDto(ok!) };
+    });
+    if ('error' in r) throw r.error;
+    return r.ok;
+  }
+
+  deleteAttachment(p: Principal, attId: string) {
+    return this.tenant.run(p, async (tx) => {
+      const { a, c } = await this.attachment(tx, p, attId);
+      if (c.userId !== p.userId) throw new ForbiddenException('Only the owner can delete');
+      if (!EDITABLE.includes(c.status))
+        throw err(409, 'EXPENSE_NOT_EDITABLE', `Claim is ${c.status}`);
+      await tx
+        .update(expenseAttachments)
+        .set({ deletedAt: new Date() })
+        .where(eq(expenseAttachments.id, a.id));
+      await this.storage.remove(a.fileKey).catch(() => undefined);
+      await this.audit.record(tx, p, 'expense.attachment_deleted', {
+        entityType: 'expense_attachment',
+        entityId: a.id,
+        after: { claimId: c.id },
+      });
+    });
+  }
+
+  /** Owner, the approver chain (expenses:approve over the owner) or finance; audited. */
+  downloadUrl(p: Principal, attId: string) {
+    return this.tenant.run(p, async (tx) => {
+      const { a, c } = await this.attachment(tx, p, attId);
+      if (a.status !== 'confirmed') throw err(409, 'UPLOAD_NOT_CONFIRMED', 'Not confirmed yet');
+      const ext = a.fileKey.split('.').pop();
+      const res = await this.storage.downloadUrl(
+        p.companyId,
+        a.fileKey,
+        new Date(),
+        `receipt-${a.id}.${ext}`,
+      );
+      await this.audit.record(tx, p, 'expense.attachment_downloaded', {
+        entityType: 'expense_attachment',
+        entityId: a.id,
+        after: { claimId: c.id },
+      });
+      return res;
+    });
+  }
+
+  // ---- reconciliation & reports ----
+
+  private async reconcile(tx: Tx, c: ClaimRow): Promise<ExpenseReconciliation> {
+    const m = c.month.slice(0, 7);
+    const lines = await tx
+      .select()
+      .from(expenseLines)
+      .where(and(eq(expenseLines.claimId, c.id), isNull(expenseLines.deletedAt)));
+    const days = await tx
+      .select({
+        id: dcrs.id,
+        date: dcrs.date,
+        status: dcrs.status,
+        field: workTypes.countsAsFieldDay,
+      })
+      .from(dcrs)
+      .innerJoin(workTypes, eq(workTypes.id, dcrs.workTypeId))
+      .where(
+        and(
+          eq(dcrs.userId, c.userId),
+          isNull(dcrs.deletedAt),
+          gte(dcrs.date, c.month),
+          lt(dcrs.date, nextMonth(m)),
+        ),
+      );
+    const byDate = new Map<string, LineRow[]>();
+    for (const l of lines) byDate.set(l.date, [...(byDate.get(l.date) ?? []), l]);
+    const byCategory = { travel: 0, hotel: 0, food: 0, mileage: 0, other: 0 } as Record<
+      Category,
+      number
+    >;
+    for (const l of lines) byCategory[l.category] = r2(byCategory[l.category] + Number(l.amount));
+    let unmatched = 0;
+    const out = [...byDate.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, ls]) => {
+        const d = days.find((x) => x.date === date);
+        const flags: ExpenseReconciliation['days'][number]['flags'] = [];
+        if (!date.startsWith(m)) flags.push('outside_month');
+        if (!d) flags.push('no_dcr');
+        else {
+          if (d.status === 'draft') flags.push('dcr_not_submitted');
+          if (!d.field) flags.push('non_field_day');
+        }
+        if (ls.some((l) => l.dcrId && l.dcrId !== d?.id)) flags.push('dcr_link_mismatch');
+        const claimed = r2(ls.reduce((s, l) => s + Number(l.amount), 0));
+        if (flags.length) unmatched = r2(unmatched + claimed);
+        return {
+          date,
+          claimed,
+          lineCount: ls.length,
+          dcrId: d?.id ?? null,
+          dcrStatus: d?.status ?? null,
+          flags,
+        };
+      });
+    return {
+      claimId: c.id,
+      userId: c.userId,
+      month: m,
+      total: r2(lines.reduce((s, l) => s + Number(l.amount), 0)),
+      claimedDays: out.length,
+      dcrDays: days.filter((d) => d.status === 'submitted' || d.status === 'approved').length,
+      matchedDays: out.filter((d) => !d.flags.length).length,
+      unmatchedAmount: unmatched,
+      byCategory,
+      days: out,
+    };
+  }
+
+  reconciliation(p: Principal, id: string) {
+    return this.tenant.run(p, async (tx) => this.reconcile(tx, await this.claimRow(tx, p, id)));
+  }
+
+  private reportScope(p: Principal) {
+    if (!p.permissions.includes('finance:read') && !p.permissions.includes('expenses:read'))
+      throw new ForbiddenException('Missing permission: expenses:read or finance:read');
+  }
+
+  /** Claims for the month the caller may read, with reconciliation per claim. */
+  async reportData(
+    p: Principal,
+    q: { month: string; userId?: string; teamOf?: string; status?: ExpenseStatus },
+  ) {
+    this.reportScope(p);
+    return this.tenant.run(p, async (tx) => {
+      let team: string[] | undefined;
+      if (q.teamOf) {
+        const r = await tx.execute<{ id: string }>(sql`with recursive t as (
+            select id from users where id = ${q.teamOf}
+            union select u.id from users u join t on u.manager_id = t.id)
+          select id from t`);
+        team = r.rows.map((x) => x.id);
+      }
+      const rows = await tx
+        .select({ c: expenseClaims, name: users.name })
+        .from(expenseClaims)
+        .innerJoin(users, eq(users.id, expenseClaims.userId))
+        .where(
+          and(
+            this.readable(p),
+            isNull(expenseClaims.deletedAt),
+            eq(expenseClaims.month, monthStart(q.month)),
+            q.userId ? eq(expenseClaims.userId, q.userId) : undefined,
+            team ? inArray(expenseClaims.userId, team) : undefined,
+            q.status ? eq(expenseClaims.status, q.status) : undefined,
+          ),
+        )
+        .orderBy(asc(users.name));
+      const claims = [];
+      for (const r of rows) {
+        const rec = await this.reconcile(tx, r.c);
+        const lines = await tx
+          .select()
+          .from(expenseLines)
+          .where(and(eq(expenseLines.claimId, r.c.id), isNull(expenseLines.deletedAt)))
+          .orderBy(asc(expenseLines.date));
+        claims.push({ rec, userName: r.name, status: r.c.status, lines });
+      }
+      return claims;
+    });
+  }
+
+  async report(p: Principal, q: Parameters<ExpensesService['reportData']>[1]) {
+    const data = await this.reportData(p, q);
+    const byCategory = { travel: 0, hotel: 0, food: 0, mileage: 0, other: 0 } as Record<
+      Category,
+      number
+    >;
+    for (const d of data)
+      for (const k of Object.keys(byCategory) as Category[])
+        byCategory[k] = r2(byCategory[k] + d.rec.byCategory[k]);
+    return {
+      month: q.month,
+      rows: data.map(({ rec: { days: _d, ...rec }, userName, status }) => ({
+        ...rec,
+        userName,
+        status,
+      })),
+      total: r2(data.reduce((s, d) => s + d.rec.total, 0)),
+      byCategory,
+    };
+  }
+
+  auditExport(p: Principal, q: Record<string, unknown>, rows: number) {
+    return this.tenant.run(p, (tx) =>
+      this.audit.record(tx, p, 'expense.exported', {
+        entityType: 'expense_report',
+        after: { ...q, rows },
+      }),
+    );
+  }
+}

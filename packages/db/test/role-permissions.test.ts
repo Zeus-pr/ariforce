@@ -15,7 +15,7 @@ function parse(sql: string): Record<string, string[]> {
   return out;
 }
 
-describe('migration 0019 role permissions', () => {
+describe(`migration ${ROLE_PERMISSIONS_MIGRATION} role permissions`, () => {
   const src = read(`../drizzle/${ROLE_PERMISSIONS_MIGRATION}.sql`);
   const gen = read(`../migrations/${ROLE_PERMISSIONS_MIGRATION}.sql`);
   it('drizzle file equals the generator output', () => expect(src).toBe(rolePermissionsSql()));

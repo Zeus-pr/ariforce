@@ -1,5 +1,11 @@
 import { HttpException, Injectable, NotFoundException } from '@nestjs/common';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { DownloadUrlResponse, UploadUrlRequest, UploadUrlResponse } from '@ariforce/contracts';
 import { v7 as uuidv7 } from 'uuid';
@@ -62,9 +68,29 @@ export class StorageService {
     req: UploadUrlRequest,
     now = new Date(),
   ): Promise<UploadUrlResponse> {
+    return this.presignPut(
+      companyId,
+      req.purpose,
+      req.contentType,
+      req.sizeBytes,
+      EXT[req.contentType],
+      now,
+    );
+  }
+
+  /** Presigned PUT for any purpose; key = `<companyId>/<purpose>/<yyyy>/<mm>/<uuidv7>.<ext>` (no names). */
+  async presignPut(
+    companyId: string,
+    purpose: string,
+    contentType: string,
+    sizeBytes: number,
+    ext: string,
+    now = new Date(),
+  ): Promise<UploadUrlResponse> {
+    const req = { contentType, sizeBytes };
     const { client, bucket } = this.ready();
     const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
-    const fileKey = `${companyId}/${req.purpose}/${now.getUTCFullYear()}/${mm}/${uuidv7()}.${EXT[req.contentType]}`;
+    const fileKey = `${companyId}/${purpose}/${now.getUTCFullYear()}/${mm}/${uuidv7()}.${ext}`;
     const cmd = new PutObjectCommand({
       Bucket: bucket,
       Key: fileKey,
@@ -84,17 +110,51 @@ export class StorageService {
     };
   }
 
+  /** Size and content type of an uploaded object, or null when it does not exist. */
+  async head(fileKey: string): Promise<{ sizeBytes: number; contentType: string | null } | null> {
+    const { client, bucket } = this.ready();
+    try {
+      const h = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: fileKey }));
+      return { sizeBytes: Number(h.ContentLength ?? 0), contentType: h.ContentType ?? null };
+    } catch (e) {
+      const status = (e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+      if (status === 404) return null;
+      throw e;
+    }
+  }
+
+  /** First `n` bytes (ranged GET) for format/magic-byte checks. */
+  async firstBytes(fileKey: string, n = 512): Promise<Uint8Array> {
+    const { client, bucket } = this.ready();
+    const r = await client.send(
+      new GetObjectCommand({ Bucket: bucket, Key: fileKey, Range: `bytes=0-${n - 1}` }),
+    );
+    return (await r.Body?.transformToByteArray()) ?? new Uint8Array();
+  }
+
+  async remove(fileKey: string): Promise<void> {
+    const { client, bucket } = this.ready();
+    await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: fileKey }));
+  }
+
   async downloadUrl(
     companyId: string,
     fileKey: string,
     now = new Date(),
+    downloadName?: string,
   ): Promise<DownloadUrlResponse> {
     if (!fileKey.startsWith(`${companyId}/`) || fileKey.includes('..'))
       throw new NotFoundException('File not found');
     const { client, bucket } = this.ready();
     const downloadUrl = await getSignedUrl(
       client,
-      new GetObjectCommand({ Bucket: bucket, Key: fileKey }),
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: fileKey,
+        ...(downloadName
+          ? { ResponseContentDisposition: `attachment; filename="${downloadName}"` }
+          : {}),
+      }),
       {
         expiresIn: DOWNLOAD_TTL_S,
       },

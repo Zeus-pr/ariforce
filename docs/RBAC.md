@@ -52,12 +52,19 @@ Territory levels are a separate, geographic hierarchy (`national > zone > region
 | `users:write`                                                                            |              |     |        |          |      ✓       |                   |            |
 | `sales:read`                                                                             |              |     |        |          |              |         ✓         |            |
 | `finance:read`                                                                           |              |     |        |          |              |                   |     ✓      |
+| `expenses:read`, `expenses:write` (own claims)                                           |      ✓       |  ✓  |   ✓    |    ✓     |              |                   |            |
+| `expenses:approve` (team expense claims)                                                 |              |  ✓  |   ✓    |    ✓     |              |                   |            |
+| `finance:write` (mark expense claims paid)                                               |              |     |        |          |              |                   |     ✓      |
 
 Field-added doctors are `pending` unless created by a director or system admin.
 
 ### Baseline sync (migration 0019)
 
 `packages/db/migrations/0019_role_permissions_baseline.sql` SETs the full array above for every role in every company (re-run converges, only `roles.permissions` changes). It is generated from `DEFAULT_ROLE_PERMISSIONS` by `pnpm -F @ariforce/db db:role-perms`; the seed uses the same matrix and `packages/db/test/role-permissions.test.ts` fails if they drift. DCR, attendance, tour plans and check-ins are `field:read`/`field:write`; KPIs are `reports:read`; team tree and employees are `users:read`/`users:write`; imports are `imports:write`.
+
+### Expense permissions (migration 0022, #52)
+
+`packages/db/migrations/0022_role_permissions_expenses.sql` re-syncs every role from `DEFAULT_ROLE_PERMISSIONS` after the expense permissions were added; `ROLE_PERMISSIONS_MIGRATION` in `packages/db/src/role-permissions-sql.ts` names the file the generator writes, and the drift test checks it. 0019 is unchanged. Details and scopes: docs/EXPENSES.md.
 
 ### Masters permissions (lead rule, 2026-10-27)
 

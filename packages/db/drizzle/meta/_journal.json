@@ -148,6 +148,20 @@
       "when": 1793051497935,
       "tag": "0020_signup_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793052780300,
+      "tag": "0021_expense_claims",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793052780708,
+      "tag": "0022_role_permissions_expenses",
+      "breakpoints": true
     }
   ]
 }

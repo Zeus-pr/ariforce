@@ -85,3 +85,11 @@ Context: single tenant in production (Arighna Pharmaceutical), 200-1,000 field r
 - **`geo_captures`** (append-only): **point captures only** at punch-in, each visit, punch-out and doctor geo-tag; PostGIS point + `accuracy_m`, `source` (gps/network/fused/manual), `is_mock`, `device_id`, `captured_at`/`received_at`, optional link to the entity and server-computed `distance_m` to the geofence.
 - **No continuous tracking.** There is deliberately no location-trail/breadcrumb table and the app does not sample location in the background.
 - Out of scope now: ERP/Tally integration.
+
+## Expense claims (migration 0021, #52)
+
+- `expense_claims`: one per (company, user, month); `status` draft/submitted/approved/rejected/paid; `approval_id` points at the current `approval_requests` row (entity `expense`); decision and payment fields; `version`.
+- `expense_lines`: claim, `date`, `category` (travel/hotel/food/mileage/other), `amount numeric(12,2) > 0`, `notes`, `mileage_km` (required for mileage only, check), optional `dcr_id` and `tour_plan_id`; `version`.
+- `expense_attachments`: line, `file_key` (must start with `{company_id}/expense_receipt/`), `content_type`, `size_bytes <= 10485760`, `status` pending/confirmed, `confirmed_at`. No file names stored.
+- All three: RLS `tenant_isolation` (forced), row-meta triggers, soft delete, grants to `ariforce_app` only.
+- Permissions for the module are seeded by `0022_role_permissions_expenses.sql`. See docs/EXPENSES.md.
