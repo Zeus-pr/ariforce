@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-google-sans), ui-sans-serif, system-ui, sans-serif;
+  --color-brand-navy: #0b1f4d;
+  --color-brand-teal: #00a9c4;
+  --color-brand-teal-deep: #007890;
+  --ease-out-soft: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---- Splash: state is decided before first paint by the inline script in layout.tsx ---- */
+.af-splash-overlay {
+  display: none;
+}
+html.af-splash .af-splash-overlay {
+  display: block;
+}
+html.af-splash .af-page {
+  opacity: 0;
+}
+html.af-splash [data-af-header-logo] {
+  opacity: 0;
+}

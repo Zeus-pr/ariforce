@@ -1,0 +1,79 @@
+[
+  {
+    "name": "desktop",
+    "cls": 0,
+    "animatedProps": [
+      "transform",
+      "opacity"
+    ],
+    "splashEnd": {
+      "x": 24,
+      "y": 12,
+      "w": 36,
+      "h": 32
+    },
+    "header": {
+      "x": 24,
+      "y": 12,
+      "w": 36,
+      "h": 32
+    },
+    "htmlClass": false,
+    "seen": "1",
+    "second": {
+      "overlayVisible": false,
+      "pageOpacity": "1"
+    }
+  },
+  {
+    "name": "mobile",
+    "cls": 0,
+    "animatedProps": [
+      "transform",
+      "opacity"
+    ],
+    "splashEnd": {
+      "x": 16,
+      "y": 12,
+      "w": 36,
+      "h": 32
+    },
+    "header": {
+      "x": 16,
+      "y": 12,
+      "w": 36,
+      "h": 32
+    },
+    "htmlClass": false,
+    "seen": "1",
+    "second": {
+      "overlayVisible": false,
+      "pageOpacity": "1"
+    }
+  },
+  {
+    "name": "reduced-motion",
+    "cls": 0,
+    "animatedProps": [
+      "opacity"
+    ],
+    "splashEnd": {
+      "x": 586,
+      "y": 328,
+      "w": 108,
+      "h": 96
+    },
+    "header": {
+      "x": 24,
+      "y": 12,
+      "w": 36,
+      "h": 32
+    },
+    "htmlClass": false,
+    "seen": "1",
+    "second": {
+      "overlayVisible": false,
+      "pageOpacity": "1"
+    }
+  }
+]
