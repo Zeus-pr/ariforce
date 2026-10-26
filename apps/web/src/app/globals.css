@@ -15,12 +15,6 @@ html.af-splash [data-af-header-logo] {
   opacity: 0;
 }
 
-/* Theme cross-fade (View Transitions). Short, opacity-only by default. */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: 180ms;
-  animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
-}
 
 /* List / row enter: 4px rise + fade, staggered by --i (capped so long pages don't drag). */
 @keyframes af-enter {
@@ -33,8 +27,29 @@ html.af-splash [data-af-header-logo] {
   animation: af-enter 200ms var(--ease-out) both;
   animation-delay: calc(min(var(--i, 0), 12) * 18ms);
 }
+/* Not started while the splash is up; runs fresh when the page is revealed. */
+.af-splash .af-enter {
+  animation: none;
+}
+/* Wider stagger for short form sequences (sign-in). */
+.af-enter-form {
+  animation-duration: 260ms;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+/* Inline messages: opacity only, no shake. */
+@keyframes af-fade {
+  from {
+    opacity: 0;
+  }
+}
+.af-fade {
+  animation: af-fade var(--duration-fast) var(--ease-out);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .af-enter {
+  .af-enter,
+  .af-fade {
     animation: none;
   }
 }

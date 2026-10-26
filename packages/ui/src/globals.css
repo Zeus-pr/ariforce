@@ -1,7 +1,10 @@
 @import 'tailwindcss';
 @import './tokens.css';
 
-@custom-variant dark (&:is(.dark *));
+:root {
+  color-scheme: light;
+}
+
 
 /* Maps tokens.css onto Tailwind utilities. Components use these (bg-primary, text-brand-600,
    shadow-md, ease-out...), never raw colour values. */

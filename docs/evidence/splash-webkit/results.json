@@ -3,8 +3,8 @@
     "name": "desktop",
     "cls": 0,
     "animatedProps": [
-      "opacity",
-      "transform"
+      "transform",
+      "opacity"
     ],
     "splashEnd": {
       "x": 16,
@@ -95,11 +95,11 @@
     }
   },
   {
-    "name": "dark",
+    "name": "os-dark",
     "cls": 0,
     "animatedProps": [
-      "opacity",
-      "transform"
+      "transform",
+      "opacity"
     ],
     "splashEnd": {
       "x": 16,
@@ -115,11 +115,11 @@
     },
     "htmlClass": false,
     "seen": "1",
-    "darkAfter": true,
-    "bodyBg": "lab(3.02089 -0.188366 -2.63082)",
+    "darkAfter": false,
+    "bodyBg": "lab(97.902702 -0.162244 -1.12439)",
     "holdState": {
       "veil": "rgb(255, 255, 255)",
-      "dark": true
+      "dark": false
     },
     "second": {
       "overlayVisible": false,

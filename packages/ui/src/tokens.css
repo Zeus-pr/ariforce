@@ -109,39 +109,6 @@
   --duration-splash: 850ms;
 }
 
-.dark {
-  --background: var(--neutral-950);
-  --foreground: var(--neutral-50);
-  --card: var(--neutral-900);
-  --card-foreground: var(--neutral-50);
-  --popover: var(--neutral-900);
-  --popover-foreground: var(--neutral-50);
-  --primary: var(--accent-400);
-  --primary-foreground: var(--neutral-950);
-  --secondary: var(--neutral-800);
-  --secondary-foreground: var(--neutral-50);
-  --muted: var(--neutral-800);
-  --muted-foreground: var(--neutral-400);
-  --accent: var(--neutral-800);
-  --accent-foreground: var(--neutral-50);
-  --border: oklch(1 0 0 / 0.1);
-  --input: oklch(1 0 0 / 0.14);
-  --sidebar: var(--neutral-900);
-  --sidebar-foreground: var(--neutral-300);
-  --sidebar-primary: var(--accent-400);
-  --sidebar-primary-foreground: var(--neutral-950);
-  --sidebar-accent: var(--neutral-800);
-  --sidebar-accent-foreground: var(--neutral-50);
-  --sidebar-border: oklch(1 0 0 / 0.1);
-  --success-soft: oklch(0.32 0.06 155);
-  --warning-soft: oklch(0.34 0.07 75);
-  --warning-text: oklch(0.82 0.12 80);
-  --danger-soft: oklch(0.33 0.08 27);
-  --info-soft: color-mix(in oklch, var(--brand-teal) 22%, var(--neutral-900));
-  --success: oklch(0.72 0.14 155);
-  --danger: oklch(0.7 0.17 27);
-  --ring: var(--accent-400);
-}
 
 @media (prefers-reduced-motion: reduce) {
   :root {
