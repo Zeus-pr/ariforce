@@ -25,3 +25,7 @@ Rule: `isSystemAdmin(role) || roleLevel(role) >= roleLevel('regional_business_ma
 ## Evidence
 
 `apps/web/e2e/permissions-evidence.mjs` (Chromium and WebKit): BM and ABM see no write controls, get a read-only detail, get 403 from the mock API and are redirected away from `/masters/doctors/import`; RBM sees Add, Import, the edit form and the import page.
+
+## Sign-up requests
+
+`canReviewSignups(role)` in `lib/permissions.ts`: System Admin, or Area Business Manager and above. The `/sign-up-requests` nav item and route guard use it. `reviewableRoles(viewer)` (lib/signup) limits rows and approve options to roles below the viewer; System Admin sees all, including Distribution Head and Accountant. `/sign-up` is public (no redirect when signed out).

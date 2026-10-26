@@ -35,3 +35,7 @@ Real-mode builds go to `apps/web/.next-real` (mock builds stay in `.next`), so s
 Smoke test (fresh browser, bogus credential only, API up and simulated down): `BROWSER=chromium node e2e/real-smoke.mjs` (and `BROWSER=webkit`).
 
 Failsafes: the splash overlay never takes clicks and is hidden after 4s by CSS and by the inline boot script even if no JS chunk loads; every real-mode API call times out after 8s; `app/error.tsx` and `app/global-error.tsx` show a retry instead of a blank or stuck page.
+
+## Sign-up (mock)
+
+Try it on :3000: Sign in page > "Request an account" > submit. Signing in with that email shows "Awaiting approval". Sign in as admin@ (or any ABM+) > Administration > Sign-up requests to approve or reject. Four seeded pending requests use `@example.test` emails. Mock data lives in this browser only (`af:mock-signups`). Real mode calls the assumed endpoints in CONTRACT-GAPS #23 and shows "not available on this server yet" on 404.

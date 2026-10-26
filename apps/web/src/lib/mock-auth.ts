@@ -110,7 +110,17 @@ export function useSession(): SignedIn | null | undefined {
   return useSyncExternalStore(subscribe, read, () => undefined);
 }
 
-export type SignInError = { field: 'email' | 'password'; message: string };
+export type SignInError = {
+  field: 'email' | 'password';
+  message: string;
+  /** Set when the identity exists but an admin has not approved it (CONTRACT-GAPS #23). */
+  account?: 'pending' | 'rejected';
+};
+
+export const PENDING_MESSAGE =
+  'Your sign-up request is awaiting approval. You can sign in once an admin approves it.';
+export const REJECTED_MESSAGE =
+  'Your sign-up request was not approved. Contact your manager or the admin.';
 
 export function signIn(email: string, password: string): MockUser | SignInError {
   const e = email.trim().toLowerCase();
@@ -160,6 +170,14 @@ export async function signInReal(email: string, password: string): Promise<MockU
       body: JSON.stringify({ email: e, password }),
       signal: AbortSignal.timeout(8000),
     });
+    if (res.status === 403) {
+      const b = (await res.json().catch(() => null)) as { error?: { code?: string }; code?: string } | null;
+      const code = b?.error?.code ?? b?.code;
+      if (code === 'ACCOUNT_PENDING')
+        return { field: 'password', message: PENDING_MESSAGE, account: 'pending' };
+      if (code === 'ACCOUNT_REJECTED')
+        return { field: 'password', message: REJECTED_MESSAGE, account: 'rejected' };
+    }
     if (res.status === 401 || res.status === 400 || res.status === 403)
       return { field: 'password', message: 'Email or password is wrong.' };
     if (!res.ok) return { field: 'password', message: 'Could not sign in. Try again in a moment.' };

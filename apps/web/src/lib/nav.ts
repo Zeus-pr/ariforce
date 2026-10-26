@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import {
+import { UserPlus,
   CalendarRange,
   Pill,
   Package,
@@ -16,7 +16,7 @@ import {
   MapPin,
 } from 'lucide-react';
 
-import { WRITE_ROUTES } from './permissions';
+import { WRITE_ROUTES, canReviewSignups } from './permissions';
 import { ROLES, isApprover, isSystemAdmin, type Role } from './roles';
 
 export { ROLE_LABEL, type Role } from './roles';
@@ -154,6 +154,14 @@ export const NAV: NavItem[] = [
     href: '/masters',
     icon: Database,
     roles: ['system_admin'],
+    section: 'admin',
+  },
+  {
+    slug: 'sign-up-requests',
+    title: 'Sign-up requests',
+    href: '/sign-up-requests',
+    icon: UserPlus,
+    roles: ROLES.filter(canReviewSignups),
     section: 'admin',
   },
 ];

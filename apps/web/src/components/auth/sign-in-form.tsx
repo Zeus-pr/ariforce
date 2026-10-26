@@ -10,7 +10,17 @@ import { Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
-import { MOCK_PASSWORD, MOCK_USERS, signIn, signInReal, type SignInError } from '@/lib/mock-auth';
+import Link from 'next/link';
+import {
+  MOCK_PASSWORD,
+  MOCK_USERS,
+  PENDING_MESSAGE,
+  REJECTED_MESSAGE,
+  signIn,
+  signInReal,
+  type SignInError,
+} from '@/lib/mock-auth';
+import { signupAdapter } from '@/lib/signup/adapter';
 import { REAL } from '@/lib/api';
 import { canSee, homeFor } from '@/lib/nav';
 import { ROLE_LABEL } from '@/lib/roles';
@@ -31,7 +41,25 @@ export function SignInForm() {
     e.preventDefault();
     if (pending) return;
     setPending(REAL);
-    const result = REAL ? await signInReal(email, password) : signIn(email, password);
+    let result: Awaited<ReturnType<typeof signInReal>>;
+    if (REAL) result = await signInReal(email, password);
+    else {
+      // Mock: a sign-up request for this email wins over the wrong-password error.
+      const st = await signupAdapter.statusFor(email, password);
+      result =
+        st === 'pending'
+          ? { field: 'password', message: PENDING_MESSAGE, account: 'pending' }
+          : st === 'rejected'
+            ? { field: 'password', message: REJECTED_MESSAGE, account: 'rejected' }
+            : st === 'approved'
+              ? {
+                  field: 'password',
+                  message:
+                    'Approved. New accounts sign in on the real server; the mock only has demo accounts.',
+                  account: 'pending',
+                }
+              : signIn(email, password);
+    }
     if ('field' in result) setPending(false);
     if ('field' in result) {
       setError(result);
@@ -58,7 +86,8 @@ export function SignInForm() {
     passwordRef.current?.focus();
   };
 
-  const err = (f: SignInError['field']) => (error?.field === f ? error.message : null);
+  const err = (f: SignInError['field']) =>
+    error?.field === f && !error.account ? error.message : null;
 
   return (
     <>
@@ -75,6 +104,18 @@ export function SignInForm() {
           </p>
         )}
 
+        {error?.account && (
+          <div
+            role="status"
+            data-testid="signin-account-status"
+            className="af-fade mb-4 rounded-md border border-warning/40 bg-warning-soft px-3 py-2.5 text-[13px] leading-snug text-warning-text"
+          >
+            <p className="font-medium">
+              {error.account === 'pending' ? 'Awaiting approval' : 'Request not approved'}
+            </p>
+            <p className="mt-0.5">{error.message}</p>
+          </div>
+        )}
         <form onSubmit={submit} noValidate className="grid gap-4">
           <div
             className="af-enter af-enter-form grid gap-1.5"
@@ -147,6 +188,20 @@ export function SignInForm() {
             </Button>
           </div>
         </form>
+
+        <p
+          className="af-enter af-enter-form mt-4 text-center text-sm text-muted-foreground"
+          style={{ '--i': 4 } as React.CSSProperties}
+        >
+          New to AriForce?{' '}
+          <Link
+            href="/sign-up"
+            data-testid="sign-up-link"
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Request an account
+          </Link>
+        </p>
 
         {!REAL && (
           <details
