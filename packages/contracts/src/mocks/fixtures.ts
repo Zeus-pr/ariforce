@@ -87,6 +87,38 @@ export const me: Me = {
   managerId: null,
 };
 
+/** Mock personas (one per role), selected by `x-mock-user: <key|email|local-part>` or a `mock:<key>` session token. */
+const PERSONAS: { key: (typeof ROLE_KEYS)[number]; local: string; code: string; t: number[] }[] = [
+  { key: 'director', local: 'director', code: 'DIR001', t: [1] },
+  { key: 'vice_president', local: 'vp', code: 'VP001', t: [1] },
+  { key: 'general_manager', local: 'gm', code: 'GM001', t: [1] },
+  { key: 'sales_manager', local: 'sm', code: 'SM001', t: [1] },
+  { key: 'zonal_business_manager', local: 'zbm', code: 'ZBM001', t: [2] },
+  { key: 'regional_business_manager', local: 'rbm', code: 'RBM001', t: [3] },
+  { key: 'area_business_manager', local: 'abm', code: 'ABM001', t: [4] },
+  { key: 'business_manager', local: 'bm', code: 'BM001', t: [4] },
+  { key: 'system_admin', local: 'sysadmin', code: 'SYS001', t: [] },
+];
+const uid = (i: number) => `01930000-0000-7000-8000-000000000${301 + i}`;
+export const mockUsers: Me[] = PERSONAS.map((p, i) => ({
+  ...me,
+  id: uid(i),
+  email: `${p.local}@demo.ariforce.in`,
+  name: `Demo ${ROLE_NAMES[p.key]}`,
+  employeeCode: p.code,
+  roles: [p.key],
+  permissions: DEFAULT_ROLE_PERMISSIONS[p.key],
+  territoryIds: p.t.map(tid),
+  managerId: i === 0 || p.key === 'system_admin' ? null : uid(i - 1),
+}));
+export function findMockUser(s: string | null | undefined): Me | undefined {
+  if (!s) return undefined;
+  const v = s.trim().toLowerCase();
+  return mockUsers.find(
+    (u) => u.roles[0] === v || u.email === v || u.email.split('@')[0] === v || u.id === v,
+  );
+}
+
 export const specialties: Specialty[] = [
   { ...base, id: '01930000-0000-7000-8000-000000000401', code: 'GP', name: 'General Physician' },
   { ...base, id: '01930000-0000-7000-8000-000000000402', code: 'CARD', name: 'Cardiologist' },

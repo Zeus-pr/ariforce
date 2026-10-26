@@ -71,6 +71,13 @@
       "when": 1793042513821,
       "tag": "0009_kpi_views",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793043963490,
+      "tag": "0010_company_lookup",
+      "breakpoints": true
     }
   ]
 }

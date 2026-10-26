@@ -25,12 +25,10 @@ export const KPI_KEYS = [
 export const KpiKey = z.enum(KPI_KEYS).meta({ id: 'KpiKey' });
 export type KpiKey = z.infer<typeof KpiKey>;
 
-export const KpiRollup = z
-  .enum(['self', 'team', 'byUser', 'byTerritory', 'company'])
-  .meta({
-    id: 'KpiRollup',
-    description: 'company is Director-only; team/byUser need a reporting line',
-  });
+export const KpiRollup = z.enum(['self', 'team', 'byUser', 'byTerritory', 'company']).meta({
+  id: 'KpiRollup',
+  description: 'company is Director-only; team/byUser need a reporting line',
+});
 
 const csv = <T extends z.ZodType>(item: T) =>
   z.preprocess((v) => (typeof v === 'string' ? v.split(',').filter(Boolean) : v), z.array(item));

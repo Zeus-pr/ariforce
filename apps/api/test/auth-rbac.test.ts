@@ -124,9 +124,8 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
     ).toBe(200);
     const me = await http().get('/v1/me').set('authorization', dir);
     expect(me.body.roles).toEqual(['director']);
-    const sys = await http()
-      .get('/v1/me')
-      .set('authorization', await token('sysadmin@demo.ariforce.in'));
+    const sysAuth = await token('sysadmin@demo.ariforce.in');
+    const sys = await http().get('/v1/me').set('authorization', sysAuth);
     expect(sys.body.roles).toEqual(['system_admin']);
     expect(sys.body.permissions).not.toContain('field:read');
     expect(sys.body.managerId).toBeNull();

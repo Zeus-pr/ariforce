@@ -19,6 +19,7 @@ import {
   Territory,
 } from '../index';
 import * as fx from './fixtures';
+import { SignInEmailBody } from '../schemas/auth';
 import { kpiReport, productKpiReport } from './kpis';
 import {
   Approval,
@@ -362,6 +363,27 @@ function crud<
   ];
 }
 
+/**
+ * Mock session: `x-mock-user: <role key | email | local part>` header, else a `mock:<role>` token from
+ * `authorization: Bearer` or the `better-auth.session_token` cookie, else the default persona (director)
+ * unless `x-mock-user: none` (behaves as signed out -> 401).
+ */
+export function mockPrincipal(request: Request): Me | undefined {
+  const h = request.headers.get('x-mock-user');
+  if (h) return h === 'none' ? undefined : fx.findMockUser(h);
+  const bearer = request.headers.get('authorization')?.match(/^Bearer\s+mock:(\S+)$/i)?.[1];
+  const cookie = request.headers
+    .get('cookie')
+    ?.match(/better-auth\.session_token=mock:([^;]+)/)?.[1];
+  if (bearer || cookie) return fx.findMockUser(bearer ?? cookie);
+  return fx.me;
+}
+const unauthenticated = () =>
+  HttpResponse.json(
+    { error: { code: 'UNAUTHENTICATED', message: 'Sign in required' } },
+    { status: 401 },
+  );
+
 export function createHandlers(baseUrl = '') {
   return [
     http.get(`${baseUrl}/v1/health`, () => HttpResponse.json({ status: 'ok' })),
@@ -380,20 +402,46 @@ export function createHandlers(baseUrl = '') {
         expiresAt: new Date(Date.now() + 300_000).toISOString(),
       }),
     ),
-    http.post(`${baseUrl}/v1/auth/sign-in/email`, () =>
-      HttpResponse.json({
-        token: 'mock-token',
-        user: { id: fx.me.id, email: fx.me.email, name: fx.me.name },
-      }),
+    http.post(`${baseUrl}/v1/auth/sign-in/email`, async ({ request }) => {
+      const b = SignInEmailBody.safeParse(await request.json().catch(() => null));
+      const u = b.success ? fx.findMockUser(b.data.email) : undefined;
+      if (!u)
+        return HttpResponse.json(
+          { code: 'INVALID_EMAIL_OR_PASSWORD', message: 'Invalid email or password' },
+          { status: 401 },
+        );
+      const token = `mock:${u.roles[0]}`;
+      return HttpResponse.json(
+        { token, user: { id: u.id, email: u.email, name: u.name } },
+        {
+          headers: {
+            'set-auth-token': token,
+            'set-cookie': `better-auth.session_token=${token}; Path=/; HttpOnly; SameSite=Lax`,
+          },
+        },
+      );
+    }),
+    http.post(`${baseUrl}/v1/auth/sign-out`, () =>
+      HttpResponse.json(
+        { success: true },
+        { headers: { 'set-cookie': 'better-auth.session_token=; Path=/; Max-Age=0' } },
+      ),
     ),
-    http.post(`${baseUrl}/v1/auth/sign-out`, () => HttpResponse.json({ success: true })),
-    http.get(`${baseUrl}/v1/auth/get-session`, () =>
-      HttpResponse.json({
-        session: { id: 'mock-session', expiresAt: new Date(Date.now() + 864e5).toISOString() },
-        user: { id: fx.me.id, email: fx.me.email, name: fx.me.name },
-      }),
-    ),
-    http.get(`${baseUrl}/v1/me`, () => HttpResponse.json(Me.parse(fx.me))),
+    http.get(`${baseUrl}/v1/auth/get-session`, ({ request }) => {
+      const u = mockPrincipal(request);
+      if (!u) return HttpResponse.json(null);
+      return HttpResponse.json({
+        session: {
+          id: `mock-session-${u.roles[0]}`,
+          expiresAt: new Date(Date.now() + 864e5).toISOString(),
+        },
+        user: { id: u.id, email: u.email, name: u.name },
+      });
+    }),
+    http.get(`${baseUrl}/v1/me`, ({ request }) => {
+      const u = mockPrincipal(request);
+      return u ? HttpResponse.json(Me.parse(u)) : unauthenticated();
+    }),
     http.get(`${baseUrl}/v1/roles`, () =>
       HttpResponse.json({ items: z.array(Role).parse(fx.roles) }),
     ),

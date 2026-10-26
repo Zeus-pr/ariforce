@@ -47,3 +47,35 @@ Should print nothing (or only unrelated apps).
 - Once per project, as owner over `DIRECT_URL`: `pnpm -F @ariforce/db db:migrate` (creates PostGIS, tables, RLS, the `ariforce_app` role), then in the Supabase SQL editor give the role a login: `ALTER ROLE ariforce_app LOGIN PASSWORD '<secret>'`. The API's `DATABASE_URL` is the **transaction pooler** URL with user `ariforce_app.<project-ref>`.
 - Leave Supabase Auth and the Data API unused (see ADR 0001).
 - R2: create a private bucket + an API token scoped to it; set `R2_*`. Files are uploaded/downloaded with short-lived presigned URLs from the API.
+
+## First System Admin and demo users (real database)
+
+Prerequisite: migration `0010_company_lookup.sql` applied (or pass `--company-id <uuid>` instead of `--company`).
+`DATABASE_URL` (app role) is read from `apps/api/.env`. Passwords are read from env vars or a hidden
+prompt; they are never printed.
+
+```sh
+# System Admin only (prompts for the password)
+pnpm -F @ariforce/api admin:create-first --company arighna --email <admin email> --name "<full name>"
+
+# Plus one demo user per role (director > vp > gm > sm > zbm > rbm > abm > bm),
+# e.g. bm@demo.ariforce.in; optional --territory <code> assigns that territory to the demo chain.
+pnpm -F @ariforce/api admin:create-first --company arighna --email <admin email> \
+  --demo-users --demo-domain demo.ariforce.in [--territory <code>]
+```
+
+Non-interactive: set `ARIFORCE_ADMIN_PASSWORD` / `ARIFORCE_DEMO_PASSWORD` (min 12 chars) for that one
+command only. Re-running is safe; add `--reset-password` to change an existing password.
+Demo users without a territory see no field data until territories are assigned.
+
+## Local integration tests (no PostGIS needed)
+
+```sh
+eval "$(sh scripts/test-db.sh up)"   # throwaway Postgres on the SSD (.cache/testdb), all migrations
+pnpm -F @ariforce/db db:seed && pnpm -F @ariforce/api db:seed
+pnpm -F @ariforce/api test
+sh scripts/test-db.sh down
+```
+
+`geometry` is stubbed as a text domain (`scripts/test-db-postgis-stub.sql`); spatial SQL is not covered
+locally (CI uses postgis/postgis). Never point DIRECT_URL at Supabase for tests.
