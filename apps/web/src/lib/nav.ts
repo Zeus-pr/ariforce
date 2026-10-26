@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { CalendarRange, Stethoscope, ChartNoAxesColumn, CircleAlert, ClipboardList, Database, LayoutDashboard, MapPin } from 'lucide-react';
+import { CalendarRange, Stethoscope, IndianRupee, Target, ChartNoAxesColumn, CircleAlert, ClipboardList, Database, LayoutDashboard, MapPin } from 'lucide-react';
 
 import { ROLES, isApprover, isSystemAdmin, type Role } from './roles';
 
@@ -39,6 +39,8 @@ export const NAV: NavItem[] = [
   { slug: 'dcr', title: 'DCR', href: '/dcr', icon: ClipboardList, roles: SALES, section: 'field' },
   { slug: 'tour-plans', title: 'Tour Plans', href: '/tour-plans', icon: CalendarRange, roles: SALES, section: 'field' },
   { slug: 'doctors', title: 'Doctors', href: '/doctors', icon: Stethoscope, roles: SALES, section: 'business' },
+  { slug: 'sales', title: 'Sales', href: '/sales', icon: IndianRupee, roles: SALES, section: 'performance' },
+  { slug: 'coverage', title: 'Coverage', href: '/coverage', icon: Target, roles: SALES, section: 'performance' },
   { slug: 'team', title: 'Team Performance', href: '/team', icon: ChartNoAxesColumn, roles: APPROVERS, section: 'performance' },
   { slug: 'exceptions', title: 'Exceptions', href: '/exceptions', icon: CircleAlert, roles: SALES, section: 'intelligence' },
   { slug: 'masters', title: 'Master Data', href: '/masters', icon: Database, roles: ['system_admin'], section: 'admin' },
