@@ -26,6 +26,8 @@ const OPEN_KEY = 'af:nav-closed';
 /** Closed sections persist per browser; every section starts open. */
 function useClosedSections() {
   const [closed, setClosed] = useState<NavSectionId[]>([]);
+  // Only sections the user just opened animate in; nothing animates on first paint (the splash owns that moment).
+  const [opened, setOpened] = useState<NavSectionId | null>(null);
   useEffect(() => {
     try {
       const v = JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]');
@@ -34,13 +36,15 @@ function useClosedSections() {
       // Corrupt value: keep every section open.
     }
   }, []);
-  const toggle = (id: NavSectionId) =>
+  const toggle = (id: NavSectionId) => {
+    setOpened(closed.includes(id) ? id : null);
     setClosed((c) => {
       const next = c.includes(id) ? c.filter((x) => x !== id) : [...c, id];
       localStorage.setItem(OPEN_KEY, JSON.stringify(next));
       return next;
     });
-  return { closed, toggle };
+  };
+  return { closed, opened, toggle };
 }
 
 // Layout follows the shadcn/ui "sidebar-16" block (sidebar under a sticky site header), MIT.
@@ -49,7 +53,7 @@ export function AppSidebar() {
   const pathname = usePathname();
   const { state, isMobile } = useSidebar();
   const iconOnly = state === 'collapsed' && !isMobile;
-  const { closed, toggle } = useClosedSections();
+  const { closed, opened, toggle } = useClosedSections();
   const items = NAV.filter((i) => i.roles.includes(role));
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
 
@@ -84,7 +88,7 @@ export function AppSidebar() {
                 </button>
               </SidebarGroupLabel>
               {open && (
-                <SidebarGroupContent id={id} className="af-fade">
+                <SidebarGroupContent id={id} className={cn(opened === section.id && 'af-fade')}>
                   <SidebarMenu>
                     {list.map((item) => (
                       <SidebarMenuItem key={item.href}>
