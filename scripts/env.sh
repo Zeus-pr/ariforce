@@ -11,9 +11,9 @@ export PNPM_HOME="$SSD/.tools/pnpm-home"
 export PNPM_STORE_DIR="$C/pnpm-store"
 export COREPACK_HOME="$C/corepack"
 export XDG_CACHE_HOME="$C/xdg-cache"
+# XDG_CONFIG_HOME is intentionally NOT moved: gh/git keep their auth config there.
 export XDG_DATA_HOME="$C/xdg-data"
 export XDG_STATE_HOME="$C/xdg-state"
-export XDG_CONFIG_HOME="$C/xdg-config"
 export TURBO_CACHE_DIR="$C/turbo"
 export TURBO_TELEMETRY_DISABLED=1
 export DO_NOT_TRACK=1
@@ -25,6 +25,5 @@ export PLAYWRIGHT_BROWSERS_PATH="$C/ms-playwright"
 export CYPRESS_CACHE_FOLDER="$C/cypress"
 export PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
 export TMPDIR="$C/tmp/"
-mkdir -p "$npm_config_cache" "$PNPM_STORE_DIR" "$PNPM_HOME" "$npm_config_prefix" "$COREPACK_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CONFIG_HOME" "$TURBO_CACHE_DIR" "$TMPDIR"
 export PATH="$PNPM_HOME:$npm_config_prefix/bin:$PATH"
 # Docker (if ever installed) must keep its data root on the SSD too; out of scope here.
