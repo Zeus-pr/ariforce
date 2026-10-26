@@ -49,8 +49,12 @@ export function TeamView() {
   const reduced = useReducedMotion();
   const [tree, setTree] = useState<Territory[] | null>(null);
   const [home, setHome] = useState<string | null>(null);
-  const [scope, setScope] = useState<KpiReport | null>(null);
-  const [rows, setRows] = useState<Row[] | null>(null);
+  // Results are keyed by the view they belong to, so a drill never shows the previous level's rows.
+  const [loaded, setLoaded] = useState<{
+    key: string;
+    scope: KpiReport | null;
+    rows: Row[];
+  } | null>(null);
 
   const userId = params.get('u');
   const t = params.get('t') ?? home;
@@ -83,6 +87,9 @@ export function TeamView() {
     }
     return out;
   }, [node, byId, home]);
+  const viewKey = `${month}|${t}|${userId}|${leaf}`;
+  const scope = loaded?.key === viewKey ? loaded.scope : null;
+  const rows = loaded?.key === viewKey ? loaded.rows : null;
   const person = userId ? rows?.find((r) => r.userId === userId) : undefined;
 
   useEffect(() => {
@@ -99,12 +106,15 @@ export function TeamView() {
           ? await kpis({ month, rollup: 'byUser', territoryId: t, kpis: COLS.join(',') })
           : await kpis({ month, rollup: 'byTerritory', territoryId: t, kpis: COLS.join(',') });
       if (!live) return;
-      setScope(
-        head && !userId ? { ...head, rows: head.rows.filter((r) => r.territoryId === t) } : head,
-      );
-      setRows(
-        leaf || userId ? (list?.rows ?? []) : (list?.rows ?? []).filter((r) => r.territoryId !== t),
-      );
+      setLoaded({
+        key: `${month}|${t}|${userId}|${leaf}`,
+        scope:
+          head && !userId ? { ...head, rows: head.rows.filter((r) => r.territoryId === t) } : head,
+        rows:
+          leaf || userId
+            ? (list?.rows ?? [])
+            : (list?.rows ?? []).filter((r) => r.territoryId !== t),
+      });
     })();
     return () => {
       live = false;
