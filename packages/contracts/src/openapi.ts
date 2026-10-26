@@ -39,6 +39,7 @@ import {
 } from './schemas/field';
 import { Me, SessionInfo, SignInEmailBody } from './schemas/auth';
 import { RoleList } from './schemas/roles';
+import { KpiQuery, KpiReport, ProductKpiReport } from './schemas/kpis';
 import { Territory, TerritoryListQuery } from './schemas/territories';
 import {
   Chemist,
@@ -425,6 +426,25 @@ export function buildOpenApiDocument(): OpenApiDocument {
             '412': err('Consent missing (DPDP)'),
             '422': err('Validation failed, out of fence or mock location when blocked'),
           },
+        }),
+      },
+      '/v1/kpis': {
+        get: op({
+          tags: ['KPIs'],
+          operationId: 'getKpis',
+          summary:
+            'KPI report (docs/kpi-definitions.md). Requires reports:read; scoped to the reporting line',
+          requestParams: { query: KpiQuery },
+          responses: { '200': { description: 'OK', ...json(KpiReport) } },
+        }),
+      },
+      '/v1/kpis/products': {
+        get: op({
+          tags: ['KPIs'],
+          operationId: 'getProductKpis',
+          summary: 'Product-wise detailing, samples and POB',
+          requestParams: { query: KpiQuery },
+          responses: { '200': { description: 'OK', ...json(ProductKpiReport) } },
         }),
       },
       '/v1/attendance': {

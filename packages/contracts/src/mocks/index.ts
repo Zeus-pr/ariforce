@@ -19,6 +19,7 @@ import {
   Territory,
 } from '../index';
 import * as fx from './fixtures';
+import { kpiReport, productKpiReport } from './kpis';
 import {
   Approval,
   ApprovalDecision,
@@ -669,6 +670,14 @@ function fieldHandlers(baseUrl: string) {
           decisionComment: a.comment,
         });
       return HttpResponse.json(Approval.parse(a));
+    }),
+    http.get(`${baseUrl}/v1/kpis`, ({ request }) => {
+      const r = kpiReport(new URL(request.url));
+      return 'error' in r ? validation(r.error) : HttpResponse.json(r);
+    }),
+    http.get(`${baseUrl}/v1/kpis/products`, ({ request }) => {
+      const r = productKpiReport(new URL(request.url));
+      return 'error' in r ? validation(r.error) : HttpResponse.json(r);
     }),
   ];
 }
