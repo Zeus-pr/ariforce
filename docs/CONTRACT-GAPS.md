@@ -14,4 +14,7 @@ Against the contracts on `feat/roles-hierarchy` (merged locally into the web bra
 3. **KPI endpoints** for the dashboard (still mock data in the web).
 4. **Attendance is caller-only in the mock.** `GET /v1/attendance` builds days only from the caller's own check-ins and labels every day with `me.name` ("Demo Director" even when signed in as a BM). For the approver team view we need: mock users per role (so `userId`/`userName` match the signed-in mock user), team rows for `userId`/`territoryId` filters, and absent/leave rows for people with no check-ins. Also no `GET /v1/users` (team list) to pick a person.
 5. **Check-in identity.** The mock attributes check-ins to `fx.me` (director) regardless of the session; the web has no way to send the mock user. Needs auth-backed mock or an `x-mock-user` header.
-6. Specialties and categories are read-only (no create in Masters by design).
+6. **Tour plan copy is a stub.** `POST /v1/tour-plans/{month}/copy` returns an empty plan whatever `fromMonth`/`fromStp` say, and there is no endpoint to read or edit the STP (standard plan) itself.
+7. **"Every date needs an entry" is client-only.** `/submit` accepts a plan with missing dates; the rule should live on the server (422 with the missing dates).
+8. **Approvals are not scoped.** The mock returns every pending approval to any caller and lets the requester approve their own plan; `mine=to_decide` is not applied.
+9. Specialties and categories are read-only (no create in Masters by design).

@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { NAV } from '@/lib/nav';
 
 export function generateStaticParams() {
-  return NAV.filter((n) => n.slug && !['masters', 'attendance'].includes(n.slug)).map((n) => ({
+  return NAV.filter((n) => n.slug && !['masters', 'attendance', 'tour-plans'].includes(n.slug)).map((n) => ({
     section: n.slug,
   }));
 }
