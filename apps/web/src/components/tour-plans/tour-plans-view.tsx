@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '@ariforce/ui/components/dialog';
 import { Label } from '@ariforce/ui/components/label';
+import { EmptyOptions } from '@/components/forms/empty-options';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ariforce/ui/components/select';
 import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
@@ -302,6 +303,7 @@ function DayEditor({
             <Select value={wt} onValueChange={setWt}>
               <SelectTrigger id="tp-wt" className="w-full" data-testid="tp-wt"><SelectValue placeholder="Choose" /></SelectTrigger>
               <SelectContent>
+                {workTypes.length === 0 && <EmptyOptions>No work types set up yet. An admin can add them in Masters.</EmptyOptions>}
                 {workTypes.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -312,6 +314,7 @@ function DayEditor({
               <Select value={terr} onValueChange={setTerr}>
                 <SelectTrigger id="tp-terr" className="w-full" data-testid="tp-terr"><SelectValue placeholder="Choose" /></SelectTrigger>
                 <SelectContent>
+                  {leaves.length === 0 && <EmptyOptions>No territories assigned to you yet.</EmptyOptions>}
                   {leaves.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -354,7 +357,7 @@ function ApprovalsPanel({ onDecided }: { onDecided: () => void }) {
 
   const load = useCallback(async () => {
     await apiReady();
-    const r = await api.GET('/v1/approvals', { params: { query: { subjectType: 'tour_plan', status: 'pending', limit: 50 } } });
+    const r = await api.GET('/v1/approvals', { params: { query: { subjectType: 'tour_plan', status: 'pending', mine: 'to_decide', limit: 50 } } });
     setItems(r.data?.items ?? []);
   }, []);
   useEffect(() => {

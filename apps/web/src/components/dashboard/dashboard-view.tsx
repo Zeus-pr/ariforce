@@ -325,7 +325,7 @@ function Approvals({ className }: { className?: string }) {
   const [comment, setComment] = useState('');
   const load = useCallback(async () => {
     await apiReady();
-    const r = await api.GET('/v1/approvals', { params: { query: { status: 'pending', limit: 50 } } });
+    const r = await api.GET('/v1/approvals', { params: { query: { status: 'pending', mine: 'to_decide', limit: 50 } } });
     setItems(r.data?.items ?? []);
   }, []);
   useEffect(() => {

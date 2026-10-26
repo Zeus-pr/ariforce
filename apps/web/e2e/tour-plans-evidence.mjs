@@ -69,13 +69,19 @@ for (const view of ['desktop', 'mobile']) {
   check(true, `${view}: submitted (POST /submit)`);
   check(await page.getByTestId('tp-day').first().isDisabled(), `${view}: submitted plan is read-only`);
   const ym = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).format(new Date());
-  const mine = page.getByTestId('tp-approval').filter({ hasText: `Tour plan ${ym}` });
-  await mine.waitFor({ timeout: 10000 });
-  check(true, `${view}: approver sees the pending approval (GET /v1/approvals)`);
+  // Approvals: the mock (like the API) forbids deciding your own request, so the author never sees their
+  // own plan in the queue; approve another user's plan (seeded BM plan) instead.
+  await page.getByTestId('tp-approvals').waitFor({ timeout: 10000 });
+  check((await page.getByTestId('tp-approval').filter({ hasText: `Tour plan ${ym}` }).filter({ hasNotText: 'Business Manager' }).count()) === 0, `${view}: own plan is not in my approval queue (no self-approval)`);
+  const other = page.getByTestId('tp-approval').filter({ hasText: 'Business Manager' }).first();
+  await other.waitFor({ timeout: 10000 });
+  check(true, `${view}: approver sees another user's pending plan (GET /v1/approvals)`);
   await page.screenshot({ path: path.join(OUT, `approval-${view}.png`), fullPage: true });
-  await mine.getByTestId('tp-approve').click();
-  await page.waitForFunction(() => document.querySelector('[data-testid=tp-status]')?.textContent === 'Approved', null, { timeout: 10000 });
-  check(true, `${view}: approved via POST /v1/approvals/{id}/decision`);
+  const before = await page.getByTestId('tp-approval').count();
+  await other.getByTestId('tp-approve').click();
+  await page.waitForFunction((n) => document.querySelectorAll('[data-testid=tp-approval]').length < n, before, { timeout: 10000 });
+  check(true, `${view}: approved another user's plan via POST /v1/approvals/{id}/decision`);
+  check((await page.getByTestId('tp-status').textContent()) === 'Waiting for approval', `${view}: own plan still waits for a different approver`);
   if (view === 'mobile') {
     const w = await page.evaluate(() => document.documentElement.scrollWidth);
     check(w <= 390, `mobile: no horizontal page scroll (${w}px)`);
@@ -84,7 +90,7 @@ for (const view of ['desktop', 'mobile']) {
 
   await page.evaluate((s) => localStorage.setItem('af:mock-session', s), session({ userId: 'mock-bm', role: 'business_manager' }));
   await page.reload({ waitUntil: 'networkidle' });
-  await page.getByTestId('tp-empty').waitFor();
+  await page.getByTestId('tp-month').waitFor();
   check((await page.getByTestId('tp-approvals').count()) === 0, `${view}: BM has no approvals panel`);
   await ctx.close();
 }

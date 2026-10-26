@@ -51,7 +51,12 @@ function useClosedSections() {
 export function AppSidebar() {
   const { role } = useRole();
   const pathname = usePathname();
-  const { state, isMobile } = useSidebar();
+  const { state, isMobile, setOpenMobile } = useSidebar();
+  // The mobile sidebar is a modal sheet: close it once a link navigates, or it keeps covering the page and
+  // swallows taps (dropdowns and buttons underneath seemed to "do nothing").
+  useEffect(() => {
+    setOpenMobile(false);
+  }, [pathname, setOpenMobile]);
   const iconOnly = state === 'collapsed' && !isMobile;
   const { closed, opened, toggle } = useClosedSections();
   const items = NAV.filter((i) => i.roles.includes(role));

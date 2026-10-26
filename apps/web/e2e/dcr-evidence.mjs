@@ -42,33 +42,33 @@ for (const view of ['desktop', 'mobile']) {
   page.on('pageerror', (e) => errors.push(`${view}: ${e.message}`));
 
   if (view === 'desktop') {
-    // Approved tour plan first (same page, so the in-browser mock keeps its state), then client-side nav to /dcr.
+    // Submit a tour plan, then check it cannot be self-approved (the mock enforces "not your own request").
+    // TP prefill into the DCR needs an approved plan from a different approver; that is covered by
+    // e2e/dropdowns-real-evidence.mjs with a stubbed approved plan.
     await page.goto(`${BASE}/tour-plans`, { waitUntil: 'networkidle' });
-    await page.getByTestId('tp-start').click();
+    const start = page.getByTestId('tp-start');
+    await Promise.race([start.waitFor({ timeout: 15000 }), page.getByTestId('tp-calendar').waitFor({ timeout: 15000 })]);
+    if (await start.count()) await start.click();
     await page.locator(`[data-testid=tp-day][data-date="${today}"]`).click();
     await pick(page, 'tp-wt', 'Field work');
     await pick(page, 'tp-terr');
     await page.getByTestId('tp-save').click();
     await page.getByTestId('tp-editor').waitFor({ state: 'hidden' });
-    await page.getByTestId('tp-fill').click();
-    await pick(page, 'tp-wt', 'Meeting');
-    await page.getByTestId('tp-save').click();
-    await page.getByTestId('tp-editor').waitFor({ state: 'hidden' });
+    if (await page.getByTestId('tp-fill').count()) {
+      await page.getByTestId('tp-fill').click();
+      await pick(page, 'tp-wt', 'Meeting');
+      await page.getByTestId('tp-save').click();
+      await page.getByTestId('tp-editor').waitFor({ state: 'hidden' });
+    }
     await page.getByTestId('tp-submit').click();
-    const mine = page.getByTestId('tp-approval').filter({ hasText: `Tour plan ${today.slice(0, 7)}` });
-    await mine.getByTestId('tp-approve').click();
-    await page.waitForFunction(() => document.querySelector('[data-testid=tp-status]')?.textContent === 'Approved');
+    await page.waitForFunction(() => document.querySelector('[data-testid=tp-status]')?.textContent === 'Waiting for approval', null, { timeout: 10000 });
+    check((await page.getByTestId('tp-approval').filter({ hasText: `Tour plan ${today.slice(0, 7)}` }).filter({ hasNotText: 'Business Manager' }).count()) === 0, `${view}: own tour plan cannot be self-approved`);
     await page.locator('a[href="/dcr"]').first().click();
     await page.waitForURL(/\/dcr$/);
-    await page.getByTestId('dcr-planned').waitFor({ timeout: 10000 });
-    check(/Field work/.test(await page.getByTestId('dcr-planned').textContent()), `${view}: prefilled from the approved tour plan`);
-    check(/Field work/.test(await page.getByTestId('dcr-wt').textContent()), `${view}: work type prefilled`);
-    await pick(page, 'dcr-wt', 'Meeting');
-    await page.getByTestId('dcr-reason').waitFor();
-    check(await page.getByTestId('dcr-submit').isDisabled(), `${view}: deviation from TP needs a reason`);
-    await page.screenshot({ path: path.join(OUT, `deviation-${view}.png`), fullPage: true });
+    await page.getByTestId('dcr-wt').waitFor({ timeout: 15000 });
+    check((await page.getByTestId('dcr-planned').count()) === 0, `${view}: plan not approved yet, nothing prefilled`);
     await pick(page, 'dcr-wt', 'Field work');
-    check((await page.getByTestId('dcr-reason').count()) === 0, `${view}: back on plan, no reason needed`);
+    await pick(page, 'dcr-terr');
   } else {
     await page.goto(`${BASE}/dcr`, { waitUntil: 'networkidle' });
     await page.getByText('Not started').waitFor({ timeout: 15000 });
