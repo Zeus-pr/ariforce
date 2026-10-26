@@ -14,9 +14,9 @@ const check = (c, m) => {
   if (!c) ok = false;
 };
 // Update as pages ship.
-const MANAGER_NAV = ['Dashboard', 'Attendance', 'DCR', 'Tour Plans', 'Doctors', 'Sales', 'Coverage', 'Team Performance', 'Reports', 'Exceptions'];
-const MANAGER_SECTIONS = ['workspace', 'field', 'business', 'performance', 'intelligence'];
-const MANAGER_ONLY = ['Team Performance'];
+const MANAGER_NAV = ['Dashboard', 'Attendance', 'DCR', 'Tour Plans', 'Doctors', 'Sales', 'Coverage', 'Team Performance', 'Reports', 'Exceptions', 'My Team'];
+const MANAGER_SECTIONS = ['workspace', 'field', 'business', 'performance', 'intelligence', 'admin'];
+const MANAGER_ONLY = ['Team Performance', 'My Team'];
 const GATED = '/team';
 const navLabels = (page) =>
   page.$$eval('[data-sidebar="menu-button"]', (els) => els.map((e) => e.textContent.trim()).filter(Boolean));

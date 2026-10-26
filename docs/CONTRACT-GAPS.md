@@ -30,3 +30,15 @@ Against the contracts on `feat/roles-hierarchy` (merged locally into the web bra
 18. **Doctor 360 (#34).** No `GET /v1/doctors/{id}` (the page reads the list and picks by id; fails past 200 doctors) and no per-doctor visit history: visits are rebuilt from the caller's `/v1/dcrs` calls (`outletKind=doctor`) plus visit `/v1/check-ins`, last 90 days, so a manager can't see a doctor's visits by their team. A `GET /v1/doctors/{id}/activity` (visits, detailing, samples, POB, by any rep) would close this. The monthly sample cap per doctor has no contract; the page uses a placeholder of 10, labelled "to confirm with Arighna". When no calls are recorded the visit history is generated sample data, labelled "Sample visit history".
 19. **Coverage and Sales/Targets (#49).** `/coverage` and `/sales` use `/v1/kpis` (headline rollup, `byUser` for managers, `byTerritory` under the top territory for the Director, six monthly calls for the trend; a `from/to` series rollup would make that one call). Gaps: (a) sales KPIs carry no target amount (`target` is 100 on achievement %, null on values), so target amounts are implied as value × 100 ÷ achievement %; (b) no product/brand grain for sales, so "By brand" is labelled sample data; (c) no coverage by doctor category, so that breakdown is labelled sample data; (d) the mock returns the same numbers every month.
 20. **Reports pack (#55).** `/reports` (field activity, doctor coverage, sales and targets, product detailing) is built from `/v1/kpis` and `/v1/kpis/products`, exported client-side to .xlsx/PDF for the current month and scope. No server report/export endpoint (scheduled or emailed reports, date ranges beyond a month, custom columns) and no audit of who exported what.
+
+## 21. My Team: org tree and employee management (local adapter)
+
+The Architect branches (feat/api-1…6, roles-dh-accountant) have `GET /v1/users`, `Me.managerId` and `employeeCode`, but no tree or create endpoints. The page runs on a typed, clearly labelled local adapter (`src/lib/team-adapter/`, in-memory sample org of West Bengal HQs, fake phones/emails) that is the only file to swap. Needed:
+
+- `GET /v1/org/tree` – caller's subtree: id, name, role, employeeCode, phone, email, hqId, managerId, active.
+- `GET /v1/org/unassigned?cursor=` – people with no reporting manager, visible to the caller.
+- `GET /v1/hqs` – HQs (id, name, city, state) within the caller's subtree.
+- `POST /v1/employees` – name, phone, email, role, hqId, managerId. Server must enforce: role strictly below the caller; HQ and manager inside the caller's subtree; manager senior to the role; unique email.
+- `PATCH /v1/employees/{id}` – edit, move (managerId/hqId), deactivate/reactivate (`active`). Server must reject cycles and self-edits.
+
+No payroll fields (PAN, bank, CTC, salary) in any of these, by owner decision.
