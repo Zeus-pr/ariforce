@@ -1,2 +1,16 @@
 @import '@ariforce/ui/globals.css';
 @source '../../../../packages/ui/src';
+
+/* ---- Splash (#2): state is decided before first paint by the inline script in layout.tsx ---- */
+.af-splash-overlay {
+  display: none;
+}
+html.af-splash .af-splash-overlay {
+  display: block;
+}
+html.af-splash .af-page {
+  opacity: 0;
+}
+html.af-splash [data-af-header-logo] {
+  opacity: 0;
+}

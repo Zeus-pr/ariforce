@@ -1,0 +1,143 @@
+/*
+ * AriForce design tokens. The ONLY file where raw colour values live.
+ * Brand colours are PROVISIONAL (sampled from brand/ariforce-logo.png); change
+ * --brand-navy / --brand-teal here and every scale, semantic token and component follows.
+ */
+:root {
+  /* ---- Brand (provisional) ---- */
+  --brand-navy: #0b1f4d;
+  --brand-teal: #00a9c4;
+
+  /* Derived scales: mixed in OKLCH so they stay one-file changes */
+  --brand-50: color-mix(in oklch, var(--brand-navy) 5%, white);
+  --brand-100: color-mix(in oklch, var(--brand-navy) 10%, white);
+  --brand-200: color-mix(in oklch, var(--brand-navy) 22%, white);
+  --brand-300: color-mix(in oklch, var(--brand-navy) 38%, white);
+  --brand-400: color-mix(in oklch, var(--brand-navy) 58%, white);
+  --brand-500: color-mix(in oklch, var(--brand-navy) 80%, white);
+  --brand-600: var(--brand-navy);
+  --brand-700: color-mix(in oklch, var(--brand-navy) 85%, black);
+  --brand-800: color-mix(in oklch, var(--brand-navy) 70%, black);
+  --brand-900: color-mix(in oklch, var(--brand-navy) 55%, black);
+
+  --accent-50: color-mix(in oklch, var(--brand-teal) 7%, white);
+  --accent-100: color-mix(in oklch, var(--brand-teal) 14%, white);
+  --accent-200: color-mix(in oklch, var(--brand-teal) 28%, white);
+  --accent-300: color-mix(in oklch, var(--brand-teal) 48%, white);
+  --accent-400: color-mix(in oklch, var(--brand-teal) 72%, white);
+  --accent-500: var(--brand-teal);
+  --accent-600: color-mix(in oklch, var(--brand-teal) 82%, black);
+  --accent-700: color-mix(in oklch, var(--brand-teal) 66%, black);
+
+  /* ---- Neutrals (cool-leaning gray, tuned to the navy) ---- */
+  --neutral-0: oklch(1 0 0);
+  --neutral-25: oklch(0.99 0.002 260);
+  --neutral-50: oklch(0.982 0.003 260);
+  --neutral-100: oklch(0.965 0.004 260);
+  --neutral-200: oklch(0.925 0.006 260);
+  --neutral-300: oklch(0.87 0.008 260);
+  --neutral-400: oklch(0.71 0.012 260);
+  --neutral-500: oklch(0.56 0.014 260);
+  --neutral-600: oklch(0.45 0.014 260);
+  --neutral-700: oklch(0.37 0.014 260);
+  --neutral-800: oklch(0.27 0.014 260);
+  --neutral-900: oklch(0.2 0.014 260);
+  --neutral-950: oklch(0.15 0.012 260);
+
+  /* ---- Status ---- */
+  --success: oklch(0.6 0.13 155);
+  --success-soft: oklch(0.96 0.03 155);
+  --warning: oklch(0.7 0.14 70);
+  --warning-soft: oklch(0.97 0.04 85);
+  --danger: oklch(0.58 0.2 27);
+  --danger-soft: oklch(0.96 0.025 27);
+  --info: var(--accent-600);
+  --info-soft: var(--accent-50);
+
+  /* ---- shadcn semantic tokens ---- */
+  --background: var(--neutral-50);
+  --foreground: var(--neutral-900);
+  --card: var(--neutral-0);
+  --card-foreground: var(--neutral-900);
+  --popover: var(--neutral-0);
+  --popover-foreground: var(--neutral-900);
+  --primary: var(--brand-600);
+  --primary-foreground: var(--neutral-0);
+  --secondary: var(--neutral-100);
+  --secondary-foreground: var(--neutral-900);
+  --muted: var(--neutral-100);
+  --muted-foreground: var(--neutral-500);
+  --accent: var(--neutral-100);
+  --accent-foreground: var(--neutral-900);
+  --destructive: var(--danger);
+  --border: var(--neutral-200);
+  --input: var(--neutral-200);
+  --ring: var(--accent-500);
+  --chart-1: var(--brand-600);
+  --chart-2: var(--accent-500);
+  --chart-3: var(--brand-300);
+  --chart-4: var(--accent-300);
+  --chart-5: var(--neutral-400);
+
+  --sidebar: var(--neutral-25);
+  --sidebar-foreground: var(--neutral-700);
+  --sidebar-primary: var(--brand-600);
+  --sidebar-primary-foreground: var(--neutral-0);
+  --sidebar-accent: var(--neutral-100);
+  --sidebar-accent-foreground: var(--neutral-900);
+  --sidebar-border: var(--neutral-200);
+  --sidebar-ring: var(--accent-500);
+
+  /* ---- Shape ---- */
+  --radius: 0.625rem; /* 10px; sm 6, md 8, lg 10, xl 14 */
+
+  /* ---- Elevation: diffuse, low-opacity ---- */
+  --shadow-xs: 0 1px 2px oklch(0.2 0.02 260 / 0.04);
+  --shadow-sm: 0 1px 3px oklch(0.2 0.02 260 / 0.05), 0 1px 2px oklch(0.2 0.02 260 / 0.03);
+  --shadow-md: 0 4px 12px -2px oklch(0.2 0.02 260 / 0.06), 0 2px 4px oklch(0.2 0.02 260 / 0.03);
+  --shadow-lg: 0 12px 32px -8px oklch(0.2 0.02 260 / 0.1), 0 4px 8px oklch(0.2 0.02 260 / 0.04);
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-instant: 100ms;
+  --duration-fast: 160ms;
+  --duration-base: 220ms;
+  --duration-slow: 320ms;
+  --duration-splash: 850ms;
+}
+
+.dark {
+  --background: var(--neutral-950);
+  --foreground: var(--neutral-50);
+  --card: var(--neutral-900);
+  --card-foreground: var(--neutral-50);
+  --popover: var(--neutral-900);
+  --popover-foreground: var(--neutral-50);
+  --primary: var(--accent-400);
+  --primary-foreground: var(--neutral-950);
+  --secondary: var(--neutral-800);
+  --secondary-foreground: var(--neutral-50);
+  --muted: var(--neutral-800);
+  --muted-foreground: var(--neutral-400);
+  --accent: var(--neutral-800);
+  --accent-foreground: var(--neutral-50);
+  --border: oklch(1 0 0 / 0.1);
+  --input: oklch(1 0 0 / 0.14);
+  --sidebar: var(--neutral-900);
+  --sidebar-foreground: var(--neutral-300);
+  --sidebar-primary: var(--accent-400);
+  --sidebar-primary-foreground: var(--neutral-950);
+  --sidebar-accent: var(--neutral-800);
+  --sidebar-accent-foreground: var(--neutral-50);
+  --sidebar-border: oklch(1 0 0 / 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+}

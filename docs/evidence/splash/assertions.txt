@@ -1,0 +1,15 @@
+PASS desktop: CLS = 0
+PASS desktop: animated props = [transform,opacity]
+PASS desktop: session flag set, splash class removed
+PASS desktop: second visit shows no splash
+PASS desktop: splash logo end box {"x":24,"y":12,"w":36,"h":32} vs header {"x":24,"y":12,"w":36,"h":32} (max diff 0.000px)
+PASS mobile: CLS = 0
+PASS mobile: animated props = [transform,opacity]
+PASS mobile: session flag set, splash class removed
+PASS mobile: second visit shows no splash
+PASS mobile: splash logo end box {"x":16,"y":12,"w":36,"h":32} vs header {"x":16,"y":12,"w":36,"h":32} (max diff 0.000px)
+PASS reduced-motion: CLS = 0
+PASS reduced-motion: animated props = [opacity]
+PASS reduced-motion: session flag set, splash class removed
+PASS reduced-motion: second visit shows no splash
+PASS reduced-motion: no transform animation

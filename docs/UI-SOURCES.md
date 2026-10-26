@@ -1,9 +1,17 @@
 # UI sources and licenses
 
-Every third-party component/snippet used in `apps/web` or `packages/ui` must be listed here.
+Every third-party font, component or snippet used in `apps/web` or `packages/ui` is listed here. Licences were checked on the date shown.
 
-| Component | Source                            | License | Where used                              | Notes    |
-| --------- | --------------------------------- | ------- | --------------------------------------- | -------- |
-| Button    | shadcn/ui (https://ui.shadcn.com) | MIT     | `packages/ui/src/components/button.tsx` | scaffold |
+| Item | Source | License | Where used | Date | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Button, Input, Card, Badge, Table, Dialog, DropdownMenu, Sheet, Sidebar, Tabs, Tooltip, Skeleton, Sonner, Separator, Avatar, `use-mobile` hook | shadcn/ui, https://ui.shadcn.com (repo https://github.com/shadcn-ui/ui) | MIT | `packages/ui/src/components/*`, `packages/ui/src/hooks/use-mobile.ts` | 2026-10-26 | Added with `shadcn add` (new-york style). Fixed the CLI's `cn` import alias to `@ariforce/ui/lib/utils`. |
+| Sidebar under sticky header layout | shadcn/ui block `sidebar-16`, https://ui.shadcn.com/blocks/sidebar | MIT | `apps/web/src/components/shell/*` | 2026-10-26 | Pattern only: `--header-height` offset on the Sidebar. |
+| Number Ticker | Magic UI, https://magicui.design/docs/components/number-ticker, LICENSE https://github.com/magicuidesign/magicui/blob/main/LICENSE.md | MIT | `packages/ui/src/components/number-ticker.tsx` | 2026-10-26 | Rewritten without `motion` (rAF + ease-out), en-IN format, SSR renders the final value, reduced-motion safe. |
+| Dot Pattern | Magic UI, https://magicui.design/docs/components/dot-pattern | MIT | `packages/ui/src/components/dot-pattern.tsx` | 2026-10-26 | Single SVG `<pattern>` instead of one circle per dot; no `motion`, no glow. |
+| Animated Circular Progress Bar | Magic UI, https://magicui.design/docs/components/animated-circular-progress-bar | MIT | `packages/ui/src/components/circular-progress.tsx` | 2026-10-26 | Token colours, compact sizes, `role="progressbar"`. |
+| Icons | Lucide, https://lucide.dev | ISC | shadcn components and shell | 2026-10-26 | shadcn's default icon set (scaffold `components.json`). |
+| Google Sans (variable, normal axis) | Owner-supplied files, `/Volumes/Prajesh_ext_512/Google_Sans` | SIL OFL 1.1 (`apps/web/public/fonts/OFL.txt`) | `apps/web/src/app/fonts.ts` | 2026-10-26 | Italic not shipped (unused). |
+| AriForce logo | `brand/ariforce-logo.png`, cropped to `apps/web/public/brand/ariforce-mark.png`; icons generated from it | Owner's brand asset | Splash, header, favicon | 2026-10-26 | |
+| Splash animation | Written for this repo (FLIP + Web Animations API) | Original | `apps/web/src/components/splash/` | 2026-10-26 | CUTLY's splash (`CUTLY/components/SplashWordmark.tsx`, `PatternWavesSplash.tsx`) was reviewed but is React Native/Expo, so it wasn't reused. |
 
-Collections to consider (verify each snippet's license before use): shadcn/ui (MIT), Magic UI (MIT), Aceternity UI (free tier, check terms), React Bits (MIT + Commons Clause, check), 21st.dev (per-component), Forge UI, UI Lora.
+Not used yet: React Bits is MIT + Commons Clause (fine to use in the app, but the components can't be resold as a product), so check each piece before borrowing. Aceternity UI's free tier and 21st.dev are licensed per component, so check each one.
