@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { T } from '@ariforce/db';
+import { T, U } from '@ariforce/db';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 
@@ -18,6 +18,8 @@ const id7 = () => {
   return `${h.slice(0, 8)}-${h.slice(8)}-7${r.slice(13, 16)}-8${r.slice(17, 20)}-${r.slice(20, 32)}`;
 };
 const HOME = { lat: 22.57, lng: 88.36 };
+const RUN = Date.now().toString(36);
+const BM_NAME = `Field BM ${RUN}`;
 
 // Integration against the throwaway SSD Postgres (scripts/test-db.sh). Skipped without a DB.
 describe.skipIf(!OWNER || !APP)(
@@ -45,15 +47,42 @@ describe.skipIf(!OWNER || !APP)(
           .post('/v1/auth/sign-in/email')
           .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
         expect(res.status).toBe(200);
-        tok[who] = `Bearer ${res.headers['set-auth-token']}`;
+        tok[who === 'bm' ? 'seedbm' : who] = `Bearer ${res.headers['set-auth-token']}`;
       }
+      // Devices, consents and check-ins are append-only and "today"-scoped, so the seed BM keeps
+      // state across runs on the same DB. Use a brand-new BM (under the seed ABM) for every run.
+      const prevSlug = process.env.SIGNUP_COMPANY_SLUG;
+      process.env.SIGNUP_COMPANY_SLUG = 'demo';
+      const email = `field.${RUN}@example.test`;
+      const pw = `field-${RUN}-pass`;
+      const req = await http().post('/v1/auth/sign-up-request').send({
+        name: BM_NAME,
+        email,
+        password: pw,
+        requestedRole: 'business_manager',
+        territoryId: T.hq,
+        managerId: U.area,
+      });
+      if (prevSlug === undefined) delete process.env.SIGNUP_COMPANY_SLUG;
+      else process.env.SIGNUP_COMPANY_SLUG = prevSlug;
+      expect(req.status, JSON.stringify(req.body)).toBe(202);
+      const list = await http().get('/v1/signup-requests').set(as('abm'));
+      const sr = list.body.items.find((x: { email: string }) => x.email === email);
+      const ok = await http()
+        .post(`/v1/signup-requests/${sr.id}/approve`)
+        .set(as('abm'))
+        .send({ role: 'business_manager', territoryIds: [T.hq], managerId: U.area });
+      expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+      const si = await http().post('/v1/auth/sign-in/email').send({ email, password: pw });
+      expect(si.status).toBe(200);
+      tok.bm = `Bearer ${si.headers['set-auth-token']}`;
     });
     afterAll(async () => {
       await app?.close();
     });
 
     it('GET /v1/users is scoped to the reporting line (gap #3)', async () => {
-      const bm = await http().get('/v1/users').set(as('bm'));
+      const bm = await http().get('/v1/users').set(as('seedbm'));
       expect(bm.status, JSON.stringify(bm.body)).toBe(200);
       expect(bm.body.items.map((u: { email: string }) => u.email)).toEqual(['bm@demo.ariforce.in']);
       const abm = await http().get('/v1/users?includeTotal=true').set(as('abm'));
@@ -211,7 +240,7 @@ describe.skipIf(!OWNER || !APP)(
       const r = await http().get('/v1/attendance').set(as('abm'));
       expect(r.status, JSON.stringify(r.body)).toBe(200);
       const bm = r.body.items.find(
-        (d: { userName: string; punchIn: unknown }) => d.userName === 'Riya BM' && d.punchIn,
+        (d: { userName: string; punchIn: unknown }) => d.userName === BM_NAME && d.punchIn,
       );
       expect(bm).toMatchObject({ status: 'incomplete', visits: 2 });
       expect(r.body.items.some((d: { status: string }) => d.status === 'absent')).toBe(true);
