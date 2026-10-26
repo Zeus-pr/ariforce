@@ -70,6 +70,22 @@ confirms or adjusts it.
 - **Next.js + Tailwind + shadcn/ui (chosen)**: matches the brief (free UI collections), App Router for portal pages.
 - Vite SPA (React Router): simpler hosting, but loses SSR/route conventions the team already uses in CUTLY.
 
+## Borrowed from CUTLY (read-only reference, `/Volumes/Prajesh_ext_512/CUTLY` and siblings)
+
+| From CUTLY                                                                                                                                                 | Used in AriForce as                                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Money as integer paise (`backend/src/money.ts`, `pricePaise`)                                                                                              | All amounts (TA/DA, samples value, POB) are `*_paise` integers                                    |
+| IST day helpers (`backend/src/ist.ts`)                                                                                                                     | Business days (DCR day, attendance, cycle) computed in `Asia/Kolkata`, stored as UTC              |
+| `toClientError` / `httpError.ts`: stable `code`, no ORM/secret leaks                                                                                       | Global Nest exception filter -> `{ error: { code, message } }` (docs/API-CONVENTIONS.md)          |
+| Zod validation at every route edge                                                                                                                         | zod contracts in `packages/contracts`, reused by API + web                                        |
+| Rate limits: Redis `INCR` with in-memory fallback, `RATE_LIMITED` + `Retry-After`, client IP only from trusted proxy CIDRs (`rateLimit.ts`, `clientIp.ts`) | Same design for login/OTP and write endpoints (Phase 1)                                           |
+| Soft delete with grace + purge job (`accountDeletion.ts`, `accountPurge.ts`)                                                                               | `deleted_at` tombstones + retention purge jobs (DPDP, #36)                                        |
+| Admin surface isolated (loopback listener, strong secret)                                                                                                  | Admin role in RBAC; ops-only endpoints never public                                               |
+| Knowledge docs kept current (ARCHITECTURE.md, RULES.md, MEMORY.md, PRD.md)                                                                                 | `docs/` (ADR, DATA-MODEL, RBAC, API-CONVENTIONS, WEB-LAYOUT) updated in the same PR as the change |
+| Monorepo-adjacent split (app / backend / admin / site)                                                                                                     | `apps/web`, `apps/api`, later `apps/android` on one API                                           |
+
+Not borrowed, with reasons: CUTLY's hand-rolled JWT auth (we use better-auth sessions, revocable, bearer for Android), Prisma (see ORM above), Express without modules (Nest gives guards/DI for RBAC + tenancy), Neon us-east-2 (India residency).
+
 ## Consequences
 
 Good:
