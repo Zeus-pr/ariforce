@@ -17,4 +17,6 @@ Against the contracts on `feat/roles-hierarchy` (merged locally into the web bra
 6. **Tour plan copy is a stub.** `POST /v1/tour-plans/{month}/copy` returns an empty plan whatever `fromMonth`/`fromStp` say, and there is no endpoint to read or edit the STP (standard plan) itself.
 7. **"Every date needs an entry" is client-only.** `/submit` accepts a plan with missing dates; the rule should live on the server (422 with the missing dates).
 8. **Approvals are not scoped.** The mock returns every pending approval to any caller and lets the requester approve their own plan; `mine=to_decide` is not applied.
-9. Specialties and categories are read-only (no create in Masters by design).
+9. **DCR vs tour plan is client-only.** `PUT /v1/dcrs` never sets `tourPlanId` and does not require `deviationReason` when the day differs from the approved plan (#22); the web enforces both. No day-lock cut-off in the mock (#23).
+10. **DCR call ↔ visit check-in.** `DcrCall.checkInId` exists but there is no way to list today's unlinked visit check-ins for a doctor; the web sends `null`. POB lines are not captured in the UI yet.
+11. Specialties and categories are read-only (no create in Masters by design).
