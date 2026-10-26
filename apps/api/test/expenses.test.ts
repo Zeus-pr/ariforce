@@ -126,13 +126,16 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
   it('sniffs magic bytes', () => {
     expect(sniffMatches('application/pdf', pdf(20))).toBe(true);
     expect(sniffMatches('application/pdf', new Uint8Array([0x4d, 0x5a, 0, 0]))).toBe(false);
-    expect(sniffMatches('image/png', new Uint8Array([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10]))).toBe(
-      true,
-    );
+    expect(
+      sniffMatches('image/png', new Uint8Array([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10])),
+    ).toBe(true);
     expect(sniffMatches('text/csv', new TextEncoder().encode('a,b\n1,2\n'))).toBe(true);
     expect(sniffMatches('text/csv', new Uint8Array([0x50, 0x4b, 3, 4, 0]))).toBe(false);
     const heic = new Uint8Array(16);
-    heic.set([...'ftypheic'].map((c) => c.charCodeAt(0)), 4);
+    heic.set(
+      [...'ftypheic'].map((c) => c.charCodeAt(0)),
+      4,
+    );
     expect(sniffMatches('image/heic', heic)).toBe(true);
   });
 
@@ -155,7 +158,7 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
       (await http().post('/v1/expense-claims').set(as('accountant')).send({ month: M })).status,
     ).toBe(403);
 
-    const add = (b: unknown, who = 'bm') =>
+    const add = (b: object, who = 'bm') =>
       http().post(`/v1/expense-claims/${id}/lines`).set(as(who)).send(b);
     let r = await add(line({ dcrId: d3 }));
     expect(r.status, JSON.stringify(r.body)).toBe(201);
@@ -176,7 +179,7 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
     expect(r.status).toBe(422);
     expect(r.body.error.code).toBe('RECEIPT_REQUIRED');
 
-    const attach = (b: unknown) =>
+    const attach = (b: object) =>
       http().post(`/v1/expense-claims/${id}/lines/${hotel.id}/attachments`).set(as('bm')).send(b);
     expect(
       (await attach({ fileName: 'bill.png', contentType: 'application/pdf', sizeBytes: 100 }))
@@ -187,8 +190,13 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
         .status,
     ).toBe(422);
     expect(
-      (await attach({ fileName: 'bill.exe', contentType: 'application/x-msdownload', sizeBytes: 9 }))
-        .status,
+      (
+        await attach({
+          fileName: 'bill.exe',
+          contentType: 'application/x-msdownload',
+          sizeBytes: 9,
+        })
+      ).status,
     ).toBe(422);
     expect(
       (
@@ -200,13 +208,18 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
     ).toBe(422);
 
     // Disguised file: declared PDF, bytes are an executable -> rejected and removed.
-    r = await attach({ fileName: 'Hotel Bill Ravi.pdf', contentType: 'application/pdf', sizeBytes: 4 });
+    r = await attach({
+      fileName: 'Hotel Bill Ravi.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 4,
+    });
     expect(r.status, JSON.stringify(r.body)).toBe(201);
     const bad = r.body.attachment.id as string;
     const badKey = [...decodeURIComponent(r.body.uploadUrl).matchAll(/put\/(.+)$/g)][0]![1]!;
     expect(badKey.startsWith(`${company}/expense_receipt/`)).toBe(true);
     expect(badKey).not.toMatch(/ravi|bill/i);
-    const confirm = (a: string) => http().post(`/v1/expense-attachments/${a}/confirm`).set(as('bm'));
+    const confirm = (a: string) =>
+      http().post(`/v1/expense-attachments/${a}/confirm`).set(as('bm'));
     expect((await confirm(bad)).body.error.code).toBe('UPLOAD_MISSING');
     store.put(badKey, new Uint8Array([0x4d, 0x5a, 0, 0]), 'application/pdf');
     r = await confirm(bad);
@@ -240,7 +253,7 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
     expect((await add(line())).body.error.code).toBe('EXPENSE_NOT_EDITABLE');
     expect((await http().get(`/v1/expense-claims/${id}`).set(as('bm2'))).status).toBe(404);
     expect((await http().get(`/v1/expense-claims/${id}`).set(as('accountant'))).status).toBe(404);
-    const decide = (who: string, b: unknown) =>
+    const decide = (who: string, b: object) =>
       http().post(`/v1/expense-claims/${id}/decision`).set(as(who)).send(b);
     expect((await decide('bm', { decision: 'approve' })).status).toBe(403);
     expect((await decide('bm2', { decision: 'approve' })).status).toBe(403);
@@ -350,7 +363,10 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
   it('reject, edit and resubmit; no self-approval', async () => {
     const c = await http().post('/v1/expense-claims').set(as('bm2')).send({ month: M });
     const id = c.body.id as string;
-    await http().post(`/v1/expense-claims/${id}/lines`).set(as('bm2')).send(line({ amount: 99 }));
+    await http()
+      .post(`/v1/expense-claims/${id}/lines`)
+      .set(as('bm2'))
+      .send(line({ amount: 99 }));
     let r = await http().post(`/v1/expense-claims/${id}/submit`).set(as('bm2'));
     const first = r.body.approvalId as string;
     r = await http()

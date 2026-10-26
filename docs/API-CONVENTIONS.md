@@ -127,3 +127,10 @@ default persona (director). The real API ignores `x-mock-user`.
 | `SIGNUP_DISABLED`          | 503    | the sign-up company slug is not configured                                                                                   |
 
 See docs/SIGNUP.md for the screen states.
+
+## Expense claims and direct uploads
+
+- Receipts never go through the API: create an attachment, `PUT` to the presigned R2 URL with the returned headers, then `confirm` (server checks size, type and magic bytes). Generic `/v1/files` refuses `expense_receipt`.
+- Codes: `EXPENSE_NOT_EDITABLE`, `EXPENSE_EMPTY`, `RECEIPT_REQUIRED`, `TOO_MANY_FILES`, `UPLOAD_MISSING`, `UPLOAD_SIZE_MISMATCH`, `UPLOAD_TYPE_MISMATCH`, `UPLOAD_FORMAT_INVALID`, `UPLOAD_NOT_CONFIRMED`, `VERSION_CONFLICT`; multi-step approvals add `APPROVAL_NOT_YOUR_STEP` and `APPROVAL_ALREADY_DECIDED_BY_YOU`.
+- Exports (`/v1/expense-reports/export?format=xlsx|pdf`) stream a file with `Content-Disposition: attachment`.
+- Full list: docs/EXPENSES.md.
