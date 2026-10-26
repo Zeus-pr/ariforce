@@ -132,6 +132,13 @@
   --sidebar-accent: var(--neutral-800);
   --sidebar-accent-foreground: var(--neutral-50);
   --sidebar-border: oklch(1 0 0 / 0.1);
+  --success-soft: oklch(0.32 0.06 155);
+  --warning-soft: oklch(0.34 0.07 75);
+  --danger-soft: oklch(0.33 0.08 27);
+  --info-soft: color-mix(in oklch, var(--brand-teal) 22%, var(--neutral-900));
+  --success: oklch(0.72 0.14 155);
+  --danger: oklch(0.7 0.17 27);
+  --ring: var(--accent-400);
 }
 
 @media (prefers-reduced-motion: reduce) {

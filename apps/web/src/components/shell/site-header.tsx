@@ -20,6 +20,7 @@ import { SidebarTrigger } from '@ariforce/ui/components/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@ariforce/ui/components/tooltip';
 import { ROLE_LABEL, type Role } from '@/lib/nav';
 import { useRole } from './role-context';
+import { ThemeToggle } from './theme-toggle';
 
 export function SiteHeader() {
   const { role, setRole } = useRole();
@@ -27,15 +28,20 @@ export function SiteHeader() {
     <header className="sticky top-0 z-30 flex h-(--header-height) w-full shrink-0 items-center gap-2 border-b bg-card px-3 sm:px-4">
       {/* The splash logo lands on this exact box ([data-af-header-logo]); keep its size and position stable. */}
       <Link href="/" className="flex items-center gap-2.5 rounded-md pr-1" aria-label="AriForce home">
-        <Image
+        <span className="relative block">
+          {/* Dark mode only: a light plate so the navy mark stays legible. Sits behind the logo and
+              outside its box, so the splash landing target is unchanged. */}
+          <span aria-hidden className="af-page absolute -inset-1 hidden rounded-md bg-white dark:block" />
+          <Image
           src="/brand/ariforce-mark.png"
           alt=""
           width={36}
           height={32}
           priority
           data-af-header-logo
-          className="block h-8 w-9"
-        />
+            className="relative block h-8 w-9"
+          />
+        </span>
         <span className="af-page text-[17px] font-semibold tracking-tight text-primary">AriForce</span>
       </Link>
 
@@ -66,6 +72,8 @@ export function SiteHeader() {
             </TooltipTrigger>
             <TooltipContent>Notifications</TooltipContent>
           </Tooltip>
+
+          <ThemeToggle />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

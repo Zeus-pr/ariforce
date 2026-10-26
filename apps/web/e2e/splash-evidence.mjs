@@ -1,11 +1,13 @@
 // Drives the splash in headless Chromium and writes frames + assertions to docs/evidence/splash.
 // Usage: BASE_URL=http://localhost:3000 node e2e/splash-evidence.mjs
-import { chromium } from "@playwright/test";
+import { chromium, webkit } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
-const OUT = path.resolve(import.meta.dirname, "../../../docs/evidence/splash");
+const BROWSER = process.env.BROWSER ?? "chromium";
+const engine = { chromium, webkit }[BROWSER];
+const OUT = path.resolve(import.meta.dirname, `../../../docs/evidence/splash${BROWSER === "chromium" ? "" : "-" + BROWSER}`);
 fs.mkdirSync(OUT, { recursive: true });
 const SEEK = [0, 150, 300, 500, 850];
 
@@ -30,7 +32,7 @@ const probe = () => {
 };
 
 async function run(name, ctxOpts) {
-  const browser = await chromium.launch();
+  const browser = await engine.launch();
   const ctx = await browser.newContext({ ...ctxOpts, recordVideo: { dir: OUT, size: ctxOpts.viewport } });
   await ctx.addInitScript(probe);
   const page = await ctx.newPage();
@@ -45,6 +47,10 @@ async function run(name, ctxOpts) {
     frames.push(f);
   };
   await shot("hold");
+  const holdState = await page.evaluate(() => ({
+    veil: getComputedStyle(document.querySelector("[data-testid=splash] > div")).backgroundColor,
+    dark: document.documentElement.classList.contains("dark"),
+  }));
   await page.waitForFunction(() => document.getAnimations().length > 0, null, { timeout: 5000 });
   await page.evaluate(() => document.getAnimations().forEach((a) => a.pause()));
   for (const t of SEEK) {
@@ -62,6 +68,8 @@ async function run(name, ctxOpts) {
       header: { x: h.x, y: h.y, w: h.width, h: h.height },
       htmlClass: document.documentElement.className.includes("af-splash"),
       seen: sessionStorage.getItem("af:splash-seen"),
+      darkAfter: document.documentElement.classList.contains("dark"),
+      bodyBg: getComputedStyle(document.body).backgroundColor,
     };
   });
   // Second visit in the same session (tab reload): splash must not show.
@@ -76,17 +84,20 @@ async function run(name, ctxOpts) {
   await ctx.close();
   await browser.close();
   fs.renameSync(video, path.join(OUT, `${name}.webm`));
-  return { name, frames, ...r, second };
+  return { name, frames, ...r, holdState, second };
 }
 
 const results = [];
 results.push(await run("desktop", { viewport: { width: 1280, height: 800 } }));
 results.push(await run("mobile", { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }));
 results.push(await run("reduced-motion", { viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" }));
+results.push(await run("dark", { viewport: { width: 1280, height: 800 }, colorScheme: "dark" }));
 
 let ok = true;
 const check = (cond, msg) => { console.log(`${cond ? "PASS" : "FAIL"} ${msg}`); if (!cond) ok = false; };
 for (const r of results) {
+  check(/rgb\(255, 255, 255\)/.test(r.holdState.veil), `${r.name}: splash veil is white (${r.holdState.veil}, page dark=${r.holdState.dark})`);
+  if (r.name === "dark") check(r.darkAfter && r.bodyBg !== "rgb(255, 255, 255)" , `${r.name}: page lands in dark theme (body ${r.bodyBg})`);
   check(r.cls === 0, `${r.name}: CLS = ${r.cls}`);
   check(r.animatedProps.every((p) => p === "transform" || p === "opacity"), `${r.name}: animated props = [${r.animatedProps}]`);
   check(r.seen === "1" && !r.htmlClass, `${r.name}: session flag set, splash class removed`);

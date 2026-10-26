@@ -113,7 +113,7 @@ export function Splash() {
           data-af-splash-logo
           className="block h-24 w-27 origin-top-left will-change-transform"
         />
-        <p ref={wordRef} className="text-2xl font-semibold tracking-tight text-primary">
+        <p ref={wordRef} className="text-2xl font-semibold tracking-tight text-brand-600">
           AriForce
         </p>
       </div>

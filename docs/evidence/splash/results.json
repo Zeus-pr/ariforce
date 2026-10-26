@@ -20,6 +20,12 @@
     },
     "htmlClass": false,
     "seen": "1",
+    "darkAfter": false,
+    "bodyBg": "lab(97.9027 -0.162244 -1.12439)",
+    "holdState": {
+      "veil": "rgb(255, 255, 255)",
+      "dark": false
+    },
     "second": {
       "overlayVisible": false,
       "pageOpacity": "1"
@@ -46,6 +52,12 @@
     },
     "htmlClass": false,
     "seen": "1",
+    "darkAfter": false,
+    "bodyBg": "lab(97.9027 -0.162244 -1.12439)",
+    "holdState": {
+      "veil": "rgb(255, 255, 255)",
+      "dark": false
+    },
     "second": {
       "overlayVisible": false,
       "pageOpacity": "1"
@@ -71,6 +83,44 @@
     },
     "htmlClass": false,
     "seen": "1",
+    "darkAfter": false,
+    "bodyBg": "lab(97.9027 -0.162244 -1.12439)",
+    "holdState": {
+      "veil": "rgb(255, 255, 255)",
+      "dark": false
+    },
+    "second": {
+      "overlayVisible": false,
+      "pageOpacity": "1"
+    }
+  },
+  {
+    "name": "dark",
+    "cls": 0,
+    "animatedProps": [
+      "opacity",
+      "transform"
+    ],
+    "splashEnd": {
+      "x": 16,
+      "y": 11.5,
+      "w": 36,
+      "h": 32
+    },
+    "header": {
+      "x": 16,
+      "y": 11.5,
+      "w": 36,
+      "h": 32
+    },
+    "htmlClass": false,
+    "seen": "1",
+    "darkAfter": true,
+    "bodyBg": "lab(3.02089 -0.188366 -2.63082)",
+    "holdState": {
+      "veil": "rgb(255, 255, 255)",
+      "dark": true
+    },
     "second": {
       "overlayVisible": false,
       "pageOpacity": "1"
