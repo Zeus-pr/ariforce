@@ -51,7 +51,10 @@ function prompt(label: string): Promise<string> {
   if (!process.stdin.isTTY) fail(`${label}: set the env var (no TTY for a prompt)`);
   return new Promise((done) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-    const out = rl as unknown as { _writeToOutput: (s: string) => void; output: NodeJS.WriteStream };
+    const out = rl as unknown as {
+      _writeToOutput: (s: string) => void;
+      output: NodeJS.WriteStream;
+    };
     process.stdout.write(`${label}: `);
     out._writeToOutput = () => {};
     rl.question('', (v) => {
@@ -68,7 +71,9 @@ async function password(env: string, label: string) {
 }
 
 const adminPw = await password('ARIFORCE_ADMIN_PASSWORD', 'System Admin password');
-const demoPw = a['demo-users'] ? await password('ARIFORCE_DEMO_PASSWORD', 'Demo users password') : '';
+const demoPw = a['demo-users']
+  ? await password('ARIFORCE_DEMO_PASSWORD', 'Demo users password')
+  : '';
 
 // Demo chain, top-down: director > vp > gm > sm > zbm > rbm > abm > bm.
 const DEMO: { key: RoleKey; local: string; code: string }[] = [
@@ -105,7 +110,14 @@ try {
       `insert into roles (id, company_id, key, name, rank, permissions) values ($1, $2, $3, $4, $5, $6)
        on conflict (company_id, key) do update set name = excluded.name, rank = excluded.rank
        returning id`,
-      [randomUUID(), companyId, key, ROLE_NAMES[key], ROLE_RANK[key], DEFAULT_ROLE_PERMISSIONS[key]],
+      [
+        randomUUID(),
+        companyId,
+        key,
+        ROLE_NAMES[key],
+        ROLE_RANK[key],
+        DEFAULT_ROLE_PERMISSIONS[key],
+      ],
     );
     roleIds.set(key, r.rows[0]!.id);
   }
@@ -158,7 +170,9 @@ try {
         [companyId, userId, territoryId],
       );
     if (!authId || a['reset-password'] || isNew) {
-      const existing = await c.query<{ id: string }>('select id from auth_user where email = $1', [email]);
+      const existing = await c.query<{ id: string }>('select id from auth_user where email = $1', [
+        email,
+      ]);
       authId = authId ?? existing.rows[0]?.id ?? randomUUID();
       await c.query(
         `insert into auth_user (id, name, email, email_verified) values ($1, $2, $3, true)
@@ -186,7 +200,12 @@ try {
     await c.query(
       `insert into audit_log (company_id, actor_user_id, action, entity_type, entity_id, after)
        values ($1, null, $2, 'user', $3, $4)`,
-      [companyId, isNew ? 'admin.user_created' : 'admin.user_ensured', userId, JSON.stringify({ email, role: o.role })],
+      [
+        companyId,
+        isNew ? 'admin.user_created' : 'admin.user_ensured',
+        userId,
+        JSON.stringify({ email, role: o.role }),
+      ],
     );
     summary.push(`${isNew ? 'created' : 'exists '} ${o.role.padEnd(26)} ${email}`);
     return userId;

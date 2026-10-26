@@ -19,6 +19,8 @@ import {
   Territory,
 } from '../index';
 import * as fx from './fixtures';
+import { duplicateKeys, mapImportRow, type ImportLookup } from '../import/templates';
+import type { ImportEntity } from '../schemas/imports';
 import { SignInEmailBody } from '../schemas/auth';
 import { kpiReport, productKpiReport } from './kpis';
 import {
@@ -132,184 +134,135 @@ export function list<T extends { id: string }>(schema: z.ZodType<T>, rows: T[], 
   });
 }
 
-type DupRule = {
-  rule: 'registration_no' | 'name_pincode' | 'gstin' | 'drug_license_no' | 'code';
-  key: (r: Record<string, unknown>) => string | null;
+const IMPORT_ENTITY_BY_PATH: Record<string, Exclude<ImportEntity, 'users'>> = {
+  '/v1/doctors': 'doctors',
+  '/v1/chemists': 'chemists',
+  '/v1/stockists': 'stockists',
+  '/v1/products': 'products',
 };
-const DUP_RULES: Record<string, DupRule[]> = {
-  '/v1/doctors': [
-    {
-      rule: 'registration_no',
-      key: (r) => (r.registrationNo ? String(r.registrationNo).toUpperCase() : null),
-    },
-    {
-      rule: 'name_pincode',
-      key: (r) =>
-        r.name && r.pincode
-          ? `${String(r.name)
-              .toLowerCase()
-              .replace(/^dr\.?\s*/, '')
-              .trim()}|${r.pincode}`
-          : null,
-    },
-  ],
-  '/v1/chemists': [
-    { rule: 'gstin', key: (r) => (r.gstin ? String(r.gstin).toUpperCase() : null) },
-    {
-      rule: 'drug_license_no',
-      key: (r) => (r.drugLicenseNo ? String(r.drugLicenseNo).toUpperCase() : null),
-    },
-    {
-      rule: 'name_pincode',
-      key: (r) =>
-        r.name && r.pincode ? `${String(r.name).toLowerCase().trim()}|${r.pincode}` : null,
-    },
-  ],
-  '/v1/products': [{ rule: 'code', key: (r) => (r.code ? String(r.code).toUpperCase() : null) }],
+const lower = (v: unknown) => String(v ?? '').toUpperCase();
+const mockLookup: ImportLookup = {
+  territory: (c) => fx.territories.find((t) => lower(t.code) === c)?.id,
+  specialty: (c) => fx.specialties.find((t) => lower(t.code) === c)?.id,
+  category: (c) => fx.doctorCategories.find((t) => lower(t.code) === c)?.id,
+  division: (c) => mockDivisions.find((t) => lower(t.code) === c)?.id,
+  product: (c) => fx.products.find((t) => lower(t.code) === c)?.id,
 };
-DUP_RULES['/v1/stockists'] = DUP_RULES['/v1/chemists']!;
+const mockDivisions = structuredClone(fx.divisions);
+const mockTerritoryRows = structuredClone(fx.territories);
+const mockHq = structuredClone(fx.productHqMappings);
+
+/** Same algorithm as the API (ImportService): map template row -> validate -> duplicate rules. */
+async function mockImport(
+  entity: Exclude<ImportEntity, 'users'>,
+  existing: Record<string, unknown>[],
+  request: Request,
+) {
+  const parsed = ImportRequest.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return validation('Invalid import', z.treeifyError(parsed.error));
+  const { dryRun, rows: input, onDuplicate, fileName, fileKey } = parsed.data;
+  const seen = new Map<string, number>();
+  const index = new Map<string, Record<string, unknown>>();
+  for (const x of existing)
+    if (!x.deletedAt) for (const k of duplicateKeys(entity, x)) index.set(`${k.rule}:${k.key}`, x);
+  const results: ImportRowResult[] = input.map((raw, i) => {
+    const row = i + 1;
+    const res = (o: Partial<ImportRowResult>): ImportRowResult => ({
+      row,
+      status: 'valid',
+      errors: [],
+      id: null,
+      duplicateOf: null,
+      duplicateRule: null,
+      ...o,
+    });
+    const m = mapImportRow(entity, raw, mockLookup);
+    if (!m.body) return res({ status: 'error', errors: m.errors });
+    const data = m.body;
+    for (const k of duplicateKeys(entity, data)) {
+      const prev = seen.get(`${k.rule}:${k.key}`);
+      if (prev)
+        return res({
+          status: 'error',
+          errors: [
+            { column: null, code: 'duplicate_in_file', message: `Same ${k.rule} as row ${prev}` },
+          ],
+          duplicateRule: 'in_file',
+        });
+    }
+    for (const k of duplicateKeys(entity, data)) seen.set(`${k.rule}:${k.key}`, row);
+    for (const k of duplicateKeys(entity, data)) {
+      const hit = index.get(`${k.rule}:${k.key}`);
+      if (!hit) continue;
+      const dup = { id: hit.id as string, duplicateOf: hit.id as string, duplicateRule: k.rule };
+      if (onDuplicate === 'error')
+        return res({
+          status: 'error',
+          errors: [
+            { column: null, code: 'duplicate', message: `Matches existing record by ${k.rule}` },
+          ],
+          ...dup,
+        });
+      if (onDuplicate === 'update') {
+        if (dryRun) return res({ status: 'valid', ...dup });
+        Object.assign(hit, data, { version: Number(hit.version) + 1, updatedAt: serverTime() });
+        return res({ status: 'updated', ...dup });
+      }
+      return res({ status: dryRun ? 'duplicate' : 'skipped', ...dup });
+    }
+    if (dryRun) return res({ status: 'valid' });
+    const ts = serverTime();
+    const created = {
+      ...data,
+      id: crypto.randomUUID(),
+      companyId: fx.COMPANY_ID,
+      createdAt: ts,
+      updatedAt: ts,
+      deletedAt: null,
+      version: 1,
+    };
+    existing.push(created);
+    return res({ status: 'created', id: created.id });
+  });
+  const count = (st: string) => results.filter((r) => r.status === st).length;
+  const job = ImportJob.parse({
+    id: crypto.randomUUID(),
+    companyId: fx.COMPANY_ID,
+    entity,
+    dryRun,
+    status: dryRun ? 'validated' : 'completed',
+    fileName: fileName ?? null,
+    fileKey: fileKey ?? null,
+    onDuplicate,
+    totals: {
+      rows: results.length,
+      valid: count('valid'),
+      created: count('created'),
+      updated: count('updated'),
+      duplicate: count('duplicate'),
+      skipped: count('skipped'),
+      error: count('error'),
+    },
+    results,
+    createdBy: fx.me.id,
+    createdAt: serverTime(),
+  });
+  jobs.set(job.id, job);
+  return HttpResponse.json(job, { status: dryRun ? 200 : 201 });
+}
 
 function crud<
   T extends { id: string; updatedAt: string; version: number; deletedAt: string | null },
 >(baseUrl: string, path: string, schema: z.ZodType<T>, createSchema: z.ZodType, seed: T[]) {
   const rows = structuredClone(seed);
   return [
-    http.post(`${baseUrl}${path}/import`, async ({ request }) => {
-      const parsed = ImportRequest.safeParse(await request.json());
-      if (!parsed.success) return validation('Invalid import', z.treeifyError(parsed.error));
-      const { dryRun, rows: input, onDuplicate, fileName } = parsed.data;
-      const rules = DUP_RULES[path] ?? [];
-      const seen = new Map<string, number>();
-      const results: ImportRowResult[] = input.map((raw, i) => {
-        const row = i + 1;
-        const body = createSchema.safeParse(raw);
-        if (!body.success)
-          return {
-            row,
-            status: 'error',
-            errors: body.error.issues.map((e) => ({
-              column: e.path.length ? String(e.path[0]) : null,
-              code: e.code,
-              message: e.message,
-            })),
-            id: null,
-            duplicateOf: null,
-            duplicateRule: null,
-          };
-        const data = body.data as Record<string, unknown>;
-        for (const r of rules) {
-          const k = r.key(data);
-          if (!k) continue;
-          const prev = seen.get(`${r.rule}:${k}`);
-          if (prev)
-            return {
-              row,
-              status: 'error',
-              errors: [
-                {
-                  column: null,
-                  code: 'duplicate_in_file',
-                  message: `Same ${r.rule} as row ${prev}`,
-                },
-              ],
-              id: null,
-              duplicateOf: null,
-              duplicateRule: 'in_file',
-            };
-          seen.set(`${r.rule}:${k}`, row);
-          const hit = rows.find(
-            (x) => !x.deletedAt && r.key(x as unknown as Record<string, unknown>) === k,
-          );
-          if (hit) {
-            if (onDuplicate === 'error')
-              return {
-                row,
-                status: 'error',
-                errors: [
-                  {
-                    column: null,
-                    code: 'duplicate',
-                    message: `Matches existing record by ${r.rule}`,
-                  },
-                ],
-                id: hit.id,
-                duplicateOf: hit.id,
-                duplicateRule: r.rule,
-              };
-            if (onDuplicate === 'update' && !dryRun) {
-              Object.assign(hit, data, { version: hit.version + 1, updatedAt: serverTime() });
-              return {
-                row,
-                status: 'updated',
-                errors: [],
-                id: hit.id,
-                duplicateOf: hit.id,
-                duplicateRule: r.rule,
-              };
-            }
-            return {
-              row,
-              status: onDuplicate === 'update' ? 'valid' : dryRun ? 'duplicate' : 'skipped',
-              errors: [],
-              id: hit.id,
-              duplicateOf: hit.id,
-              duplicateRule: r.rule,
-            };
-          }
-        }
-        if (dryRun)
-          return {
-            row,
-            status: 'valid',
-            errors: [],
-            id: null,
-            duplicateOf: null,
-            duplicateRule: null,
-          };
-        const ts = serverTime();
-        const created = {
-          ...data,
-          id: crypto.randomUUID(),
-          companyId: fx.COMPANY_ID,
-          createdAt: ts,
-          updatedAt: ts,
-          deletedAt: null,
-          version: 1,
-        } as unknown as T;
-        rows.push(created);
-        return {
-          row,
-          status: 'created',
-          errors: [],
-          id: created.id,
-          duplicateOf: null,
-          duplicateRule: null,
-        };
-      });
-      const count = (st: string) => results.filter((r) => r.status === st).length;
-      const job = ImportJob.parse({
-        id: crypto.randomUUID(),
-        companyId: fx.COMPANY_ID,
-        entity: path.replace('/v1/', ''),
-        dryRun,
-        status: dryRun ? 'validated' : 'completed',
-        fileName: fileName ?? null,
-        totals: {
-          rows: results.length,
-          valid: count('valid'),
-          created: count('created'),
-          updated: count('updated'),
-          duplicate: count('duplicate'),
-          skipped: count('skipped'),
-          error: count('error'),
-        },
-        results,
-        createdBy: fx.me.id,
-        createdAt: serverTime(),
-      });
-      jobs.set(job.id, job);
-      return HttpResponse.json(job, { status: dryRun ? 200 : 201 });
-    }),
+    ...(IMPORT_ENTITY_BY_PATH[path]
+      ? [
+          http.post(`${baseUrl}${path}/import`, ({ request }) =>
+            mockImport(IMPORT_ENTITY_BY_PATH[path]!, rows as never, request),
+          ),
+        ]
+      : []),
     http.get(`${baseUrl}${path}`, ({ request }) => list(schema, rows, new URL(request.url))),
     http.get(`${baseUrl}${path}/:id`, ({ params }) => {
       const row = rows.find((r) => r.id === params.id);
@@ -445,6 +398,15 @@ export function createHandlers(baseUrl = '') {
     http.get(`${baseUrl}/v1/roles`, () =>
       HttpResponse.json({ items: z.array(Role).parse(fx.roles) }),
     ),
+    http.post(`${baseUrl}/v1/divisions/import`, ({ request }) =>
+      mockImport('divisions', mockDivisions as never, request),
+    ),
+    http.post(`${baseUrl}/v1/territories/import`, ({ request }) =>
+      mockImport('territories', mockTerritoryRows as never, request),
+    ),
+    http.post(`${baseUrl}/v1/product-hq-mappings/import`, ({ request }) =>
+      mockImport('product_hq', mockHq as never, request),
+    ),
     http.get(`${baseUrl}/v1/territories`, ({ request }) =>
       list(Territory, fx.territories, new URL(request.url)),
     ),
@@ -508,7 +470,7 @@ function fieldHandlers(baseUrl: string) {
 
   return [
     http.get(`${baseUrl}/v1/divisions`, ({ request }) =>
-      list(Division, fx.divisions, new URL(request.url)),
+      list(Division, mockDivisions, new URL(request.url)),
     ),
     http.get(`${baseUrl}/v1/product-hq-mappings`, ({ request }) =>
       list(ProductHqMapping, fx.productHqMappings, new URL(request.url)),

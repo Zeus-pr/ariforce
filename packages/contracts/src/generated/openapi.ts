@@ -243,7 +243,7 @@ export interface paths {
     put?: never;
     /**
      * Bulk import doctors from Excel/CSV rows (dry-run first)
-     * @description Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.
+     * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
      */
     post: operations['importDoctors'];
     delete?: never;
@@ -297,7 +297,7 @@ export interface paths {
     put?: never;
     /**
      * Bulk import chemists from Excel/CSV rows (dry-run first)
-     * @description Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.
+     * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
      */
     post: operations['importChemists'];
     delete?: never;
@@ -351,7 +351,7 @@ export interface paths {
     put?: never;
     /**
      * Bulk import stockists from Excel/CSV rows (dry-run first)
-     * @description Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.
+     * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
      */
     post: operations['importStockists'];
     delete?: never;
@@ -405,7 +405,7 @@ export interface paths {
     put?: never;
     /**
      * Bulk import products from Excel/CSV rows (dry-run first)
-     * @description Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.
+     * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
      */
     post: operations['importProducts'];
     delete?: never;
@@ -480,6 +480,66 @@ export interface paths {
     options?: never;
     head?: never;
     patch: operations['updateWorkType'];
+    trace?: never;
+  };
+  '/v1/divisions/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Bulk import products from Excel/CSV rows (dry-run first)
+     * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
+     */
+    post: operations['importDivisions'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/territories/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Bulk import territories from Excel/CSV rows (dry-run first)
+     * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
+     */
+    post: operations['importTerritorys'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/product-hq-mappings/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Bulk import products from Excel/CSV rows (dry-run first)
+     * @description Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.
+     */
+    post: operations['importProductHqMappings'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   '/v1/divisions': {
@@ -778,12 +838,19 @@ export interface components {
     UploadUrlRequest: {
       purpose: components['schemas']['FilePurpose'];
       /** @enum {string} */
-      contentType: 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf';
+      contentType:
+        | 'image/jpeg'
+        | 'image/png'
+        | 'image/webp'
+        | 'application/pdf'
+        | 'text/csv'
+        | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       sizeBytes: number;
       fileName?: string;
     };
     /** @enum {string} */
-    FilePurpose: 'doctor_photo' | 'visit_attachment' | 'expense_receipt' | 'avatar';
+    FilePurpose:
+      'doctor_photo' | 'visit_attachment' | 'expense_receipt' | 'avatar' | 'import_source';
     DownloadUrlRequest: {
       fileKey: string;
     };
@@ -816,8 +883,8 @@ export interface components {
        * @default true
        */
       dryRun: boolean;
-      /** @description Uploaded source file (R2) kept for audit */
-      fileId?: string | null;
+      /** @description fileKey from POST /v1/files/upload-url with purpose import_source (source sheet kept in R2 for audit) */
+      fileKey?: string | null;
       fileName?: string;
       /**
        * @description What to do with rows matching an existing record
@@ -825,7 +892,7 @@ export interface components {
        * @enum {string}
        */
       onDuplicate: 'skip' | 'update' | 'error';
-      /** @description Parsed rows keyed by template column (see docs/IMPORT.md) */
+      /** @description Parsed rows keyed by the snake_case template columns with master codes (docs/IMPORT.md). Aliases: camelCase keys and create-schema *_id UUIDs. */
       rows: {
         [key: string]: unknown;
       }[];
@@ -1576,6 +1643,9 @@ export interface components {
       /** @enum {string} */
       status: 'validated' | 'completed' | 'failed';
       fileName: string | null;
+      fileKey: string | null;
+      /** @enum {string} */
+      onDuplicate: 'skip' | 'update' | 'error';
       totals: {
         rows: number;
         valid: number;
@@ -4847,6 +4917,222 @@ export interface operations {
         };
       };
       /** @description Validation failed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  importDivisions: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Client-generated key; safe retries for POST */
+        'idempotency-key'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ImportRequest'];
+      };
+    };
+    responses: {
+      /** @description Dry-run preview */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Import applied */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description More than 5,000 rows */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Request malformed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  importTerritorys: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Client-generated key; safe retries for POST */
+        'idempotency-key'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ImportRequest'];
+      };
+    };
+    responses: {
+      /** @description Dry-run preview */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Import applied */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description More than 5,000 rows */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Request malformed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  importProductHqMappings: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Client-generated key; safe retries for POST */
+        'idempotency-key'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ImportRequest'];
+      };
+    };
+    responses: {
+      /** @description Dry-run preview */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Import applied */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportJob'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description More than 5,000 rows */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Request malformed */
       422: {
         headers: {
           [name: string]: unknown;

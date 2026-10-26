@@ -6,6 +6,7 @@ export const FILE_PURPOSES = [
   'visit_attachment',
   'expense_receipt',
   'avatar',
+  'import_source',
 ] as const;
 export const FilePurpose = z.enum(FILE_PURPOSES).meta({ id: 'FilePurpose' });
 export const ALLOWED_CONTENT_TYPES = [
@@ -13,6 +14,13 @@ export const ALLOWED_CONTENT_TYPES = [
   'image/png',
   'image/webp',
   'application/pdf',
+  'text/csv',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+] as const;
+/** Content types allowed for `import_source` (Excel/CSV kept for audit); other purposes may not use them. */
+export const IMPORT_CONTENT_TYPES = [
+  'text/csv',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ] as const;
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
@@ -23,6 +31,16 @@ export const UploadUrlRequest = z
     sizeBytes: z.int().min(1).max(MAX_UPLOAD_BYTES),
     fileName: z.string().min(1).max(200).optional(),
   })
+  .refine(
+    (r) =>
+      (r.purpose === 'import_source') ===
+      (IMPORT_CONTENT_TYPES as readonly string[]).includes(r.contentType),
+    {
+      message:
+        'import_source needs text/csv or .xlsx; spreadsheets are only allowed for import_source',
+      path: ['contentType'],
+    },
+  )
   .meta({ id: 'UploadUrlRequest' });
 export type UploadUrlRequest = z.infer<typeof UploadUrlRequest>;
 

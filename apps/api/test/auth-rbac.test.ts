@@ -181,6 +181,6 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
     const auth = await token('sysadmin@demo.ariforce.in');
     const res = await http().post('/v1/doctors').set('authorization', auth).send({ name: '' });
     expect(res.status).toBe(422);
-    expect(res.body.error.code).toBe('VALIDATION_FAILED');
+    expect(res.body.error.code).toBe('VALIDATION');
   });
 });

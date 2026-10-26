@@ -26,38 +26,38 @@ Views are computed at **user** (rep) or **territory** grain. Rollups for the 8 r
 7 Vice President, 8 Director — are produced by the API by **summing numerators and denominators**
 over the manager's team (self + reporting-line subtree) and then dividing. Never average percentages.
 
-| Rollup | Who | Rows included |
-| --- | --- | --- |
-| `self` | any role | the caller's own rows |
-| `team` | ABM and above | all users under the caller (recursive `manager_id`), excluding self unless they report DCRs |
-| `byUser` | ABM and above | one row per direct/indirect report |
-| `byTerritory` | any | territory (HQ/area/region/zone) rows; sales KPIs are territory-grain natively |
-| `company` | Director only | all users/territories |
+| Rollup        | Who           | Rows included                                                                               |
+| ------------- | ------------- | ------------------------------------------------------------------------------------------- |
+| `self`        | any role      | the caller's own rows                                                                       |
+| `team`        | ABM and above | all users under the caller (recursive `manager_id`), excluding self unless they report DCRs |
+| `byUser`      | ABM and above | one row per direct/indirect report                                                          |
+| `byTerritory` | any           | territory (HQ/area/region/zone) rows; sales KPIs are territory-grain natively               |
+| `company`     | Director only | all users/territories                                                                       |
 
 A manager's own field work (joint work, own calls) is counted under their own user row and is not
 double-counted in the team row; joint-work calls count for the rep who owns the DCR.
 
 ## KPIs
 
-| # | KPI | Formula | Numerator | Denominator | Period | View | Edge cases |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Call average (doctor) | N / D | doctor calls on field days | field days | month/range | `kpi_user_month.call_average` | 0 field days → null, not 0; chemist calls reported separately |
-| 2 | Chemist call average | N / D | chemist calls on field days | field days | month | `kpi_user_month` | as above |
-| 3 | Coverage / reach % | 100·N / D | MSL doctors visited ≥ 1 time | MSL size | month | `coverage_pct` | doctor moved territory mid-month counts in the list at query time; MSL 0 → null |
-| 4 | Frequency compliance % | 100·N / D | MSL doctors with visits ≥ required visits | MSL size | month | `frequency_compliance_pct` | required = 0 counts as met; extra visits don't compensate other doctors |
-| 5 | Missed-doctor (missed-call) rate % | 100·N / D | MSL doctors with 0 visits | MSL size | month | `missed_doctor_pct` | = 100 − coverage; list in "Needs attention" |
-| 6 | Unique doctors seen | count distinct | distinct MSL doctors visited | — | month | `unique_doctors_seen` | off-list doctors are counted in calls but not here |
-| 7 | Doctor visits per day | N / D | doctor calls | field days | day/month | `kpi_user_day.doctor_calls` | same as call average at day grain |
-| 8 | DCR compliance % | 100·N / D | days with DCR submitted/approved | expected working days | month | `dcr_submitted_days` + API calendar | expected = calendar days to date − Sundays − company holidays − approved leave; computed in API |
-| 9 | DCR on-time % | 100·N / D | DCRs submitted by D+1 IST | submitted DCRs | month | `dcr_on_time_days` | resubmission after rejection keeps first `submitted_at` |
-| 10 | TP adherence % | 100·N / D | planned TP visits with a matching call (same outlet, same date) | planned TP visits in the approved TP | month | `kpi_tp_adherence_month` | no approved TP → null and flagged; deviations need `deviation_reason` |
-| 11 | Product-wise detailing | count | calls with product detailed (and first-position count) | — (share = N / doctor calls) | month | `kpi_product_month` | product filter by division via `products.division_id` |
-| 12 | Samples given | sum | sample quantity by product | — | month | `kpi_product_month.sample_qty` | |
-| 13 | POB vs target | 100·N / D | POB value booked in calls | POB target (from targets, when configured) | month | `pob_value` | no target → achievement null |
-| 14 | MSL size / MSL vs target | N vs D | MSL size | configured MSL target per territory | month | `msl_size` | target optional (company setting) |
-| 15 | Primary sales vs target, achievement % | 100·N / D | primary sales value (returns subtracted) | primary target (all-products row) | month | `kpi_sales_month` kind=primary | territory grain; rollup by territory path; target 0/null → null |
-| 16 | Secondary sales vs target, achievement % | as 15 | secondary sales value | secondary target | month | kind=secondary | from stockist statements via import |
-| 17 | Growth vs last year % | 100·(N − D) / D | this month's actual | same month last year actual | month | `growth_pct` | LY 0/absent → null |
+| #   | KPI                                      | Formula         | Numerator                                                       | Denominator                                | Period      | View                                | Edge cases                                                                                      |
+| --- | ---------------------------------------- | --------------- | --------------------------------------------------------------- | ------------------------------------------ | ----------- | ----------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 1   | Call average (doctor)                    | N / D           | doctor calls on field days                                      | field days                                 | month/range | `kpi_user_month.call_average`       | 0 field days → null, not 0; chemist calls reported separately                                   |
+| 2   | Chemist call average                     | N / D           | chemist calls on field days                                     | field days                                 | month       | `kpi_user_month`                    | as above                                                                                        |
+| 3   | Coverage / reach %                       | 100·N / D       | MSL doctors visited ≥ 1 time                                    | MSL size                                   | month       | `coverage_pct`                      | doctor moved territory mid-month counts in the list at query time; MSL 0 → null                 |
+| 4   | Frequency compliance %                   | 100·N / D       | MSL doctors with visits ≥ required visits                       | MSL size                                   | month       | `frequency_compliance_pct`          | required = 0 counts as met; extra visits don't compensate other doctors                         |
+| 5   | Missed-doctor (missed-call) rate %       | 100·N / D       | MSL doctors with 0 visits                                       | MSL size                                   | month       | `missed_doctor_pct`                 | = 100 − coverage; list in "Needs attention"                                                     |
+| 6   | Unique doctors seen                      | count distinct  | distinct MSL doctors visited                                    | —                                          | month       | `unique_doctors_seen`               | off-list doctors are counted in calls but not here                                              |
+| 7   | Doctor visits per day                    | N / D           | doctor calls                                                    | field days                                 | day/month   | `kpi_user_day.doctor_calls`         | same as call average at day grain                                                               |
+| 8   | DCR compliance %                         | 100·N / D       | days with DCR submitted/approved                                | expected working days                      | month       | `dcr_submitted_days` + API calendar | expected = calendar days to date − Sundays − company holidays − approved leave; computed in API |
+| 9   | DCR on-time %                            | 100·N / D       | DCRs submitted by D+1 IST                                       | submitted DCRs                             | month       | `dcr_on_time_days`                  | resubmission after rejection keeps first `submitted_at`                                         |
+| 10  | TP adherence %                           | 100·N / D       | planned TP visits with a matching call (same outlet, same date) | planned TP visits in the approved TP       | month       | `kpi_tp_adherence_month`            | no approved TP → null and flagged; deviations need `deviation_reason`                           |
+| 11  | Product-wise detailing                   | count           | calls with product detailed (and first-position count)          | — (share = N / doctor calls)               | month       | `kpi_product_month`                 | product filter by division via `products.division_id`                                           |
+| 12  | Samples given                            | sum             | sample quantity by product                                      | —                                          | month       | `kpi_product_month.sample_qty`      |                                                                                                 |
+| 13  | POB vs target                            | 100·N / D       | POB value booked in calls                                       | POB target (from targets, when configured) | month       | `pob_value`                         | no target → achievement null                                                                    |
+| 14  | MSL size / MSL vs target                 | N vs D          | MSL size                                                        | configured MSL target per territory        | month       | `msl_size`                          | target optional (company setting)                                                               |
+| 15  | Primary sales vs target, achievement %   | 100·N / D       | primary sales value (returns subtracted)                        | primary target (all-products row)          | month       | `kpi_sales_month` kind=primary      | territory grain; rollup by territory path; target 0/null → null                                 |
+| 16  | Secondary sales vs target, achievement % | as 15           | secondary sales value                                           | secondary target                           | month       | kind=secondary                      | from stockist statements via import                                                             |
+| 17  | Growth vs last year %                    | 100·(N − D) / D | this month's actual                                             | same month last year actual                | month       | `growth_pct`                        | LY 0/absent → null                                                                              |
 
 ### Notes
 

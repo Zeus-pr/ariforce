@@ -76,6 +76,28 @@ function op(o: ZodOpenApiOperationObject): ZodOpenApiOperationObject {
   return { security: [{ session: [] }], ...o, responses: { ...std, ...o.responses } };
 }
 
+function importPath(tag: string, base: string, name: string): ZodOpenApiPathsObject {
+  return {
+    [`${base}/import`]: {
+      post: op({
+        tags: [tag, 'Imports'],
+        operationId: `import${name}s`,
+        summary: `Bulk import ${tag.toLowerCase()} from Excel/CSV rows (dry-run first)`,
+        description:
+          'Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.',
+        requestParams: { header: IdempotencyKeyHeader },
+        requestBody: json(ImportRequest),
+        responses: {
+          '200': { description: 'Dry-run preview', ...json(ImportJob) },
+          '201': { description: 'Import applied', ...json(ImportJob) },
+          '413': err('More than 5,000 rows'),
+          '422': err('Request malformed'),
+        },
+      }),
+    },
+  };
+}
+
 function crud(
   tag: string,
   base: string,
@@ -86,27 +108,7 @@ function crud(
   query: z.ZodObject = CodeNameListQuery,
   importable = false,
 ): ZodOpenApiPathsObject {
-  const imp: ZodOpenApiPathsObject = importable
-    ? {
-        [`${base}/import`]: {
-          post: op({
-            tags: [tag, 'Imports'],
-            operationId: `import${name}s`,
-            summary: `Bulk import ${tag.toLowerCase()} from Excel/CSV rows (dry-run first)`,
-            description:
-              'Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.',
-            requestParams: { header: IdempotencyKeyHeader },
-            requestBody: json(ImportRequest),
-            responses: {
-              '200': { description: 'Dry-run preview', ...json(ImportJob) },
-              '201': { description: 'Import applied', ...json(ImportJob) },
-              '413': err('More than 5,000 rows'),
-              '422': err('Request malformed'),
-            },
-          }),
-        },
-      }
-    : {};
+  const imp: ZodOpenApiPathsObject = importable ? importPath(tag, base, name) : {};
   return {
     ...imp,
     [base]: {
@@ -370,6 +372,9 @@ export function buildOpenApiDocument(): OpenApiDocument {
         true,
       ),
       ...crud('WorkTypes', '/v1/work-types', WorkType, WorkTypeCreate, WorkTypeUpdate, 'WorkType'),
+      ...importPath('Products', '/v1/divisions', 'Division'),
+      ...importPath('Territories', '/v1/territories', 'Territory'),
+      ...importPath('Products', '/v1/product-hq-mappings', 'ProductHqMapping'),
       '/v1/divisions': {
         get: op({
           tags: ['Products'],

@@ -9,6 +9,8 @@ const EXT: Record<UploadUrlRequest['contentType'], string> = {
   'image/png': 'png',
   'image/webp': 'webp',
   'application/pdf': 'pdf',
+  'text/csv': 'csv',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
 };
 export const UPLOAD_TTL_S = 600;
 export const DOWNLOAD_TTL_S = 300;

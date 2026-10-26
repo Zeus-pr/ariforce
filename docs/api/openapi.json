@@ -1111,7 +1111,7 @@
         ],
         "operationId": "importDoctors",
         "summary": "Bulk import doctors from Excel/CSV rows (dry-run first)",
-        "description": "Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.",
+        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.",
         "parameters": [
           {
             "in": "header",
@@ -1667,7 +1667,7 @@
         ],
         "operationId": "importChemists",
         "summary": "Bulk import chemists from Excel/CSV rows (dry-run first)",
-        "description": "Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.",
+        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.",
         "parameters": [
           {
             "in": "header",
@@ -2201,7 +2201,7 @@
         ],
         "operationId": "importStockists",
         "summary": "Bulk import stockists from Excel/CSV rows (dry-run first)",
-        "description": "Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.",
+        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.",
         "parameters": [
           {
             "in": "header",
@@ -2735,7 +2735,7 @@
         ],
         "operationId": "importProducts",
         "summary": "Bulk import products from Excel/CSV rows (dry-run first)",
-        "description": "Validates every row with the create schema, resolves codes (territory, specialty, …) and applies duplicate rules (#26). With dryRun=true nothing is written. See docs/IMPORT.md.",
+        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.",
         "parameters": [
           {
             "in": "header",
@@ -3686,6 +3686,303 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/divisions/import": {
+      "post": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Products",
+          "Imports"
+        ],
+        "operationId": "importDivisions",
+        "summary": "Bulk import products from Excel/CSV rows (dry-run first)",
+        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "schema": {
+              "description": "Client-generated key; safe retries for POST",
+              "type": "string",
+              "maxLength": 128
+            },
+            "description": "Client-generated key; safe retries for POST"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dry-run preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJob"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Import applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJob"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "More than 5,000 rows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request malformed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/territories/import": {
+      "post": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Territories",
+          "Imports"
+        ],
+        "operationId": "importTerritorys",
+        "summary": "Bulk import territories from Excel/CSV rows (dry-run first)",
+        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "schema": {
+              "description": "Client-generated key; safe retries for POST",
+              "type": "string",
+              "maxLength": 128
+            },
+            "description": "Client-generated key; safe retries for POST"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dry-run preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJob"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Import applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJob"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "More than 5,000 rows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request malformed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/product-hq-mappings/import": {
+      "post": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Products",
+          "Imports"
+        ],
+        "operationId": "importProductHqMappings",
+        "summary": "Bulk import products from Excel/CSV rows (dry-run first)",
+        "description": "Rows use the snake_case template columns with master codes (territory_code, specialty_code, division_code, …; camelCase keys and *_id UUIDs accepted as aliases). Each row is mapped and validated with the create schema, then duplicate rules (#26) apply. With dryRun=true nothing is written to the master table (the job and its row results are still stored). Upload the source sheet first via POST /v1/files/upload-url (purpose import_source) and pass fileKey. See docs/IMPORT.md.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "schema": {
+              "description": "Client-generated key; safe retries for POST",
+              "type": "string",
+              "maxLength": 128
+            },
+            "description": "Client-generated key; safe retries for POST"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dry-run preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJob"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Import applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJob"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "More than 5,000 rows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request malformed",
             "content": {
               "application/json": {
                 "schema": {
@@ -6040,7 +6337,9 @@
               "image/jpeg",
               "image/png",
               "image/webp",
-              "application/pdf"
+              "application/pdf",
+              "text/csv",
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             ]
           },
           "sizeBytes": {
@@ -6066,7 +6365,8 @@
           "doctor_photo",
           "visit_attachment",
           "expense_receipt",
-          "avatar"
+          "avatar",
+          "import_source"
         ]
       },
       "DownloadUrlRequest": {
@@ -6202,15 +6502,12 @@
             "description": "true = validate and detect duplicates only, write nothing (preview)",
             "type": "boolean"
           },
-          "fileId": {
-            "description": "Uploaded source file (R2) kept for audit",
+          "fileKey": {
+            "description": "fileKey from POST /v1/files/upload-url with purpose import_source (source sheet kept in R2 for audit)",
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                "description": "UUIDv7 identifier",
-                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                "maxLength": 300
               },
               {
                 "type": "null"
@@ -6242,7 +6539,7 @@
               },
               "additionalProperties": {}
             },
-            "description": "Parsed rows keyed by template column (see docs/IMPORT.md)"
+            "description": "Parsed rows keyed by the snake_case template columns with master codes (docs/IMPORT.md). Aliases: camelCase keys and create-schema *_id UUIDs."
           }
         },
         "required": [
@@ -8913,6 +9210,20 @@
               "null"
             ]
           },
+          "fileKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "onDuplicate": {
+            "type": "string",
+            "enum": [
+              "skip",
+              "update",
+              "error"
+            ]
+          },
           "totals": {
             "type": "object",
             "properties": {
@@ -8990,6 +9301,8 @@
           "dryRun",
           "status",
           "fileName",
+          "fileKey",
+          "onDuplicate",
           "totals",
           "results",
           "createdBy",

@@ -20,19 +20,19 @@ export const ImportRequest = z
     dryRun: z.boolean().default(true).meta({
       description: 'true = validate and detect duplicates only, write nothing (preview)',
     }),
-    fileId: Id.nullable()
-      .optional()
-      .meta({ description: 'Uploaded source file (R2) kept for audit' }),
+    fileKey: z.string().max(300).nullable().optional().meta({
+      description:
+        'fileKey from POST /v1/files/upload-url with purpose import_source (source sheet kept in R2 for audit)',
+    }),
     fileName: z.string().max(200).optional(),
     onDuplicate: z
       .enum(['skip', 'update', 'error'])
       .default('skip')
       .meta({ description: 'What to do with rows matching an existing record' }),
-    rows: z
-      .array(z.record(z.string(), z.unknown()))
-      .min(1)
-      .max(5000)
-      .meta({ description: 'Parsed rows keyed by template column (see docs/IMPORT.md)' }),
+    rows: z.array(z.record(z.string(), z.unknown())).min(1).max(5000).meta({
+      description:
+        'Parsed rows keyed by the snake_case template columns with master codes (docs/IMPORT.md). Aliases: camelCase keys and create-schema *_id UUIDs.',
+    }),
   })
   .meta({ id: 'ImportRequest' });
 export type ImportRequest = z.infer<typeof ImportRequest>;
@@ -67,6 +67,8 @@ export const ImportJob = z
     dryRun: z.boolean(),
     status: z.enum(['validated', 'completed', 'failed']),
     fileName: z.string().nullable(),
+    fileKey: z.string().nullable(),
+    onDuplicate: z.enum(['skip', 'update', 'error']),
     totals: z.object({
       rows: z.int(),
       valid: z.int(),
