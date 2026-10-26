@@ -7,7 +7,10 @@ DO $$ BEGIN
   END IF;
 END $$;
 --> statement-breakpoint
-GRANT USAGE ON SCHEMA public TO ariforce_app;
+GRANT USAGE ON SCHEMA public, extensions TO ariforce_app;
+--> statement-breakpoint
+-- PostGIS types/functions live in `extensions`; role-level setting also applies through Supavisor.
+ALTER ROLE ariforce_app SET search_path = public, extensions;
 --> statement-breakpoint
 
 -- Current tenant from the per-transaction setting (see withTenant()). NULL when unset -> no rows.
@@ -49,7 +52,7 @@ BEGIN
     'plan_sessions'] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
-    EXECUTE format('CREATE POLICY tenant_isolation ON %I USING (company_id = app_company_id()) WITH CHECK (company_id = app_company_id())', t);
+    EXECUTE format('CREATE POLICY tenant_isolation ON %I TO ariforce_app USING (company_id = app_company_id()) WITH CHECK (company_id = app_company_id())', t);
     EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO ariforce_app', t);
   END LOOP;
   -- Row-meta trigger on tables with version/updated_at.
@@ -70,7 +73,7 @@ ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE companies FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
-CREATE POLICY tenant_self ON companies USING (id = app_company_id()) WITH CHECK (id = app_company_id());
+CREATE POLICY tenant_self ON companies TO ariforce_app USING (id = app_company_id()) WITH CHECK (id = app_company_id());
 --> statement-breakpoint
 GRANT SELECT, UPDATE ON companies TO ariforce_app;
 --> statement-breakpoint
@@ -80,9 +83,9 @@ ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE audit_log FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
-CREATE POLICY audit_read ON audit_log FOR SELECT USING (company_id = app_company_id());
+CREATE POLICY audit_read ON audit_log FOR SELECT TO ariforce_app USING (company_id = app_company_id());
 --> statement-breakpoint
-CREATE POLICY audit_append ON audit_log FOR INSERT WITH CHECK (company_id = app_company_id());
+CREATE POLICY audit_append ON audit_log FOR INSERT TO ariforce_app WITH CHECK (company_id = app_company_id());
 --> statement-breakpoint
 GRANT SELECT, INSERT ON audit_log TO ariforce_app;
 --> statement-breakpoint

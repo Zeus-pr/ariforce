@@ -3,8 +3,8 @@ import { Pool } from 'pg';
 import * as s from '../src/schema';
 import { DEMO_COMPANY_ID as C, ROLE_DEFS, T, U, roleId, seedIds } from '../src/seed-data';
 
-const url = process.env.DATABASE_URL;
-if (!url) throw new Error('DATABASE_URL (owner role) is required');
+const url = process.env.DIRECT_URL;
+if (!url) throw new Error('DIRECT_URL (direct owner connection, migrations only) is required');
 const pool = new Pool({ connectionString: url });
 const db = drizzle(pool, { schema: s });
 

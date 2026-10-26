@@ -1,13 +1,15 @@
 # Data model v1
 
-Source: `packages/db/src/schema/*.ts` (Drizzle) + `packages/db/drizzle/*.sql` migrations.
-`0000_extensions` (PostGIS) -> `0001_init` (generated tables) -> `0002_security` (hand-written: app role, grants, RLS, triggers, audit).
+Source: `packages/db/src/schema/*.ts` (Drizzle). `drizzle-kit generate` writes `packages/db/drizzle/*.sql`; `pnpm -F @ariforce/db db:sql` exports them to **`packages/db/migrations/*.sql`**: plain, ordered, idempotent files (each guarded by `public.ariforce_migrations`, wrapped in a transaction, `search_path = public, extensions`). Those files are the only thing applied, by `db:migrate` (over `DIRECT_URL`) or by hand / Supabase connector in filename order. CI checks they are in sync and applies them twice.
+`0000_extensions` (PostGIS) -> `0001_init` (generated tables) -> `0002_security` (hand-written: app role, grants, RLS, triggers, audit) -> `0003_supabase_hardening`.
 
 ## Conventions
 
 - **Ids**: UUIDv7 (`uuid` v7, generated app-side; clients may generate offline). `audit_log` uses a bigint identity.
 - **Tenancy**: `company_id uuid NOT NULL` on every tenant table, FK to `companies`. RLS `ENABLE` + `FORCE`, policy `company_id = app_company_id()` for `USING` and `WITH CHECK`. `app_company_id()` reads `current_setting('app.current_company_id')`, set per transaction by `withTenant()` (`SET LOCAL` semantics). Unset -> no rows.
-- **DB roles**: migrations/seed run as the owner (`DATABASE_URL`). The API runs as `ariforce_app` (`DATABASE_URL_APP`): `NOSUPERUSER NOBYPASSRLS`, so RLS always applies.
+- **Hosting**: Supabase Postgres (Mumbai, ap-south-1) with PostGIS (`0000_extensions`). Local/CI: `postgis/postgis` container, same code path.
+- **DB roles / URLs**: migrations + seed run as the owner over the direct connection (`DIRECT_URL`). The API runs as `ariforce_app` (`DATABASE_URL`, Supabase transaction pooler): `NOSUPERUSER NOBYPASSRLS`, so RLS always applies. Never the Supabase `service_role` / `postgres` for requests. `0003_supabase_hardening` revokes everything from Supabase's `anon`/`authenticated` (Data API is not used).
+- **Transaction pooler**: tenant context only via `set_config(..., true)` inside each request transaction (`withTenant`); no session state, no `SET` without `LOCAL`, no named prepared statements (node-postgres only prepares when a `name` is passed; never do that).
 - **Sync columns**: `created_at`, `updated_at`, `deleted_at` (soft delete / tombstone), `version` (int). Trigger `set_row_meta` bumps `version`, sets `updated_at` and pins `company_id` on every UPDATE.
 - **Hierarchy**: `territories.path` = dot-joined ancestor ids (root..self); subtree = `path LIKE '<path>%'` (indexed with `text_pattern_ops`). People hierarchy: `users.manager_id`. Hierarchy scoping is enforced in the API (#6, `docs/RBAC.md`); RLS enforces the tenant boundary.
 - **Geo**: PostGIS `geometry(Point,4326)` for doctor/chemist/stockist locations and territory centroids; `geometry(MultiPolygon,4326)` for territory boundaries; GiST indexes.
@@ -72,4 +74,4 @@ One demo company, territory chain India > East Zone > West Bengal > Kolkata Nort
 
 ## Tests
 
-`packages/db/test/rls.test.ts` (runs when `DATABASE_URL` and `DATABASE_URL_APP` are set, always in CI): app role not superuser; no context -> no rows; cross-tenant read/insert/update/delete fail; company_id immutable; version bump; audit_log append-only; every tenant table has NOT NULL `company_id` and forced RLS.
+`packages/db/test/rls.test.ts` (runs when `DIRECT_URL` and `DATABASE_URL` are set, always in CI): app role not superuser; no context -> no rows; cross-tenant read/insert/update/delete fail; company_id immutable; version bump; audit_log append-only; every tenant table has NOT NULL `company_id` and forced RLS.

@@ -5,7 +5,7 @@ export default defineConfig({
   schema: './src/schema/index.ts',
   out: './drizzle',
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ariforce',
+    url: process.env.DIRECT_URL ?? 'postgres://postgres:postgres@localhost:5432/ariforce',
   },
   extensionsFilters: ['postgis'],
 });

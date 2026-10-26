@@ -12,8 +12,8 @@ import {
   territories,
 } from '../src';
 
-const OWNER = process.env.DATABASE_URL;
-const APP = process.env.DATABASE_URL_APP;
+const OWNER = process.env.DIRECT_URL;
+const APP = process.env.DATABASE_URL;
 const B = '01930000-0000-7000-8000-00000000000b';
 const B_TERR = '01930000-0000-7000-8000-0000000b0001';
 const B_DOC = '01930000-0000-7000-8000-0000000b0002';
@@ -140,7 +140,7 @@ describe.skipIf(!OWNER || !APP)('Postgres RLS tenant isolation (app role, non-su
       select c.relname, c.relrowsecurity, c.relforcerowsecurity,
              (select attnotnull from pg_attribute a where a.attrelid = c.oid and a.attname = 'company_id') as cid
       from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = 'public' and c.relkind = 'r' and c.relname not in ('spatial_ref_sys','companies')
+      where n.nspname = 'public' and c.relkind = 'r' and c.relname not in ('spatial_ref_sys','companies','ariforce_migrations')
         and c.relname not like 'auth\\_%'`);
     for (const row of r.rows) {
       expect(row, row.relname).toMatchObject({

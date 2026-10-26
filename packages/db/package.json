@@ -27,10 +27,12 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "drizzle-kit generate && tsx scripts/sql-files.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:sql": "tsx scripts/sql-files.ts",
+    "db:sql:check": "tsx scripts/sql-files.ts --check"
   },
   "devDependencies": {
     "@ariforce/config": "workspace:*",
