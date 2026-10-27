@@ -321,9 +321,7 @@ export class DcrService {
       const inactive = found.filter((f) => !f.active && orderIds.has(f.id)).map((f) => f.id);
       if (inactive.length) bad.inactiveProductIds = inactive;
     }
-    // #40: POB on chemist/stockist calls, RCPA on chemist calls, no duplicate lines in a call.
-    const pobOutlet = b.calls.filter((c) => c.pob.length && c.outletKind === 'doctor');
-    if (pobOutlet.length) bad.pobOutletCallIds = pobOutlet.map((c) => c.clientId);
+    // #40: POB on doctor/chemist/stockist calls, RCPA on chemist calls only, no duplicate lines in a call.
     const rcpaOutlet = b.calls.filter((c) => c.rcpa.length && c.outletKind !== 'chemist');
     if (rcpaOutlet.length) bad.rcpaOutletCallIds = rcpaOutlet.map((c) => c.clientId);
     const dup = (keys: string[]) => new Set(keys).size !== keys.length;

@@ -132,7 +132,7 @@ describe('contract gaps', () => {
         pob: [{ productId: p1.id, quantity: 1 }],
       }),
     ]);
-    expect(doctorPob.response.status).toBe(422);
+    expect(doctorPob.response.status).toBe(200);
     const dupRcpa = await put([
       call({
         rcpa: [
