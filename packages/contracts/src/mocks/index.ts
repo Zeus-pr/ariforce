@@ -58,7 +58,7 @@ import {
   copyFromMonth,
   copyFromStandard,
   istDate,
-  missingRequiredDates,
+  hasPlannedDay,
   requiredDates,
   prevMonth,
   WorkType,
@@ -764,15 +764,15 @@ function fieldHandlers(baseUrl: string) {
       const p = tourPlans.find((t) => t.month === params.month && t.userId === fx.me.id);
       if (!p) return notFound();
       if (p.status !== 'draft') return conflict('Not in draft');
-      const todayIST = istDate();
-      const weeklyOffDays = mockWeeklyOffDays();
-      const missing = missingRequiredDates(p.month, p.days, todayIST, weeklyOffDays).filter(
-        (d) => !mockLeaveOn(fx.me.id, d),
-      );
-      if (missing.length)
-        return validation(
-          `${missing.length} required date(s) have no plan entry (weekly offs and, this month, past days are not required)`,
-          { missingDates: missing, todayIST, weeklyOffDays },
+      if (!hasPlannedDay(p.days))
+        return HttpResponse.json(
+          {
+            error: {
+              code: 'EMPTY_PLAN',
+              message: 'Add at least one day to the plan before submitting',
+            },
+          },
+          { status: 422 },
         );
       Object.assign(p, { status: 'submitted', submittedAt: serverTime(), version: p.version + 1 });
       approvals.push({
