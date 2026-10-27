@@ -43,18 +43,21 @@ const emp = (
   };
 };
 
-/** Director → VP → GM → SM → ZBM → 2 RBMs → 4 ABMs → 9 BMs, plus people with no manager yet. */
+/**
+ * The real chain: Director → 2 RBMs → 4 ABMs → 9 BMs, plus people with no manager yet. VP, GM, SM and
+ * ZBM exist as roles but nobody reports to them (one demo holder each, directly under the Director).
+ */
 export function seedOrg(): Employee[] {
   n = 0;
   const INVITED = new Set(['Riya Sarkar', 'Moumita Halder', 'Pritam Bose', 'Debarati Nandi']);
   const done = (list: Employee[]) => list.map((e) => (INVITED.has(e.name) ? { ...e, invited: true } : e));
   const dir = emp('Arindam Basu', 'director', 'kol-dunlop', null, 'org-director');
   const vp = emp('Sanjay Mitra', 'vice_president', 'kol-dunlop', dir.id, 'org-vp');
-  const gm = emp('Debashis Roy', 'general_manager', 'kol-dunlop', vp.id, 'org-gm');
-  const sm = emp('Partha Sen', 'sales_manager', 'kol-dunlop', gm.id, 'org-sm');
-  const zbm = emp('Kaushik Ghosh', 'zonal_business_manager', 'kol-dunlop', sm.id, 'org-zbm');
-  const rbmS = emp('Subhajit Das', 'regional_business_manager', 'kol-dunlop', zbm.id, 'org-rbm');
-  const rbmN = emp('Amitava Paul', 'regional_business_manager', 'durgapur', zbm.id);
+  const gm = emp('Debashis Roy', 'general_manager', 'kol-dunlop', dir.id, 'org-gm');
+  const sm = emp('Partha Sen', 'sales_manager', 'kol-dunlop', dir.id, 'org-sm');
+  const zbm = emp('Kaushik Ghosh', 'zonal_business_manager', 'kol-dunlop', dir.id, 'org-zbm');
+  const rbmS = emp('Subhajit Das', 'regional_business_manager', 'kol-dunlop', dir.id, 'org-rbm');
+  const rbmN = emp('Amitava Paul', 'regional_business_manager', 'durgapur', dir.id);
   const abmK = emp('Rahul Chatterjee', 'area_business_manager', 'kol-dunlop', rbmS.id, 'org-abm');
   const abmH = emp('Sourav Mondal', 'area_business_manager', 'howrah', rbmS.id);
   const abmD = emp('Tanmoy Banerjee', 'area_business_manager', 'durgapur', rbmN.id);

@@ -9,6 +9,7 @@
  * same zod schemas and returns the same codes as the contract's MSW handlers. Passwords are never
  * stored in plaintext: the mock keeps a SHA-256 hash only.
  */
+import { ROLE_RETIRED_MESSAGE, TERRITORY_LEVEL_MESSAGE } from '@/lib/assign-errors';
 import { authLimitMessage, SUSPENDED_MESSAGE } from '@/lib/auth-errors';
 import {
   AUTH_STATE_CODES,
@@ -98,6 +99,10 @@ export function messageFor(status: number, code?: string, serverMessage?: string
       return 'This sign-up request was not approved.';
     case AUTH_STATE_CODES.suspended:
       return SUSPENDED_MESSAGE;
+    case 'ROLE_RETIRED':
+      return status === 403 ? 'Your role does not have access to this portal.' : ROLE_RETIRED_MESSAGE;
+    case 'TERRITORY_LEVEL_INVALID':
+      return TERRITORY_LEVEL_MESSAGE;
   }
   if (status === 422) return 'Some details are not valid. Check the fields and try again.';
   if (status === 403) return 'That is outside what you can approve, or it is your own request.';

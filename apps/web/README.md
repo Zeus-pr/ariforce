@@ -21,4 +21,4 @@ pnpm lint && pnpm typecheck && pnpm build
 
 **This is mock authentication.** `/sign-in` checks against `src/lib/mock-auth.ts`: one demo user per role, all with the password `ariforce-demo` (printed on the page). The session is a user id in `localStorage`; there are no real credentials and nothing secret. Replace the module when real auth (#5) lands.
 
-Demo accounts: bm@, abm@, rbm@, zbm@, sm@, gm@, vp@, director@, admin@ `demo.ariforce.test`.
+Demo accounts: bm@, abm@, rbm@, zbm@, sm@, gm@, vp@, director@, admin@ `demo.ariforce.test`. The chain is BM → ABM → RBM → Director; the ZBM, SM, GM and VP demo users report to the Director and have nobody under them.

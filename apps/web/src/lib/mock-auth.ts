@@ -189,6 +189,8 @@ export async function signInReal(email: string, password: string): Promise<MockU
         return { field: 'password', message: PENDING_MESSAGE, account: 'pending' };
       if (code === 'ACCOUNT_REJECTED')
         return { field: 'password', message: REJECTED_MESSAGE, account: 'rejected' };
+      // 403 ROLE_RETIRED: every role this person holds is retired (Distribution Head, Accountant).
+      if (code === 'ROLE_RETIRED') return { field: 'password', message: NO_PORTAL_MESSAGE };
     }
     if (res.status === 401 || res.status === 400 || res.status === 403)
       return { field: 'password', message: 'Email or password is wrong.' };

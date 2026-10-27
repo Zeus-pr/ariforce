@@ -77,6 +77,11 @@ export const SFC_EMPLOYEES: SfcEmployee[] = [
   bm('sfc-u-dgp', 'Demo BM Durgapur', 'SFC-BM-05', 'sfc-hq-durgapur'),
   bm('sfc-u-bnk', 'Demo BM Bankura', 'SFC-BM-06', 'sfc-hq-bankura'),
   bm('sfc-u-suri', 'Demo BM Suri', 'SFC-BM-07', 'sfc-hq-suri'),
+  // The Burdwan ABM's own sheet: read-only for the ABM (cannot edit own table), editable from RBM up.
+  {
+    ...bm('sfc-u-abm-bwn', 'Demo ABM Burdwan', 'SFC-ABM-01', 'sfc-hq-anamoy'),
+    role: 'area_business_manager',
+  },
 ];
 
 type R = [

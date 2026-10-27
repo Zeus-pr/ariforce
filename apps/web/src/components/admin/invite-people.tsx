@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import type { components } from '@ariforce/contracts';
+import { assignMessage, territoryQueryFor } from '@/lib/assign-errors';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
@@ -46,12 +47,13 @@ export function useHqs() {
     void (async () => {
       await apiReady();
       const out = new Map<string, Terr>();
-      // HQs first (a filtered list also catches HQs a plain list may page past), then everything else.
-      for (const level of ['headquarter', undefined]) {
+      // HQs first via the BM-assignable list (HQ only; a filtered list also catches HQs a plain list
+      // may page past), then everything else. The level check in the pickers stays as a fallback.
+      for (const extra of [territoryQueryFor('business_manager'), {}]) {
         let cursor: string | undefined;
         for (let i = 0; i < 20; i++) {
           const r = await api.GET('/v1/territories', {
-            params: { query: { level, limit: 200, cursor, sort: 'name' } as never },
+            params: { query: { ...extra, limit: 200, cursor, sort: 'name' } as never },
           });
           if (!r.data) break;
           for (const t of r.data.items) out.set(t.id, { id: t.id, name: t.name, code: t.code, level: t.level });
@@ -350,6 +352,7 @@ function ManualInvite({ hqs, onSent }: { hqs: Terr[] | null; onSent: () => void 
         index: number;
         status: string;
         message: string | null;
+        code?: string | null;
         inviteUrl: string | null;
       }[];
     };
@@ -360,7 +363,7 @@ function ManualInvite({ hqs, onSent }: { hqs: Terr[] | null; onSent: () => void 
           name: row.name,
           email: row.email,
           status: x.status,
-          message: x.message,
+          message: assignMessage({ code: x.code ?? undefined }) ?? x.message,
           link:
             x.status === 'invited'
               ? {

@@ -14,6 +14,7 @@ import {
 } from '@ariforce/ui/components/dialog';
 import { toast } from '@ariforce/ui/components/sonner';
 import { api, apiReady } from '@/lib/api';
+import { territoryQueryFor } from '@/lib/assign-errors';
 import { useSession } from '@/lib/mock-auth';
 import { ROLE_LABEL, roleLevel, type Role } from '@/lib/roles';
 import {
@@ -262,14 +263,29 @@ function ApproveDialog({
   const [localError, setLocalError] = useState<string | null>(null);
   const { busy, error, run } = useDecide(onDone);
 
+  // BM gets HQs only from the server (assignableForRole); the level check stays as a fallback.
+  const bmOnly = role === 'business_manager';
   useEffect(() => {
     let live = true;
+    setTerritories(null);
     void apiReady()
-      .then(() => api.GET('/v1/territories', { params: { query: { limit: 200 } } }))
+      .then(() =>
+        api.GET('/v1/territories', {
+          params: { query: { limit: 200, ...territoryQueryFor(bmOnly ? 'business_manager' : null) } as never },
+        }),
+      )
       .then((r) => {
-        if (live) setTerritories((r.data?.items ?? []).map((t) => ({ id: t.id, name: t.name })));
+        const items = (r.data?.items ?? []).filter((t) => !bmOnly || t.level === 'headquarter');
+        if (live) setTerritories(items.map((t) => ({ id: t.id, name: t.name })));
       })
       .catch(() => live && setTerritories([]));
+    return () => {
+      live = false;
+    };
+  }, [bmOnly]);
+
+  useEffect(() => {
+    let live = true;
     void teamAdapter
       .tree(viewer)
       .then((t) => live && setPeople(t.nodes))

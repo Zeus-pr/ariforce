@@ -66,6 +66,24 @@ const emps: Emp[] = fx.mockUsers.map((u) => ({
 }
 const invites = new Map<string, { id: string; userId: string; expiresAt: string; used: boolean }>();
 
+/** API rule (feat/sfc-routes Part 3): a business_manager may only hold headquarter territories. */
+export function territoryLevelInvalid(role: RoleKey, territoryIds: string[]) {
+  if (role !== 'business_manager') return null;
+  const all = [...fx.territories, ...fx.hqTerritories];
+  const bad = territoryIds.filter((id) => all.find((t) => t.id === id)?.level !== 'headquarter');
+  if (!bad.length) return null;
+  return HttpResponse.json(
+    {
+      error: {
+        code: 'TERRITORY_LEVEL_INVALID',
+        message: 'A business manager can only be assigned headquarter territories',
+        details: { territoryIds: bad, expectedLevel: 'headquarter', role },
+      },
+    },
+    { status: 422 },
+  );
+}
+
 const e = (status: number, code: string, message: string) =>
   HttpResponse.json({ error: { code, message } }, { status });
 const rank = (x: Emp) => hierarchyRank(x.roles);
@@ -168,6 +186,8 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
     if (!admin && !(rr > 0 && rr < r)) return e(403, 'FORBIDDEN', 'Role must be below your own');
     if (rr > 0 && !b.data.territoryIds.length)
       return e(422, 'VALIDATION', 'Hierarchy roles need at least one territory');
+    const lv = territoryLevelInvalid(b.data.role, b.data.territoryIds);
+    if (lv) return lv;
     const st = scopeTerr(p);
     if (!admin && b.data.territoryIds.some((t) => !st.has(t)))
       return e(403, 'FORBIDDEN', 'Territory outside your subtree');
@@ -348,6 +368,10 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
       const nr = d.role ? ROLE_RANK[d.role] : rank(u);
       if (nr > 0 && !(d.territoryIds ?? u.territoryIds).length)
         return e(422, 'VALIDATION', 'Hierarchy roles need at least one territory');
+      if (d.role || d.territoryIds) {
+        const lv = territoryLevelInvalid((d.role ?? u.roles[0]) as RoleKey, d.territoryIds ?? u.territoryIds);
+        if (lv) return lv;
+      }
       if (d.managerId) {
         if (nr === 0 || nr >= ROLE_RANK.director)
           return e(422, 'VALIDATION', 'This role has no manager');

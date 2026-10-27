@@ -5,6 +5,7 @@
  */
 import type { components } from '@ariforce/contracts';
 import { api } from '@/lib/api';
+import { assignField, assignMessage, territoryQueryFor } from '@/lib/assign-errors';
 import { roleLevel, type Role, type SalesRole } from '@/lib/roles';
 import {
   AdapterError,
@@ -43,8 +44,10 @@ const toEmployee = (n: Node, rootId?: string): Employee => {
 };
 
 function fail(error: unknown): never {
-  const e = (error as { error?: { message?: string; details?: { field?: string }[] } })?.error;
-  const field = e?.details?.[0]?.field;
+  const e = (error as { error?: { code?: string; message?: string; details?: { field?: string }[] } })?.error;
+  const rule = assignField(e?.code);
+  if (rule) throw new AdapterError(assignMessage(e)!, rule === 'role' ? 'role' : 'hqId');
+  const field = Array.isArray(e?.details) ? e.details[0]?.field : undefined;
   const map: Record<string, keyof EmployeeInput> = {
     territoryIds: 'hqId',
     managerId: 'managerId',
@@ -85,8 +88,19 @@ export const apiTeamAdapter = {
     const items = (last ?? (await load())).unassigned.map((n) => toEmployee(n));
     return { items, total: items.length, nextCursor: null };
   },
+  /** HQs from GET /v1/territories?assignableForRole=business_manager (HQ only); team HQs as fallback. */
   async hqs(_role: Role): Promise<Hq[]> {
     if (!last) await load();
+    const r = await api
+      .GET('/v1/territories', {
+        params: { query: { limit: 200, sort: 'name', ...territoryQueryFor('business_manager') } as never },
+      })
+      .catch(() => null);
+    const items = r?.data?.items.filter((t) => t.level === 'headquarter') ?? [];
+    if (!items.length) return hqCache;
+    const seen = new Map(hqCache.map((h) => [h.id, h]));
+    for (const t of items) if (!seen.has(t.id)) seen.set(t.id, { id: t.id, name: t.name, city: '', state: '' });
+    hqCache = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
     return hqCache;
   },
   allHqs: () => hqCache,
@@ -168,7 +182,7 @@ export const apiTeamAdapter = {
           email: r.email ?? chunk[r.index]?.email ?? '',
           status: r.status,
           code: r.code,
-          message: r.message,
+          message: assignMessage({ code: r.code ?? undefined }) ?? r.message,
           inviteUrl: absolute(r.inviteUrl),
         });
       onProgress?.(Math.min(at + BULK_CHUNK, inputs.length));

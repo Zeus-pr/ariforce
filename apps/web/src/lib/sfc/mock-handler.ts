@@ -5,6 +5,7 @@
  * the mock persona (x-mock-user): a Burdwan ABM sees the Burdwan area, RBM and above see everything.
  */
 import { http, HttpResponse } from 'msw';
+import { roleLevel, type Role } from '@/lib/roles';
 import { DEFAULT_RATE } from './adapter';
 import { SFC_EMPLOYEES, SFC_HQS, SFC_SCOPE, seedRows } from './fixtures';
 
@@ -55,7 +56,15 @@ const err = (status: number, code: string, message: string, details?: unknown) =
   HttpResponse.json({ error: { code, message, details } }, { status });
 
 export function mockSfc(base: string) {
-  const rate = DEFAULT_RATE;
+  let rate = DEFAULT_RATE;
+  let rateVersion = 1;
+  const viewer = (request: Request) => (request.headers.get('x-mock-user') ?? 'director') as Role;
+  /** API rule: managers edit people strictly below them (never their own table); System Admin edits all. */
+  const canEdit = (request: Request, role: string | null) => {
+    const v = viewer(request);
+    if (v === 'system_admin') return true;
+    return roleLevel(v) > roleLevel((role ?? 'business_manager') as Role);
+  };
   const tables = new Map<string, { rev: number; hq: string; routes: Route[] }>();
   let seq = 0;
   const table = (userId: string, hq: string) => {
@@ -97,22 +106,44 @@ export function mockSfc(base: string) {
     if (!u) return { fail: err(404, 'NOT_FOUND', 'Employee not found or not visible') };
     return { u };
   };
-  const out = (userId: string, name: string, t: { rev: number; hq: string; routes: Route[] }) => ({
+  const out = (
+    userId: string,
+    name: string,
+    t: { rev: number; hq: string; routes: Route[] },
+    edit: boolean,
+  ) => ({
     userId,
     userName: name,
     hqTerritoryId: t.hq,
     ratePerKm: rate,
     etag: etag(t),
-    canEdit: true,
+    canEdit: edit,
     routes: t.routes,
   });
 
   return [
     http.get(`${base}/v1/sfc/settings`, ({ request }) =>
       scope(request)
-        ? HttpResponse.json({ ratePerKm: rate, version: 1 })
+        ? HttpResponse.json({ ratePerKm: rate, version: rateVersion })
         : err(403, 'FORBIDDEN', 'Missing permission'),
     ),
+    // settings:write = Director and System Admin.
+    http.put(`${base}/v1/sfc/settings`, async ({ request }) => {
+      if (!['director', 'system_admin'].includes(viewer(request)))
+        return err(403, 'FORBIDDEN', 'Missing settings:write');
+      const b = (await request.json().catch(() => null)) as {
+        ratePerKm?: unknown;
+        version?: unknown;
+      } | null;
+      const v = Number(b?.ratePerKm);
+      if (!b || !Number.isFinite(v) || v < 0 || v > 1_000_000 || Math.round(v * 100) !== v * 100)
+        return err(422, 'VALIDATION', 'ratePerKm must be 0 to 10,00,000 with up to 2 decimals');
+      if (b.version !== rateVersion)
+        return err(409, 'VERSION_CONFLICT', 'The rate changed since it was loaded');
+      rate = v;
+      rateVersion += 1;
+      return HttpResponse.json({ ratePerKm: rate, version: rateVersion });
+    }),
     http.get(`${base}/v1/sfc/hqs`, ({ request }) => {
       const hqs = scope(request);
       if (!hqs) return err(403, 'FORBIDDEN', 'Missing permission');
@@ -121,7 +152,7 @@ export function mockSfc(base: string) {
           id: h.id,
           name: h.name,
           code: h.code,
-          level: 'hq',
+          level: 'headquarter',
           parentId: h.areaId,
           parentName: h.areaName,
           employeeCount: SFC_EMPLOYEES.filter((e) => e.hqId === h.id).length,
@@ -142,11 +173,11 @@ export function mockSfc(base: string) {
           name: e.name,
           employeeCode: e.employeeCode,
           role: e.role,
-          rank: 1,
+          rank: roleLevel((e.role ?? 'business_manager') as Role),
           hqTerritoryIds: e.hqId ? [e.hqId] : [],
           routeCount: n,
           hasSfc: n > 0,
-          canEdit: true,
+          canEdit: canEdit(request, e.role),
         };
       });
       return HttpResponse.json({ items });
@@ -154,11 +185,15 @@ export function mockSfc(base: string) {
     http.get(`${base}/v1/sfc/employees/:userId/routes`, ({ request, params }) => {
       const p = person(request, String(params.userId));
       if (p.fail) return p.fail;
-      return HttpResponse.json(out(p.u.id, p.u.name, table(p.u.id, p.u.hqId ?? '')));
+      return HttpResponse.json(
+        out(p.u.id, p.u.name, table(p.u.id, p.u.hqId ?? ''), canEdit(request, p.u.role)),
+      );
     }),
     http.put(`${base}/v1/sfc/employees/:userId/routes`, async ({ request, params }) => {
       const p = person(request, String(params.userId));
       if (p.fail) return p.fail;
+      if (!canEdit(request, p.u.role))
+        return err(403, 'FORBIDDEN', 'You can only edit SFCs of people below you');
       const b = (await request.json().catch(() => null)) as {
         etag?: string;
         hqTerritoryId?: string;
@@ -212,7 +247,7 @@ export function mockSfc(base: string) {
       }
       t.routes = next;
       t.rev += 1;
-      return HttpResponse.json(out(p.u.id, p.u.name, t));
+      return HttpResponse.json(out(p.u.id, p.u.name, t, true));
     }),
   ];
 }

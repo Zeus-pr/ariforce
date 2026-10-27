@@ -1,3 +1,4 @@
+import { assignMessage } from './assign-errors';
 import { createApiClient } from '@ariforce/contracts';
 
 /**
@@ -91,13 +92,12 @@ export function apiReady(): Promise<void> {
     try {
       const [
         { setupWorker },
-        { createHandlers, fixtures },
+        { createHandlers },
         { mastersWriteGuard },
         { mockInviteAccept },
         { mockLeaveDayBlock },
         { mockSfc },
         { mockPasswordReset },
-        { grantMockPay },
       ] = await Promise.all([
         import('msw/browser'),
         import('@ariforce/contracts/mocks'),
@@ -106,9 +106,7 @@ export function apiReady(): Promise<void> {
         import('./leave/mock-handler'),
         import('./sfc/mock-handler'),
         import('./password-reset/mock-handler'),
-        import('./expenses/mock-pay'),
       ]);
-      grantMockPay([fixtures.me, ...fixtures.mockUsers]);
       await setupWorker(
         ...mockInviteAccept(API_URL),
         ...mockLeaveDayBlock(API_URL),
@@ -138,6 +136,8 @@ export function toApiError(error: unknown): ApiError {
   if (inner && typeof inner === 'object' && 'code' in inner) e = inner;
   const a = e as Partial<ApiError> | undefined;
   if (a?.code === 'REJECTION_REASON_REQUIRED') return { code: a.code, message: 'Give a reason to reject this request.', details: a.details };
+  const assign = assignMessage(a);
+  if (a?.code && assign) return { code: a.code, message: assign, details: a.details };
   if (a?.code === 'DAY_LOCKED') return { code: a.code, message: 'Some days are already submitted or approved and can’t be changed.', details: a.details };
   return a?.code ? { code: a.code, message: a.message ?? '', details: a.details } : { code: 'NETWORK', message: 'Could not reach the server.' };
 }

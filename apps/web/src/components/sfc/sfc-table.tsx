@@ -56,12 +56,15 @@ export function SfcTable({
   hqId,
   name,
   rate,
+  editable = true,
   onDirty,
 }: {
   userId: string;
   hqId: string;
   name: string;
   rate: number;
+  /** canEdit from the employee list; the routes response's canEdit is checked too. */
+  editable?: boolean;
   onDirty: (dirty: boolean) => void;
 }) {
   const [base, setBase] = useState<SfcSheet | null>(null);
@@ -115,7 +118,7 @@ export function SfcTable({
     ]);
 
   async function save() {
-    if (!base) return;
+    if (!base || !base.canEdit || !editable) return;
     setError(null);
     setBadRow(null);
     const out: SfcRow[] = [];
@@ -221,12 +224,12 @@ export function SfcTable({
           {error.message}
         </p>
       )}
-      {!base.canEdit && (
+      {!(base.canEdit && editable) && (
         <p className="text-sm text-muted-foreground" data-testid="sfc-readonly">
-          You can view this SFC but not change it.
+          Read only. You can’t edit your own SFC or the SFC of someone at or above your level.
         </p>
       )}
-      <fieldset disabled={!base.canEdit} className="contents">
+      <fieldset disabled={!(base.canEdit && editable)} className="contents">
         <div className="overflow-x-auto rounded-lg border" data-testid="sfc-scroll">
           <table
             className="w-full min-w-[68rem] border-separate border-spacing-0 text-sm"

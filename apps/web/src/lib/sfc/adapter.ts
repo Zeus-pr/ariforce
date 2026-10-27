@@ -203,10 +203,21 @@ const fromApi = (t: ApiTable): SfcSheet => ({
 });
 
 /** The one company-wide rate (not per HQ). */
-export async function getRate(): Promise<number> {
-  const r = await call<{ ratePerKm?: number }>('/v1/sfc/settings').catch(() => null);
-  return typeof r?.ratePerKm === 'number' && r.ratePerKm > 0 ? r.ratePerKm : DEFAULT_RATE;
+/** One company-wide rate. `version` is null when the settings could not be read (rate falls back). */
+export type SfcSettings = { ratePerKm: number; version: number | null };
+export async function getSettings(): Promise<SfcSettings> {
+  const r = await call<{ ratePerKm?: number; version?: number }>('/v1/sfc/settings').catch(
+    () => null,
+  );
+  return {
+    ratePerKm: typeof r?.ratePerKm === 'number' && r.ratePerKm > 0 ? r.ratePerKm : DEFAULT_RATE,
+    version: typeof r?.version === 'number' ? r.version : null,
+  };
 }
+export const getRate = () => getSettings().then((s) => s.ratePerKm);
+/** PUT /v1/sfc/settings (settings:write: Director, System Admin). 409 VERSION_CONFLICT on a stale version. */
+export const saveRate = (ratePerKm: number, version: number) =>
+  call<SfcSettings>('/v1/sfc/settings', { method: 'PUT', body: { ratePerKm, version } });
 export const listHqs = () =>
   call<{
     items: {

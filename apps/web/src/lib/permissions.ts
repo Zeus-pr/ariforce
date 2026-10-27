@@ -4,6 +4,7 @@
  * read AND write masters (add, edit, import, remove). Area Business Manager and Business Manager
  * are read-only. The API returns 403 on writes for ABM/BM (Architect, in progress on their side).
  */
+import { DEFAULT_ROLE_PERMISSIONS } from '@ariforce/contracts';
 import { ROLES, isSystemAdmin, roleLevel, type Role } from './roles';
 
 export const MASTER_KINDS = ['doctors', 'chemists', 'stockists'] as const;
@@ -25,8 +26,12 @@ export const canReviewSignups = (role: Role) =>
   isSystemAdmin(role) || roleLevel(role) >= roleLevel('area_business_manager');
 
 /**
- * Who may mark an approved expense claim paid: Director and System Admin only (owner decision).
- * The API still ties pay to finance:write (Accountant only), see docs/CONTRACT-GAPS.md.
+ * Who may mark an approved expense claim paid: the `expenses:pay` permission (API migration 0040:
+ * Director and System Admin). Read from the contract's role -> permission map, with the role list
+ * as a fallback in case the map lacks it. Pass the /v1/me permissions when you have them.
  */
 export const EXPENSE_PAYERS: Role[] = ['director', 'system_admin'];
-export const canPayExpenses = (role: Role) => EXPENSE_PAYERS.includes(role);
+export const canPayExpenses = (role: Role, permissions?: readonly string[]) =>
+  permissions
+    ? permissions.includes('expenses:pay')
+    : (DEFAULT_ROLE_PERMISSIONS[role] ?? []).includes('expenses:pay') || EXPENSE_PAYERS.includes(role);

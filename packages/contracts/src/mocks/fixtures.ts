@@ -126,6 +126,16 @@ const PERSONAS: { key: (typeof ROLE_KEYS)[number]; local: string; code: string; 
   { key: 'accountant', local: 'accountant', code: 'ACC001', t: [] },
 ];
 const uid = (i: number) => `01930000-0000-7000-8000-000000000${301 + i}`;
+const idOf = (k: string) => uid(PERSONAS.findIndex((p) => p.key === k));
+/** The real chain is BM -> ABM -> RBM -> Director; ZBM, SM, GM and VP exist but nobody reports to them. */
+const managerOf = (k: (typeof ROLE_KEYS)[number]): string | null =>
+  k === 'business_manager'
+    ? idOf('area_business_manager')
+    : k === 'area_business_manager'
+      ? idOf('regional_business_manager')
+      : k === 'director' || ROLE_RANK[k] === 0
+        ? null
+        : idOf('director');
 export const mockUsers: Me[] = PERSONAS.map((p, i) => ({
   ...me,
   id: uid(i),
@@ -135,7 +145,7 @@ export const mockUsers: Me[] = PERSONAS.map((p, i) => ({
   roles: [p.key],
   permissions: DEFAULT_ROLE_PERMISSIONS[p.key],
   territoryIds: p.t.map(tid),
-  managerId: i === 0 || ROLE_RANK[p.key] === 0 ? null : uid(i - 1),
+  managerId: managerOf(p.key),
 }));
 export function findMockUser(s: string | null | undefined): Me | undefined {
   if (!s) return undefined;

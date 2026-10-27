@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@ariforce/ui/components/table';
 import { toast } from '@ariforce/ui/components/sonner';
 import { api, apiReady, toApiError } from '@/lib/api';
+import { canPayExpenses } from '@/lib/permissions';
 import { can, CATEGORY_LABEL, messageFor, quietAbort, money, monthLabel, selfId, STATUS_LABEL, thisMonth } from '@/lib/expenses/model';
 import { useRole } from '@/components/shell/role-context';
 import { StatusBadge } from './status-badge';
@@ -19,7 +20,7 @@ type Report = { month: string; total: number; byCategory: Record<string, number>
 /** Monthly expense report with Excel/PDF export. Approvers see their team; finance sees everyone the API returns. */
 export function ReportsView() {
   const { role, user } = useRole();
-  const finance = can(role, 'finance:read');
+  const finance = can(role, 'finance:read') || canPayExpenses(role);
   const [month, setMonth] = useState(thisMonth());
   const [status, setStatus] = useState<ExpenseStatus | 'all'>('all');
   const [scope, setScope] = useState<'all' | 'team'>(finance ? 'all' : 'team');

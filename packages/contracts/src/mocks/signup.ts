@@ -12,6 +12,7 @@ import {
 } from '../schemas/signup';
 import { MIN_MANAGER_RANK, hierarchyRank, isHierarchyRole } from '../schemas/team';
 import * as fx from './fixtures';
+import { territoryLevelInvalid } from './team';
 
 /**
  * Mock sign-up requests. Same states and error codes as the API. Simplification: an ABM+ sees
@@ -51,7 +52,7 @@ export function signupHandlers(baseUrl: string, who: (r: Request) => Me | undefi
     http.get(`${baseUrl}/v1/auth/sign-up-options`, () =>
       HttpResponse.json(
         SignupOptions.parse({
-          territories: fx.territories.map((t) => ({ id: t.id, name: t.name, code: t.code })),
+          territories: fx.hqTerritories.map((t) => ({ id: t.id, name: t.name, code: t.code })),
           managers: fx.mockUsers
             .filter((u) =>
               u.roles.some((r) => isHierarchyRole(r) && ROLE_RANK[r] >= MIN_MANAGER_RANK),
@@ -146,6 +147,10 @@ export function signupHandlers(baseUrl: string, who: (r: Request) => Me | undefi
       }
       if ((role === 'director' || !isHierarchyRole(role)) && b.data.managerId)
         return e(422, 'VALIDATION', 'This role has no manager');
+      const tids =
+        b.data.territoryIds ?? (f.r.requestedTerritoryId ? [f.r.requestedTerritoryId] : []);
+      const lv = territoryLevelInvalid(role, tids);
+      if (lv) return lv;
       Object.assign(f.r, {
         status: 'approved',
         approvedRole: role,
