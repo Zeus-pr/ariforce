@@ -105,6 +105,10 @@ describe.skipIf(!OWNER || !APP)('approval details + rejection reasons (real API)
       `update expense_claims set deleted_at = now() where deleted_at is null and user_id = $1 and month = $2`,
       [U.otherRep, `${EM}-01`],
     );
+    await owner.query(
+      `delete from tour_plan_submissions where tour_plan_id in (select id from tour_plans where user_id = $1 and month = $2)`,
+      [U.otherRep, `${TPM}-01`],
+    );
     await owner.query(`delete from tour_plans where user_id = $1 and month = $2`, [
       U.otherRep,
       `${TPM}-01`,
@@ -272,6 +276,7 @@ describe.skipIf(!OWNER || !APP)('approval details + rejection reasons (real API)
       .send({ submitterNote: '  Two new doctors in week 1  ' });
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect(r.body.submitterNote).toBe('Two new doctors in week 1');
+    const subId = r.body.submissions[0].id as string;
     // By id: owner and assigned approver yes; outside the line 404.
     expect((await http().get(`/v1/tour-plans/${planId}`).set(as('bm2'))).status).toBe(200);
     const tp = await http().get(`/v1/tour-plans/${planId}`).set(as('rbm'));
@@ -283,7 +288,8 @@ describe.skipIf(!OWNER || !APP)('approval details + rejection reasons (real API)
     const q = await http()
       .get('/v1/approvals?mine=to_decide&subjectType=tour_plan&limit=100')
       .set(as('rbm'));
-    const a = q.body.items.find((x: { subjectId: string }) => x.subjectId === planId);
+    // #86: the approval's subject is the submission.
+    const a = q.body.items.find((x: { subjectId: string }) => x.subjectId === subId);
     expect(a).toBeTruthy();
     const d = await http().get(`/v1/approvals/${a.id}`).set(as('rbm'));
     expect(d.status, JSON.stringify(d.body)).toBe(200);
@@ -321,8 +327,10 @@ describe.skipIf(!OWNER || !APP)('approval details + rejection reasons (real API)
     // Editing keeps the reason visible; resubmit clears it; the old request keeps its reason.
     r = await http().put(`/v1/tour-plans/${TPM}`).set(as('bm2')).send({ days });
     expect(r.status, JSON.stringify(r.body)).toBe(200);
-    expect(r.body).toMatchObject({ status: 'draft', rejectionReason: 'Add doctor calls' });
-    expect((await http().post(`/v1/tour-plans/${TPM}/submit`).set(as('bm2'))).status).toBe(200);
+    expect(r.body).toMatchObject({ status: 'rejected', rejectionReason: 'Add doctor calls' });
+    r = await http().post(`/v1/tour-plans/${TPM}/submit`).set(as('bm2'));
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    const subId2 = r.body.submissions.at(-1).id as string;
     plan = await http().get(`/v1/tour-plans/${TPM}`).set(as('bm2'));
     expect(plan.body).toMatchObject({
       status: 'submitted',
@@ -336,7 +344,7 @@ describe.skipIf(!OWNER || !APP)('approval details + rejection reasons (real API)
     const q2 = await http()
       .get('/v1/approvals?mine=to_decide&subjectType=tour_plan&limit=100')
       .set(as('rbm'));
-    const a2 = q2.body.items.find((x: { subjectId: string }) => x.subjectId === planId);
+    const a2 = q2.body.items.find((x: { subjectId: string }) => x.subjectId === subId2);
     r = await http()
       .post(`/v1/approvals/${a2.id}/decision`)
       .set(as('rbm'))

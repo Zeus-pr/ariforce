@@ -110,7 +110,7 @@ export class TourPlansController {
     @Param('month') m: string,
     @Body(new ZodPipe(TourPlanSubmit.optional())) b?: z.infer<typeof TourPlanSubmit>,
   ) {
-    return this.svc.submit(p, month(m), b?.submitterNote);
+    return this.svc.submit(p, month(m), b?.submitterNote, b?.dates);
   }
 }
 

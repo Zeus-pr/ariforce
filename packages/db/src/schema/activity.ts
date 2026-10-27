@@ -51,6 +51,37 @@ export const tourPlans = pgTable(
   ],
 );
 
+/**
+ * Tour plan submission (#86): a set of days of one monthly plan sent for approval together. Each has
+ * its own approval request (entity_type tour_plan, entity_id = submission id). A day's status is the
+ * status of the latest submission that contains it (draft when none).
+ */
+export const tourPlanSubmissions = pgTable(
+  'tour_plan_submissions',
+  {
+    id: pk(),
+    companyId: companyId().references(() => companies.id),
+    tourPlanId: uuid('tour_plan_id')
+      .notNull()
+      .references(() => tourPlans.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    dates: date('dates').array().notNull(),
+    status: docStatus('status').notNull().default('submitted'),
+    submitterNote: text('submitter_note'),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }).notNull().defaultNow(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    decidedBy: uuid('decided_by').references(() => users.id),
+    decisionComment: text('decision_comment'),
+    ...syncCols(),
+  },
+  (t) => [
+    index('tour_plan_submissions_plan_idx').on(t.companyId, t.tourPlanId),
+    check('tour_plan_submissions_dates_ck', sql`cardinality(${t.dates}) >= 1`),
+  ],
+);
+
 /** Standard tour plan (STP, #20): one weekly-pattern template per user, copied into monthly plans. */
 export const standardTourPlans = pgTable(
   'standard_tour_plans',

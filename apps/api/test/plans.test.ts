@@ -107,9 +107,19 @@ describe.skipIf(!OWNER || !APP)('tour plans + approvals (real API)', () => {
     const sub = await http().post(`/v1/tour-plans/${M}/submit`).set(as('bm'));
     expect(sub.status, JSON.stringify(sub.body)).toBe(200);
     expect(sub.body.status).toBe('submitted');
+    // #86: submitted days are locked; resending them unchanged is fine.
     expect(
       (await http().put(`/v1/tour-plans/${M}`).set(as('bm')).send({ days: full() })).status,
-    ).toBe(409);
+    ).toBe(200);
+    const changed = await http()
+      .put(`/v1/tour-plans/${M}`)
+      .set(as('bm'))
+      .send({ days: full().slice(1) });
+    expect(changed.status).toBe(409);
+    expect(changed.body.error).toMatchObject({
+      code: 'DAY_LOCKED',
+      details: { dates: [`${M}-01`] },
+    });
   });
 
   it('submit rule: EMPTY_PLAN only for no entries; one day or a partial month succeeds; past days editable', async () => {
@@ -247,6 +257,6 @@ describe.skipIf(!OWNER || !APP)('tour plans + approvals (real API)', () => {
     expect(abmTp.body).toMatchObject({ status: 'rejected', decisionComment: 'Rework week 2' });
     expect(
       (await http().put(`/v1/tour-plans/${M}`).set(as('abm')).send({ days: full() })).body.status,
-    ).toBe('draft');
+    ).toBe('rejected'); // #86: editing a rejected day keeps it rejected until resubmitted
   });
 });
