@@ -33,6 +33,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type * as z from 'zod';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
+import { rejectionReason } from '../common/rejection';
 import { TenantService } from '../common/tenant.service';
 import { DB } from '../db/db.module';
 import { err } from '../field/checkins.service';
@@ -809,7 +810,8 @@ export class TeamService {
     });
   }
 
-  rejectSignup(p: Principal, id: string, reason: string | null) {
+  rejectSignup(p: Principal, id: string, why: string | null) {
+    const reason = rejectionReason('reject', why);
     return this.tenant.run(p, async (tx) => {
       const { r, u } = await this.pendingSignup(tx, p, id);
       await tx

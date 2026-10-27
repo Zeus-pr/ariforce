@@ -1,0 +1,2 @@
+CREATE INDEX IF NOT EXISTS "doctors_regno_idx" ON "doctors" USING btree ("company_id",upper("registration_no"));--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "doctors_pincode_idx" ON "doctors" USING btree ("company_id","pincode");

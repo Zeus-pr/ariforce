@@ -6,6 +6,7 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import type {
+  ApprovalSubject,
   LeaveApply,
   LeaveRequest,
   LeaveSettingsUpdate,
@@ -31,6 +32,7 @@ import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { companySettings, localDate } from '../field/field.util';
 import { ApprovalsService } from '../plans/approvals.service';
+import { nameRejecters, rejectionFields } from '../common/rejection';
 import { addDay, countedDates } from './leave.util';
 
 type ReqRow = typeof leaveRequests.$inferSelect;
@@ -132,7 +134,7 @@ export class LeaveService implements OnModuleInit {
           entityType: 'leave_request',
           entityId: req.entityId,
           dedupeKey: `leave.decided:${req.id}`,
-          data: { ...(req.payload ?? {}), comment },
+          data: { ...(req.payload ?? {}), comment, ...(approved ? {} : { reason: comment }) },
         });
       },
       {
@@ -155,6 +157,81 @@ export class LeaveService implements OnModuleInit {
         },
       },
     );
+    this.approvals.registerDetail('leave', (tx, _p, req) => this.approvalDetail(tx, req.entityId), {
+      readPermissions: ['leave:approve'],
+    });
+  }
+
+  /** Approver view (GET /v1/approvals/{id}): the request, its balance and peers off at the same time. */
+  private async approvalDetail(tx: Tx, id: string): Promise<ApprovalSubject | null> {
+    const [r] = await tx.select().from(leaveRequests).where(eq(leaveRequests.id, id));
+    if (!r) return null;
+    const request = (await this.dtos(tx, [r]))[0]!;
+    const [pol] = await tx.select().from(leavePolicies).where(eq(leavePolicies.id, r.policyId));
+    const item = pol ? (await this.balanceItems(tx, r.userId, r.year, [pol]))[0]! : null;
+    // pending/approved days are already held in `available`
+    const held = r.status === 'pending' || r.status === 'approved';
+    const balance = item
+      ? {
+          item,
+          availableBefore:
+            item.available === null
+              ? null
+              : held
+                ? r1(item.available + request.days)
+                : item.available,
+          availableAfter:
+            item.available === null
+              ? null
+              : held
+                ? item.available
+                : r1(item.available - request.days),
+        }
+      : null;
+    const [u] = await tx.select({ m: users.managerId }).from(users).where(eq(users.id, r.userId));
+    const peers = u?.m
+      ? await tx
+          .select({ id: users.id, name: users.name })
+          .from(users)
+          .where(and(eq(users.managerId, u.m), ne(users.id, r.userId), isNull(users.deletedAt)))
+      : [];
+    const ov = peers.length
+      ? await tx
+          .select()
+          .from(leaveRequests)
+          .where(
+            and(
+              inArray(
+                leaveRequests.userId,
+                peers.map((x) => x.id),
+              ),
+              isNull(leaveRequests.deletedAt),
+              inArray(leaveRequests.status, ['pending', 'approved']),
+              lte(leaveRequests.fromDate, r.toDate),
+              gte(leaveRequests.toDate, r.fromDate),
+            ),
+          )
+          .orderBy(asc(leaveRequests.fromDate))
+      : [];
+    const pols = ov.length
+      ? await tx
+          .select({ id: leavePolicies.id, code: leavePolicies.code })
+          .from(leavePolicies)
+          .where(inArray(leavePolicies.id, [...new Set(ov.map((o) => o.policyId))]))
+      : [];
+    return {
+      type: 'leave',
+      request,
+      balance,
+      overlaps: ov.map((o) => ({
+        userId: o.userId,
+        userName: peers.find((x) => x.id === o.userId)?.name ?? '',
+        typeCode: pols.find((x) => x.id === o.policyId)?.code ?? '',
+        fromDate: o.fromDate,
+        toDate: o.toDate,
+        status: o.status as 'pending' | 'approved',
+      })),
+    };
   }
 
   // ---- policy (data) ----
@@ -337,6 +414,10 @@ export class LeaveService implements OnModuleInit {
   }
 
   private async dtos(tx: Tx, rows: ReqRow[]): Promise<LeaveRequest[]> {
+    return nameRejecters(tx, await this.dtosRaw(tx, rows));
+  }
+
+  private async dtosRaw(tx: Tx, rows: ReqRow[]): Promise<LeaveRequest[]> {
     if (!rows.length) return [];
     const pol = await tx
       .select()
@@ -378,6 +459,7 @@ export class LeaveService implements OnModuleInit {
         decidedAt: iso(r.decidedAt),
         decidedBy: r.decidedBy,
         decisionComment: r.decisionComment,
+        ...rejectionFields(r.status, r.decisionComment, r.decidedBy, iso(r.decidedAt)),
         cancelledAt: iso(r.cancelledAt),
         cancelledBy: r.cancelledBy,
         cancelReason: r.cancelReason,

@@ -41,6 +41,8 @@ single records instead.
 
 ## Duplicate rules (#26)
 
+Single doctor creates (`POST /v1/doctors`) use the same doctor rules: registration no. → `409 DOCTOR_DUPLICATE`, name + pincode → `409 DOCTOR_POSSIBLE_DUPLICATE` (overridable). See docs/DOCTOR-APPROVAL.md.
+
 | Entity                 | Rule order                                                                |
 | ---------------------- | ------------------------------------------------------------------------- |
 | Doctors                | `registration_no` (case-insensitive), then name (without "Dr.") + pincode |

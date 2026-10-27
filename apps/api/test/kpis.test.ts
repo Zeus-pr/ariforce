@@ -36,7 +36,8 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
     }
     const wt = (await http().get('/v1/work-types?limit=50').set(as('bm'))).body.items;
     const field = wt.find((w: { kind: string }) => w.kind === 'field').id;
-    const doctor = (await http().get('/v1/doctors?limit=1').set(as('bm'))).body.items[0].id;
+    const doctor = (await http().get('/v1/doctors?approvalStatus=approved&limit=1').set(as('bm')))
+      .body.items[0].id;
     const chemist = (await http().get(`/v1/chemists?territoryId=${T.hq}&limit=1`).set(as('bm')))
       .body.items[0].id;
     // PTR 300 → the server values the 5-unit POB at 1500 (#40: value = quantity × PTR).

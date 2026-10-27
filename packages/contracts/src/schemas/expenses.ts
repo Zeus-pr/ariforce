@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { DateOnly, Id, Month, Timestamp } from './common';
+import { UserRef, DateOnly, Id, Month, Timestamp } from './common';
 
 /** Expense claims (#52): one claim per user per month, lines with receipts in R2. */
 /** `allowance` = daily allowance (DA), usually drafted by TA/DA auto-calc (#39). */
@@ -114,6 +114,16 @@ export const ExpenseClaim = z
     decidedAt: Timestamp.nullable(),
     decidedBy: Id.nullable(),
     decisionComment: z.string().nullable(),
+    rejectionReason: z.string().nullable().meta({
+      description:
+        'Why it was rejected (trimmed, required on reject); null unless status is rejected',
+    }),
+    rejectedBy: UserRef.nullable().meta({
+      description: 'Who rejected it ({id, name}); null unless rejected',
+    }),
+    rejectedAt: Timestamp.nullable().meta({
+      description: 'When it was rejected; null unless rejected',
+    }),
     paidAt: Timestamp.nullable(),
     paymentRef: z.string().nullable(),
     version: z.int(),
@@ -141,11 +151,10 @@ export const ExpenseLineUpdate = z
 export const ExpenseDecision = z
   .object({
     decision: z.enum(['approve', 'reject']),
-    comment: z.string().max(1000).optional(),
-  })
-  .refine((d) => d.decision === 'approve' || !!d.comment, {
-    message: 'comment required to reject',
-    path: ['comment'],
+    comment: z.string().trim().max(1000).optional().meta({
+      description:
+        'Trimmed. Required to reject: missing, blank or whitespace-only gives 422 REJECTION_REASON_REQUIRED',
+    }),
   })
   .meta({ id: 'ExpenseDecision' });
 export const ExpensePay = z

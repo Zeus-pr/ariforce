@@ -34,6 +34,8 @@ import { leaveHandlers, mockLeaveOn, mockWeeklyOffDays } from './leave';
 import { mastersGuardHandlers } from './masters-guard';
 import {
   Approval,
+  ApprovalDetail,
+  type ApprovalSubject,
   ApprovalDecision,
   AttendanceDay,
   CheckIn,
@@ -58,6 +60,7 @@ import {
   TourPlan,
   TourPlanCalendar,
   TourPlanCopy,
+  TourPlanSubmit,
   TourPlanUpsert,
   copyFromMonth,
   copyFromStandard,
@@ -134,6 +137,8 @@ export function list<T extends { id: string }>(schema: z.ZodType<T>, rows: T[], 
       if (FILTER_SKIP.has(k)) continue;
       if (k === 'territoryId' && 'territoryId' in o) {
         if (!inTerritory(o, v)) return false;
+      } else if (k === 'ids') {
+        if (!v.toLowerCase().split(',').includes(r.id.toLowerCase())) return false;
       } else if (k === 'ancestorId') {
         if (
           !String(o.path ?? '')
@@ -289,8 +294,22 @@ async function mockImport(
 
 function crud<
   T extends { id: string; updatedAt: string; version: number; deletedAt: string | null },
->(baseUrl: string, path: string, schema: z.ZodType<T>, createSchema: z.ZodType, seed: T[]) {
-  const rows = structuredClone(seed);
+>(
+  baseUrl: string,
+  path: string,
+  schema: z.ZodType<T>,
+  createSchema: z.ZodType,
+  seed: T[],
+  /** Entity rules before insert: return a Response to refuse, or extra fields for the row. */
+  onCreate?: (
+    body: Record<string, unknown>,
+    request: Request,
+    rows: T[],
+  ) => Response | Record<string, unknown>,
+  /** false = `seed` is already a private copy shared with other handlers. */
+  clone = true,
+) {
+  const rows = clone ? structuredClone(seed) : seed;
   return [
     ...(IMPORT_ENTITY_BY_PATH[path]
       ? [
@@ -317,9 +336,12 @@ function crud<
           },
           { status: 422 },
         );
+      const extra = onCreate?.(body.data as Record<string, unknown>, request, rows) ?? {};
+      if (extra instanceof Response) return extra;
       const ts = serverTime();
       const row = {
         ...(body.data as object),
+        ...extra,
         id: crypto.randomUUID(),
         companyId: fx.COMPANY_ID,
         createdAt: ts,
@@ -357,6 +379,8 @@ function crud<
  * `authorization: Bearer` or the `better-auth.session_token` cookie, else the default persona (director)
  * unless `x-mock-user: none` (behaves as signed out -> 401).
  */
+import { doctorHandlers } from './doctors';
+
 export function mockPrincipal(request: Request): Me | undefined {
   const h = request.headers.get('x-mock-user');
   if (h) return h === 'none' ? undefined : fx.findMockUser(h);
@@ -463,7 +487,9 @@ export function createHandlers(baseUrl = '') {
     http.get(`${baseUrl}/v1/doctor-categories`, ({ request }) =>
       list(DoctorCategory, fx.doctorCategories, new URL(request.url)),
     ),
-    ...crud(baseUrl, '/v1/doctors', Doctor, DoctorCreate, fx.doctors),
+    ...doctorHandlers(baseUrl, (b, rows) =>
+      crud(baseUrl, '/v1/doctors', Doctor, DoctorCreate, rows, b, false),
+    ),
     ...crud(baseUrl, '/v1/chemists', Chemist, ChemistCreate, fx.chemists),
     ...crud(baseUrl, '/v1/stockists', Stockist, StockistCreate, fx.stockists),
     ...crud(baseUrl, '/v1/products', Product, ProductCreate, fx.products),
@@ -513,6 +539,10 @@ function fieldHandlers(baseUrl: string) {
     decidedAt: null,
     decidedBy: null,
     decisionComment: null,
+    submitterNote: null,
+    rejectionReason: null,
+    rejectedBy: null,
+    rejectedAt: null,
   });
 
   /** Day lock (#23): end of the IST day + dcrLockAfterHours; unlocked 48 h after an approved correction. */
@@ -730,7 +760,10 @@ function fieldHandlers(baseUrl: string) {
       );
     }),
     http.get(`${baseUrl}/v1/tour-plans/:month`, ({ params }) => {
-      const p = tourPlans.find((t) => t.month === params.month && t.userId === fx.me.id);
+      // `{month}` may also be a plan id (GET /v1/tour-plans/{id}).
+      const p = tourPlans.find(
+        (t) => t.id === params.month || (t.month === params.month && t.userId === fx.me.id),
+      );
       return p ? HttpResponse.json(p) : notFound();
     }),
     http.put(`${baseUrl}/v1/tour-plans/:month`, async ({ params, request }) => {
@@ -768,7 +801,9 @@ function fieldHandlers(baseUrl: string) {
       Object.assign(p, { days, status: 'draft', updatedAt: serverTime() });
       return HttpResponse.json(TourPlan.parse(p));
     }),
-    http.post(`${baseUrl}/v1/tour-plans/:month/submit`, ({ params }) => {
+    http.post(`${baseUrl}/v1/tour-plans/:month/submit`, async ({ params, request }) => {
+      const sb = TourPlanSubmit.safeParse(await request.json().catch(() => ({})));
+      if (!sb.success) return validation('Invalid submit', z.treeifyError(sb.error));
       const p = tourPlans.find((t) => t.month === params.month && t.userId === fx.me.id);
       if (!p) return notFound();
       if (p.status !== 'draft') return conflict('Not in draft');
@@ -782,7 +817,15 @@ function fieldHandlers(baseUrl: string) {
           },
           { status: 422 },
         );
-      Object.assign(p, { status: 'submitted', submittedAt: serverTime(), version: p.version + 1 });
+      Object.assign(p, {
+        status: 'submitted',
+        submittedAt: serverTime(),
+        submitterNote: sb.data.submitterNote?.trim() || null,
+        rejectionReason: null,
+        rejectedBy: null,
+        rejectedAt: null,
+        version: p.version + 1,
+      });
       approvals.push({
         id: crypto.randomUUID(),
         companyId: fx.COMPANY_ID,
@@ -954,6 +997,13 @@ function fieldHandlers(baseUrl: string) {
       if (!a) return notFound();
       const b = ApprovalDecision.safeParse(await request.json());
       if (!b.success) return validation('Invalid decision', z.treeifyError(b.error));
+      if (b.data.decision === 'reject' && !b.data.comment)
+        return HttpResponse.json(
+          {
+            error: { code: 'REJECTION_REASON_REQUIRED', message: 'A reason is required to reject' },
+          },
+          { status: 422 },
+        );
       if (a.requestedBy === fx.me.id)
         return HttpResponse.json(
           { error: { code: 'FORBIDDEN', message: 'You cannot decide your own request' } },
@@ -962,7 +1012,8 @@ function fieldHandlers(baseUrl: string) {
       if (a.status !== 'pending') return conflict('Already decided');
       Object.assign(a, {
         status: b.data.decision === 'approve' ? 'approved' : 'rejected',
-        comment: b.data.comment ?? null,
+        comment: b.data.comment || null,
+        rejectionReason: b.data.decision === 'reject' ? b.data.comment! : null,
         decidedAt: serverTime(),
         decidedBy: fx.me.id,
       });
@@ -976,8 +1027,48 @@ function fieldHandlers(baseUrl: string) {
           decidedAt: a.decidedAt,
           decidedBy: a.decidedBy,
           decisionComment: a.comment,
+          rejectionReason: b.data.decision === 'reject' ? a.comment : null,
+          rejectedBy:
+            b.data.decision === 'reject' && a.decidedBy
+              ? { id: a.decidedBy, name: fx.me.name }
+              : null,
+          rejectedAt: b.data.decision === 'reject' ? a.decidedAt : null,
         });
       return HttpResponse.json(Approval.parse(a));
+    }),
+    http.get(`${baseUrl}/v1/approvals/:id`, ({ params }) => {
+      const a = approvals.find((x) => x.id === params.id);
+      if (!a) return notFound();
+      const tp = tourPlans.find((t) => t.id === a.subjectId);
+      const ref = (rows: { id: string; name: string }[], id: string) => ({
+        id,
+        name: rows.find((r) => r.id === id)?.name ?? '',
+      });
+      const subject: ApprovalSubject | null = tp
+        ? {
+            type: 'tour_plan',
+            plan: tp,
+            days: tp.days.map((d) => ({
+              date: d.date,
+              entries: d.entries.map((e) => ({
+                session: e.session,
+                workType: { id: e.workTypeId, name: '' },
+                territories: e.territoryIds.map((i) => ref(fx.territories, i)),
+                jointWorkUsers: (e.jointWorkUserIds ?? []).map((i) => ref(fx.mockUsers, i)),
+                doctors: (e.plannedDoctorIds ?? []).map((i) => ({
+                  ...ref(fx.doctors, i),
+                  specialtyName: null,
+                  categoryName: null,
+                })),
+                chemists: (e.plannedChemistIds ?? []).map((i) => ref(fx.chemists, i)),
+                notes: e.notes ?? null,
+              })),
+            })),
+          }
+        : corrections.has(a.id)
+          ? { type: 'dcr_unlock', date: corrections.get(a.id) ?? null, reason: null }
+          : null;
+      return HttpResponse.json(ApprovalDetail.parse({ ...a, subject }));
     }),
     http.get(`${baseUrl}/v1/kpis`, ({ request }) => {
       const r = kpiReport(new URL(request.url));

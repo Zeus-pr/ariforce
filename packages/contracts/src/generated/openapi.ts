@@ -307,6 +307,26 @@ export interface paths {
     patch: operations['updateDoctor'];
     trace?: never;
   };
+  '/v1/doctors/duplicate-check': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Existing doctors (company-wide) matching registration no. or name + pincode, for the add-doctor form (#26)
+     * @description Requires: masters:read. Results are territory-subtree scoped.
+     */
+    post: operations['checkDoctorDuplicates'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/chemists/import': {
     parameters: {
       query?: never;
@@ -823,7 +843,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Caller's plan for the month (or userId's, if in team). Used for DCR prefill. */
+    /**
+     * Caller's plan for the month (or userId's, if in team), or one plan by id.
+     * @description `{month}` is YYYY-MM, or a tour plan id (uuid). By id: readable by the owner, their reporting line with field:read, or an assigned approver (current or past step); otherwise 404. `userId` is ignored for an id.
+     */
     get: operations['getTourPlan'];
     put: operations['upsertTourPlan'];
     post?: never;
@@ -1855,6 +1878,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/approvals/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** One approval request. Visible to the requester, an assigned approver (current or past step) and the reporting line above the requester. `subject` holds the full details (null for in-line viewers without read access to the subject). */
+    get: operations['getApproval'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/approvals/{id}/decision': {
     parameters: {
       query?: never;
@@ -2195,6 +2235,8 @@ export interface components {
       pincode: string | null;
       location: components['schemas']['GeoPoint'] | null;
       phone: string | null;
+      /** @description Create even when a doctor with the same name (without "Dr.") and pincode exists (409 DOCTOR_POSSIBLE_DUPLICATE). A registration number match can never be overridden. */
+      allowPossibleDuplicate?: boolean;
     };
     GeoPoint: {
       lat: number;
@@ -2219,6 +2261,11 @@ export interface components {
       location?: components['schemas']['GeoPoint'] | null;
       phone?: string | null;
       version: number;
+    };
+    DoctorDuplicateCheck: {
+      name: string;
+      pincode?: string | null;
+      registrationNo?: string | null;
     };
     ChemistCreate: {
       /**
@@ -2521,6 +2568,9 @@ export interface components {
        * @default true
        */
       fromStp: boolean;
+    };
+    TourPlanSubmit: {
+      submitterNote?: string | null;
     };
     DcrUpsert: {
       /**
@@ -2927,6 +2977,7 @@ export interface components {
     ExpenseDecision: {
       /** @enum {string} */
       decision: 'approve' | 'reject';
+      /** @description Trimmed. Required to reject: missing, blank or whitespace-only gives 422 REJECTION_REASON_REQUIRED */
       comment?: string;
     };
     ExpensePay: {
@@ -2976,12 +3027,16 @@ export interface components {
       managerId?: string | null;
     };
     SignupReject: {
-      /** @default null */
+      /**
+       * @description Required (non-blank after trim); missing or blank gives 422 REJECTION_REASON_REQUIRED
+       * @default null
+       */
       reason: string | null;
     };
     ApprovalDecision: {
       /** @enum {string} */
       decision: 'approve' | 'reject';
+      /** @description Trimmed. Required to reject: missing, blank or whitespace-only gives 422 REJECTION_REASON_REQUIRED */
       comment?: string;
     };
     ExceptionEvaluateRequest: {
@@ -3518,6 +3573,52 @@ export interface components {
       pincode: string | null;
       location: components['schemas']['GeoPointOutput'] | null;
       phone: string | null;
+      /**
+       * @description Field-added doctors start pending until their manager decides (#26); company-wide roles add approved doctors. Read-only.
+       * @enum {string}
+       */
+      approvalStatus: 'pending' | 'approved' | 'rejected';
+      /** @description Latest rejection reason while approvalStatus is rejected; only for the adder, their reporting line, the approvers and company-wide roles (else null). Read-only. */
+      rejectionReason?: string | null;
+      /** @description Who rejected it. Read-only. */
+      rejectedBy?: components['schemas']['UserRef'] | null;
+      /** @description When. Read-only. */
+      rejectedAt?: string | null;
+    };
+    UserRef: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+    };
+    DoctorDuplicateResult: {
+      matches: components['schemas']['DoctorDuplicate'][];
+    };
+    DoctorDuplicate: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      territoryName: string;
+      /** @enum {string} */
+      rule: 'registration_no' | 'name_pincode';
+      /**
+       * @description Field-added doctors start pending until their manager decides (#26); company-wide roles add approved doctors. Read-only.
+       * @enum {string}
+       */
+      approvalStatus: 'pending' | 'approved' | 'rejected';
     };
     ChemistPage: {
       items: components['schemas']['Chemist'][];
@@ -4125,6 +4226,14 @@ export interface components {
       decidedAt: string | null;
       decidedBy: string | null;
       decisionComment: string | null;
+      /** @description Note from the submitter to the approver (POST submit body); cleared on edit */
+      submitterNote?: string | null;
+      /** @description Why it was rejected (trimmed, required on reject); null unless status is rejected */
+      rejectionReason: string | null;
+      /** @description Who rejected it ({id, name}); null unless rejected */
+      rejectedBy: components['schemas']['UserRef'] | null;
+      /** @description When it was rejected; null unless rejected */
+      rejectedAt: string | null;
     };
     StandardTourPlan: {
       /**
@@ -4337,6 +4446,8 @@ export interface components {
       createdAt: string;
       decidedAt: string | null;
       decidedBy: string | null;
+      /** @description The reason of the rejecting step; null unless status is rejected */
+      rejectionReason?: string | null;
     };
     ApprovalPage: {
       items: components['schemas']['Approval'][];
@@ -4788,7 +4899,8 @@ export interface components {
       title: string;
       body: string;
       /** @description Deep link target type */
-      entityType: ('leave_request' | 'expense_claim') | null;
+      entityType:
+        ('leave_request' | 'expense_claim' | 'tour_plan' | 'doctor' | 'approval_request') | null;
       /** @description Deep link target id */
       entityId: string | null;
       data: {
@@ -4811,7 +4923,12 @@ export interface components {
       | 'expense.approved'
       | 'expense.rejected'
       | 'expense.paid'
-      | 'exceptions.digest';
+      | 'exceptions.digest'
+      | 'tour_plan.approved'
+      | 'tour_plan.rejected'
+      | 'doctor.approved'
+      | 'doctor.rejected'
+      | 'dcr_unlock.rejected';
     UnreadCount: {
       count: number;
     };
@@ -4875,6 +4992,12 @@ export interface components {
       decidedAt: string | null;
       decidedBy: string | null;
       decisionComment: string | null;
+      /** @description Why it was rejected (trimmed, required on reject); null unless status is rejected */
+      rejectionReason: string | null;
+      /** @description Who rejected it ({id, name}); null unless rejected */
+      rejectedBy: components['schemas']['UserRef'] | null;
+      /** @description When it was rejected; null unless rejected */
+      rejectedAt: string | null;
       cancelledAt: string | null;
       cancelledBy: string | null;
       cancelReason: string | null;
@@ -5001,6 +5124,12 @@ export interface components {
       decidedAt: string | null;
       decidedBy: string | null;
       decisionComment: string | null;
+      /** @description Why it was rejected (trimmed, required on reject); null unless status is rejected */
+      rejectionReason: string | null;
+      /** @description Who rejected it ({id, name}); null unless rejected */
+      rejectedBy: components['schemas']['UserRef'] | null;
+      /** @description When it was rejected; null unless rejected */
+      rejectedAt: string | null;
       paidAt: string | null;
       paymentRef: string | null;
       version: number;
@@ -5037,6 +5166,12 @@ export interface components {
       decidedAt: string | null;
       decidedBy: string | null;
       decisionComment: string | null;
+      /** @description Why it was rejected (trimmed, required on reject); null unless status is rejected */
+      rejectionReason: string | null;
+      /** @description Who rejected it ({id, name}); null unless rejected */
+      rejectedBy: components['schemas']['UserRef'] | null;
+      /** @description When it was rejected; null unless rejected */
+      rejectedAt: string | null;
       paidAt: string | null;
       paymentRef: string | null;
       version: number;
@@ -5349,6 +5484,228 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       createdAt: string;
+    };
+    ApprovalDetail: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /** @enum {string} */
+      subjectType:
+        | 'tour_plan'
+        | 'doctor'
+        | 'chemist'
+        | 'stockist'
+        | 'dcr_unlock'
+        | 'leave'
+        | 'device'
+        | 'expense';
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      subjectId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      requestedBy: string;
+      requestedByName: string;
+      /** @description Reporting manager; null = any authorised manager */
+      approverId: string | null;
+      /** @enum {string} */
+      status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+      summary: string;
+      comment: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      decidedAt: string | null;
+      decidedBy: string | null;
+      /** @description The reason of the rejecting step; null unless status is rejected */
+      rejectionReason?: string | null;
+      /** @description Full subject details for the requester, an assigned approver (any step) or a caller with read access to the subject; otherwise null */
+      subject: components['schemas']['ApprovalSubject'] | null;
+    };
+    ApprovalSubject:
+      | components['schemas']['ApprovalSubjectTourPlan']
+      | components['schemas']['ApprovalSubjectLeave']
+      | components['schemas']['ApprovalSubjectExpense']
+      | components['schemas']['ApprovalSubjectDoctor']
+      | components['schemas']['ApprovalSubjectDcrUnlock'];
+    ApprovalSubjectTourPlan: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'tour_plan';
+      plan: components['schemas']['TourPlan'];
+      /** @description plan.days with every id resolved to a name (deleted masters keep their id) */
+      days: {
+        /**
+         * Format: date
+         * @description Calendar date (YYYY-MM-DD, IST)
+         */
+        date: string;
+        entries: components['schemas']['ApprovalTourPlanEntry'][];
+      }[];
+    };
+    ApprovalTourPlanEntry: {
+      /** @enum {string} */
+      session: 'full' | 'am' | 'pm';
+      workType: components['schemas']['ApprovalRef'] | null;
+      territories: components['schemas']['ApprovalRef'][];
+      jointWorkUsers: components['schemas']['ApprovalRef'][];
+      doctors: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+        specialtyName: string | null;
+        categoryName: string | null;
+      }[];
+      chemists: components['schemas']['ApprovalRef'][];
+      notes: string | null;
+    };
+    ApprovalRef: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+    };
+    ApprovalSubjectLeave: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'leave';
+      request: components['schemas']['LeaveRequest'];
+      /** @description Balance of this leave type for the request year; null = unknown */
+      balance: {
+        item: components['schemas']['LeaveBalanceItem'];
+        /** @description Without this request */
+        availableBefore: number | null;
+        /** @description With this request counted */
+        availableAfter: number | null;
+      } | null;
+      /** @description Peers (same manager) with pending/approved leave overlapping these dates */
+      overlaps: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        userId: string;
+        userName: string;
+        typeCode: string;
+        /**
+         * Format: date
+         * @description Calendar date (YYYY-MM-DD, IST)
+         */
+        fromDate: string;
+        /**
+         * Format: date
+         * @description Calendar date (YYYY-MM-DD, IST)
+         */
+        toDate: string;
+        /** @enum {string} */
+        status: 'pending' | 'approved';
+      }[];
+    };
+    ApprovalSubjectExpense: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'expense';
+      claim: components['schemas']['ExpenseClaim'];
+      /** @description Places referenced by claim.lines[].allowancePlaceId */
+      allowancePlaces: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+        band: string;
+        oneWayKm: number;
+      }[];
+      /** @description Confirmed receipts only; short-lived presigned read URLs (5 min) */
+      receipts: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        attachmentId: string;
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        lineId: string;
+        contentType: string;
+        /** Format: uri */
+        downloadUrl: string;
+        /**
+         * Format: date-time
+         * @description ISO-8601 timestamp (UTC)
+         */
+        expiresAt: string;
+      }[];
+    };
+    ApprovalSubjectDoctor: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'doctor';
+      doctor: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+        specialtyName: string | null;
+        categoryName: string | null;
+        territory: components['schemas']['ApprovalRef'] | null;
+        city: string | null;
+        pincode: string | null;
+        registrationNo: string | null;
+        approvalStatus: string;
+      };
+      /** @description Flagged when the doctor was added */
+      possibleDuplicates: components['schemas']['ApprovalRef'][];
+    };
+    ApprovalSubjectDcrUnlock: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'dcr_unlock';
+      date: string | null;
+      reason: string | null;
     };
     ExceptionPage: {
       items: components['schemas']['Exception'][];
@@ -6484,6 +6841,9 @@ export interface operations {
         territoryId?: string;
         specialtyId?: string;
         categoryId?: string;
+        approvalStatus?: 'pending' | 'approved' | 'rejected';
+        /** @description Batch fetch: comma-separated doctor ids (max 100). Only doctors you can read are returned; others are silently absent. Pass limit=100 to get all in one page. */
+        ids?: string;
       };
       header?: never;
       path?: never;
@@ -6556,6 +6916,15 @@ export interface operations {
       };
       /** @description Signed in but not allowed (role, hierarchy or tenant) */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description DOCTOR_DUPLICATE: same registration number (cannot be overridden); DOCTOR_POSSIBLE_DUPLICATE: same name (without "Dr.") + pincode, re-send with allowPossibleDuplicate: true. details.matches: DoctorDuplicate[]. Field-added doctors are created pending with an approval request (docs/DOCTOR-APPROVAL.md) */
+      409: {
         headers: {
           [name: string]: unknown;
         };
@@ -6726,6 +7095,57 @@ export interface operations {
       };
       /** @description Version conflict */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  checkDoctorDuplicates: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DoctorDuplicateCheck'];
+      };
+    };
+    responses: {
+      /** @description Matches, strong first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DoctorDuplicateResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
         headers: {
           [name: string]: unknown;
         };
@@ -9165,7 +9585,7 @@ export interface operations {
       };
       header?: never;
       path: {
-        /** @description Month (YYYY-MM) */
+        /** @description YYYY-MM or plan id */
         month: string;
       };
       cookie?: never;
@@ -9346,7 +9766,11 @@ export interface operations {
       };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['TourPlanSubmit'];
+      };
+    };
     responses: {
       /** @description Submitted; approval created */
       200: {
@@ -11248,7 +11672,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description comment required to reject */
+      /** @description REJECTION_REASON_REQUIRED: reject without a non-blank comment */
       422: {
         headers: {
           [name: string]: unknown;
@@ -12727,7 +13151,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description comment required to reject */
+      /** @description REJECTION_REASON_REQUIRED: reject without a non-blank comment */
       422: {
         headers: {
           [name: string]: unknown;
@@ -13187,6 +13611,65 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
+      /** @description REJECTION_REASON_REQUIRED: reason missing or blank */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getApproval: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApprovalDetail'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found or not visible */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
     };
   };
   decideApproval: {
@@ -13243,6 +13726,15 @@ export interface operations {
       };
       /** @description Already decided */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description REJECTION_REASON_REQUIRED: reject without a non-blank comment */
+      422: {
         headers: {
           [name: string]: unknown;
         };

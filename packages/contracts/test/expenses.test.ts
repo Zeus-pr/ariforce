@@ -65,9 +65,13 @@ describe('expense contracts', () => {
     ).toBe(false);
   });
 
-  it('reject needs a comment', () => {
+  it('reject reason is enforced by the server (422 REJECTION_REASON_REQUIRED), not the schema', () => {
     expect(ExpenseDecision.safeParse({ decision: 'approve' }).success).toBe(true);
-    expect(ExpenseDecision.safeParse({ decision: 'reject' }).success).toBe(false);
+    expect(ExpenseDecision.safeParse({ decision: 'reject' }).success).toBe(true);
+    expect(ExpenseDecision.parse({ decision: 'reject', comment: '  x  ' }).comment).toBe('x');
+    expect(
+      ExpenseDecision.safeParse({ decision: 'reject', comment: 'x'.repeat(1001) }).success,
+    ).toBe(false);
   });
 
   it('permissions: BM own claims; ABM+ approve; accountant pays', () => {

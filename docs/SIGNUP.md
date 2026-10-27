@@ -1,6 +1,7 @@
 # Sign-up flow: contract for the web sign-in page (Dev)
 
-The API, contracts and mocks are done. The UI is not built yet; Dev owns it.
+The API, contracts and mocks are built on this line. The web UI (`/sign-up`, sign-in states and
+`/sign-up-requests` review) is built on `feat/20-real-api`; its status is tracked by web.
 
 ## 1. Request an account
 

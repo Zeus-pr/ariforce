@@ -14,6 +14,7 @@ import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { PRICE_KEYS, recordPriceChange } from '../product-prices/product-prices.service';
+import { DoctorsService } from './doctors.service';
 import { baseFromRow, type MasterDef } from './master-defs';
 
 type Row = Record<string, unknown>;
@@ -43,6 +44,7 @@ export class MastersService {
   constructor(
     readonly tenant: TenantService,
     private readonly audit: AuditService,
+    private readonly doctorsSvc: DoctorsService,
   ) {}
 
   dto(def: MasterDef, r: Row) {
@@ -108,7 +110,8 @@ export class MastersService {
         const [n] = await base.where(s.where);
         total = Number(n?.n ?? 0);
       }
-      const items = rows.slice(0, limit).map((r) => this.dto(def, r.r));
+      let items = rows.slice(0, limit).map((r) => this.dto(def, r.r));
+      if (def.entity === 'doctor') items = await this.doctorsSvc.withRejection(tx, p, items);
       return {
         items,
         nextCursor: rows.length > limit ? encodeCursor(offset + limit) : null,
@@ -127,7 +130,20 @@ export class MastersService {
   }
 
   get(def: MasterDef, p: Principal, id: string) {
-    return this.tenant.run(p, async (tx) => this.dto(def, await this.findRow(tx, def, p, id)));
+    return this.tenant.run(p, async (tx) => {
+      if (def.entity !== 'doctor') return this.dto(def, await this.findRow(tx, def, p, id));
+      // Doctors: an assigned approver may read the doctor by id even outside their territory scope.
+      let row: Row | null;
+      try {
+        row = await this.findRow(tx, def, p, id);
+      } catch (e) {
+        if (!(e instanceof NotFoundException)) throw e;
+        row = await this.doctorsSvc.assignedRow(tx, p, id);
+        if (!row) throw e;
+      }
+      const [d] = await this.doctorsSvc.withRejection(tx, p, [this.dto(def, row)]);
+      return d!;
+    });
   }
 
   assertCanWrite(def: MasterDef, p: Principal) {
@@ -169,18 +185,31 @@ export class MastersService {
   async insert(tx: Tx, def: MasterDef, p: Principal, body: Row, action = 'create') {
     if (def.territoryCol && 'territoryId' in body)
       await this.assertTerritory(tx, p, body.territoryId);
+    const isDoctor = def.entity === 'doctor';
+    const { allowPossibleDuplicate: _allow, ...fields } = body;
+    // Duplicate detection (#26); imports run their own duplicate rules.
+    const possible =
+      isDoctor && action === 'create' ? await this.doctorsSvc.guardCreate(tx, body) : [];
     const values: Row = {
-      ...(def.toRow ? def.toRow(body, p) : body),
+      ...(def.toRow ? def.toRow(fields, p) : fields),
       id: uuidv7(),
       companyId: p.companyId,
     };
-    if (def.entity === 'doctor')
+    if (isDoctor)
       // Field-added doctors need manager approval (#26); company-wide roles add approved masters.
       values.approvalStatus = p.scopePaths === null ? 'approved' : 'pending';
     const [row] = await tx
       .insert(def.table)
       .values(values as any)
       .returning();
+    if (isDoctor && values.approvalStatus === 'pending')
+      await this.doctorsSvc.requestApproval(
+        tx,
+        p,
+        row as Row,
+        possible,
+        `New doctor ${String(fields.name)}`,
+      );
     await this.trackPrices(tx, def, p, row as Row);
     const dto = this.dto(def, row as Row);
     await this.audit.record(tx, p, `${def.entity}.${action}`, {
@@ -201,7 +230,11 @@ export class MastersService {
     const { version, ...changes } = body;
     if (def.territoryCol && changes.territoryId && changes.territoryId !== before.territoryId)
       await this.assertTerritory(tx, p, changes.territoryId);
-    const set = def.toRow ? def.toRow(changes, p) : changes;
+    const set: Row = def.toRow ? def.toRow(changes, p) : { ...changes };
+    // A rejected field-added doctor goes back for approval when its owner edits it (#26).
+    const resubmit =
+      def.entity === 'doctor' && before.approvalStatus === 'rejected' && p.scopePaths !== null;
+    if (resubmit) set.approvalStatus = 'pending';
     const [row] = await tx
       .update(def.table)
       .set(set as any)
@@ -218,6 +251,14 @@ export class MastersService {
         message: 'Stale version',
         details: this.dto(def, before),
       });
+    if (resubmit)
+      await this.doctorsSvc.requestApproval(
+        tx,
+        p,
+        row as Row,
+        [],
+        `Doctor resubmitted ${String((row as Row).name)}`,
+      );
     await this.trackPrices(tx, def, p, row as Row, before);
     const dto = this.dto(def, row as Row);
     await this.audit.record(tx, p, `${def.entity}.${action}`, {

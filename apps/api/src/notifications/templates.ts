@@ -10,6 +10,8 @@ const range = (d: NotifyData) =>
       : ` ${s(d.fromDate)} to ${s(d.toDate)}`
     : '';
 const kind = (d: NotifyData) => (d.typeCode ? `${s(d.typeCode)} leave` : 'leave');
+const reason = (d: NotifyData) =>
+  d.reason || d.comment ? ` Reason: ${s(d.reason || d.comment)}` : '';
 const comment = (d: NotifyData) => (d.comment ? ` Comment: ${s(d.comment)}` : '');
 const amount = (d: NotifyData) =>
   typeof d.total === 'number' || typeof d.total === 'string' ? ` (INR ${s(d.total)})` : '';
@@ -32,7 +34,7 @@ export function render(type: NotificationType, d: NotifyData): { title: string; 
     case 'leave.rejected':
       return {
         title: 'Leave rejected',
-        body: `Your ${kind(d)}${range(d)} was rejected by ${who}.${comment(d)}`,
+        body: `Your ${kind(d)}${range(d)} was rejected by ${who}.${reason(d)}`,
       };
     case 'leave.cancelled':
       return { title: 'Leave cancelled', body: `${who} cancelled the ${kind(d)}${range(d)}.` };
@@ -49,7 +51,7 @@ export function render(type: NotificationType, d: NotifyData): { title: string; 
     case 'expense.rejected':
       return {
         title: 'Expense claim rejected',
-        body: `Your ${claim(d)}${amount(d)} was rejected by ${who}.${comment(d)}`,
+        body: `Your ${claim(d)}${amount(d)} was rejected by ${who}.${reason(d)}`,
       };
     case 'expense.paid':
       return {
@@ -64,5 +66,30 @@ export function render(type: NotificationType, d: NotifyData): { title: string; 
         body: `${n} new exception${n === 1 ? '' : 's'} in your team${high ? ` (${high} high)` : ''}${d.from ? ` for ${s(d.from)} to ${s(d.to)}` : ''}.`,
       };
     }
+    case 'tour_plan.approved':
+      return {
+        title: 'Tour plan approved',
+        body: `Your ${d.month ? `${s(d.month)} ` : ''}tour plan was approved by ${who}.${comment(d)}`,
+      };
+    case 'doctor.approved':
+      return {
+        title: 'Doctor approved',
+        body: `${d.name ? s(d.name) : 'The doctor you added'} was approved by ${who}.${comment(d)}`,
+      };
+    case 'tour_plan.rejected':
+      return {
+        title: 'Tour plan rejected',
+        body: `Your ${d.month ? `${s(d.month)} ` : ''}tour plan was rejected by ${who}.${reason(d)}`,
+      };
+    case 'doctor.rejected':
+      return {
+        title: 'Doctor not approved',
+        body: `${d.name ? s(d.name) : 'The doctor you added'} was rejected by ${who}.${reason(d)}`,
+      };
+    case 'dcr_unlock.rejected':
+      return {
+        title: 'DCR correction rejected',
+        body: `Your DCR correction${d.date ? ` for ${s(d.date)}` : ''} was rejected by ${who}.${reason(d)}`,
+      };
   }
 }

@@ -291,7 +291,15 @@ export class DcrService {
         .select({ id: t.id })
         .from(t)
         .innerJoin(territories, eq(territories.id, t.territoryId))
-        .where(and(inArray(t.id, ids), isNull(t.deletedAt), scope));
+        .where(
+          and(
+            inArray(t.id, ids),
+            isNull(t.deletedAt),
+            scope,
+            // Rejected field-added doctors cannot be reported (#26); pending ones can.
+            kind === 'doctor' ? ne(doctors.approvalStatus, 'rejected') : undefined,
+          ),
+        );
       const miss = ids.filter((i) => !found.some((f) => f.id === i));
       if (miss.length) bad[`${kind}Ids`] = miss;
     }

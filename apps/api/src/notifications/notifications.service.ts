@@ -12,7 +12,7 @@ import { render, type NotifyData } from './templates';
 export interface NotifyEvent {
   type: NotificationType;
   recipientId: string | null | undefined;
-  entityType: 'leave_request' | 'expense_claim';
+  entityType: NonNullable<Notification['entityType']>;
   entityId: string;
   /** Unique per recipient: replays never create a second notification. */
   dedupeKey: string;

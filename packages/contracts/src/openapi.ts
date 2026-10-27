@@ -21,6 +21,7 @@ import {
   ReadAllResult,
   UnreadCount,
 } from './schemas/notifications';
+import { ApprovalDetail } from './schemas/approval-detail';
 import * as z from 'zod';
 import { masterReadPermission } from './schemas/roles';
 import {
@@ -76,6 +77,7 @@ import {
   StandardTourPlanUpsert,
   TourPlanCopy,
   TourPlanListQuery,
+  TourPlanSubmit,
   TourPlanUpsert,
 } from './schemas/field';
 import {
@@ -105,6 +107,8 @@ import {
   Doctor,
   DoctorCategory,
   DoctorCreate,
+  DoctorDuplicateCheck,
+  DoctorDuplicateResult,
   DoctorListQuery,
   DoctorUpdate,
   OutletListQuery,
@@ -237,6 +241,7 @@ function crud(
   name: string,
   query: z.ZodObject = CodeNameListQuery,
   importable = false,
+  createConflict?: string,
 ): ZodOpenApiPathsObject {
   const imp: ZodOpenApiPathsObject = importable ? importPath(tag, base, name) : {};
   return {
@@ -256,6 +261,7 @@ function crud(
         requestBody: json(create),
         responses: {
           '201': { description: 'Created', ...json(item) },
+          ...(createConflict ? { '409': err(createConflict) } : {}),
           '422': err('Validation failed'),
         },
       }),
@@ -311,7 +317,7 @@ export function mastersPermissions(path: string, method: string): string[] | und
   if (!seg || !MASTER_SEGMENTS.has(seg)) return undefined;
   const read = masterReadPermission(seg);
   const write = seg === 'territories' ? 'territories:write' : 'masters:write';
-  if (method === 'get') return [read];
+  if (method === 'get' || (seg === 'doctors' && rest === 'duplicate-check')) return [read];
   return rest === 'import' ? ['imports:write', write] : [write];
 }
 
@@ -522,7 +528,21 @@ function buildDocument(): OpenApiDocument {
         'Doctor',
         DoctorListQuery,
         true,
+        'DOCTOR_DUPLICATE: same registration number (cannot be overridden); DOCTOR_POSSIBLE_DUPLICATE: same name (without "Dr.") + pincode, re-send with allowPossibleDuplicate: true. details.matches: DoctorDuplicate[]. Field-added doctors are created pending with an approval request (docs/DOCTOR-APPROVAL.md)',
       ),
+      '/v1/doctors/duplicate-check': {
+        post: op({
+          tags: ['Doctors'],
+          operationId: 'checkDoctorDuplicates',
+          summary:
+            'Existing doctors (company-wide) matching registration no. or name + pincode, for the add-doctor form (#26)',
+          requestBody: json(DoctorDuplicateCheck),
+          responses: {
+            '200': { description: 'Matches, strong first', ...json(DoctorDuplicateResult) },
+            '422': err('Validation failed'),
+          },
+        }),
+      },
       ...crud(
         'Chemists',
         '/v1/chemists',
@@ -733,9 +753,13 @@ function buildDocument(): OpenApiDocument {
         get: op({
           tags: ['TourPlans'],
           operationId: 'getTourPlan',
-          summary: "Caller's plan for the month (or userId's, if in team). Used for DCR prefill.",
+          summary: "Caller's plan for the month (or userId's, if in team), or one plan by id.",
+          description:
+            '`{month}` is YYYY-MM, or a tour plan id (uuid). By id: readable by the owner, their reporting line with field:read, or an assigned approver (current or past step); otherwise 404. `userId` is ignored for an id.',
           requestParams: {
-            path: z.object({ month: Month }),
+            path: z.object({
+              month: z.union([Month, IdParam.shape.id]).meta({ description: 'YYYY-MM or plan id' }),
+            }),
             query: z.object({ userId: IdParam.shape.id.optional() }),
           },
           responses: { '200': { description: 'OK', ...json(TourPlan) }, '404': err('No plan') },
@@ -772,6 +796,7 @@ function buildDocument(): OpenApiDocument {
           tags: ['TourPlans'],
           operationId: 'submitTourPlan',
           requestParams: { path: z.object({ month: Month }) },
+          requestBody: { required: false, ...json(TourPlanSubmit) },
           responses: {
             '200': { description: 'Submitted; approval created', ...json(TourPlan) },
             '404': err('No plan for the month'),
@@ -1218,7 +1243,7 @@ function buildDocument(): OpenApiDocument {
             '403': err('Own request, APPROVAL_NOT_YOUR_STEP or APPROVAL_ALREADY_DECIDED_BY_YOU'),
             '404': err('Not found'),
             '409': err('Not pending'),
-            '422': err('comment required to reject'),
+            '422': err('REJECTION_REASON_REQUIRED: reject without a non-blank comment'),
           },
         }),
       },
@@ -1549,7 +1574,7 @@ function buildDocument(): OpenApiDocument {
             '403': err('Own claim, APPROVAL_NOT_YOUR_STEP or APPROVAL_ALREADY_DECIDED_BY_YOU'),
             '404': err('Not found'),
             '409': err('Not submitted / already decided'),
-            '422': err('comment required to reject'),
+            '422': err('REJECTION_REASON_REQUIRED: reject without a non-blank comment'),
           },
         }),
       },
@@ -1673,6 +1698,20 @@ function buildDocument(): OpenApiDocument {
             '403': err('Your own request'),
             '404': err('Not found or not visible to you'),
             '409': err('Already decided'),
+            '422': err('REJECTION_REASON_REQUIRED: reason missing or blank'),
+          },
+        }),
+      },
+      '/v1/approvals/{id}': {
+        get: op({
+          tags: ['Approvals'],
+          operationId: 'getApproval',
+          summary:
+            'One approval request. Visible to the requester, an assigned approver (current or past step) and the reporting line above the requester. `subject` holds the full details (null for in-line viewers without read access to the subject).',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'OK', ...json(ApprovalDetail) },
+            '404': err('Not found or not visible'),
           },
         }),
       },
@@ -1689,6 +1728,7 @@ function buildDocument(): OpenApiDocument {
             '403': err('Own request, or requester not below you in the reporting line'),
             '404': err('Not found'),
             '409': err('Already decided'),
+            '422': err('REJECTION_REASON_REQUIRED: reject without a non-blank comment'),
           },
         }),
       },

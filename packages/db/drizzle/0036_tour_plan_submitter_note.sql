@@ -1,0 +1,1 @@
+ALTER TABLE "tour_plans" ADD COLUMN IF NOT EXISTS "submitter_note" text;

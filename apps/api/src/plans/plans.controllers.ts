@@ -17,6 +17,7 @@ import {
   StandardTourPlanUpsert,
   TourPlanCopy,
   TourPlanListQuery,
+  TourPlanSubmit,
   TourPlanUpsert,
 } from '@ariforce/contracts';
 import * as z from 'zod';
@@ -68,6 +69,7 @@ export class TourPlansController {
     return this.svc.calendar(p, month(m));
   }
 
+  /** `{month}` (YYYY-MM) reads a user's plan for that month; a uuid reads one plan by id. */
   @Get(':month')
   @RequirePermissions('me:read')
   get(
@@ -75,6 +77,7 @@ export class TourPlansController {
     @Param('month') m: string,
     @Query(new ZodPipe(UserQ)) q: z.infer<typeof UserQ>,
   ) {
+    if (Id.safeParse(m).success) return this.svc.getById(p, m);
     return this.svc.get(p, month(m), q.userId);
   }
 
@@ -102,8 +105,12 @@ export class TourPlansController {
   @Post(':month/submit')
   @HttpCode(200)
   @RequirePermissions('me:read')
-  submit(@CurrentPrincipal() p: Principal, @Param('month') m: string) {
-    return this.svc.submit(p, month(m));
+  submit(
+    @CurrentPrincipal() p: Principal,
+    @Param('month') m: string,
+    @Body(new ZodPipe(TourPlanSubmit.optional())) b?: z.infer<typeof TourPlanSubmit>,
+  ) {
+    return this.svc.submit(p, month(m), b?.submitterNote);
   }
 }
 
@@ -115,6 +122,12 @@ export class ApprovalsController {
   @RequirePermissions('me:read')
   list(@CurrentPrincipal() p: Principal, @Query(new ZodPipe(ApprovalListQuery)) q: ApprovalQuery) {
     return this.svc.list(p, q);
+  }
+
+  @Get(':id')
+  @RequirePermissions('me:read')
+  get(@CurrentPrincipal() p: Principal, @Param('id', new ZodPipe(Id)) id: string) {
+    return this.svc.get(p, id);
   }
 
   @Post(':id/decision')

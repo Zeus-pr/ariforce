@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { DateOnly, GeoPoint, Id, Month, Syncable, Timestamp, listQuery } from './common';
+import { UserRef, DateOnly, GeoPoint, Id, Month, Syncable, Timestamp, listQuery } from './common';
 import { RoleKey } from './roles';
 
 const Capture = z.object({
@@ -175,6 +175,19 @@ export const TourPlan = Syncable.extend({
   decidedAt: Timestamp.nullable(),
   decidedBy: Id.nullable(),
   decisionComment: z.string().nullable(),
+  submitterNote: z.string().nullable().optional().meta({
+    description: 'Note from the submitter to the approver (POST submit body); cleared on edit',
+  }),
+  rejectionReason: z.string().nullable().meta({
+    description:
+      'Why it was rejected (trimmed, required on reject); null unless status is rejected',
+  }),
+  rejectedBy: UserRef.nullable().meta({
+    description: 'Who rejected it ({id, name}); null unless rejected',
+  }),
+  rejectedAt: Timestamp.nullable().meta({
+    description: 'When it was rejected; null unless rejected',
+  }),
 }).meta({ id: 'TourPlan' });
 export type TourPlan = z.infer<typeof TourPlan>;
 export const TourPlanCalendar = z
@@ -190,6 +203,9 @@ export const TourPlanCalendar = z
     }),
   })
   .meta({ id: 'TourPlanCalendar' });
+export const TourPlanSubmit = z
+  .object({ submitterNote: z.string().trim().max(1000).nullable().optional() })
+  .meta({ id: 'TourPlanSubmit' });
 export const TourPlanUpsert = z
   .object({ days: z.array(TourPlanDay), version: z.int().min(1).optional() })
   .meta({ id: 'TourPlanUpsert' });
@@ -392,17 +408,19 @@ export const Approval = z
     createdAt: Timestamp,
     decidedAt: Timestamp.nullable(),
     decidedBy: Id.nullable(),
+    rejectionReason: z.string().nullable().optional().meta({
+      description: 'The reason of the rejecting step; null unless status is rejected',
+    }),
   })
   .meta({ id: 'Approval' });
 export type Approval = z.infer<typeof Approval>;
 export const ApprovalDecision = z
   .object({
     decision: z.enum(['approve', 'reject']),
-    comment: z.string().max(1000).optional(),
-  })
-  .refine((d) => d.decision === 'approve' || !!d.comment, {
-    message: 'comment required to reject',
-    path: ['comment'],
+    comment: z.string().trim().max(1000).optional().meta({
+      description:
+        'Trimmed. Required to reject: missing, blank or whitespace-only gives 422 REJECTION_REASON_REQUIRED',
+    }),
   })
   .meta({ id: 'ApprovalDecision' });
 export const ApprovalListQuery = listQuery(['createdAt'] as const, {
