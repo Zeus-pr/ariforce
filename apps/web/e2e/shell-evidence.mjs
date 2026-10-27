@@ -57,7 +57,7 @@ await page.keyboard.press('Control+b');
 
 // Approvals now come from GET /v1/approvals; the mock may hold a single pending item, so return-dialog first.
 await page.getByTestId('dash-approval').first().waitFor();
-await page.getByRole('button', { name: 'Return', exact: true }).first().click();
+await page.getByRole('button', { name: 'Reject', exact: true }).first().click();
 await page.waitForSelector('[role="dialog"]');
 await page.screenshot({ path: path.join(OUT, 'return-dialog.png') });
 await page.keyboard.press('Escape');

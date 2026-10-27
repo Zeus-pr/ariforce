@@ -208,9 +208,11 @@ function Form({
         </div>
       )}
       {edit && REAL && (
-        <Link href={`/team/members/${edit.id}`} className="w-fit text-sm font-medium underline-offset-4 hover:underline" data-testid="sheet-profile">
-          View full profile
-        </Link>
+        <Button asChild size="sm" className="w-fit">
+          <Link href={`/team/members/${edit.id}`} data-testid="sheet-profile">
+            View full profile
+          </Link>
+        </Button>
       )}
       {edit?.invited && !self && <InviteOne role={role} employee={edit} sentBefore={false} />}
       {!self && (

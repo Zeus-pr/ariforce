@@ -32,11 +32,19 @@ export function seedNotifications(): N[] {
       body: 'Your 2026-08 expense claim (INR 3900) was marked paid.',
       entityType: 'expense_claim',
     },
+    {
+      type: 'leave.rejected',
+      title: 'Leave rejected',
+      body: 'Your CL leave on 2026-09-12 was rejected by Anita Rao. Comment: Month-end review that week',
+      entityType: 'leave_request',
+      // Same data the API stores: the request payload plus comment and actorName.
+      data: { typeCode: 'CL', fromDate: '2026-09-12', toDate: '2026-09-12', comment: 'Month-end review that week', actorName: 'Anita Rao' },
+    },
   ].map((r, i) => ({
-    ...(r as Pick<N, 'type' | 'title' | 'body' | 'entityType'>),
+    data: null,
+    ...(r as Pick<N, 'type' | 'title' | 'body' | 'entityType'> & { data?: N['data'] }),
     id: id(90 - i),
     entityId: id(500 + i),
-    data: null,
     readAt: i >= 2 ? at(i) : null,
     createdAt: at(i + 1),
   }));

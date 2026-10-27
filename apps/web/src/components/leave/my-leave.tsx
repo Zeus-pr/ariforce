@@ -1,5 +1,6 @@
 'use client';
 
+import { RejectionNote } from '@/components/approvals/rejection-note';
 import { useState } from 'react';
 import { LoaderCircle, Plus } from 'lucide-react';
 import { Button } from '@ariforce/ui/components/button';
@@ -80,7 +81,14 @@ export function MyLeave({ data, year }: { data: LeaveData; year: number }) {
                     {r.typeName} <span className="font-normal text-muted-foreground">· {daysLabel(r.days)}</span>
                   </p>
                   <p className="text-sm text-muted-foreground">{rangeLabel(r)}</p>
-                  {r.decisionComment && <p className="mt-1 text-sm">Manager: {r.decisionComment}</p>}
+                  {r.decisionComment &&
+                    (r.status === 'rejected' ? (
+                      <div className="mt-1">
+                        <RejectionNote reason={r.decisionComment} at={r.decidedAt} testId="leave-rejection" />
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-sm">Manager: {r.decisionComment}</p>
+                    ))}
                   {r.status === 'pending' && r.approvalStep && (
                     <p className="mt-1 text-xs text-muted-foreground">
                       Approval step {r.approvalStep} of {data.settings?.approvalLevels ?? r.approvalStep}

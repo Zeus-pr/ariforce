@@ -9,6 +9,7 @@ import { Button } from '@ariforce/ui/components/button';
 import { useRole } from '@/components/shell/role-context';
 import { canWriteMasters } from '@/lib/permissions';
 import { APPROVAL_LABEL } from '@/components/pickers/pickers';
+import { RejectionNote } from '@/components/approvals/rejection-note';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -146,6 +147,7 @@ function Doctor360({ id }: { id: string }) {
   const { role } = useRole();
   const [editing, setEditing] = useState(false);
   const [rev, setRev] = useState(0);
+  const [rejection, setRejection] = useState<{ comment: string; at: string | null } | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -169,6 +171,22 @@ function Doctor360({ id }: { id: string }) {
       live = false;
     };
   }, [id, rev]);
+
+  // Rejected field-added doctor: the reason lives on the approval request (Doctor has no decision fields).
+  useEffect(() => {
+    if (doc?.approvalStatus !== 'rejected') return setRejection(null);
+    let live = true;
+    void (async () => {
+      const r = await api.GET('/v1/approvals', {
+        params: { query: { subjectType: 'doctor', status: 'rejected', mine: 'requested', limit: 50 } },
+      });
+      const a = r.data?.items.find((x) => x.subjectId === doc.id);
+      if (live) setRejection(a?.comment ? { comment: a.comment, at: a.decidedAt } : null);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [doc?.id, doc?.approvalStatus]);
 
   const category = lk.categories.find((c) => c.id === doc?.categoryId);
   const target = category?.visitsPerMonth ?? 0;
@@ -200,9 +218,9 @@ function Doctor360({ id }: { id: string }) {
     return (
       <div className="flex flex-col items-start gap-3 py-10">
         <p className="text-sm text-muted-foreground">This doctor isn’t in your list.</p>
-        <Link href="/doctors" className="text-sm underline underline-offset-4">
-          Back to doctors
-        </Link>
+        <Button asChild size="sm" variant="outline">
+          <Link href="/doctors">Back to doctors</Link>
+        </Button>
       </div>
     );
 
@@ -224,12 +242,18 @@ function Doctor360({ id }: { id: string }) {
       >
         <ArrowLeft className="size-4" /> Doctors
       </Link>
+      {rejection && <RejectionNote reason={rejection.comment} at={rejection.at} testId="doctor-rejection" />}
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-xl font-semibold tracking-tight" data-testid="doctor-name">
             {doc.name}
           </h2>
           {category && <Badge variant="secondary">{category.name}</Badge>}
+          {doc.approvalStatus && doc.approvalStatus !== 'approved' && (
+            <Badge variant="outline" data-testid="doctor-approval-status">
+              {APPROVAL_LABEL[doc.approvalStatus] ?? doc.approvalStatus}
+            </Badge>
+          )}
           {canWriteMasters(role) && (
             <Button
               variant="outline"

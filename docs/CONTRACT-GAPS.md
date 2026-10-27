@@ -132,3 +132,15 @@ Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the 
 - Every route the web uses returns 401 with `{"error":{"code":"UNAUTHENTICATED","message":"Sign in required"}}` (JSON): /v1/me, /v1/doctors (incl. ?approvalStatus=pending), /v1/chemists, /v1/territories, /v1/allowance-rates, /v1/allowance-places, /v1/notifications, /v1/notifications/unread-count, /v1/products, /v1/exceptions, /v1/exceptions/summary, /v1/exception-rules. Unknown routes return 404 NOT_FOUND, so all of these are mounted. This matches the contract's error envelope.
 - `/health` is not under that path (404); not used by the web.
 - Still unverified against real data: response bodies (approvalStatus values, pagination cursors, the TA/DA, notification, price and exception shapes). This needs a seeded non-admin login.
+
+## Approvals review and rejection reasons (approver detail view)
+
+Built only from endpoints that exist; nothing is faked. Gaps for the API:
+
+- Tour plan: no `GET /v1/tour-plans/{id}`. The approver lists `GET /v1/tour-plans?userId=<submitter>` and picks `subjectId`. No plan-level submitter note (only per-entry `notes`).
+- Doctors: no `ids=` batch filter on `GET /v1/doctors`, so planned-doctor names cost one `GET /v1/doctors/{id}` each.
+- Rejecter name: `decidedBy` is an id only on Approval, TourPlan, LeaveRequest and ExpenseClaim; no `decidedByName`. UI shows "Rejected: <reason>, <date>" and adds "by <name>" only where a name exists (notifications: `data.actorName`).
+- Doctor: schema has no decision/rejection fields; the reason is read from `GET /v1/approvals?subjectType=doctor&status=rejected&mine=requested`.
+- Notifications: templates exist for `leave.*` and `expense.*` (data carries `comment` + `actorName`); none for tour plan or doctor rejection.
+- Reject comment: required, max 1000 (ApprovalDecision, LeaveDecision, ExpenseDecision); the UI enforces the same.
+- Approver read access to a subordinate's leave request, claim and doctor depends on API scoping; unverified without a real login.

@@ -37,6 +37,9 @@ import { useRole } from '@/components/shell/role-context';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { saveMessage } from '@/lib/leave/model';
 import { isApprover } from '@/lib/roles';
+import { ApprovalReview } from '@/components/approvals/approval-review';
+import { RejectDialog } from '@/components/approvals/reject-dialog';
+import { RejectionNote } from '@/components/approvals/rejection-note';
 import { datesOf, dayLabel, monthLabel, shiftMonth, thisMonthIST, weekdayMon } from './month';
 
 type Day = TourPlan['days'][number];
@@ -267,9 +270,11 @@ function Planner({ initialMonth }: { initialMonth: string }) {
         </div>
 
         {plan?.status === 'rejected' && plan.decisionComment && (
-          <p className="border-l-2 border-destructive pl-3 text-sm" role="note">
-            <span className="font-medium">Manager&apos;s note:</span> {plan.decisionComment}
-          </p>
+          <RejectionNote
+            reason={plan.decisionComment}
+            at={plan.decidedAt}
+            hint="Change the plan and submit it again."
+          />
         )}
 
         {plan === undefined ? (
@@ -526,7 +531,7 @@ function DayEditor({
 function ApprovalsPanel({ onDecided }: { onDecided: () => void }) {
   const [items, setItems] = useState<Approval[] | null>(null);
   const [rejecting, setRejecting] = useState<Approval | null>(null);
-  const [comment, setComment] = useState('');
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     await apiReady();
@@ -547,9 +552,8 @@ function ApprovalsPanel({ onDecided }: { onDecided: () => void }) {
       body: decision === 'approve' ? { decision } : { decision, comment: note },
     });
     if (r.error) return toast.error(toApiError(r).message);
-    toast.success(decision === 'approve' ? `${a.summary} approved` : `${a.summary} sent back`);
+    toast.success(decision === 'approve' ? `${a.summary} approved` : `${a.summary} rejected`);
     setRejecting(null);
-    setComment('');
     await load();
     onDecided();
   }
@@ -566,50 +570,41 @@ function ApprovalsPanel({ onDecided }: { onDecided: () => void }) {
       </h2>
       <ul className="divide-y rounded-lg border">
         {items.map((a) => (
-          <li
-            key={a.id}
-            className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5"
-            data-testid="tp-approval"
-          >
-            <div>
-              <p className="text-sm font-medium">{a.summary}</p>
-              <p className="text-xs text-muted-foreground">{a.requestedByName}</p>
+          <li key={a.id} className="px-3 py-2.5" data-testid="tp-approval">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">{a.summary}</p>
+                <p className="text-xs text-muted-foreground">{a.requestedByName}</p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-expanded={openId === a.id}
+                  onClick={() => setOpenId(openId === a.id ? null : a.id)}
+                  data-testid="approval-view"
+                >
+                  {openId === a.id ? 'Hide plan' : 'View plan'}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setRejecting(a)} data-testid="tp-reject">
+                  Reject
+                </Button>
+                <Button size="sm" onClick={() => decide(a, 'approve')} data-testid="tp-approve">
+                  Approve
+                </Button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => setRejecting(a)}>
-                Send back
-              </Button>
-              <Button size="sm" onClick={() => decide(a, 'approve')} data-testid="tp-approve">
-                Approve
-              </Button>
-            </div>
+            {openId === a.id && <ApprovalReview approval={a} />}
           </li>
         ))}
       </ul>
-      <Dialog open={!!rejecting} onOpenChange={(o) => !o && setRejecting(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Send back {rejecting?.summary}</DialogTitle>
-            <DialogDescription>
-              Say what needs to change. {rejecting?.requestedByName} will see this note.
-            </DialogDescription>
-          </DialogHeader>
-          <textarea
-            className="min-h-24 rounded-md border bg-background px-3 py-2 text-base md:text-sm"
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            aria-label="Note"
-          />
-          <DialogFooter>
-            <Button
-              disabled={!comment.trim()}
-              onClick={() => rejecting && decide(rejecting, 'reject', comment.trim())}
-            >
-              Send back
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RejectDialog
+        open={!!rejecting}
+        onOpenChange={(o) => !o && setRejecting(null)}
+        title={`Reject ${rejecting?.summary ?? ''}`}
+        description={`${rejecting?.requestedByName ?? ''} will see this reason.`}
+        onConfirm={(reason) => rejecting && decide(rejecting, 'reject', reason)}
+      />
     </section>
   );
 }

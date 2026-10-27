@@ -498,7 +498,40 @@ export function createHandlers(baseUrl = '') {
 function fieldHandlers(baseUrl: string) {
   const inbox = seedNotifications();
   const checkIns: CheckIn[] = [];
-  const tourPlans: TourPlan[] = [];
+  // Seeded plan behind the pending tour_plan approval, so approvers can review its days.
+  const seedTs = serverTime();
+  const tourPlans: TourPlan[] = [
+    {
+      companyId: fx.COMPANY_ID,
+      createdAt: seedTs,
+      updatedAt: seedTs,
+      deletedAt: null,
+      version: 1,
+      id: fx.approvals[0]!.subjectId,
+      userId: fx.approvals[0]!.requestedBy,
+      month: '2026-12',
+      kind: 'mtp',
+      status: 'submitted',
+      days: [1, 2, 3].map((d) => ({
+        date: `2026-12-0${d}`,
+        entries: [
+          {
+            session: 'full' as const,
+            workTypeId: fx.workTypes[0]!.id,
+            territoryIds: [fx.doctors[0]!.territoryId],
+            jointWorkUserIds: [],
+            plannedDoctorIds: fx.doctors.slice(0, 2).map((x) => x.id),
+            plannedChemistIds: [],
+            notes: d === 1 ? 'Cover the new hospital wing' : null,
+          },
+        ],
+      })),
+      submittedAt: seedTs,
+      decidedAt: null,
+      decidedBy: null,
+      decisionComment: null,
+    },
+  ];
   let stp: StandardTourPlan | null = null;
   const dcrs: Dcr[] = [];
   const approvals = structuredClone(fx.approvals);

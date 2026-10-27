@@ -1,5 +1,6 @@
 'use client';
 
+import { rejectionText } from '@/components/approvals/rejection-note';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bell } from 'lucide-react';
@@ -179,7 +180,17 @@ export function NotificationBell({ pageSize = PAGE }: { pageSize?: number }) {
                   />
                   <span className="min-w-0 flex-1">
                     <span className={`block text-sm ${n.readAt ? '' : 'font-medium'}`}>{n.title}</span>
-                    <span className="block text-xs text-muted-foreground">{n.body}</span>
+                    {n.type.endsWith('.rejected') && typeof n.data?.comment === 'string' ? (
+                      <span className="block text-xs text-red-900" data-testid="notif-rejection">
+                        {rejectionText(
+                          n.data.comment,
+                          typeof n.data.actorName === 'string' ? n.data.actorName : null,
+                          n.createdAt,
+                        )}
+                      </span>
+                    ) : (
+                      <span className="block text-xs text-muted-foreground">{n.body}</span>
+                    )}
                     <span className="block text-[11px] text-muted-foreground">{when(n.createdAt)}</span>
                   </span>
                   {!n.readAt && <span className="sr-only">Unread</span>}

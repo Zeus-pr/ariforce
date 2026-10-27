@@ -122,7 +122,7 @@ function DecisionDialog({ d, onClose, onDone }: { d: Decision | null; onClose: (
           <DialogDescription>{d ? `${d.req.userName}: ${d.req.typeName}, ${rangeLabel(d.req)}` : ''}</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="leave-comment">{reject ? 'Comment (required)' : 'Comment (optional)'}</Label>
+          <Label htmlFor="leave-comment">{reject ? 'Reason (required)' : 'Comment (optional)'}</Label>
           <textarea
             id="leave-comment"
             data-testid="leave-comment"
@@ -142,7 +142,7 @@ function DecisionDialog({ d, onClose, onDone }: { d: Decision | null; onClose: (
           <Button variant="outline" onClick={onClose}>
             Back
           </Button>
-          <Button variant={reject ? 'destructive' : 'default'} onClick={go} disabled={busy} data-testid="leave-decide-confirm">
+          <Button variant={reject ? 'destructive' : 'default'} onClick={go} disabled={busy || (reject && !comment.trim())} data-testid="leave-decide-confirm">
             {busy && <LoaderCircle className="animate-spin" />}
             {reject ? 'Reject' : 'Approve'}
           </Button>

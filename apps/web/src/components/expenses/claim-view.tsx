@@ -1,5 +1,6 @@
 'use client';
 
+import { RejectionNote } from '@/components/approvals/rejection-note';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Check, LoaderCircle, Pencil, Plus, Send, Trash2, Undo2, Wallet } from 'lucide-react';
@@ -121,11 +122,12 @@ export function ClaimView({ id }: { id: string }) {
       </div>
 
       {claim.status === 'rejected' && claim.decisionComment && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900" data-testid="exp-reject-comment">
-          <p className="font-medium">Sent back{mine ? ' to you' : ''}</p>
-          <p>{claim.decisionComment}</p>
-          {mine && <p className="mt-1 text-xs">Fix the lines and submit again.</p>}
-        </div>
+        <RejectionNote
+          reason={claim.decisionComment}
+          at={claim.decidedAt}
+          hint={mine ? 'Fix the lines and submit again.' : undefined}
+          testId="exp-reject-comment"
+        />
       )}
       {claim.status === 'paid' && (
         <p className="rounded-lg border bg-sky-50 p-3 text-sm text-sky-900" data-testid="exp-paid">Paid · reference {claim.paymentRef}</p>

@@ -16,6 +16,8 @@ for (const view of ['desktop', 'mobile']) {
   await page.waitForFunction(() => document.querySelectorAll('[data-testid=notif-item]').length > 3, null, { timeout: 10000 });
   check(true, `${view}: load more appends`);
   check(!(await page.getByTestId('notif-more').count()), `${view}: no more after last page`);
+  const rej = await page.getByTestId('notif-rejection').first().innerText().catch(() => '');
+  check(/^Rejected: Month-end review that week, by Anita Rao, \d+ \w+ 2026$/.test(rej), `${view}: rejection notification reads "${rej}"`);
   await noOverflow(page, `${view} panel`);
   await noBannedWords(page, `${view} panel`);
   await shot(page, `panel-${view}.png`);

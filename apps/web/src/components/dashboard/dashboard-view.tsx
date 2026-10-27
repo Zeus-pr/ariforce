@@ -7,14 +7,6 @@ import type { Approval, KpiReport, ProductKpiReport } from '@ariforce/contracts'
 import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@ariforce/ui/components/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@ariforce/ui/components/dialog';
 import { NumberTicker } from '@ariforce/ui/components/number-ticker';
 import { toast } from '@ariforce/ui/components/sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@ariforce/ui/components/table';
@@ -23,6 +15,8 @@ import { cn } from '@ariforce/ui/lib/utils';
 import { useRole } from '@/components/shell/role-context';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { isApprover, isFieldRole, type Role } from '@/lib/roles';
+import { ApprovalReview } from '@/components/approvals/approval-review';
+import { RejectDialog } from '@/components/approvals/reject-dialog';
 import { MOCK_ATTENTION, type Severity } from '@/mocks/dashboard';
 import { formatKpi, HEADLINE, KPI_META, TEAM_COLUMNS } from './kpi-meta';
 
@@ -254,9 +248,11 @@ function Attention({ rows, className }: { rows: KpiReport['rows']; className?: s
       <CardHeader className="border-b px-4 py-4">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base">Exceptions</CardTitle>
-          <Link href="/exceptions" className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline" data-testid="see-all-exceptions">
-            See all
-          </Link>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/exceptions" data-testid="see-all-exceptions">
+              See all
+            </Link>
+          </Button>
         </div>
         <CardDescription>From this month&apos;s KPIs, most serious first. Thresholds to confirm with Arighna.</CardDescription>
       </CardHeader>
@@ -322,7 +318,7 @@ const SUBJECT_LABEL: Partial<Record<Approval['subjectType'], string>> = {
 function Approvals({ className }: { className?: string }) {
   const [items, setItems] = useState<Approval[] | null>(null);
   const [returning, setReturning] = useState<Approval | null>(null);
-  const [comment, setComment] = useState('');
+  const [openId, setOpenId] = useState<string | null>(null);
   const load = useCallback(async () => {
     await apiReady();
     const r = await api.GET('/v1/approvals', { params: { query: { status: 'pending', mine: 'to_decide', limit: 50 } } });
@@ -338,9 +334,8 @@ function Approvals({ className }: { className?: string }) {
       body: decision === 'approve' ? { decision } : { decision, comment: note },
     });
     if (r.error) return toast.error(toApiError(r).message);
-    toast.success(decision === 'approve' ? `${a.summary} approved` : `${a.summary} sent back`);
+    toast.success(decision === 'approve' ? `${a.summary} approved` : `${a.summary} rejected`);
     setReturning(null);
-    setComment('');
     void load();
   }
 
@@ -373,8 +368,18 @@ function Approvals({ className }: { className?: string }) {
                       <p className="mt-0.5 text-xs text-muted-foreground">{a.summary}</p>
                       <div className="mt-2 flex gap-2">
                         <Button size="sm" onClick={() => decide(a, 'approve')}>Approve</Button>
-                        <Button size="sm" variant="outline" onClick={() => setReturning(a)}>Return</Button>
+                        <Button size="sm" variant="outline" onClick={() => setReturning(a)} data-testid="dash-reject">Reject</Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-expanded={openId === a.id}
+                          onClick={() => setOpenId(openId === a.id ? null : a.id)}
+                          data-testid="approval-view"
+                        >
+                          {openId === a.id ? 'Hide details' : 'View details'}
+                        </Button>
                       </div>
+                      {openId === a.id && <ApprovalReview approval={a} />}
                     </li>
                   ))}
                 </ul>
@@ -383,28 +388,13 @@ function Approvals({ className }: { className?: string }) {
           );
         })}
       </Tabs>
-      <Dialog open={returning !== null} onOpenChange={(o) => !o && setReturning(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Return {returning?.summary}</DialogTitle>
-            <DialogDescription>{returning?.requestedByName} sees this comment and can resubmit.</DialogDescription>
-          </DialogHeader>
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            rows={4}
-            aria-label="Comment"
-            placeholder="What needs to change?"
-            className="w-full rounded-md border bg-background px-3 py-2 text-base outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm"
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setReturning(null)}>Cancel</Button>
-            <Button disabled={!comment.trim()} onClick={() => returning && decide(returning, 'reject', comment.trim())}>
-              Return with comment
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RejectDialog
+        open={returning !== null}
+        onOpenChange={(o) => !o && setReturning(null)}
+        title={`Reject ${returning?.summary ?? ''}`}
+        description={`${returning?.requestedByName ?? ''} sees this reason and can resubmit.`}
+        onConfirm={(reason) => returning && decide(returning, 'reject', reason)}
+      />
     </Card>
   );
 }

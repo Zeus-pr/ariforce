@@ -221,7 +221,7 @@ function ExceptionDetail({ id, onClose, onChange }: { id: string | null; onClose
             </div>
             {measured(x) && <p><span className="text-muted-foreground">Measured: </span>{measured(x)}</p>}
             <div><div className="text-xs font-medium text-muted-foreground">Suggested action</div><p data-testid="exc-action">{x.suggestedAction}</p></div>
-            {link && <Link href={link.href} className="text-primary underline-offset-4 hover:underline" data-testid="exc-source">{link.label}</Link>}
+            {link && <Button asChild size="sm" variant="outline" className="w-fit"><Link href={link.href} data-testid="exc-source">{link.label}</Link></Button>}
             {x.explanation && <div data-testid="exc-explanation"><div className="text-xs font-medium text-muted-foreground">Explanation from {x.user.name}</div><p className="whitespace-pre-wrap">{x.explanation}</p></div>}
             {x.resolutionNote && <div data-testid="exc-resolution"><div className="text-xs font-medium text-muted-foreground">{x.status === 'dismissed' ? 'Dismissed' : 'Resolved'}{x.resolvedBy ? ` by ${x.resolvedBy.name}` : ''}</div><p className="whitespace-pre-wrap">{x.resolutionNote}</p></div>}
             <div className="grid grid-cols-2 gap-2">
