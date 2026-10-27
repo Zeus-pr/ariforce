@@ -82,8 +82,14 @@ export const EmployeeCreate = z
     employeeCode: z.string().trim().min(1).max(50).nullable().default(null),
     designation: z.string().trim().max(100).nullable().default(null),
     joinedOn: z.iso.date().nullable().default(null),
-    role: RoleKey.meta({ description: "Must be a hierarchy role strictly below the caller's" }),
-    territoryIds: z.array(Id).min(1).meta({ description: "Within the caller's territory subtree" }),
+    role: RoleKey.meta({
+      description:
+        "Must be a hierarchy role strictly below the caller's; a system admin (users:write) may grant any role",
+    }),
+    territoryIds: z.array(Id).default([]).meta({
+      description:
+        "Within the caller's territory subtree (system admin: any territory in the company). Hierarchy roles need at least one; functional roles may send none",
+    }),
     managerId: Id.nullable()
       .default(null)
       .meta({ description: 'Default = caller; must be the caller or in their subtree' }),

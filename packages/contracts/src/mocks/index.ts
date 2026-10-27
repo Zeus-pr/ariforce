@@ -654,6 +654,9 @@ function fieldHandlers(baseUrl: string) {
           managerId: u.managerId,
           territoryIds: u.territoryIds,
           status: 'active' as const,
+          hasLogin: true,
+          inviteStatus: 'accepted' as const,
+          inviteExpiresAt: null,
         }));
       return list(UserSummary, rows, url);
     }),

@@ -39,7 +39,7 @@ import { DB } from '../db/db.module';
 import { err } from '../field/checkins.service';
 
 const INVITE_DAYS = 7;
-/** System admin (with users:write) may create/manage any hierarchy role, including director. */
+/** System admin (with users:write) may create/manage any role, including director and functional roles. */
 const isAdmin = (p: Principal) =>
   p.roles.includes('system_admin') && p.permissions.includes('users:write');
 const DIRECTOR_RANK = ROLE_RANK.director;
@@ -264,11 +264,7 @@ export class TeamService {
     if (!t) throw err(404, 'NOT_FOUND', 'Employee not found');
     const myRank = hierarchyRank(p.roles);
     if (id === p.userId) throw err(403, 'FORBIDDEN', 'You cannot change your own record here');
-    if (isAdmin(p)) {
-      if (t.rank === 0 || !t.roles.every(isHierarchyRole))
-        throw err(403, 'FORBIDDEN', 'Only hierarchy employees can be managed here');
-      return t;
-    }
+    if (isAdmin(p)) return t;
     if (myRank < MIN_MANAGER_RANK || t.rank >= myRank || !t.roles.every(isHierarchyRole))
       throw err(403, 'FORBIDDEN', 'You can only manage people below your level');
     const inTree = p.scopePaths === null || this.subtree(all, p.userId).has(id);
@@ -279,7 +275,7 @@ export class TeamService {
 
   private assertRole(p: Principal, role: RoleKey) {
     const r = ROLE_RANK[role];
-    if (isAdmin(p) && r > 0) return;
+    if (isAdmin(p)) return;
     if (!(r > 0 && r < hierarchyRank(p.roles)))
       throw err(403, 'FORBIDDEN', 'Role must be a hierarchy role below your own');
   }
@@ -291,6 +287,7 @@ export class TeamService {
   private assertManager(p: Principal, all: Map<string, Person>, mgrId: string, belowRank: number) {
     const m = all.get(mgrId);
     if (belowRank >= DIRECTOR_RANK) throw err(422, 'VALIDATION', 'A director has no manager');
+    if (belowRank === 0) throw err(422, 'VALIDATION', 'Functional roles have no manager');
     const inTree = p.scopePaths === null || this.subtree(all, p.userId).has(mgrId);
     if (!m || !inTree || m.status === 'suspended' || m.rank <= belowRank)
       throw err(403, 'FORBIDDEN', 'Manager must be you or someone above them in your team');
@@ -348,6 +345,8 @@ export class TeamService {
       if (!admin && hierarchyRank(p.roles) < MIN_MANAGER_RANK)
         throw err(403, 'FORBIDDEN', 'Only ABM and above can add employees');
       this.assertRole(p, b.role);
+      if (isHierarchyRole(b.role) && !b.territoryIds.length)
+        throw err(422, 'VALIDATION', 'Hierarchy roles need at least one territory');
       await this.assertTerritories(tx, p, b.territoryIds);
       const all = await this.people(tx);
       // System admin is outside the reporting line: no default manager; a director never has one.
@@ -379,14 +378,15 @@ export class TeamService {
       await tx
         .insert(userRoles)
         .values({ companyId: p.companyId, userId: u!.id, roleId: await this.roleId(tx, b.role) });
-      await tx.insert(userTerritories).values(
-        b.territoryIds.map((territoryId, i) => ({
-          companyId: p.companyId,
-          userId: u!.id,
-          territoryId,
-          isPrimary: i === 0,
-        })),
-      );
+      if (b.territoryIds.length)
+        await tx.insert(userTerritories).values(
+          b.territoryIds.map((territoryId, i) => ({
+            companyId: p.companyId,
+            userId: u!.id,
+            territoryId,
+            isPrimary: i === 0,
+          })),
+        );
       await this.audit.record(tx, p, 'employee.created', {
         entityType: 'user',
         entityId: u!.id,
@@ -512,7 +512,8 @@ export class TeamService {
         phone: b.phone,
         designation: b.designation,
         joinedOn: b.joinedOn,
-        managerId: b.managerId,
+        // Moving to a functional role drops the reporting line (functional roles have no manager).
+        managerId: newRank === 0 && t.managerId ? null : b.managerId,
         status: b.status,
         updatedAt: new Date(),
       };
