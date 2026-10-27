@@ -28,7 +28,7 @@ export async function createProduct(
   http: Http,
   bm: string,
   director: string,
-  o: { ptr?: number | null; active?: boolean } = {},
+  o: { ptr?: number | null; active?: boolean; admin?: string } = {},
 ): Promise<string> {
   const base = await ensureProduct(http, bm, director);
   const div = (await http().get(`/v1/products/${base}`).set({ authorization: director })).body
@@ -46,11 +46,20 @@ export async function createProduct(
       packSize: null,
       form: null,
       mrp: null,
-      ptr: o.ptr ?? null,
+      ptr: null,
       pts: null,
       isSample: false,
       active: o.active ?? true,
     });
   if (res.status !== 201) throw new Error(`product create failed: ${JSON.stringify(res.body)}`);
+  if (o.ptr != null) {
+    // Prices are system_admin only (products:prices).
+    if (!o.admin) throw new Error('createProduct: a ptr needs the system_admin token (o.admin)');
+    const pr = await http()
+      .patch(`/v1/admin/products/${res.body.id}/prices`)
+      .set({ authorization: o.admin })
+      .send({ ptr: o.ptr });
+    if (pr.status !== 200) throw new Error(`price set failed: ${JSON.stringify(pr.body)}`);
+  }
   return res.body.id;
 }

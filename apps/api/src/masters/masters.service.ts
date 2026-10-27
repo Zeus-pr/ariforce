@@ -13,6 +13,7 @@ import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
+import { PRICE_KEYS, recordPriceChange } from '../product-prices/product-prices.service';
 import { baseFromRow, type MasterDef } from './master-defs';
 
 type Row = Record<string, unknown>;
@@ -151,10 +152,44 @@ export class MastersService {
     if (!t) throw new ForbiddenException('Territory outside your hierarchy');
   }
 
+  /**
+   * Product prices are system_admin only (`products:prices`): other masters writers may create or
+   * update products but not set or change MRP/PTR/PTS (403 PRICES_ADMIN_ONLY). Unchanged values
+   * pass; null/absent price fields are dropped so they never clear a stored price.
+   */
+  private guardPrices(def: MasterDef, p: Principal, body: Row, before?: Row) {
+    if (def.entity !== 'product' || p.permissions.includes('products:prices')) return;
+    const num = (v: unknown) => (v == null ? null : Number(v));
+    // Empty price cells (e.g. an import without price columns) keep the stored prices.
+    for (const k of PRICE_KEYS) if (body[k] == null) delete body[k];
+    const bad = PRICE_KEYS.filter(
+      (k) => k in body && num(body[k]) !== (before ? num(before[k]) : null),
+    );
+    if (bad.length)
+      throw new ForbiddenException({
+        code: 'PRICES_ADMIN_ONLY',
+        message: 'Only the System Admin can set product prices',
+        details: { fields: bad },
+      });
+  }
+
+  private async trackPrices(tx: Tx, def: MasterDef, p: Principal, row: Row, before?: Row) {
+    if (def.entity !== 'product') return;
+    const pick = (r?: Row) => ({
+      mrp: r?.mrp == null ? null : Number(r.mrp),
+      ptr: r?.ptr == null ? null : Number(r.ptr),
+      pts: r?.pts == null ? null : Number(r.pts),
+    });
+    const [b, a] = [pick(before), pick(row)];
+    if (PRICE_KEYS.some((k) => a[k] !== b[k]))
+      await recordPriceChange(tx, this.audit, p, String(row.id), b, a, 'masters');
+  }
+
   /** Insert inside an existing transaction (used by import too). */
   async insert(tx: Tx, def: MasterDef, p: Principal, body: Row, action = 'create') {
     if (def.territoryCol && 'territoryId' in body)
       await this.assertTerritory(tx, p, body.territoryId);
+    this.guardPrices(def, p, body);
     const values: Row = {
       ...(def.toRow ? def.toRow(body, p) : body),
       id: uuidv7(),
@@ -167,6 +202,7 @@ export class MastersService {
       .insert(def.table)
       .values(values as any)
       .returning();
+    await this.trackPrices(tx, def, p, row as Row);
     const dto = this.dto(def, row as Row);
     await this.audit.record(tx, p, `${def.entity}.${action}`, {
       entityType: def.entity,
@@ -186,6 +222,7 @@ export class MastersService {
     const { version, ...changes } = body;
     if (def.territoryCol && changes.territoryId && changes.territoryId !== before.territoryId)
       await this.assertTerritory(tx, p, changes.territoryId);
+    this.guardPrices(def, p, changes, before);
     const set = def.toRow ? def.toRow(changes, p) : changes;
     const [row] = await tx
       .update(def.table)
@@ -203,6 +240,7 @@ export class MastersService {
         message: 'Stale version',
         details: this.dto(def, before),
       });
+    await this.trackPrices(tx, def, p, row as Row, before);
     const dto = this.dto(def, row as Row);
     await this.audit.record(tx, p, `${def.entity}.${action}`, {
       entityType: def.entity,

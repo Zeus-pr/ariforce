@@ -50,6 +50,7 @@ Territory levels are a separate, geographic hierarchy (`national > zone > region
 | `approvals:decide`, `reports:read`                                                       | reports only |  ✓  |   ✓    |    ✓     |              |                   |            |
 | `settings:write`, `audit:read`                                                           |              |     |        |    ✓     |      ✓       |                   |            |
 | `users:write`                                                                            |              |     |        |          |      ✓       |                   |            |
+| `products:prices`                                                                        |              |     |        |          |      ✓       |                   |            |
 | `sales:read`                                                                             |              |     |        |          |              |         ✓         |            |
 | `finance:read`                                                                           |              |     |        |          |              |                   |     ✓      |
 | `expenses:read`, `expenses:write` (own claims)                                           |      ✓       |  ✓  |   ✓    |    ✓     |              |                   |            |
@@ -73,6 +74,8 @@ Field-added doctors are `pending` unless created by a director or system admin.
 `/v1/team/members/{userId}/*`: own profile for any hierarchy role (BM included); others need ABM+ and `reports:read` and the person strictly below in the viewer's subtree (Director: everyone). system_admin / distribution_head / accountant: 403. Out of scope: 404. Expenses in performance only for own profile or `expenses:approve` / `finance:read`. No new permission. Details: docs/TEAM-PROFILE.md.
 
 ### Leave permissions (migration 0025, #51)
+
+`packages/db/migrations/0033_role_permissions_prices.sql` re-syncs every role after `products:prices` (system_admin only: product MRP/PTR/PTS and price history) was added; `ROLE_PERMISSIONS_MIGRATION` now names 0033. Details: docs/PRODUCTS.md.
 
 `packages/db/migrations/0025_role_permissions_leave.sql` re-syncs every role from `DEFAULT_ROLE_PERMISSIONS` after `leave:read`, `leave:write` and `leave:approve` were added (`ROLE_PERMISSIONS_MIGRATION` now names 0025; the drift test follows it). Leave policy and carry-forward use `settings:write`. Details: docs/LEAVE.md.
 

@@ -28,7 +28,7 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = configureApp(mod.createNestApplication({ bodyParser: false }));
     await app.init();
-    for (const who of ['director', 'bm', 'abm']) {
+    for (const who of ['director', 'bm', 'abm', 'sysadmin']) {
       const res = await http()
         .post('/v1/auth/sign-in/email')
         .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
@@ -40,7 +40,7 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
     const chemist = (await http().get(`/v1/chemists?territoryId=${T.hq}&limit=1`).set(as('bm')))
       .body.items[0].id;
     // PTR 300 → the server values the 5-unit POB at 1500 (#40: value = quantity × PTR).
-    product = await createProduct(http, tok.bm!, tok.director!, { ptr: 300 });
+    product = await createProduct(http, tok.bm!, tok.director!, { ptr: 300, admin: tok.sysadmin });
     const res = await http()
       .put('/v1/dcrs')
       .set(as('bm'))

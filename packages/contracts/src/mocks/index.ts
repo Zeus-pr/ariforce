@@ -28,6 +28,7 @@ import { teamHandlers, teamProfileHandlers } from './team';
 import { signupHandlers } from './signup';
 import { expenseHandlers } from './expenses';
 import { exceptionHandlers } from './exceptions';
+import { productPriceHandlers } from './product-prices';
 import { leaveHandlers, mockLeaveOn, mockWeeklyOffDays } from './leave';
 import { mastersGuardHandlers } from './masters-guard';
 import {
@@ -374,6 +375,7 @@ const unauthenticated = () =>
 export function createHandlers(baseUrl = '') {
   return [
     ...mastersGuardHandlers(baseUrl, mockPrincipal),
+    ...productPriceHandlers(baseUrl, mockPrincipal),
     ...signupHandlers(baseUrl, mockPrincipal),
     ...expenseHandlers(baseUrl, mockPrincipal),
     ...leaveHandlers(baseUrl, mockPrincipal),

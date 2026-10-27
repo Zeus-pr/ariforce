@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { Pool } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { T } from '@ariforce/db';
@@ -78,7 +79,7 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = configureApp(mod.createNestApplication({ bodyParser: false }));
     await app.init();
-    for (const who of ['bm', 'bm2', 'rbm', 'director']) {
+    for (const who of ['bm', 'bm2', 'rbm', 'director', 'sysadmin']) {
       const res = await http()
         .post('/v1/auth/sign-in/email')
         .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
@@ -92,10 +93,24 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
       .items[0].id;
     chemist = await outlet('chemists', T.otherArea);
     stockist = await outlet('stockists', T.otherArea);
-    priced = await createProduct(http, tok.bm!, tok.director!, { ptr: 12.35 });
+    priced = await createProduct(http, tok.bm!, tok.director!, { ptr: 12.35, admin: tok.sysadmin });
     unpriced = await createProduct(http, tok.bm!, tok.director!, { ptr: null });
     inactive = await createProduct(http, tok.bm!, tok.director!, { active: false });
   });
+  const rowsValue = async (dcrId: string, productId: string) => {
+    const pool = new Pool({ connectionString: process.env.DIRECT_URL });
+    try {
+      const r = await pool.query(
+        `select p.value from dcr_call_products p join dcr_calls c on c.id = p.call_id
+         where c.dcr_id = $1 and p.product_id = $2 and p.kind = 'pob'
+           and p.deleted_at is null and c.deleted_at is null`,
+        [dcrId, productId],
+      );
+      return r.rows[0]?.value as string | undefined;
+    } finally {
+      await pool.end();
+    }
+  };
   afterAll(async () => {
     await app?.close();
   });
@@ -349,5 +364,33 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
       422,
     );
     expect((await http().get('/v1/rcpa/competitor-brands')).status).toBe(401);
+  });
+
+  // Last: it re-saves DAY for bm2 (other tests above use DAY too).
+  it('a PTR change keeps saved POB values; new lines use the new PTR', async () => {
+    const prod = await createProduct(http, tok.bm!, tok.director!, {
+      ptr: 10,
+      admin: tok.sysadmin,
+    });
+    const first = await put([call({ pob: [{ productId: prod, quantity: 2 }] })]);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect(first.body.calls[0].pob[0].value).toBe(20);
+    const pr = await http()
+      .patch(`/v1/admin/products/${prod}/prices`)
+      .set(as('sysadmin'))
+      .send({ ptr: 12 });
+    expect(pr.status, JSON.stringify(pr.body)).toBe(200);
+    const read = await http().get(`/v1/dcrs/${first.body.id}`).set(as('bm2'));
+    expect(read.body.calls[0].pob[0].value).toBe(20); // stored at write, never re-priced on read
+    const kpi = await rowsValue(first.body.id, prod);
+    expect(kpi).toBe('20.00');
+    // A new line (another rep's DCR) is priced at the new PTR.
+    const second = await put(
+      [call({ outletId: hqChemist, pob: [{ productId: prod, quantity: 2 }] })],
+      { territoryIds: [T.hq] },
+      'bm',
+    );
+    expect(second.status, JSON.stringify(second.body)).toBe(200);
+    expect(second.body.calls[0].pob[0].value).toBe(24);
   });
 });
