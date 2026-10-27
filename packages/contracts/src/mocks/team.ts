@@ -13,6 +13,7 @@ import {
   type TeamNode,
 } from '../schemas/team';
 import * as fx from './fixtures';
+import { mockProfileExceptions } from './exceptions';
 import { KPI_KEYS, type KpiKey } from '../schemas/kpis';
 import { WEEK_KPI_KEYS } from '../schemas/team-profile';
 import {
@@ -422,6 +423,9 @@ export function teamProfileHandlers(baseUrl: string, who: (r: Request) => Me | u
             leave: null,
           },
           lastPunchInAt: null,
+          exceptions: (g.p.permissions as string[]).includes('field:read')
+            ? mockProfileExceptions(g.t.id)
+            : null,
           canSeeExpenses:
             g.p.id === g.t.id ||
             (g.p.permissions as string[]).some(

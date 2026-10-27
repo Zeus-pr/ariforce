@@ -193,7 +193,9 @@ describe.skipIf(!OWNER || !APP)('Postgres RLS tenant isolation (app role, non-su
       expect(row, row.relname).toMatchObject({
         relrowsecurity: true,
         relforcerowsecurity: true,
-        cid: true,
+        // jobs.company_id is null for system jobs (cleanup); RLS hides those from the app role and
+        // the runner reaches them only through SECURITY DEFINER functions (docs/NOTIFICATIONS.md).
+        cid: row.relname !== 'jobs',
       });
     }
   });

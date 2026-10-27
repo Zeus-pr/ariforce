@@ -1,3 +1,26 @@
+import {
+  ExceptionEvaluateRequest,
+  ExceptionEvaluateResult,
+  ExceptionItem,
+  ExceptionListQuery,
+  ExceptionNote,
+  ExceptionPage,
+  ExceptionRule,
+  ExceptionRuleList,
+  ExceptionRuleParam,
+  ExceptionRuleUpdate,
+  ExceptionSummary,
+  ExceptionSummaryQuery,
+  ExceptionUpdate,
+} from './schemas/exceptions';
+import {
+  JobStats,
+  NotificationPage,
+  NotificationQuery,
+  Notification as NotificationSchema,
+  ReadAllResult,
+  UnreadCount,
+} from './schemas/notifications';
 import * as z from 'zod';
 import { masterReadPermission } from './schemas/roles';
 import {
@@ -29,6 +52,8 @@ import {
   CheckInListQuery,
   UserListQuery,
   UserSummary,
+  CompetitorBrandList,
+  CompetitorBrandQuery,
   ConsentState,
   Dcr,
   DcrListQuery,
@@ -761,9 +786,20 @@ function buildDocument(): OpenApiDocument {
             '200': { description: 'Saved', ...json(Dcr) },
             '409': err('DAY_LOCKED (request a correction) or VERSION_CONFLICT'),
             '422': err(
-              'Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown products, or a check-in that is not your visit to that outlet',
+              'Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown or inactive products, a check-in that is not your visit to that outlet, POB on a doctor call / RCPA on a non-chemist call (details.pobOutletCallIds / rcpaOutletCallIds), duplicate POB products or RCPA brands in a call (details.duplicatePob / duplicateRcpa), or an out-of-scope stockistId / RCPA doctorId',
             ),
           },
+        }),
+      },
+      '/v1/rcpa/competitor-brands': {
+        get: op({
+          tags: ['DCR'],
+          operationId: 'listCompetitorBrands',
+          summary: 'Competitor brands already captured in RCPA in your company (#40)',
+          description:
+            'Distinct brands (case-insensitive, most used first) so reps reuse an existing spelling. q matches a prefix of any word. Needs field:read.',
+          requestParams: { query: CompetitorBrandQuery },
+          responses: { '200': { description: 'OK', ...json(CompetitorBrandList) } },
         }),
       },
       '/v1/dcrs/correction-requests': {
@@ -1049,6 +1085,52 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '200': { description: 'Balance', ...json(LeaveBalance) },
             '404': err('User not found / not in your reporting line'),
+          },
+        }),
+      },
+      '/v1/notifications': {
+        get: op({
+          tags: ['Notifications'],
+          operationId: 'listNotifications',
+          summary: 'Your own in-app notifications, newest first (cursor paged)',
+          requestParams: { query: NotificationQuery },
+          responses: { '200': { description: 'Page', ...json(NotificationPage) } },
+        }),
+      },
+      '/v1/notifications/unread-count': {
+        get: op({
+          tags: ['Notifications'],
+          operationId: 'getUnreadNotificationCount',
+          responses: { '200': { description: 'Unread count', ...json(UnreadCount) } },
+        }),
+      },
+      '/v1/notifications/{id}/read': {
+        post: op({
+          tags: ['Notifications'],
+          operationId: 'markNotificationRead',
+          summary: 'Idempotent; keeps the first readAt',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'Notification', ...json(NotificationSchema) },
+            '404': err('Not found (or not yours)'),
+          },
+        }),
+      },
+      '/v1/notifications/read-all': {
+        post: op({
+          tags: ['Notifications'],
+          operationId: 'markAllNotificationsRead',
+          responses: { '200': { description: 'Rows marked read', ...json(ReadAllResult) } },
+        }),
+      },
+      '/v1/jobs/stats': {
+        get: op({
+          tags: ['Notifications'],
+          operationId: 'getJobStats',
+          summary: "System admin only: background job counts for the caller's company",
+          responses: {
+            '200': { description: 'Counts', ...json(JobStats) },
+            '403': err('System admin only'),
           },
         }),
       },
@@ -1462,6 +1544,136 @@ function buildDocument(): OpenApiDocument {
             '403': err('Own request, or requester not below you in the reporting line'),
             '404': err('Not found'),
             '409': err('Already decided'),
+          },
+        }),
+      },
+      '/v1/exceptions': {
+        get: op({
+          tags: ['Exceptions'],
+          operationId: 'listExceptions',
+          summary: 'Needs Attention list: exceptions in your scope (#56, #29)',
+          description:
+            'Own exceptions plus your reporting-line subtree (Director: company). Sorted by severity (high first), then periodDate desc. Needs field:read. See docs/EXCEPTIONS.md.',
+          requestParams: { query: ExceptionListQuery },
+          responses: {
+            '200': { description: 'Page', ...json(ExceptionPage) },
+            '422': err('Invalid filters'),
+          },
+        }),
+      },
+      '/v1/exceptions/summary': {
+        get: op({
+          tags: ['Exceptions'],
+          operationId: 'exceptionSummary',
+          summary: 'Exception counts by rule and severity for a period, in your scope',
+          requestParams: { query: ExceptionSummaryQuery },
+          responses: { '200': { description: 'OK', ...json(ExceptionSummary) } },
+        }),
+      },
+      '/v1/exceptions/evaluate': {
+        post: op({
+          tags: ['Exceptions'],
+          operationId: 'evaluateExceptions',
+          summary: 'Backfill: queue a rule evaluation for a past date range (settings:write)',
+          description:
+            'Max 92 days, to < today (company-local). Idempotent per (user, rule, period). No digest notifications.',
+          requestBody: json(ExceptionEvaluateRequest),
+          responses: {
+            '202': { description: 'Queued', ...json(ExceptionEvaluateResult) },
+            '422': err('Range invalid, too long or not in the past'),
+          },
+        }),
+      },
+      '/v1/exceptions/{id}': {
+        get: op({
+          tags: ['Exceptions'],
+          operationId: 'getException',
+          summary: 'One exception with context, owner, status and follow-up date',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'OK', ...json(ExceptionItem) },
+            '404': err('Not found or out of scope'),
+          },
+        }),
+        patch: op({
+          tags: ['Exceptions'],
+          operationId: 'updateException',
+          summary: 'Assign an owner and/or set the follow-up date (manager in scope)',
+          description:
+            'Needs approvals:decide; the person must be strictly below you. assigneeId must be you or someone in your scope.',
+          requestParams: { path: IdParam },
+          requestBody: json(ExceptionUpdate),
+          responses: {
+            '200': { description: 'Updated', ...json(ExceptionItem) },
+            '404': err('Not found or out of scope'),
+            '409': err('VERSION_CONFLICT or EXCEPTION_CLOSED'),
+            '422': err('ASSIGNEE_OUT_OF_SCOPE'),
+          },
+        }),
+      },
+      '/v1/exceptions/{id}/explain': {
+        post: op({
+          tags: ['Exceptions'],
+          operationId: 'explainException',
+          summary:
+            'Add your explanation (the person the exception is about); status -> acknowledged',
+          requestParams: { path: IdParam },
+          requestBody: json(ExceptionNote),
+          responses: {
+            '200': { description: 'Saved', ...json(ExceptionItem) },
+            '404': err('Not found or out of scope'),
+            '409': err('EXCEPTION_CLOSED'),
+          },
+        }),
+      },
+      '/v1/exceptions/{id}/resolve': {
+        post: op({
+          tags: ['Exceptions'],
+          operationId: 'resolveException',
+          summary: 'Resolve with a note (manager in scope, approvals:decide)',
+          requestParams: { path: IdParam },
+          requestBody: json(ExceptionNote),
+          responses: {
+            '200': { description: 'Resolved', ...json(ExceptionItem) },
+            '404': err('Not found or out of scope'),
+            '409': err('EXCEPTION_CLOSED'),
+          },
+        }),
+      },
+      '/v1/exceptions/{id}/dismiss': {
+        post: op({
+          tags: ['Exceptions'],
+          operationId: 'dismissException',
+          summary: 'Dismiss (not a real issue) with a note (manager in scope, approvals:decide)',
+          requestParams: { path: IdParam },
+          requestBody: json(ExceptionNote),
+          responses: {
+            '200': { description: 'Dismissed', ...json(ExceptionItem) },
+            '404': err('Not found or out of scope'),
+            '409': err('EXCEPTION_CLOSED'),
+          },
+        }),
+      },
+      '/v1/exception-rules': {
+        get: op({
+          tags: ['Exceptions'],
+          operationId: 'listExceptionRules',
+          summary: 'Exception rules with effective thresholds (defaults + company overrides)',
+          responses: { '200': { description: 'OK', ...json(ExceptionRuleList) } },
+        }),
+      },
+      '/v1/exception-rules/{code}': {
+        put: op({
+          tags: ['Exceptions'],
+          operationId: 'updateExceptionRule',
+          summary:
+            'Override a rule for your company (settings:write); reset=true restores defaults',
+          requestParams: { path: ExceptionRuleParam },
+          requestBody: json(ExceptionRuleUpdate),
+          responses: {
+            '200': { description: 'Saved', ...json(ExceptionRule) },
+            '409': err('VERSION_CONFLICT'),
+            '422': err('THRESHOLD_OUT_OF_RANGE or rule has no threshold'),
           },
         }),
       },

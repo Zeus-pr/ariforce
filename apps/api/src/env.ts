@@ -55,6 +55,10 @@ export const ProdEnv = z.object({
   SIGNUP_RATE_PER_EMAIL: intStr.optional(),
   AUTH_RATE_PER_IP: intStr.optional(),
   INVITE_RATE_PER_IP: intStr.optional(),
+  JOBS_RUNNER_ENABLED: z.enum(['true', 'false'], 'must be true or false').optional(),
+  JOBS_POLL_MS: intStr.optional(),
+  JOBS_BATCH_SIZE: intStr.optional(),
+  JOBS_LOCK_TIMEOUT_S: intStr.optional(),
   CLIENT_IP_MODE: z.enum(['cloudflare', 'socket'], 'must be cloudflare or socket').optional(),
   EXPENSE_APPROVAL_LEVELS: z.enum(['1', '2'], 'must be 1 or 2').optional(),
   INVITE_RETURN_LINK: z

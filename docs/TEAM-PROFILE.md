@@ -32,6 +32,7 @@ The route guard only needs `me:read`; the rule above is enforced in `TeamProfile
 - **Performance buckets**: months (`YYYY-MM`, default last 6) or ISO weeks Mon–Sun (`YYYY-Www`, default last 8). `from`/`to` are snapped to bucket boundaries. Metrics use `KpisService.userMetrics()` (same maths as `GET /v1/kpis?rollup=self`). Week buckets carry `WEEK_KPI_KEYS` only (call averages, visits/day, DCR compliance/on-time, POB); coverage, frequency, TP adherence and sales are month-grain and only in month buckets. Accepted.
 - **Attendance** per bucket, over working days (Mon–Sat) up to today: present = a punch-in that day; leave = approved leave (`kpi_user_leave_day`, half = 0.5) or a DCR with a leave work type; holiday = DCR holiday work type; absent = the rest (a half-day leave without a punch-in counts 0.5 absent).
 - **Expenses** {claimed, approved} INR from lines dated in the bucket on submitted/approved/paid claims; `null` unless own profile, or the viewer has `expenses:approve` or `finance:read`.
+- **Exceptions** (#56) {open, openHigh, last30Days, byRule[{ruleCode, count}]} from stored exceptions (see `docs/EXCEPTIONS.md`); `null` unless the viewer has `field:read`.
 - **PII**: no payroll/HR data. Phone/email only as `GET /v1/team` already shows the same viewer. Doctor/chemist rows carry no phone, address or DOB. Exports carry no phone/email.
 - **Exceptions**: out of scope for this issue (rule-based exception centre is #56/#29).
 

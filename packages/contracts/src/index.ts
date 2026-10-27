@@ -21,3 +21,5 @@ export * from './schemas/expenses';
 export * from './schemas/leave';
 export * from './schemas/team-profile';
 export * from './schemas/health';
+export * from './schemas/notifications';
+export * from './schemas/exceptions';

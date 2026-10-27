@@ -23,6 +23,7 @@ import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { companySettings, localDate } from '../field/field.util';
 import { KpisService } from '../kpis/kpis.service';
+import { profileExceptions } from '../exceptions/exceptions.engine';
 import { approvedLeaveDays } from '../leave/leave.util';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { TeamService, type Person } from './team.service';
@@ -197,6 +198,9 @@ export class TeamProfileService {
           leave: lv ? { requestId: lv.requestId, typeCode: lv.typeCode, half: lv.half } : null,
         },
         lastPunchInAt: ts(last?.at),
+        exceptions: p.permissions.includes('field:read')
+          ? await profileExceptions(tx, userId, today)
+          : null,
         canSeeExpenses,
       };
     });
