@@ -2709,9 +2709,12 @@ export interface components {
       designation: string | null;
       /** @default null */
       joinedOn: string | null;
-      /** @description Must be a hierarchy role strictly below the caller's */
+      /** @description Must be a hierarchy role strictly below the caller's; a system admin (users:write) may grant any role */
       role: components['schemas']['RoleKey'];
-      /** @description Within the caller's territory subtree */
+      /**
+       * @description Within the caller's territory subtree (system admin: any territory in the company). Hierarchy roles need at least one; functional roles may send none
+       * @default []
+       */
       territoryIds: string[];
       /**
        * @description Default = caller; must be the caller or in their subtree
@@ -3972,6 +3975,15 @@ export interface components {
       territoryIds: string[];
       /** @enum {string} */
       status: 'invited' | 'active' | 'suspended' | 'pending' | 'rejected';
+      /** @description True once the person has a sign-in (invite accepted or linked) */
+      hasLogin?: boolean;
+      /**
+       * @description accepted = has a login; pending/expired = latest open invite; none = never invited or invite revoked
+       * @enum {string}
+       */
+      inviteStatus?: 'none' | 'pending' | 'expired' | 'accepted';
+      /** @description Expiry of the latest open (unused, unrevoked) invite */
+      inviteExpiresAt?: string | null;
     };
     CheckInPage: {
       items: components['schemas']['CheckIn'][];

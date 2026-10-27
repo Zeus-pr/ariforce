@@ -27,6 +27,14 @@ response enums, or changed server behaviour for the same request).
 | Health (`a72e145`)                                             | `HealthWarning` dropped `companyId` / `companySlug` and became aggregate (`NO_WORK_TYPES` with `count`). Only clients of `0c97952` are affected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | TP submit (`36c29f5`, superseded by `0bb7b40`)                 | `POST /v1/tour-plans/{month}/submit` 422 rule changed: weekly offs and past days of the current month (IST) are no longer required                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
+## System admin invites any role / any territory
+
+- Additive. `EmployeeCreate.territoryIds` now defaults to `[]` (was required, min 1). Hierarchy roles still need at least one (422 `VALIDATION` "Hierarchy roles need at least one territory"); functional roles (`distribution_head`, `accountant`, `system_admin`) may send none.
+- Behaviour, `system_admin` with `users:write` only: `POST /v1/employees`, `POST /v1/employees/invite-bulk`, `PATCH /v1/employees/{id}` and `POST /v1/employees/{id}/invite` accept any role (all hierarchy roles incl. `director`, plus `distribution_head`, `accountant`, `system_admin`) and any non-deleted territory in the company. Was 403 for functional roles / functional-role targets. Self is still 403.
+- New 422 `VALIDATION` "Functional roles have no manager" when `managerId` is sent for a functional role. Changing a user to a functional role clears its manager.
+- `UserSummary` (`GET /v1/users`) gains optional `hasLogin`, `inviteStatus` (`none|pending|expired|accepted`) and `inviteExpiresAt` (latest unused, unrevoked invite). `GET /v1/users` is already company-wide for `system_admin` and directors.
+- Non-admin rules are unchanged. No migration.
+
 ## TP per-day submissions #86
 
 - Additive: `TourPlan.days[].status`, `.submissionId`; `TourPlan.submissions[]`

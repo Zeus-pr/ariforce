@@ -15737,11 +15737,12 @@
             ]
           },
           "role": {
-            "description": "Must be a hierarchy role strictly below the caller's",
+            "description": "Must be a hierarchy role strictly below the caller's; a system admin (users:write) may grant any role",
             "$ref": "#/components/schemas/RoleKey"
           },
           "territoryIds": {
-            "minItems": 1,
+            "default": [],
+            "description": "Within the caller's territory subtree (system admin: any territory in the company). Hierarchy roles need at least one; functional roles may send none",
             "type": "array",
             "items": {
               "type": "string",
@@ -15749,8 +15750,7 @@
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
               "description": "UUIDv7 identifier",
               "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
-            },
-            "description": "Within the caller's territory subtree"
+            }
           },
           "managerId": {
             "default": null,
@@ -15772,8 +15772,7 @@
         "required": [
           "name",
           "email",
-          "role",
-          "territoryIds"
+          "role"
         ]
       },
       "EmployeeInviteBulk": {
@@ -19719,6 +19718,33 @@
               "suspended",
               "pending",
               "rejected"
+            ]
+          },
+          "hasLogin": {
+            "description": "True once the person has a sign-in (invite accepted or linked)",
+            "type": "boolean"
+          },
+          "inviteStatus": {
+            "description": "accepted = has a login; pending/expired = latest open invite; none = never invited or invite revoked",
+            "type": "string",
+            "enum": [
+              "none",
+              "pending",
+              "expired",
+              "accepted"
+            ]
+          },
+          "inviteExpiresAt": {
+            "description": "Expiry of the latest open (unused, unrevoked) invite",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         },

@@ -14,6 +14,7 @@ import {
   roles,
   territories,
   userRoles,
+  userInvites,
   userTerritories,
   users,
   workTypes,
@@ -297,19 +298,48 @@ export class UsersController {
             .innerJoin(territories, eq(territories.id, userTerritories.territoryId))
             .where(inArray(userTerritories.userId, ids))
         : [];
-      const items: UserSummary[] = page.map((u) => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        employeeCode: u.employeeCode,
-        phone: u.phone,
-        designation: u.designation,
-        joinedOn: u.joinedOn,
-        roles: rr.filter((r) => r.userId === u.id).map((r) => r.key),
-        managerId: u.managerId,
-        territoryIds: tt.filter((t) => t.userId === u.id).map((t) => t.id),
-        status: u.status,
-      }));
+      const inv = ids.length
+        ? await tx
+            .selectDistinctOn([userInvites.userId], {
+              userId: userInvites.userId,
+              expiresAt: userInvites.expiresAt,
+            })
+            .from(userInvites)
+            .where(
+              and(
+                inArray(userInvites.userId, ids),
+                sql`${userInvites.usedAt} is null and ${userInvites.revokedAt} is null`,
+              ),
+            )
+            .orderBy(userInvites.userId, desc(userInvites.expiresAt))
+        : [];
+      const now = Date.now();
+      const items: UserSummary[] = page.map((u) => {
+        const open = inv.find((i) => i.userId === u.id);
+        const hasLogin = !!u.authUserId;
+        return {
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          employeeCode: u.employeeCode,
+          phone: u.phone,
+          designation: u.designation,
+          joinedOn: u.joinedOn,
+          roles: rr.filter((r) => r.userId === u.id).map((r) => r.key),
+          managerId: u.managerId,
+          territoryIds: tt.filter((t) => t.userId === u.id).map((t) => t.id),
+          status: u.status,
+          hasLogin,
+          inviteStatus: hasLogin
+            ? 'accepted'
+            : !open
+              ? 'none'
+              : open.expiresAt.getTime() > now
+                ? 'pending'
+                : 'expired',
+          inviteExpiresAt: !hasLogin && open ? open.expiresAt.toISOString() : null,
+        };
+      });
       const out: Record<string, unknown> = {
         items,
         nextCursor: rows.length > limit ? encodeCursor(offset + limit) : null,

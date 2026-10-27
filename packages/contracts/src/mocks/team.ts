@@ -138,19 +138,28 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
     );
   };
   /** Single create (also used per row by invite-bulk). */
+  const isAdmin = (p: Me) =>
+    p.roles.includes('system_admin') && (p.permissions as string[]).includes('users:write');
   const createOne = (p: Me, raw: unknown) => {
     const b = EmployeeCreate.safeParse(raw);
     if (!b.success) return e(422, 'VALIDATION', b.error.issues[0]?.message ?? 'Invalid');
     const r = hierarchyRank(p.roles);
-    if (r < MIN_MANAGER_RANK) return e(403, 'FORBIDDEN', 'Only ABM and above can add employees');
-    if (!(ROLE_RANK[b.data.role] > 0 && ROLE_RANK[b.data.role] < r))
-      return e(403, 'FORBIDDEN', 'Role must be below your own');
+    const rr = ROLE_RANK[b.data.role];
+    // System admin (users:write) may grant any role and any territory; no default manager.
+    const admin = isAdmin(p);
+    if (!admin && r < MIN_MANAGER_RANK)
+      return e(403, 'FORBIDDEN', 'Only ABM and above can add employees');
+    if (!admin && !(rr > 0 && rr < r)) return e(403, 'FORBIDDEN', 'Role must be below your own');
+    if (rr > 0 && !b.data.territoryIds.length)
+      return e(422, 'VALIDATION', 'Hierarchy roles need at least one territory');
     const st = scopeTerr(p);
-    if (b.data.territoryIds.some((t) => !st.has(t)))
+    if (!admin && b.data.territoryIds.some((t) => !st.has(t)))
       return e(403, 'FORBIDDEN', 'Territory outside your subtree');
-    const mgrId = b.data.managerId ?? p.id;
-    const mgr = emps.find((x) => x.id === mgrId);
-    if (!mgr || !(wide(p) || subtree(p.id).has(mgrId)) || rank(mgr) <= ROLE_RANK[b.data.role])
+    const mgrId = admin ? b.data.managerId : (b.data.managerId ?? p.id);
+    if (mgrId && rr >= ROLE_RANK.director) return e(422, 'VALIDATION', 'A director has no manager');
+    if (mgrId && rr === 0) return e(422, 'VALIDATION', 'Functional roles have no manager');
+    const mgr = mgrId ? emps.find((x) => x.id === mgrId) : undefined;
+    if (mgrId && (!mgr || !(admin || wide(p) || subtree(p.id).has(mgrId)) || rank(mgr) <= rr))
       return e(403, 'FORBIDDEN', 'Manager must be you or above the new role in your subtree');
     if (emps.some((x) => x.email.toLowerCase() === b.data.email.toLowerCase()))
       return e(409, 'CONFLICT', 'Email already exists');
@@ -223,7 +232,7 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
       const rows = ((await request.json()) as { employees?: unknown } | null)?.employees;
       if (!Array.isArray(rows) || rows.length < 1 || rows.length > INVITE_BULK_MAX)
         return e(422, 'VALIDATION', `employees must be 1..${INVITE_BULK_MAX} rows`);
-      if (hierarchyRank(p.roles) < MIN_MANAGER_RANK)
+      if (hierarchyRank(p.roles) < MIN_MANAGER_RANK && !isAdmin(p))
         return e(403, 'FORBIDDEN', 'Only ABM and above can add employees');
       const seen = new Set<string>();
       const results: InviteBulkResponse['results'] = [];
