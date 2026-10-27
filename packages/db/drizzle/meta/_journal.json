@@ -288,6 +288,13 @@
       "when": 1793122900548,
       "tag": "0040_role_permissions_expenses_pay",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793125464632,
+      "tag": "0041_kpi_view_path_prefix",
+      "breakpoints": true
     }
   ]
 }

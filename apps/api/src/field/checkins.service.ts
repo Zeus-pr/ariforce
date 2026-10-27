@@ -96,7 +96,7 @@ export class CheckInsService {
       .from(territories)
       .where(
         sql`${territories.path} = (select path from territories where id = ${territoryId})
-          or ${territories.path} like (select path from territories where id = ${territoryId}) || '.%'`,
+          or starts_with(${territories.path}, (select path from territories where id = ${territoryId}) || '.')`,
       );
   }
 

@@ -47,6 +47,27 @@ const up = (s: unknown) => String(s ?? '').toUpperCase();
  * mock runs), then duplicate rules, then (apply only) one savepoint per row so valid rows are saved even
  * when others fail. Every attempt, dry run included, is stored in import_jobs/import_rows.
  */
+/**
+ * Materialised path of a new territory, following the parent's convention: real data uses code
+ * segments (WB.HQ_MALDA), the seed and older imports use ids. Code segment = the code with every
+ * non-alphanumeric as '_' (HQ-MALDA -> HQ_MALDA). Falls back to the id when the parent is id-based,
+ * the code segment would be empty, or the path is already taken. Roots use the id.
+ */
+export function childPath(
+  parentId: string | null | undefined,
+  parentPath: string | null | undefined,
+  code: string,
+  id: string,
+  taken: Set<string>,
+): string {
+  if (!parentId || !parentPath) return id;
+  const parentSeg = parentPath.slice(parentPath.lastIndexOf('.') + 1);
+  const seg = code.trim().replace(/[^A-Za-z0-9]/g, '_');
+  const byCode = `${parentPath}.${seg}`;
+  if (parentSeg !== parentId && seg && !taken.has(byCode)) return byCode;
+  return `${parentPath}.${id}`;
+}
+
 @Injectable()
 export class ImportsService {
   constructor(
@@ -128,6 +149,7 @@ export class ImportsService {
       const idx = await this.existing(tx, entity);
       const seen = new Map<string, number>();
       const createdTerr = new Map<string, { id: string; path: string }>();
+      const takenPaths = new Set(lk.territoryPath.values());
       const jobId = uuidv7();
       const results: (ImportRowResult & { raw: Row })[] = [];
 
@@ -191,9 +213,10 @@ export class ImportsService {
             name: body.name,
             level: body.level,
             parentId,
-            path: parentPath ? `${parentPath}.${id}` : id,
+            path: childPath(parentId, parentPath, String(body.code), id, takenPaths),
             centroid: c ? { x: c.lng, y: c.lat } : null,
           };
+          takenPaths.add(String(body.path));
         }
         const keys = duplicateKeys(entity, body);
         const inFile = keys.find((k) => seen.has(`${k.rule}:${k.key}`));

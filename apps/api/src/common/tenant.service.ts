@@ -22,12 +22,15 @@ export class TenantService {
     );
   }
 
-  /** Territory-subtree filter on a `territories.path` column. undefined = company-wide. */
+  /**
+   * Territory-subtree filter on a `territories.path` column. undefined = company-wide. Prefix test is
+   * starts_with, not LIKE: real paths are code-based (WB.HQ_MALDA) and '_' is a LIKE wildcard.
+   */
   scope(p: Principal, pathCol: AnyPgColumn): SQL | undefined {
     if (p.scopePaths === null) return undefined;
     if (p.scopePaths.length === 0) return sql`false`;
     const parts = p.scopePaths.map(
-      (path) => sql`(${pathCol} = ${path} or ${pathCol} like ${path + '.%'})`,
+      (path) => sql`(${pathCol} = ${path} or starts_with(${pathCol}, ${path + '.'}::text))`,
     );
     return sql`(${sql.join(parts, sql` or `)})`;
   }

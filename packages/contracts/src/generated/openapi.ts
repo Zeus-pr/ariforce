@@ -3411,7 +3411,7 @@ export interface components {
       level: components['schemas']['TerritoryLevel'];
       code: string;
       name: string;
-      /** @description Materialised path of ids, root first, dot-separated */
+      /** @description Materialised path, root first, dot-separated; segments are codes (production) or ids (seed) */
       path: string;
       centroid: {
         lat: number;

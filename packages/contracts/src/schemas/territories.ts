@@ -23,7 +23,10 @@ export const Territory = Syncable.extend({
   level: TerritoryLevel,
   code: z.string().max(32),
   name: z.string().max(120),
-  path: z.string().meta({ description: 'Materialised path of ids, root first, dot-separated' }),
+  path: z.string().meta({
+    description:
+      'Materialised path, root first, dot-separated; segments are codes (production) or ids (seed)',
+  }),
   centroid: z
     .object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) })
     .nullable(),
