@@ -6273,7 +6273,7 @@
             }
           },
           "422": {
-            "description": "Required dates without an entry: details { missingDates, todayIST, weeklyOffDays }. Required = non-weekly-off dates; in the current month (IST) only today and later; full-day approved leave exempt.",
+            "description": "EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty.",
             "content": {
               "application/json": {
                 "schema": {
@@ -17346,7 +17346,7 @@
               "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
               "description": "Calendar date (YYYY-MM-DD, IST)"
             },
-            "description": "Dates submit needs an entry on: non-off dates; current month only from todayIST on. Full-day approved leave is also exempt at submit."
+            "description": "Informational only (kept for compatibility): non-off dates; current month only from todayIST on. Submit does not require them; it only needs one planned day."
           }
         },
         "required": [

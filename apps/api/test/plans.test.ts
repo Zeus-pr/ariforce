@@ -91,7 +91,7 @@ describe.skipIf(!OWNER || !APP)('tour plans + approvals (real API)', () => {
     expect(prev.status).toBe(404); // no 2027-01 plan
   });
 
-  it('upsert validates scope; submit needs every date (422) and creates an approval', async () => {
+  it('upsert validates scope; submit creates an approval', async () => {
     const out = await http()
       .put(`/v1/tour-plans/${M}`)
       .set(as('bm'))
@@ -102,16 +102,6 @@ describe.skipIf(!OWNER || !APP)('tour plans + approvals (real API)', () => {
       .set(as('bm'))
       .send({ days: [{ date: '2027-03-01', entries: [entry] }] });
     expect(wrongMonth.status).toBe(422);
-    const early = await http().post(`/v1/tour-plans/${M}/submit`).set(as('bm'));
-    expect(early.status).toBe(422);
-    // 2027-02 is a future month: every non-Sunday date (24) minus the 2 already planned by the copy test.
-    expect(early.body.error.details.missingDates).toHaveLength(22);
-    expect(early.body.error.details.weeklyOffDays).toEqual([0]);
-    expect(
-      (early.body.error.details.missingDates as string[]).some(
-        (d) => new Date(d).getUTCDay() === 0,
-      ),
-    ).toBe(false);
     const saved = await http().put(`/v1/tour-plans/${M}`).set(as('bm')).send({ days: full() });
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
     const sub = await http().post(`/v1/tour-plans/${M}/submit`).set(as('bm'));
@@ -122,32 +112,53 @@ describe.skipIf(!OWNER || !APP)('tour plans + approvals (real API)', () => {
     ).toBe(409);
   });
 
-  it('submit rule: current month ignores past days (today counts); weekly off from leave_settings', async () => {
+  it('submit rule: EMPTY_PLAN only for no entries; one day or a partial month succeeds; past days editable', async () => {
     const cur = istDate().slice(0, 7);
     const today = istDate();
     const cal = await http().get(`/v1/tour-plans/${cur}/calendar`).set(as('director'));
     expect(cal.status).toBe(200);
     expect(cal.body).toMatchObject({ month: cur, todayIST: today, weeklyOffDays: [0] });
-    const req = cal.body.requiredDates as string[];
-    expect(req.every((d) => d >= today && new Date(d).getUTCDay() !== 0)).toBe(true);
-    if (new Date(today).getUTCDay() !== 0) expect(req).toContain(today);
-    // Empty plan: only today-and-later non-off dates are reported missing.
+    expect(Array.isArray(cal.body.requiredDates)).toBe(true); // informational only
+    // Empty plan → 422 EMPTY_PLAN.
     expect(
       (await http().put(`/v1/tour-plans/${cur}`).set(as('director')).send({ days: [] })).status,
     ).toBe(200);
-    const early = await http().post(`/v1/tour-plans/${cur}/submit`).set(as('director'));
-    if (req.length) {
-      expect(early.status).toBe(422);
-      expect(early.body.error.details.missingDates).toEqual(req);
-      expect(early.body.error.details.todayIST).toBe(today);
-      // Plan only today onward (past days left empty) → submit succeeds.
-      const days = req.map((date) => ({ date, entries: [entry] }));
-      expect(
-        (await http().put(`/v1/tour-plans/${cur}`).set(as('director')).send({ days })).status,
-      ).toBe(200);
-      const sub = await http().post(`/v1/tour-plans/${cur}/submit`).set(as('director'));
-      expect(sub.status, JSON.stringify(sub.body)).toBe(200);
-    } else expect(early.status).toBe(200);
+    const empty = await http().post(`/v1/tour-plans/${cur}/submit`).set(as('director'));
+    expect(empty.status).toBe(422);
+    expect(empty.body.error.code).toBe('EMPTY_PLAN');
+    // Days present but without entries still count as empty.
+    expect(
+      (
+        await http()
+          .put(`/v1/tour-plans/${cur}`)
+          .set(as('director'))
+          .send({ days: [{ date: today, entries: [] }] })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await http().post(`/v1/tour-plans/${cur}/submit`).set(as('director'))).body.error.code,
+    ).toBe('EMPTY_PLAN');
+    // A single past day (the 1st of the month) is editable and enough to submit.
+    const one = await http()
+      .put(`/v1/tour-plans/${cur}`)
+      .set(as('director'))
+      .send({ days: [{ date: `${cur}-01`, entries: [entry] }] });
+    expect(one.status, JSON.stringify(one.body)).toBe(200);
+    const sub = await http().post(`/v1/tour-plans/${cur}/submit`).set(as('director'));
+    expect(sub.status, JSON.stringify(sub.body)).toBe(200);
+    expect(sub.body.status).toBe('submitted');
+
+    // Partial future month (two days) submits too.
+    const fm = '2027-06';
+    expect(
+      (
+        await http()
+          .put(`/v1/tour-plans/${fm}`)
+          .set(as('director'))
+          .send({ days: [`${fm}-02`, `${fm}-15`].map((date) => ({ date, entries: [entry] })) })
+      ).status,
+    ).toBe(200);
+    expect((await http().post(`/v1/tour-plans/${fm}/submit`).set(as('director'))).status).toBe(200);
 
     // Weekly off is the company's leave_settings.weekly_off_days.
     const owner = new Pool({ connectionString: OWNER });
