@@ -209,7 +209,11 @@ The web now uses the Architect contract (docs/SFC.md, `packages/contracts/src/sc
 - Removed from every web picker, filter, nav and mock persona. The contracts fixtures still contain "Demo Distribution Head" and "Demo Accountant" users (the contract's RoleKey is the Architect's), which the web shows as "Other role".
 - Pay moved to Director and System Admin, see "Paying expense claims".
 
-## Forgot password by email code (web, assumed contract; no Architect branch on origin yet)
+## Forgot password by email code: now the real contract (feat/auth-email-otp 23b635d)
+
+The web uses `POST /v1/auth/password/forgot {email}` -> 200 `{ok,message}` (same answer always) and `POST /v1/auth/password/reset {email, code, password 12-128}` -> 200 `{ok}`, all sessions revoked, then sign-in. Errors: 400 PASSWORD_RESET_CODE_INVALID, 400 PASSWORD_RESET_CODE_EXPIRED (offer a new code), 403 PASSWORD_RESET_TOO_MANY_ATTEMPTS, 422 VALIDATION, 429 RATE_LIMITED (Retry-After). Code valid 10 minutes. The better-auth email-otp routes below are NOT used (404 on the real API). Mock code is 123456. The notes below are the old assumption, kept for history.
+
+### (old) assumed contract
 
 One thin layer: `apps/web/src/lib/password-reset/adapter.ts` (MSW mock in `lib/password-reset/mock-handler.ts`). Assumed better-auth email-OTP routes under the existing `/v1/auth` base:
 - `POST /v1/auth/email-otp/send-verification-otp` `{ email, type: 'forget-password' }` -> 200 for every email (no account enumeration). The web always shows "If the account exists, we sent a code"; only 429 is surfaced.

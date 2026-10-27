@@ -4,7 +4,7 @@
 import { setup, VIEWS } from './lib.mjs';
 
 const { BASE, BROWSER, browser, check, shot, noOverflow, noBannedWords, finish } = await setup('forgot-password');
-const CODE = '246810';
+const CODE = '123456';
 const GOOD = 'Correct-Horse-42!';
 let leaked = 0;
 const errors = [];
@@ -12,7 +12,7 @@ const errors = [];
 async function fresh(view = 'desktop', route = '/sign-in', clock = false) {
   const ctx = await browser.newContext(VIEWS[view]);
   await ctx.addInitScript(() => sessionStorage.setItem('af:splash-seen', '1'));
-  await ctx.route(/\/v1\/auth\/email-otp\//, (r) => {
+  await ctx.route(/\/v1\/auth\/password\/(forgot|reset)/, (r) => {
     leaked++;
     return r.fulfill({ status: 500, body: '{}' });
   });

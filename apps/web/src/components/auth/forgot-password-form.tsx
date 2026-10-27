@@ -13,6 +13,7 @@ import {
   CODE_LENGTH,
   RESEND_SECONDS,
   RESET_PASSWORD_MIN as MIN,
+  RESET_PASSWORD_MAX as MAX,
   resetPassword,
   sendResetCode,
   type ResetFailure,
@@ -241,6 +242,7 @@ export function ForgotPasswordForm() {
             aria-invalid={err?.field === 'pw'}
             aria-describedby={`${id}-hint`}
             className="h-10 pr-10 text-base md:text-base"
+            maxLength={MAX}
             data-testid="fp-password"
           />
           <Button
@@ -283,6 +285,7 @@ export function ForgotPasswordForm() {
           onChange={(e) => setPw2(e.target.value)}
           aria-invalid={err?.field === 'pw2'}
           className="h-10 text-base md:text-base"
+          maxLength={MAX}
           data-testid="fp-password2"
         />
         {fieldErr('pw2')}
