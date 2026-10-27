@@ -9,7 +9,23 @@ import { AUTH_BASE_PATH, webOrigins } from './auth/auth';
 const NEST_AUTH_PATHS = new Set([
   `${AUTH_BASE_PATH}/sign-up-request`,
   `${AUTH_BASE_PATH}/sign-up-options`,
+  `${AUTH_BASE_PATH}/password/forgot`,
+  `${AUTH_BASE_PATH}/password/reset`,
 ]);
+/**
+ * better-auth routes we never expose (item F): password reset only goes through our
+ * /v1/auth/password/* endpoints (generic answer, eligibility, audit, per-email limits), and the
+ * emailOTP plugin's sign-in / verification routes are not used at all. Answer 404.
+ */
+const BLOCKED_AUTH_PREFIXES = [
+  '/email-otp/',
+  '/forget-password',
+  '/request-password-reset',
+  '/reset-password',
+  '/sign-in/email-otp',
+  '/verify-email',
+  '/send-verification-email',
+].map((p) => `${AUTH_BASE_PATH}${p}`);
 import { AuthService } from './auth/auth.service';
 import { CLIENT_IP_HEADER, clientIp } from './common/client-ip';
 import { LIMITS, rateLimitStore } from './common/rate-limit';
@@ -64,6 +80,10 @@ export function configureApp(app: INestApplication) {
   });
   server.all(`${AUTH_BASE_PATH}/*splat`, async (req, res, next) => {
     if (NEST_AUTH_PATHS.has(req.path)) return next();
+    if (BLOCKED_AUTH_PREFIXES.some((p) => req.path.startsWith(p))) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+      return;
+    }
     // Shared per-IP limits in front of better-auth: stricter on sign-in.
     if (req.method === 'POST') {
       const ip = clientIp(req) ?? '?';

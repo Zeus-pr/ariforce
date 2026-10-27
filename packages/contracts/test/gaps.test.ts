@@ -97,7 +97,8 @@ describe('contract gaps', () => {
   });
 
   it('POB/RCPA at chemist calls (#40): outlet rules, duplicates, PTR value, brand lookup', async () => {
-    const date = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    // Yesterday in IST (the mock day lock is IST-based; UTC "yesterday" fails 00:00-05:30 IST).
+    const date = new Date(Date.now() + 5.5 * 36e5 - 86400000).toISOString().slice(0, 10);
     const chem = fx.chemists[0]!;
     const [p1, p2] = [fx.products[0]!, fx.products[1]!];
     const call = (o: Record<string, unknown>) => ({
@@ -132,7 +133,7 @@ describe('contract gaps', () => {
         pob: [{ productId: p1.id, quantity: 1 }],
       }),
     ]);
-    expect(doctorPob.response.status).toBe(200);
+    expect(doctorPob.response.status, JSON.stringify(doctorPob.error)).toBe(200);
     const dupRcpa = await put([
       call({
         rcpa: [

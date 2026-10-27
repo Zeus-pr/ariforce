@@ -29,6 +29,16 @@ response enums, or changed server behaviour for the same request).
 | Health (`a72e145`)                                             | `HealthWarning` dropped `companyId` / `companySlug` and became aggregate (`NO_WORK_TYPES` with `count`). Only clients of `0c97952` are affected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | TP submit (`36c29f5`, superseded by `0bb7b40`)                 | `POST /v1/tour-plans/{month}/submit` 422 rule changed: weekly offs and past days of the current month (IST) are no longer required                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
+## Forgot password + invite email (`feat/auth-email-otp`, item F)
+
+Additive. New public `POST /v1/auth/password/forgot` (`PasswordForgot` -> `200 PasswordForgotAccepted`,
+`422`, `429`) and `POST /v1/auth/password/reset` (`PasswordReset` -> `200 PasswordResetDone`;
+`400 PASSWORD_RESET_CODE_INVALID`, `400 PASSWORD_RESET_CODE_EXPIRED`,
+`403 PASSWORD_RESET_TOO_MANY_ATTEMPTS`, `422`, `429`). Constants `PASSWORD_RESET_*`,
+`PASSWORD_RESET_ERROR_CODES`; MSW handlers with `MOCK_PASSWORD_RESET_CODE`. Behaviour: invites now
+email the link; better-auth's own reset / email-OTP routes return 404. Production now requires
+`RESEND_API_KEY` and `MAIL_FROM`. No migration. See `docs/AUTH-PASSWORD-RESET.md`.
+
 ## Territory levels, skipped ranks, SFC scope (`feat/sfc-routes`, Part 3)
 
 - **`422 TERRITORY_LEVEL_INVALID`**: a BM may only hold `headquarter` territories; ABM and above may hold any level; `system_admin` targets are unrestricted. Checked on `POST /v1/team`, `POST /v1/team/invite-bulk` (row `code`), `PATCH /v1/team/{id}` (only when `role` or `territoryIds` is sent; unrelated PATCHes of a legacy BM still succeed), and `POST /v1/signup-requests/{id}/approve`. `details`: `{ territoryIds: string[], expectedLevel: 'headquarter', role }`. Applies to every caller, system_admin included.

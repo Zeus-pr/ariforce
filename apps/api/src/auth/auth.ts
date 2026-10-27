@@ -1,9 +1,15 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError } from 'better-auth/api';
-import { bearer } from 'better-auth/plugins';
+import { bearer, emailOTP } from 'better-auth/plugins';
 import { eq, sql } from 'drizzle-orm';
-import { AUTH_STATE_CODES, isRetiredRole } from '@ariforce/contracts';
+import {
+  AUTH_STATE_CODES,
+  PASSWORD_RESET_CODE_LENGTH,
+  PASSWORD_RESET_CODE_TTL_SECONDS,
+  PASSWORD_RESET_MAX_ATTEMPTS,
+  isRetiredRole,
+} from '@ariforce/contracts';
 import {
   authAccount,
   authSession,
@@ -16,6 +22,7 @@ import {
 } from '@ariforce/db';
 import type { AuditService } from '../common/audit.service';
 import { CLIENT_IP_HEADER } from '../common/client-ip';
+import type { MailService } from '../mail/mail.service';
 
 export const AUTH_BASE_PATH = '/v1/auth';
 /** Browser origins allowed for CORS (with credentials) and better-auth: WEB_ORIGIN, comma-separated. */
@@ -30,7 +37,7 @@ export const webOrigins = () =>
  * better-auth sign-up is disabled: identities come from admins/seed/invites or POST
  * /v1/auth/sign-up-request (pending until approved; see docs/RBAC.md).
  */
-export function createAuth(db: Db, audit: AuditService) {
+export function createAuth(db: Db, audit: AuditService, mail?: MailService) {
   const secret = process.env.BETTER_AUTH_SECRET;
   if (!secret && process.env.NODE_ENV === 'production')
     throw new Error('BETTER_AUTH_SECRET is required');
@@ -53,11 +60,27 @@ export function createAuth(db: Db, audit: AuditService) {
       enabled: true,
       disableSignUp: true,
       minPasswordLength: 8,
-      // If a reset flow is enabled later, a reset signs out every device (#79).
+      // Forgot password (email OTP) signs out every device (#79).
       revokeSessionsOnPasswordReset: true,
     },
     session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24 },
-    plugins: [bearer()],
+    plugins: [
+      bearer(),
+      // Forgot password only (docs/AUTH-PASSWORD-RESET.md). The plugin's own routes are not
+      // reachable over HTTP (bootstrap blocks them); POST /v1/auth/password/* calls auth.api.
+      emailOTP({
+        otpLength: PASSWORD_RESET_CODE_LENGTH,
+        expiresIn: PASSWORD_RESET_CODE_TTL_SECONDS,
+        allowedAttempts: PASSWORD_RESET_MAX_ATTEMPTS,
+        storeOTP: 'hashed',
+        disableSignUp: true,
+        sendVerificationOTP: async ({ email, otp, type }) => {
+          if (type !== 'forget-password' || !mail) return;
+          // Not awaited: the answer time must not reveal whether an email went out.
+          void mail.passwordResetCode(email, otp, PASSWORD_RESET_CODE_TTL_SECONDS / 60);
+        },
+      }),
+    ],
     telemetry: { enabled: false },
     // Only our own header (set in bootstrap from the trusted client IP; client values overwritten).
     advanced: { ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] } },

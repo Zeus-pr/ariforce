@@ -49,6 +49,18 @@ export const ProdEnv = z.object({
   R2_BUCKET: nonEmpty,
   R2_ENDPOINT: url(true).optional(),
   R2_PUBLIC_URL: url(true).optional(),
+  // Item F: invite and password-reset emails. Without a key nothing is sent (log only), so
+  // production requires it. MAIL_FROM must be an address on a domain verified in Resend.
+  RESEND_API_KEY: z.string().regex(/^re_\S{8,}$/, 'must be a Resend API key (re_...)'),
+  MAIL_FROM: z
+    .string()
+    .regex(
+      /^(?:[^<>]+ <[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+>|[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+)$/,
+      'must be "Name <address@domain>" or an address',
+    )
+    .refine((v) => !/@localhost\b/i.test(v), 'must not be a localhost address'),
+  PASSWORD_RESET_RATE_PER_IP: intStr.optional(),
+  PASSWORD_RESET_RATE_PER_EMAIL: intStr.optional(),
   PORT: intStr.optional(),
   DB_POOL_MAX: intStr.optional(),
   SIGNUP_RATE_PER_IP: intStr.optional(),
