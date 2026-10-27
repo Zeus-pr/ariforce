@@ -11,6 +11,7 @@ export const NOTIFICATION_TYPES = [
   'expense.approved',
   'expense.rejected',
   'expense.paid',
+  'exceptions.digest',
 ] as const;
 export const NotificationType = z.enum(NOTIFICATION_TYPES).meta({ id: 'NotificationType' });
 export type NotificationType = z.infer<typeof NotificationType>;

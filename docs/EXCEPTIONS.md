@@ -41,7 +41,7 @@ If a company has no row for a rule, the defaults apply. This means new companies
 | `punch_without_dcr` | day   | Same conditions as `dcr_missing`, but the user punched in that day.                                                                      | none              | high     |
 | `dcr_late`          | day   | DCR was submitted after the on-time deadline (date + 1, IST), using the same definition as the `dcr_on_time_pct` KPI.                    | none              | low      |
 | `low_call_average`  | day   | Submitted field-day DCR with doctor calls below the threshold.                                                                           | 8 calls           | medium   |
-| `no_punch_in`       | day   | Working day, not on full-day leave, no leave/holiday DCR, and no punch-in.                                                               | none              | medium   |
+| `no_punch_in`       | day   | Working day, not on full-day leave, no leave/holiday DCR, and no punch-in. Suppressed when `dcr_missing` fires for the same day.         | none              | medium   |
 | `geofence_breach`   | day   | Visit check-ins that day that were outside the fence or mock-located, and their number is at or above the threshold.                     | 1 visit           | medium   |
 | `tp_not_submitted`  | month | It is on or after day N of month M, and the tour plan for M+1 is not submitted or approved. The period is the 1st of M+1.                | day 25            | high     |
 | `coverage_gap`      | month | Month M is complete, and the share of listed doctors whose visit frequency was not met is above the threshold (`kpi_user_doctor_month`). | 20 %              | medium   |

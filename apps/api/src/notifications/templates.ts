@@ -56,5 +56,13 @@ export function render(type: NotificationType, d: NotifyData): { title: string; 
         title: 'Expense claim paid',
         body: `Your ${claim(d)}${amount(d)} was marked paid${d.paymentRef ? ` (ref ${s(d.paymentRef)})` : ''}.`,
       };
+    case 'exceptions.digest': {
+      const n = Number(d.total ?? 0);
+      const high = Number(d.high ?? 0);
+      return {
+        title: 'Team exceptions need attention',
+        body: `${n} new exception${n === 1 ? '' : 's'} in your team${high ? ` (${high} high)` : ''}${d.from ? ` for ${s(d.from)} to ${s(d.to)}` : ''}.`,
+      };
+    }
   }
 }

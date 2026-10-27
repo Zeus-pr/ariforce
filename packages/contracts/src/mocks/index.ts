@@ -27,6 +27,7 @@ import { listNotifications, seedNotifications } from './notifications';
 import { teamHandlers, teamProfileHandlers } from './team';
 import { signupHandlers } from './signup';
 import { expenseHandlers } from './expenses';
+import { exceptionHandlers } from './exceptions';
 import { leaveHandlers, mockLeaveOn, mockWeeklyOffDays } from './leave';
 import { mastersGuardHandlers } from './masters-guard';
 import {
@@ -376,6 +377,7 @@ export function createHandlers(baseUrl = '') {
     ...signupHandlers(baseUrl, mockPrincipal),
     ...expenseHandlers(baseUrl, mockPrincipal),
     ...leaveHandlers(baseUrl, mockPrincipal),
+    ...exceptionHandlers(baseUrl, mockPrincipal),
     http.get(`${baseUrl}/v1/health`, () => HttpResponse.json({ status: 'ok', warnings: [] })),
     http.post(`${baseUrl}/v1/files/upload-url`, () =>
       HttpResponse.json({

@@ -110,14 +110,15 @@ Business code calls `NotificationsService.enqueue(tx, p, event)` **inside the sa
 as the change, wrapped in a savepoint: if enqueueing fails it is logged and the business action still
 commits. The job (`notify`) renders and inserts the notification.
 
-| type                                    | when                                                                      | recipient        |
-| --------------------------------------- | ------------------------------------------------------------------------- | ---------------- |
-| `leave.submitted`                       | leave applied; also each higher approval step                             | current approver |
-| `leave.approved` / `leave.rejected`     | final decision                                                            | requester        |
-| `leave.cancelled`                       | cancelled by a manager → requester; by the owner while pending → approver |                  |
-| `expense.submitted`                     | claim submitted/resubmitted; also each higher step                        | current approver |
-| `expense.approved` / `expense.rejected` | final decision                                                            | claimant         |
-| `expense.paid`                          | marked paid                                                               | claimant         |
+| type                                    | when                                                                                                                 | recipient        |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| `leave.submitted`                       | leave applied; also each higher approval step                                                                        | current approver |
+| `leave.approved` / `leave.rejected`     | final decision                                                                                                       | requester        |
+| `leave.cancelled`                       | cancelled by a manager → requester; by the owner while pending → approver                                            |                  |
+| `expense.submitted`                     | claim submitted/resubmitted; also each higher step                                                                   | current approver |
+| `expense.approved` / `expense.rejected` | final decision                                                                                                       | claimant         |
+| `expense.paid`                          | marked paid                                                                                                          | claimant         |
+| `exceptions.digest`                     | daily exceptions job (#56): one per manager per run, new exceptions of direct reports; dedupe `exceptions:<runDate>` | direct manager   |
 
 Nobody is notified about their own action (recipient = actor is skipped).
 

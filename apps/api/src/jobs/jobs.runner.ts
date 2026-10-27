@@ -103,6 +103,8 @@ export class JobsRunner implements OnApplicationBootstrap, BeforeApplicationShut
     const day = new Date().toISOString().slice(0, 10);
     if (day !== this.lastCleanupDay) {
       await this.jobs.enqueueSystem('maintenance.cleanup', {}, day);
+      // #56: fan out one exceptions.evaluate job per company (exceptions_enqueue_daily, 0031).
+      await this.jobs.enqueueSystem('exceptions.daily', {}, day);
       this.lastCleanupDay = day;
     }
     await this.runOnce();

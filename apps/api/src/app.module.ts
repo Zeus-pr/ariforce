@@ -13,6 +13,7 @@ import { PlansModule } from './plans/plans.module';
 import { TeamModule } from './team/team.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { LeaveModule } from './leave/leave.module';
+import { ExceptionsModule } from './exceptions/exceptions.module';
 import { MeController } from './me/me.controller';
 import { OpenApiController } from './openapi/openapi.controller';
 
@@ -30,6 +31,7 @@ import { OpenApiController } from './openapi/openapi.controller';
     ExpensesModule,
     LeaveModule,
     TeamModule,
+    ExceptionsModule,
   ],
   controllers: [HealthController, OpenApiController, MeController],
   providers: [WorkTypesCheck],
