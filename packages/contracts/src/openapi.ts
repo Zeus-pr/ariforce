@@ -74,6 +74,8 @@ import {
 import {
   EmployeeCreate,
   EmployeeCreated,
+  EmployeeInviteBulk,
+  InviteBulkResponse,
   EmployeeUpdate,
   Invite,
   InviteAccept,
@@ -832,6 +834,23 @@ function buildDocument(): OpenApiDocument {
           },
         }),
       },
+      '/v1/employees/invite-bulk': {
+        post: op({
+          tags: ['Team'],
+          operationId: 'inviteEmployeesBulk',
+          summary:
+            'ABM and above: create + invite up to 200 employees. Each row follows the single createEmployee rules and is saved (and audited) on its own; partial success returns 200 with per-row results',
+          requestBody: json(EmployeeInviteBulk),
+          responses: {
+            '200': {
+              description: 'Per-row results (invited | skipped | failed)',
+              ...json(InviteBulkResponse),
+            },
+            '403': err('Only ABM and above can add employees'),
+            '422': err('Body is not { employees: [1..200 objects] }'),
+          },
+        }),
+      },
       '/v1/employees/{id}': {
         patch: op({
           tags: ['Team'],
@@ -874,7 +893,11 @@ function buildDocument(): OpenApiDocument {
               description: 'Activated; sign in with email + password',
               ...json(InviteAccepted),
             },
-            '404': err('Invalid, used, revoked or expired invite'),
+            '404': err('INVITE_INVALID: unknown token, or replaced by a newer invite'),
+            '409': err('INVITE_USED: already redeemed (or the account already exists)'),
+            '410': err('INVITE_EXPIRED: past its expiry; ask for a new invite'),
+            '422': err('VALIDATION: password shorter than 12 characters (or token malformed)'),
+            '429': err('RATE_LIMITED: too many attempts from this IP; Retry-After header'),
           },
         },
       },

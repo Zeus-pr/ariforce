@@ -117,7 +117,7 @@ export const Invite = z
     expiresAt: Timestamp,
     inviteUrl: z.string().nullable().meta({
       description:
-        'Only returned when the server runs with INVITE_RETURN_LINK=true (dev/test); otherwise delivered by the mailer',
+        'Only returned when the server runs with INVITE_RETURN_LINK=true outside production (dev/test); otherwise null and delivered by the mailer',
     }),
   })
   .meta({ id: 'Invite' });
@@ -126,9 +126,51 @@ export const EmployeeCreated = z
   .object({ employee: TeamNode, invite: Invite })
   .meta({ id: 'EmployeeCreated' });
 
+/** Minimum password length when accepting an invite (#26). */
+export const INVITE_PASSWORD_MIN = 12;
 export const InviteAccept = z
-  .object({ token: z.string().min(20).max(200), password: z.string().min(8).max(128) })
+  .object({
+    token: z.string().min(20).max(200),
+    password: z
+      .string()
+      .min(INVITE_PASSWORD_MIN, `Password must be at least ${INVITE_PASSWORD_MIN} characters`)
+      .max(128),
+  })
   .meta({ id: 'InviteAccept' });
+/** Distinct invite-accept failures (#26): unknown or superseded token, already redeemed, expired. */
+export const INVITE_ERROR_CODES = ['INVITE_INVALID', 'INVITE_USED', 'INVITE_EXPIRED'] as const;
+
+/** Max employees per bulk invite request (#26). */
+export const INVITE_BULK_MAX = 200;
+export const EmployeeInviteBulk = z
+  .object({ employees: z.array(EmployeeCreate).min(1).max(INVITE_BULK_MAX) })
+  .meta({ id: 'EmployeeInviteBulk' });
+export const InviteBulkItemResult = z
+  .object({
+    index: z.int().min(0).meta({ description: 'Position in the request array' }),
+    email: z.string().nullable().meta({ description: 'As sent (null if missing)' }),
+    status: z.enum(['invited', 'skipped', 'failed']).meta({
+      description:
+        'invited = employee created + invite issued; skipped = email/employee code already exists or repeated in this batch; failed = validation or authorization error for this row',
+    }),
+    code: z.string().nullable().meta({
+      description:
+        'null when invited; skipped: CONFLICT | DUPLICATE_IN_BATCH; failed: VALIDATION | FORBIDDEN | INTERNAL',
+    }),
+    message: z.string().nullable(),
+    employeeId: Id.nullable(),
+    inviteId: Id.nullable(),
+    inviteUrl: z.string().nullable().meta({
+      description: 'Only when INVITE_RETURN_LINK=true and not production; otherwise null',
+    }),
+  })
+  .meta({ id: 'InviteBulkItemResult' });
+export const InviteBulkResponse = z
+  .object({
+    results: z.array(InviteBulkItemResult),
+    summary: z.object({ invited: z.int(), skipped: z.int(), failed: z.int() }),
+  })
+  .meta({ id: 'InviteBulkResponse' });
 export const InviteAccepted = z
   .object({ userId: Id, email: z.string() })
   .meta({ id: 'InviteAccepted' });

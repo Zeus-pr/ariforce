@@ -49,13 +49,35 @@ describe('mock team + employees (same rules as the API)', () => {
     const token = new URL(created.invite.inviteUrl, BASE).searchParams.get('token');
     const acc = await call('none', 'POST', '/v1/invites/accept', {
       token,
-      password: 'longenough1',
+      password: 'long-enough-12',
     });
     expect(acc.status).toBe(200);
     const again = await call('none', 'POST', '/v1/invites/accept', {
       token,
-      password: 'longenough1',
+      password: 'long-enough-12',
     });
-    expect(again.status).toBe(404);
+    expect(again.status).toBe(409);
+    expect(((await again.json()) as any).error.code).toBe('INVITE_USED');
+    const short = await call('none', 'POST', '/v1/invites/accept', {
+      token,
+      password: 'short-pw-11',
+    });
+    expect(short.status).toBe(422);
+    const unknown = await call('none', 'POST', '/v1/invites/accept', {
+      token: 'mock-invite-00000000-0000-0000-0000-000000000000',
+      password: 'long-enough-12',
+    });
+    expect(((await unknown.json()) as any).error.code).toBe('INVITE_INVALID');
+    const bulk = await call('abm', 'POST', '/v1/employees/invite-bulk', {
+      employees: [
+        { ...body, email: 'bulk1@demo.ariforce.in' },
+        { ...body, email: 'BULK1@demo.ariforce.in' },
+        { ...body, email: 'bulk2@demo.ariforce.in', role: 'system_admin' },
+      ],
+    });
+    expect(bulk.status).toBe(200);
+    const bj = (await bulk.json()) as any;
+    expect(bj.summary).toEqual({ invited: 1, skipped: 1, failed: 1 });
+    expect(bj.results.map((r: any) => r.code)).toEqual([null, 'DUPLICATE_IN_BATCH', 'FORBIDDEN']);
   });
 });

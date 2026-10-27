@@ -4,7 +4,9 @@ import { ROLE_RANK, type RoleKey } from '../schemas/roles';
 import {
   EmployeeCreate,
   EmployeeUpdate,
+  INVITE_BULK_MAX,
   InviteAccept,
+  type InviteBulkResponse as IBR,
   ManagerAssign,
   MIN_MANAGER_RANK,
   hierarchyRank,
@@ -22,6 +24,7 @@ import {
 } from '../schemas/team-profile';
 import type * as zz from 'zod';
 type PerformanceBucket = zz.infer<typeof PB>;
+type InviteBulkResponse = zz.infer<typeof IBR>;
 
 type Emp = {
   id: string;
@@ -133,6 +136,53 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
       (wide(p) || subtree(p.id).has(target.id) || unassigned)
     );
   };
+  /** Single create (also used per row by invite-bulk). */
+  const createOne = (p: Me, raw: unknown) => {
+    const b = EmployeeCreate.safeParse(raw);
+    if (!b.success) return e(422, 'VALIDATION', b.error.issues[0]?.message ?? 'Invalid');
+    const r = hierarchyRank(p.roles);
+    if (r < MIN_MANAGER_RANK) return e(403, 'FORBIDDEN', 'Only ABM and above can add employees');
+    if (!(ROLE_RANK[b.data.role] > 0 && ROLE_RANK[b.data.role] < r))
+      return e(403, 'FORBIDDEN', 'Role must be below your own');
+    const st = scopeTerr(p);
+    if (b.data.territoryIds.some((t) => !st.has(t)))
+      return e(403, 'FORBIDDEN', 'Territory outside your subtree');
+    const mgrId = b.data.managerId ?? p.id;
+    const mgr = emps.find((x) => x.id === mgrId);
+    if (!mgr || !(wide(p) || subtree(p.id).has(mgrId)) || rank(mgr) <= ROLE_RANK[b.data.role])
+      return e(403, 'FORBIDDEN', 'Manager must be you or above the new role in your subtree');
+    if (emps.some((x) => x.email.toLowerCase() === b.data.email.toLowerCase()))
+      return e(409, 'CONFLICT', 'Email already exists');
+    const u: Emp = {
+      id: crypto.randomUUID(),
+      name: b.data.name,
+      email: b.data.email,
+      phone: b.data.phone,
+      employeeCode: b.data.employeeCode,
+      designation: b.data.designation,
+      joinedOn: b.data.joinedOn,
+      roles: [b.data.role],
+      managerId: mgrId,
+      territoryIds: b.data.territoryIds,
+      status: 'invited',
+      version: 1,
+    };
+    emps.push(u);
+    const inv = {
+      id: crypto.randomUUID(),
+      userId: u.id,
+      expiresAt: new Date(Date.now() + 7 * 864e5).toISOString(),
+      used: false,
+    };
+    invites.set(`mock-invite-${inv.id}`, inv);
+    return HttpResponse.json(
+      {
+        employee: node(u, 1),
+        invite: { ...inv, used: undefined, inviteUrl: `/invite?token=mock-invite-${inv.id}` },
+      },
+      { status: 201 },
+    );
+  };
   return [
     http.get(`${baseUrl}/v1/team`, ({ request }) => {
       const p = me(request);
@@ -164,50 +214,67 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
     http.post(`${baseUrl}/v1/employees`, async ({ request }) => {
       const p = me(request);
       if (!p) return e(401, 'UNAUTHENTICATED', 'Sign in required');
-      const b = EmployeeCreate.safeParse(await request.json());
-      if (!b.success) return e(422, 'VALIDATION', b.error.issues[0]?.message ?? 'Invalid');
-      const r = hierarchyRank(p.roles);
-      if (r < MIN_MANAGER_RANK) return e(403, 'FORBIDDEN', 'Only ABM and above can add employees');
-      if (!(ROLE_RANK[b.data.role] > 0 && ROLE_RANK[b.data.role] < r))
-        return e(403, 'FORBIDDEN', 'Role must be below your own');
-      const st = scopeTerr(p);
-      if (b.data.territoryIds.some((t) => !st.has(t)))
-        return e(403, 'FORBIDDEN', 'Territory outside your subtree');
-      const mgrId = b.data.managerId ?? p.id;
-      const mgr = emps.find((x) => x.id === mgrId);
-      if (!mgr || !(wide(p) || subtree(p.id).has(mgrId)) || rank(mgr) <= ROLE_RANK[b.data.role])
-        return e(403, 'FORBIDDEN', 'Manager must be you or above the new role in your subtree');
-      if (emps.some((x) => x.email.toLowerCase() === b.data.email.toLowerCase()))
-        return e(409, 'CONFLICT', 'Email already exists');
-      const u: Emp = {
-        id: crypto.randomUUID(),
-        name: b.data.name,
-        email: b.data.email,
-        phone: b.data.phone,
-        employeeCode: b.data.employeeCode,
-        designation: b.data.designation,
-        joinedOn: b.data.joinedOn,
-        roles: [b.data.role],
-        managerId: mgrId,
-        territoryIds: b.data.territoryIds,
-        status: 'invited',
-        version: 1,
-      };
-      emps.push(u);
-      const inv = {
-        id: crypto.randomUUID(),
-        userId: u.id,
-        expiresAt: new Date(Date.now() + 7 * 864e5).toISOString(),
-        used: false,
-      };
-      invites.set(`mock-invite-${inv.id}`, inv);
-      return HttpResponse.json(
-        {
-          employee: node(u, 1),
-          invite: { ...inv, used: undefined, inviteUrl: `/invite?token=mock-invite-${inv.id}` },
-        },
-        { status: 201 },
-      );
+      return createOne(p, await request.json());
+    }),
+    http.post(`${baseUrl}/v1/employees/invite-bulk`, async ({ request }) => {
+      const p = me(request);
+      if (!p) return e(401, 'UNAUTHENTICATED', 'Sign in required');
+      const rows = ((await request.json()) as { employees?: unknown } | null)?.employees;
+      if (!Array.isArray(rows) || rows.length < 1 || rows.length > INVITE_BULK_MAX)
+        return e(422, 'VALIDATION', `employees must be 1..${INVITE_BULK_MAX} rows`);
+      if (hierarchyRank(p.roles) < MIN_MANAGER_RANK)
+        return e(403, 'FORBIDDEN', 'Only ABM and above can add employees');
+      const seen = new Set<string>();
+      const results: InviteBulkResponse['results'] = [];
+      for (const [index, raw] of rows.entries()) {
+        const em = (raw as { email?: unknown } | null)?.email;
+        const base = {
+          index,
+          email: typeof em === 'string' ? em : null,
+          code: null,
+          message: null,
+          employeeId: null,
+          inviteId: null,
+          inviteUrl: null,
+        };
+        const key = typeof em === 'string' ? em.toLowerCase() : null;
+        if (key && seen.has(key)) {
+          results.push({
+            ...base,
+            status: 'skipped',
+            code: 'DUPLICATE_IN_BATCH',
+            message: 'Email or employee code repeated earlier in this batch',
+          });
+          continue;
+        }
+        if (key) seen.add(key);
+        const res = createOne(p, raw);
+        const j = (await res.json()) as {
+          employee?: { id: string };
+          invite?: { id: string; inviteUrl: string | null };
+          error?: { code: string; message: string };
+        };
+        if (res.status === 201)
+          results.push({
+            ...base,
+            status: 'invited',
+            employeeId: j.employee!.id,
+            inviteId: j.invite!.id,
+            inviteUrl: j.invite!.inviteUrl,
+          });
+        else
+          results.push({
+            ...base,
+            status: res.status === 409 ? 'skipped' : 'failed',
+            code: j.error!.code,
+            message: j.error!.message,
+          });
+      }
+      const n = (st: string) => results.filter((r) => r.status === st).length;
+      return HttpResponse.json({
+        results,
+        summary: { invited: n('invited'), skipped: n('skipped'), failed: n('failed') },
+      });
     }),
     http.patch(`${baseUrl}/v1/employees/:id`, async ({ request, params }) => {
       const p = me(request);
@@ -253,10 +320,12 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
     }),
     http.post(`${baseUrl}/v1/invites/accept`, async ({ request }) => {
       const b = InviteAccept.safeParse(await request.json());
-      if (!b.success) return e(422, 'VALIDATION', 'Invalid');
+      if (!b.success) return e(422, 'VALIDATION', b.error.issues[0]?.message ?? 'Invalid');
       const inv = invites.get(b.data.token);
-      if (!inv || inv.used || Date.parse(inv.expiresAt) < Date.now())
-        return e(404, 'INVITE_INVALID', 'Invalid, used, revoked or expired invite');
+      if (!inv) return e(404, 'INVITE_INVALID', 'This invite link is not valid');
+      if (inv.used) return e(409, 'INVITE_USED', 'This invite has already been used');
+      if (Date.parse(inv.expiresAt) <= Date.now())
+        return e(410, 'INVITE_EXPIRED', 'This invite has expired; ask for a new one');
       inv.used = true;
       const u = emps.find((x) => x.id === inv.userId)!;
       u.status = 'active';
