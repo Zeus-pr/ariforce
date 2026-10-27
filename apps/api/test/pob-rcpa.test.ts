@@ -168,7 +168,7 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     expect(back2.body.calls[0].pob).toHaveLength(2);
   });
 
-  it('rejects POB on doctor calls and RCPA on doctor/stockist calls', async () => {
+  it('accepts POB on doctor calls, rejects RCPA on doctor/stockist calls', async () => {
     const docPob = call({
       outletKind: 'doctor',
       outletId: doctor,
@@ -187,11 +187,12 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     });
     const r = await put([docPob, stkRcpa, docRcpa]);
     expect(r.status).toBe(422);
-    expect(r.body.error.details.pobOutletCallIds).toEqual([docPob.clientId]);
+    expect(r.body.error.details.pobOutletCallIds).toBeUndefined();
     expect(r.body.error.details.rcpaOutletCallIds).toEqual([stkRcpa.clientId, docRcpa.clientId]);
-    // POB alone on a stockist call is fine.
+    // POB alone on a stockist or doctor call is fine.
     const ok = await put([
       call(),
+      docPob,
       call({
         outletKind: 'stockist',
         outletId: stockist,
@@ -199,7 +200,11 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
       }),
     ]);
     expect(ok.status, JSON.stringify(ok.body)).toBe(200);
-    expect(ok.body.calls[1].pob[0].value).toBe(24.7);
+    type C = { outletKind: string; pob: { value: number | null }[] };
+    const pobOf = (k: string) =>
+      (ok.body.calls as C[]).find((c) => c.outletKind === k && c.pob.length)?.pob[0]?.value;
+    expect(pobOf('doctor')).toBe(12.35);
+    expect(pobOf('stockist')).toBe(24.7);
   });
 
   it('validates products, duplicates, quantities, stockist and doctor scope', async () => {
