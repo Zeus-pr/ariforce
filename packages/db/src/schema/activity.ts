@@ -17,7 +17,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { companyId, pk, syncCols } from './_common';
 import { geoCaptures } from './devices';
-import { stockists, workTypes } from './masters';
+import { doctors, stockists, workTypes } from './masters';
 import { products } from './products';
 import { companies, territories, users } from './tenancy';
 
@@ -167,6 +167,45 @@ export const dcrCallProducts = pgTable(
     ...syncCols(),
   },
   (t) => [index('dcr_call_products_call_idx').on(t.companyId, t.callId)],
+);
+
+/**
+ * RCPA lines on a chemist call (#40, docs/POB-RCPA.md): our product anchors the molecule; a null
+ * competitor_brand row counts our own brand. Replaced with the call on every DCR save.
+ */
+export const dcrCallRcpa = pgTable(
+  'dcr_call_rcpa',
+  {
+    id: pk(),
+    companyId: companyId().references(() => companies.id),
+    callId: uuid('call_id')
+      .notNull()
+      .references(() => dcrCalls.id),
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => products.id),
+    competitorBrand: text('competitor_brand'),
+    competitorCompany: text('competitor_company'),
+    quantity: integer('quantity').notNull(),
+    prescriptions: integer('prescriptions'),
+    doctorId: uuid('doctor_id').references(() => doctors.id),
+    ...syncCols(),
+  },
+  (t) => [
+    index('dcr_call_rcpa_call_idx').on(t.companyId, t.callId),
+    index('dcr_call_rcpa_product_idx').on(t.companyId, t.productId),
+    index('dcr_call_rcpa_doctor_idx').on(t.doctorId),
+    index('dcr_call_rcpa_brand_idx').on(t.companyId, sql`lower(${t.competitorBrand})`),
+    uniqueIndex('dcr_call_rcpa_line_uq')
+      .on(t.callId, t.productId, sql`lower(coalesce(${t.competitorBrand}, ''))`)
+      .where(sql`${t.deletedAt} is null`),
+    check('dcr_call_rcpa_quantity_ck', sql`${t.quantity} > 0`),
+    check('dcr_call_rcpa_rx_ck', sql`${t.prescriptions} is null or ${t.prescriptions} >= 0`),
+    check(
+      'dcr_call_rcpa_brand_ck',
+      sql`(${t.competitorBrand} is null or length(${t.competitorBrand}) between 1 and 100) and (${t.competitorCompany} is null or (${t.competitorBrand} is not null and length(${t.competitorCompany}) between 1 and 100))`,
+    ),
+  ],
 );
 
 export const salesKind = pgEnum('sales_kind', ['primary', 'secondary']);
