@@ -5,7 +5,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { T, U } from '@ariforce/db';
 import { FUNCTIONAL_ROLE_KEYS, HIERARCHY_ROLE_KEYS } from '@ariforce/contracts';
-import { bearerFor, insertRetiredHolder } from './support';
+import { bearerFor, insertRetiredHolder, otherHq } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 
@@ -44,11 +44,14 @@ describe.skipIf(!OWNER || !APP)('System admin invites any role / any territory',
   });
 
   it('creates every hierarchy role on a territory outside any ABM subtree, with no manager', async () => {
+    const hq2 = await otherHq(http, tok.sysadmin!, T.otherArea);
     for (const role of HIERARCHY_ROLE_KEYS) {
-      const res = await post('sysadmin', emp(role, { territoryIds: [T.otherArea] }));
+      // A business manager holds headquarter-level territories only (Part 3).
+      const where = role === 'business_manager' ? hq2 : T.otherArea;
+      const res = await post('sysadmin', emp(role, { territoryIds: [where] }));
       expect(res.status, `${role} ${JSON.stringify(res.body)}`).toBe(201);
       expect(res.body.employee).toMatchObject({ role, managerId: null, status: 'invited' });
-      expect(res.body.employee.territories[0].id).toBe(T.otherArea);
+      expect(res.body.employee.territories[0].id).toBe(where);
       created[role] = res.body.employee.id;
     }
   });
@@ -99,6 +102,17 @@ describe.skipIf(!OWNER || !APP)('System admin invites any role / any territory',
         await post(
           'sysadmin',
           emp('business_manager', { territoryIds: [T.otherArea], managerId: U.regional }),
+        )
+      ).body.error.code,
+    ).toBe('TERRITORY_LEVEL_INVALID');
+    expect(
+      (
+        await post(
+          'sysadmin',
+          emp('business_manager', {
+            territoryIds: [await otherHq(http, tok.sysadmin!, T.otherArea)],
+            managerId: U.regional,
+          }),
         )
       ).status,
     ).toBe(201);

@@ -405,4 +405,24 @@ describe.skipIf(!OWNER || !APP)('Sign-up requests (real API)', () => {
     expect(r.status).toBe(403);
     await owner.query(`update signup_requests set status = 'rejected' where id = $1`, [rows[0].id]);
   });
+
+  it('approve: a business manager gets headquarter-level territories only (TERRITORY_LEVEL_INVALID)', async () => {
+    const e = email('lvl');
+    expect((await submit({ email: e })).status).toBe(202);
+    const id = await reqId(e);
+    const bad = await http()
+      .post(`/v1/signup-requests/${id}/approve`)
+      .set(as('sysadmin'))
+      .send({ role: 'business_manager', territoryIds: [T.area] });
+    expect(bad.status, JSON.stringify(bad.body)).toBe(422);
+    expect(bad.body.error).toMatchObject({
+      code: 'TERRITORY_LEVEL_INVALID',
+      details: { territoryIds: [T.area], expectedLevel: 'headquarter' },
+    });
+    const ok = await http()
+      .post(`/v1/signup-requests/${id}/approve`)
+      .set(as('sysadmin'))
+      .send({ role: 'area_business_manager', territoryIds: [T.area], managerId: U.regional });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+  });
 });

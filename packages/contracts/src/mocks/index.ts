@@ -19,7 +19,8 @@ import {
   Territory,
 } from '../index';
 import * as fx from './fixtures';
-import { isRetiredRole } from '../schemas/roles';
+import { RoleKey, isRetiredRole } from '../schemas/roles';
+import { assignableTerritoryLevels } from '../schemas/territories';
 import { duplicateKeys, mapImportRow, type ImportLookup } from '../import/templates';
 import type { ImportEntity } from '../schemas/imports';
 import { SignInEmailBody } from '../schemas/auth';
@@ -479,9 +480,17 @@ export function createHandlers(baseUrl = '') {
     http.post(`${baseUrl}/v1/product-hq-mappings/import`, ({ request }) =>
       mockImport('product_hq', mockHq as never, request),
     ),
-    http.get(`${baseUrl}/v1/territories`, ({ request }) =>
-      list(Territory, fx.territories, new URL(request.url)),
-    ),
+    http.get(`${baseUrl}/v1/territories`, ({ request }) => {
+      const url = new URL(request.url);
+      const lvl = url.searchParams.get('level');
+      const role = RoleKey.safeParse(url.searchParams.get('assignableForRole'));
+      const ok = role.success ? assignableTerritoryLevels(role.data) : null;
+      return list(
+        Territory,
+        fx.territories.filter((t) => (!lvl || t.level === lvl) && (!ok || ok.includes(t.level))),
+        url,
+      );
+    }),
     http.get(`${baseUrl}/v1/territories/:id`, ({ params }) => {
       const t = fx.territories.find((r) => r.id === params.id);
       return t ? HttpResponse.json(Territory.parse(t)) : notFound();

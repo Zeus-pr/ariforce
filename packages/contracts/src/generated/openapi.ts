@@ -2249,6 +2249,19 @@ export interface components {
     };
     /** @enum {string} */
     TerritoryLevel: 'national' | 'zone' | 'region' | 'area' | 'headquarter';
+    /** @enum {string} */
+    RoleKey:
+      | 'business_manager'
+      | 'area_business_manager'
+      | 'regional_business_manager'
+      | 'zonal_business_manager'
+      | 'sales_manager'
+      | 'general_manager'
+      | 'vice_president'
+      | 'director'
+      | 'system_admin'
+      | 'distribution_head'
+      | 'accountant';
     UploadUrlRequest: {
       purpose: components['schemas']['FilePurpose'];
       /** @enum {string} */
@@ -2519,19 +2532,6 @@ export interface components {
       /** @description Null = whole division */
       productId: string | null;
     };
-    /** @enum {string} */
-    RoleKey:
-      | 'business_manager'
-      | 'area_business_manager'
-      | 'regional_business_manager'
-      | 'zonal_business_manager'
-      | 'sales_manager'
-      | 'general_manager'
-      | 'vice_president'
-      | 'director'
-      | 'system_admin'
-      | 'distribution_head'
-      | 'accountant';
     /** @enum {string} */
     CheckInKind: 'punch_in' | 'visit' | 'punch_out';
     /** @enum {string} */
@@ -6617,6 +6617,8 @@ export interface operations {
         ancestorId?: string;
         /** @description Exact code match (import lookup) */
         code?: string;
+        /** @description Only territories this role may hold (business_manager: headquarter only; others: any level). Combine with level. */
+        assignableForRole?: components['schemas']['RoleKey'];
       };
       header?: never;
       path?: never;

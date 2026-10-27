@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEMO_COMPANY_ID, T, U } from '@ariforce/db';
 import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
-import { insertRetiredHolder } from './support';
+import { insertRetiredHolder, otherHq } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 import { TeamService } from '../src/team/team.service';
@@ -155,6 +155,7 @@ describe.skipIf(!OWNER || !APP)('System admin People page (list + edit)', () => 
   });
 
   it('edits all details of a person without a login; email change re-sends the invite; audited', async () => {
+    const hq2 = await otherHq(http, tok.sysadmin!, T.otherArea);
     const res = await patch(id.b!, {
       name: `${RUN} b2`,
       email: `${RUN}.b2@demo.ariforce.in`,
@@ -162,7 +163,7 @@ describe.skipIf(!OWNER || !APP)('System admin People page (list + edit)', () => 
       phone: '+919800000001',
       designation: 'Senior MR',
       joinedOn: '2026-01-15',
-      territoryIds: [T.otherArea],
+      territoryIds: [hq2],
     });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body).toMatchObject({
@@ -190,7 +191,7 @@ describe.skipIf(!OWNER || !APP)('System admin People page (list + edit)', () => 
     });
     expect(a.rows[0]!.after).toMatchObject({
       email: `${RUN}.b2@demo.ariforce.in`,
-      territoryIds: [T.otherArea],
+      territoryIds: [hq2],
       roles: ['business_manager'],
     });
   });

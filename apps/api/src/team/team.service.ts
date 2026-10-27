@@ -2,6 +2,8 @@ import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
 import { revokeUserSessions } from '../auth/revoke';
 import {
   EmployeeCreate,
+  assignableTerritoryLevels,
+  TERRITORY_LEVELS,
   EmployeeUpdate,
   type InviteBulkItemResult,
   SignupApprove,
@@ -284,6 +286,30 @@ export class TeamService {
     if (!(r > 0 && r < hierarchyRank(p.roles)))
       throw err(403, 'FORBIDDEN', 'Role must be a hierarchy role below your own');
   }
+  /**
+   * Part 3: a role may only hold territories at its allowed levels (business_manager: headquarter
+   * only). Checked on writes only (create, invite-bulk, PATCH with role or territories, signup
+   * approve); a PATCH of unrelated fields never trips over legacy data.
+   */
+  private async assertTerritoryLevels(tx: Tx, roleKeys: RoleKey[], ids: string[]) {
+    if (!ids.length) return;
+    for (const role of roleKeys) {
+      const allowed = assignableTerritoryLevels(role);
+      if (allowed.length === TERRITORY_LEVELS.length) continue;
+      const rows = await tx
+        .select({ id: territories.id, level: territories.level })
+        .from(territories)
+        .where(inArray(territories.id, ids));
+      const bad = rows.filter((r) => !allowed.includes(r.level)).map((r) => r.id);
+      if (bad.length)
+        throw err(
+          422,
+          'TERRITORY_LEVEL_INVALID',
+          `A ${role} may only hold ${allowed.join(' or ')}-level territories`,
+          { territoryIds: bad, expectedLevel: allowed[0], role },
+        );
+    }
+  }
   private async assertTerritories(tx: Tx, p: Principal, ids: string[]) {
     const ok = await this.scopedTerritoryIds(tx, p, ids);
     if (ids.some((i) => !ok.has(i))) throw err(403, 'FORBIDDEN', 'Territory is outside your scope');
@@ -353,6 +379,7 @@ export class TeamService {
       if (isHierarchyRole(b.role) && !b.territoryIds.length)
         throw err(422, 'VALIDATION', 'Hierarchy roles need at least one territory');
       await this.assertTerritories(tx, p, b.territoryIds);
+      await this.assertTerritoryLevels(tx, [b.role], b.territoryIds);
       const all = await this.people(tx);
       // System admin is outside the reporting line: no default manager; a director never has one.
       const mgrId = admin ? b.managerId : (b.managerId ?? p.userId);
@@ -553,6 +580,7 @@ export class TeamService {
             );
         }
       }
+      if (b.role || b.territoryIds) await this.assertTerritoryLevels(tx, newRoles, terrAfter);
       if (b.status === 'active' && t.status === 'invited')
         throw err(422, 'VALIDATION', 'Invited users activate by accepting their invite');
       const statusAfter = b.status ?? t.status;
@@ -939,6 +967,7 @@ export class TeamService {
       if (hierarchy && !tids.length)
         throw err(422, 'VALIDATION', 'At least one territory is required for this role');
       if (tids.length) await this.assertTerritories(tx, p, tids);
+      await this.assertTerritoryLevels(tx, [role], tids);
       let mgrId: string | null;
       if (!hierarchy || role === 'director') {
         if (b.managerId) throw err(422, 'VALIDATION', 'This role has no manager');

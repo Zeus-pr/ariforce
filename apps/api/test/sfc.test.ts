@@ -6,7 +6,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEMO_COMPANY_ID as A, T, U } from '@ariforce/db';
 import { SfcEmployeeList, SfcHqList, SfcTable, sfcAmounts } from '@ariforce/contracts';
-import { bearerFor } from './support';
+import { bearerFor, insertStaff } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 
@@ -180,6 +180,29 @@ describe.skipIf(!OWNER || !APP)('SFC routes (real API)', () => {
     expect(own.body.canEdit).toBe(false);
     expect((await http().get(url(U.rep)).set(as('bm2'))).status).toBe(404);
     expect((await http().get(url(U.rep)).set(as('accountant'))).status).toBe(403);
+  });
+
+  it('scope: EITHER mechanism covers a BM (territory tree without managerId, or reporting line)', async () => {
+    // BM on the ABM's HQ but reporting straight to the RBM: covered by the ABM's territory only.
+    const bm = await insertStaff('sfc-terr-bm@example.test', 'business_manager', U.regional, [
+      T.hq,
+    ]);
+    const g = await http().get(url(bm.id)).set(as('abm'));
+    expect(g.status).toBe(200);
+    expect(g.body.canEdit).toBe(true);
+    const put = await http()
+      .put(url(bm.id))
+      .set(as('abm'))
+      .send({ etag: g.body.etag, hqTerritoryId: T.hq, routes: [] });
+    expect(put.status).toBe(200);
+    // A peer ABM on the same area is not covered (rank must be strictly lower).
+    const peer = await insertStaff(
+      'sfc-peer-abm@example.test',
+      'area_business_manager',
+      U.regional,
+      [T.area],
+    );
+    expect((await http().get(url(peer.id)).set(as('abm'))).status).toBe(404);
   });
 
   it('system_admin edits any table; director lists HQs and employees company-wide', async () => {

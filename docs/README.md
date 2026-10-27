@@ -62,11 +62,12 @@ document is committed at `docs/api/openapi.json` (`pnpm -F @ariforce/contracts o
 
 ## Run and ops
 
-| File                                             | What it covers                                                                      |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| [SETUP.md](SETUP.md)                             | Toolchain and first-time setup on the SSD                                           |
-| [RUN-LOCAL.md](RUN-LOCAL.md)                     | Migrations 0000–0035, env vars, running the API and web, health, jobs runner, tests |
-| [CHANGELOG-CONTRACTS.md](CHANGELOG-CONTRACTS.md) | API contract changes by feature, breaking changes first                             |
+| File                                                                | What it covers                                                                      |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| [SETUP.md](SETUP.md)                                                | Toolchain and first-time setup on the SSD                                           |
+| [RUN-LOCAL.md](RUN-LOCAL.md)                                        | Migrations 0000–0035, env vars, running the API and web, health, jobs runner, tests |
+| [data-fixes/README.md](../packages/db/scripts/data-fixes/README.md) | One-off data-fix SQL scripts (lead runs as DB owner) with run order                 |
+| [CHANGELOG-CONTRACTS.md](CHANGELOG-CONTRACTS.md)                    | API contract changes by feature, breaking changes first                             |
 
 ## Cutly checklist
 

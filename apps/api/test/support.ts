@@ -175,3 +175,28 @@ export async function insertStaff(
     await pool.end();
   }
 }
+
+/**
+ * A second headquarter under the seed's `otherArea` (outside every ABM subtree), written once per DB
+ * as the owner (territories are created by import only): business managers hold HQs only.
+ */
+export async function otherHq(_http: Http, _admin: string, otherArea: string): Promise<string> {
+  const { Pool } = await import('pg');
+  const pool = new Pool({ connectionString: process.env.DIRECT_URL, max: 1 });
+  try {
+    const code = 'HQ-OTHER-TEST';
+    const found = await pool.query(`select id from territories where code = $1`, [code]);
+    if (found.rowCount) return found.rows[0].id;
+    const r = await pool.query(
+      `insert into territories (id, company_id, parent_id, level, code, name, path)
+       select x.id::uuid, p.company_id, p.id, 'headquarter', $2, 'Other HQ (test)', p.path || '.' || x.id
+       from territories p, (select gen_random_uuid()::text as id) x where p.id = $1
+       on conflict do nothing returning id`,
+      [otherArea, code],
+    );
+    if (r.rowCount) return r.rows[0].id;
+    return (await pool.query(`select id from territories where code = $1`, [code])).rows[0].id;
+  } finally {
+    await pool.end();
+  }
+}

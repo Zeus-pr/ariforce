@@ -1,5 +1,8 @@
 import * as z from 'zod';
 import {
+  assignableTerritoryLevels,
+  type RoleKey,
+  type TerritoryLevel,
   Chemist,
   ChemistCreate,
   ChemistUpdate,
@@ -247,6 +250,11 @@ export const MASTERS: Record<string, MasterDef> = {
     search: [territories.code, territories.name],
     filters: (q) => [
       q.level ? sql`${territories.level} = ${String(q.level)}` : undefined,
+      q.assignableForRole
+        ? inArray(territories.level, [
+            ...assignableTerritoryLevels(q.assignableForRole as RoleKey),
+          ] as TerritoryLevel[])
+        : undefined,
       q.parentId ? eq(territories.parentId, String(q.parentId)) : undefined,
       q.ancestorId ? inSubtree(territories.id, String(q.ancestorId)) : undefined,
       q.code ? sql`upper(${territories.code}) = ${String(q.code).toUpperCase()}` : undefined,

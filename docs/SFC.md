@@ -36,6 +36,7 @@ Changing the rate does not recompute saved rows. A table picks up the new rate t
 | System Admin                  | Everyone in the company      | Everyone                    |
 | Distribution Head, Accountant | Nothing (403)                | Nothing                     |
 
+- "Below them" means EITHER the reporting line (`managerId` chain) OR a lower-ranked employee holding a territory inside one of the caller's own territories (e.g. an ABM on the HQ-BURDWAN area covers the BMs on its HQs before their `managerId` is set). A same-rank peer on the same territory is not covered.
 - Permissions are `sfc:read` (BM and up, plus system_admin) and `sfc:write` (ABM and up, plus system_admin). Migration 0039 adds them.
 - Only sales-hierarchy employees (rank 1 or higher) have an SFC.
 - Changing the rate needs `settings:write` (director and system_admin).

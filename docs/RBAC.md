@@ -129,6 +129,31 @@ Prajesh retired both roles (soft). `RETIRED_ROLE_KEYS` in contracts.
 - **Migrations**: `0014_functional_roles_enum.sql` only adds the enum values (`ADD VALUE IF NOT EXISTS`). `0015_functional_roles_rows.sql` inserts the role rows per company (`ON CONFLICT DO NOTHING`), in a separate transaction because Postgres cannot use a new enum value in the transaction that adds it. Both are safe to re-run; apply 0014, then 0015.
 - **Scope**: domain-wide read via `sales:read` / `finance:read` only. Session scope stays non-wide (no territories, team = self), so every existing masters/field/KPI endpoint returns 403 or nothing for them.
 
+### Territory levels (Part 3, 2026-10-27)
+
+- BM: `headquarter` only. ABM and above: any level (HQ or higher). system_admin target: unrestricted. Error `422 TERRITORY_LEVEL_INVALID` with `details.territoryIds`, `details.expectedLevel`, `details.role`. Write-only rule (create, invite-bulk, PATCH role/territories, signup approve); existing rows are reported by `packages/db/scripts/data-fixes/2026-10-27-territory-level-violations-report.sql`, never rejected on read or unrelated PATCH.
+- Pickers: `GET /v1/territories?assignableForRole=<role>` (and `level=`).
+- Interpretation flagged for Prajesh: "system_admin may assign anything" is implemented as "a system_admin _target_ has no level rule"; a system_admin _caller_ still cannot put a BM on an area.
+
+### Two scope mechanisms: territory tree vs reporting line
+
+The principal carries two scopes (`auth/session.guard.ts`):
+
+- `teamUserIds` = the user plus everyone below them via `users.manager_id` (null for Director/company-wide).
+- `scopePaths` = territory paths held by the user **and by everyone in teamUserIds**; masters match the subtree of any of them (null for masters-wide roles).
+
+| Entity / screen                                                                                                                   | Mechanism                                                                            |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Doctors, chemists, stockists, territory pickers, KPI territory rollups, `GET /v1/sfc/hqs`                                         | Territory tree (`scopePaths`: own territories + reports' territories)                |
+| DCRs, check-ins, tour plans and submissions, leave, expenses, approvals (list, detail, decide), `GET /v1/team` tree, KPI per-user | Reporting line (`teamUserIds`)                                                       |
+| SFC view/edit                                                                                                                     | EITHER (reporting line OR lower-ranked holder of a territory under the caller's own) |
+
+Consequence for an ABM on HQ-BURDWAN (area after the re-parent): with **territory only**, they see the Burdwan doctors/chemists/stockists and both BMs' SFC, but not the BMs' DCRs, tour plans, leave, expenses or approvals (those go to the BMs' `managerId`). With **managerId only**, they see everything of the two BMs, and masters on the BMs' HQs (via the reports' territories), but not masters on HQ-BURDWAN itself, nor an HQ whose BM has left. Set **both**: `user_territories` = HQ-BURDWAN and each BM's `managerId` = the ABM.
+
+### Skipped ranks and the Director
+
+`assertManager` requires the manager's rank to be strictly higher (not exactly one higher), on create, invite-bulk, PATCH, `POST /v1/team/{id}/manager` and signup approve. So BM→RBM, ABM→ZBM and ZBM→Director are valid (no VP/GM needed). Step 1 approver is the requester's `managerId`; escalation goes to that approver's manager. A request finishes early when there is no next manager or when the decider is at or above the next approver (e.g. Director deciding a step owned by an ABM). The Director sees and can decide every approval company-wide. Tests: `apps/api/test/hierarchy-chain.test.ts`.
+
 ## Audit
 
 Append-only `audit_log` (insert-only grant + blocking trigger). Written:

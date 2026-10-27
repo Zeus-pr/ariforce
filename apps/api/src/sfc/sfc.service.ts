@@ -8,6 +8,7 @@ import {
   type SfcSettings,
   type SfcTable,
   type SfcTablePut,
+  hierarchyRank,
   sfcAmounts,
 } from '@ariforce/contracts';
 import { companies, sfcRoutes, type Tx } from '@ariforce/db';
@@ -40,7 +41,8 @@ const topRole = (keys: RoleKey[]) =>
 
 /**
  * SFC (Standard Fare Chart), docs/SFC.md. Visibility: director and system_admin company-wide,
- * everyone else their reporting line (teamUserIds, includes self). Only sales-hierarchy employees
+ * everyone else their reporting line (teamUserIds, includes self) OR lower-ranked holders of
+ * territories inside their own territories (see visible()). Only sales-hierarchy employees
  * (rank >= 1) have an SFC. Edit: sfc:write, and never your own table unless system_admin.
  */
 @Injectable()
@@ -54,22 +56,39 @@ export class SfcService {
     return p.teamUserIds === null || p.roles.includes('system_admin');
   }
 
-  /** SQL predicate on a users.id expression for "visible to the caller". */
+  /**
+   * SQL predicate on a users.id expression for "visible to the caller". A non-wide caller covers an
+   * employee through EITHER mechanism: the reporting line (users.manager_id, teamUserIds) OR the
+   * territory tree (the employee holds a territory inside one of the caller's own territories and
+   * ranks strictly below the caller). E.g. an ABM on the HQ-BURDWAN area covers the BMs on its HQs
+   * even before their managerId points at the ABM.
+   */
   private visible(p: Principal, col: ReturnType<typeof sql.raw>) {
     if (this.wide(p)) return sql`true`;
     const ids = p.teamUserIds ?? [];
-    if (!ids.length) return sql`false`;
-    return sql`${col} = any(${sql`array[${sql.join(
-      ids.map((i) => sql`${i}::uuid`),
-      sql`, `,
-    )}]`})`;
+    const team = ids.length
+      ? sql`${col} = any(${sql`array[${sql.join(
+          ids.map((i) => sql`${i}::uuid`),
+          sql`, `,
+        )}]`})`
+      : sql`false`;
+    const myRank = hierarchyRank(p.roles);
+    if (myRank < 1) return team;
+    return sql`(${team} or (
+      exists (select 1 from user_territories ut
+        join territories t on t.id = ut.territory_id and t.deleted_at is null
+        join user_territories mine on mine.user_id = ${p.userId}::uuid
+        join territories mt on mt.id = mine.territory_id and mt.deleted_at is null
+        where ut.user_id = ${col} and (t.path = mt.path or t.path like mt.path || '.%'))
+      and (select coalesce(max(r.rank), 0) from user_roles ur join roles r on r.id = ur.role_id
+        where ur.user_id = ${col} and r.deleted_at is null) < ${myRank}))`;
   }
 
+  /** Only ever called with a user already in the caller's visible set (salesUsers / target). */
   canEdit(p: Principal, userId: string) {
     if (!p.permissions.includes('sfc:write')) return false;
     if (p.roles.includes('system_admin')) return true;
-    if (userId === p.userId) return false;
-    return this.wide(p) || (p.teamUserIds ?? []).includes(userId);
+    return userId !== p.userId;
   }
 
   private async rate(tx: Tx, p: Principal) {

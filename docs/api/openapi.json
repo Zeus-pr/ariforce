@@ -408,6 +408,15 @@
               "maxLength": 32
             },
             "description": "Exact code match (import lookup)"
+          },
+          {
+            "in": "query",
+            "name": "assignableForRole",
+            "schema": {
+              "description": "Only territories this role may hold (business_manager: headquarter only; others: any level). Combine with level.",
+              "$ref": "#/components/schemas/RoleKey"
+            },
+            "description": "Only territories this role may hold (business_manager: headquarter only; others: any level). Combine with level."
           }
         ],
         "responses": {
@@ -13908,6 +13917,22 @@
           "headquarter"
         ]
       },
+      "RoleKey": {
+        "type": "string",
+        "enum": [
+          "business_manager",
+          "area_business_manager",
+          "regional_business_manager",
+          "zonal_business_manager",
+          "sales_manager",
+          "general_manager",
+          "vice_president",
+          "director",
+          "system_admin",
+          "distribution_head",
+          "accountant"
+        ]
+      },
       "UploadUrlRequest": {
         "type": "object",
         "properties": {
@@ -15299,22 +15324,6 @@
           "territoryId",
           "divisionId",
           "productId"
-        ]
-      },
-      "RoleKey": {
-        "type": "string",
-        "enum": [
-          "business_manager",
-          "area_business_manager",
-          "regional_business_manager",
-          "zonal_business_manager",
-          "sales_manager",
-          "general_manager",
-          "vice_president",
-          "director",
-          "system_admin",
-          "distribution_head",
-          "accountant"
         ]
       },
       "CheckInKind": {
