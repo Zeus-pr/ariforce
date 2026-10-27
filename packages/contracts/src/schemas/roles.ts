@@ -95,6 +95,8 @@ export const PERMISSIONS = [
   'leave:write',
   /** Decide, cancel and grant leave for the reporting line (manager chain, never your own). */
   'leave:approve',
+  /** Edit product MRP/PTR/PTS (single and bulk) and read price history: system_admin only. */
+  'products:prices',
 ] as const;
 export const Permission = z.enum(PERMISSIONS).meta({ id: 'Permission' });
 export type Permission = z.infer<typeof Permission>;
@@ -164,6 +166,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'users:write',
     'settings:write',
     'audit:read',
+    'products:prices',
   ],
   // Accepted by lead: read-only, company-wide; no doctors/chemists; never masters write.
   distribution_head: [

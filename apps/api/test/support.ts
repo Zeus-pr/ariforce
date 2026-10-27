@@ -28,7 +28,7 @@ export async function createProduct(
   http: Http,
   bm: string,
   director: string,
-  o: { ptr?: number | null; active?: boolean } = {},
+  o: { ptr?: number | null; active?: boolean; admin?: string } = {},
 ): Promise<string> {
   const base = await ensureProduct(http, bm, director);
   const div = (await http().get(`/v1/products/${base}`).set({ authorization: director })).body

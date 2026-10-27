@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -161,4 +162,36 @@ export const importRows = pgTable(
     duplicateRule: text('duplicate_rule'),
   },
   (t) => [uniqueIndex('import_rows_job_row_uq').on(t.jobId, t.rowNo)],
+);
+
+/**
+ * Append-only price history (product prices admin): one row per product whose MRP/PTR/PTS changed.
+ * POB values are stored on dcr_call_products at write time, so this never re-prices old lines.
+ */
+export const productPriceHistory = pgTable(
+  'product_price_history',
+  {
+    id: pk(),
+    companyId: companyId().references(() => companies.id),
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => products.id),
+    oldMrp: numeric('old_mrp', { precision: 12, scale: 2 }),
+    oldPtr: numeric('old_ptr', { precision: 12, scale: 2 }),
+    oldPts: numeric('old_pts', { precision: 12, scale: 2 }),
+    newMrp: numeric('new_mrp', { precision: 12, scale: 2 }),
+    newPtr: numeric('new_ptr', { precision: 12, scale: 2 }),
+    newPts: numeric('new_pts', { precision: 12, scale: 2 }),
+    /** 'single' (PATCH), 'bulk' or 'masters' (generic product create/update/import); bulkId groups the rows of one bulk call. */
+    source: text('source').notNull(),
+    bulkId: uuid('bulk_id'),
+    changedBy: uuid('changed_by')
+      .notNull()
+      .references(() => users.id),
+    changedAt: timestamp('changed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('product_price_history_product_idx').on(t.companyId, t.productId, t.changedAt),
+    check('product_price_history_source_ck', sql`${t.source} in ('single','bulk','masters')`),
+  ],
 );

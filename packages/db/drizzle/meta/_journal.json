@@ -225,6 +225,20 @@
       "when": 1793096130765,
       "tag": "0031_exceptions",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793098215465,
+      "tag": "0032_product_price_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793098231980,
+      "tag": "0033_role_permissions_prices",
+      "breakpoints": true
     }
   ]
 }

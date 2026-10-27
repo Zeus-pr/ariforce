@@ -539,6 +539,31 @@ export class DcrService {
           .onConflictDoUpdate({ target: dcrCalls.id, set: { ...v, deletedAt: null } });
       }
       if (keep.length) {
+        // Saved POB values stay as saved (lead rule): an existing line for the same call and
+        // product with the same quantity keeps its stored value; an edited quantity or a new
+        // line is priced at the current PTR. A stored null (no PTR then) is priced now.
+        const prior = new Map<string, { quantity: number | null; value: string | null }>();
+        for (const l of await tx
+          .select({
+            callId: dcrCallProducts.callId,
+            productId: dcrCallProducts.productId,
+            quantity: dcrCallProducts.quantity,
+            value: dcrCallProducts.value,
+          })
+          .from(dcrCallProducts)
+          .where(
+            and(
+              inArray(dcrCallProducts.callId, keep),
+              eq(dcrCallProducts.kind, 'pob'),
+              isNull(dcrCallProducts.deletedAt),
+            ),
+          ))
+          prior.set(`${l.callId}|${l.productId}`, { quantity: l.quantity, value: l.value });
+        const pobLineValue = (callId: string, productId: string, quantity: number) => {
+          const was = prior.get(`${callId}|${productId}`);
+          if (was && was.quantity === quantity && was.value !== null) return was.value;
+          return pobValue(quantity, ptr.get(productId) ?? null);
+        };
         await tx
           .update(dcrCallProducts)
           .set({ deletedAt: now })
@@ -562,7 +587,7 @@ export class DcrService {
             kind: 'pob' as const,
             quantity: x.quantity,
             stockistId: x.stockistId ?? null,
-            value: pobValue(x.quantity, ptr.get(x.productId) ?? null),
+            value: pobLineValue(c.clientId, x.productId, x.quantity),
           })),
         ]);
         if (lines.length)

@@ -31,6 +31,15 @@ import {
 import { ErrorBody, Id, IdParam, IdempotencyKeyHeader, Month, page } from './schemas/common';
 import { ImportJob, ImportRequest } from './schemas/imports';
 import {
+  AdminProduct,
+  AdminProductList,
+  AdminProductQuery,
+  ProductPriceHistory,
+  ProductPricesBulkRequest,
+  ProductPricesBulkResponse,
+  ProductPricesUpdate,
+} from './schemas/product-prices';
+import {
   Division,
   Product,
   ProductCreate,
@@ -1674,6 +1683,65 @@ function buildDocument(): OpenApiDocument {
             '200': { description: 'Saved', ...json(ExceptionRule) },
             '409': err('VERSION_CONFLICT'),
             '422': err('THRESHOLD_OUT_OF_RANGE or rule has no threshold'),
+          },
+        }),
+      },
+      '/v1/admin/products': {
+        get: op({
+          tags: ['Product prices'],
+          operationId: 'listAdminProducts',
+          summary: 'Products with current MRP/PTR/PTS for the prices admin (system_admin only)',
+          requestParams: { query: AdminProductQuery },
+          responses: {
+            '200': { description: 'OK', ...json(AdminProductList) },
+            '403': err('FORBIDDEN (needs products:prices)'),
+          },
+        }),
+      },
+      '/v1/admin/products/{id}/prices': {
+        patch: op({
+          tags: ['Product prices'],
+          operationId: 'updateProductPrices',
+          summary:
+            'Set MRP/PTR/PTS of one product (system_admin only). Saved POB values are never re-priced.',
+          requestParams: { path: IdParam },
+          requestBody: json(ProductPricesUpdate),
+          responses: {
+            '200': { description: 'Saved', ...json(AdminProduct) },
+            '403': err('FORBIDDEN (needs products:prices)'),
+            '404': err('PRODUCT_NOT_FOUND'),
+            '409': err('VERSION_CONFLICT'),
+            '422': err('VALIDATION or PTR_ABOVE_MRP'),
+          },
+        }),
+      },
+      '/v1/admin/products/prices/bulk': {
+        post: op({
+          tags: ['Product prices'],
+          operationId: 'bulkUpdateProductPrices',
+          summary:
+            'Up to 300 rows by productId or code; each row in its own transaction, per-row results',
+          requestBody: json(ProductPricesBulkRequest),
+          responses: {
+            '200': {
+              description: 'Per-row results and summary',
+              ...json(ProductPricesBulkResponse),
+            },
+            '403': err('FORBIDDEN (needs products:prices)'),
+            '422': err('VALIDATION (rows missing, empty or more than 300)'),
+          },
+        }),
+      },
+      '/v1/admin/products/{id}/price-history': {
+        get: op({
+          tags: ['Product prices'],
+          operationId: 'getProductPriceHistory',
+          summary: 'Price changes of one product, newest first (max 200; system_admin only)',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'OK', ...json(ProductPriceHistory) },
+            '403': err('FORBIDDEN (needs products:prices)'),
+            '404': err('PRODUCT_NOT_FOUND'),
           },
         }),
       },

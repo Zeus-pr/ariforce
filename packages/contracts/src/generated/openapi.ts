@@ -1946,6 +1946,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/admin/products': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Products with current MRP/PTR/PTS for the prices admin (system_admin only) */
+    get: operations['listAdminProducts'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/products/{id}/prices': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Set MRP/PTR/PTS of one product (system_admin only). Saved POB values are never re-priced. */
+    patch: operations['updateProductPrices'];
+    trace?: never;
+  };
+  '/v1/admin/products/prices/bulk': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Up to 300 rows by productId or code; each row in its own transaction, per-row results */
+    post: operations['bulkUpdateProductPrices'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/products/{id}/price-history': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Price changes of one product, newest first (max 200; system_admin only) */
+    get: operations['getProductPriceHistory'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2783,6 +2851,20 @@ export interface components {
     };
     /** @enum {string} */
     ExceptionSeverity: 'low' | 'medium' | 'high';
+    ProductPricesUpdate: {
+      /** @description MRP; null clears it */
+      mrp?: number | null;
+      /** @description Price to retailer; drives POB value */
+      ptr?: number | null;
+      /** @description Price to stockist; null clears it */
+      pts?: number | null;
+      /** @description Send to get 409 VERSION_CONFLICT on a stale row */
+      version?: number;
+    };
+    ProductPricesBulkRequest: {
+      /** @description ProductPricesBulkRow[]; each row is validated on its own */
+      rows: unknown[];
+    };
     Health: {
       /** @constant */
       status: 'ok';
@@ -2884,7 +2966,8 @@ export interface components {
       | 'finance:write'
       | 'leave:read'
       | 'leave:write'
-      | 'leave:approve';
+      | 'leave:approve'
+      | 'products:prices';
     RoleList: {
       items: components['schemas']['Role'][];
     };
@@ -5126,6 +5209,120 @@ export interface components {
       isDefault: boolean;
       /** @description Override row version; null when default */
       version: number | null;
+    };
+    AdminProductList: {
+      items: components['schemas']['AdminProduct'][];
+      nextCursor: string | null;
+    };
+    AdminProduct: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      code: string;
+      name: string;
+      brand: string | null;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      divisionId: string;
+      active: boolean;
+      mrp: number | null;
+      ptr: number | null;
+      pts: number | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Who last changed a price (from price history); null if never */
+      updatedBy: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+      } | null;
+      pricesUpdatedAt: string | null;
+      version: number;
+    };
+    ProductPricesBulkResponse: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      bulkId: string;
+      summary: {
+        total: number;
+        updated: number;
+        unchanged: number;
+        failed: number;
+      };
+      results: components['schemas']['ProductPricesBulkResult'][];
+    };
+    ProductPricesBulkResult: {
+      index: number;
+      productId: string | null;
+      productCode: string | null;
+      /** @enum {string} */
+      status: 'updated' | 'unchanged' | 'failed';
+      /**
+       * @description Error code when failed
+       * @example PRODUCT_NOT_FOUND
+       */
+      code: string | null;
+      message: string | null;
+    };
+    ProductPriceHistory: {
+      items: components['schemas']['ProductPriceHistoryEntry'][];
+    };
+    ProductPriceHistoryEntry: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      old: {
+        mrp: number | null;
+        ptr: number | null;
+        pts: number | null;
+      };
+      new: {
+        mrp: number | null;
+        ptr: number | null;
+        pts: number | null;
+      };
+      /** @enum {string} */
+      source: 'single' | 'bulk' | 'masters';
+      bulkId: string | null;
+      changedBy: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+      };
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      changedAt: string;
     };
     GeoPointOutput: {
       lat: number;
@@ -12823,6 +13020,228 @@ export interface operations {
       };
       /** @description THRESHOLD_OUT_OF_RANGE or rule has no threshold */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listAdminProducts: {
+    parameters: {
+      query?: {
+        /** @description Search code or name */
+        q?: string;
+        missingPtr?: 'true' | 'false';
+        active?: 'true' | 'false';
+        /** @description Exact brand (case-insensitive) */
+        brand?: string;
+        divisionId?: string;
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminProductList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs products:prices) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  updateProductPrices: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ProductPricesUpdate'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminProduct'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs products:prices) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description PRODUCT_NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION or PTR_ABOVE_MRP */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  bulkUpdateProductPrices: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ProductPricesBulkRequest'];
+      };
+    };
+    responses: {
+      /** @description Per-row results and summary */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProductPricesBulkResponse'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs products:prices) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (rows missing, empty or more than 300) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getProductPriceHistory: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProductPriceHistory'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs products:prices) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description PRODUCT_NOT_FOUND */
+      404: {
         headers: {
           [name: string]: unknown;
         };

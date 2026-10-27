@@ -6,6 +6,7 @@ export * from './schemas/auth';
 export * from './schemas/files';
 export * from './schemas/devices';
 export * from './schemas/products';
+export * from './schemas/product-prices';
 export * from './schemas/imports';
 export * from './schemas/field';
 export * from './schemas/kpis';
