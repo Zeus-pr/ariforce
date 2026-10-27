@@ -3,11 +3,17 @@
 -- Purpose (Part 3): HQ-BURDWAN becomes the parent of HQ-BURDWAN-BMCH and HQ-BURDWAN-ANAMOY, so an ABM
 -- on HQ-BURDWAN sees both HQs' doctors, chemists, stockists, DCRs and plans through the territory
 -- subtree. HQ-BURDWAN changes level headquarter -> area.
---   Level decision: 'area', because WB is already the region and an area is exactly "a group of HQs
---   one ABM holds" (the API lets an ABM hold area level; a BM may hold headquarter level only).
+--   Level decision: 'area' (a group of HQs one ABM holds; the API lets an ABM hold area level, a BM
+--   headquarter only). Burdwan's parent may be ANY level above area (enum order national > zone >
+--   region > area > headquarter): the real tree is WB (national) -> HQ-* with no region level, so
+--   area directly under national is accepted; region (or zone) works the same.
 -- Keeps: both HQs stay headquarter level; their BMs (Sohom Mukherjee on BMCH, Surojit Shikari on
 --   Anamoy) keep their user_territories rows; all doctors/chemists/stockists/allowance places/SFC
 --   routes keep their territory ids (only paths move). Nothing is deleted.
+-- Paths: whatever convention the data uses is kept. Each territory keeps its OWN last path segment
+--   (real data: code-based, e.g. WB.HQ_BURDWAN; seed/importer: uuid); only the prefix changes:
+--   new path = new parent path || '.' || own existing last segment. E.g. WB.HQ_BURDWAN_BMCH ->
+--   WB.HQ_BURDWAN.HQ_BURDWAN_BMCH. Descendants are rebuilt the same way (prefix replacement).
 -- Keyed by territory codes; single transaction; idempotent (a second run changes 0 rows).
 -- Run:  psql "$URL" -v slug=arighna -v company_id=83584199-7043-46c0-b5cd-8ea938e8dce5 -v ON_ERROR_STOP=1 -f 2026-10-27-burdwan-reparent.sql
 -- Afterwards: run 2026-10-27-territory-level-violations-report.sql (a BM left on HQ-BURDWAN itself
@@ -49,11 +55,15 @@ SELECT (count(*) = 3 AND count(DISTINCT code) = 3) AS found_ok FROM _t \gset
   ROLLBACK;
   \quit
 \endif
--- Burdwan must sit under a region (WB) to become an area.
-SELECT (parent_level = 'region') AS parent_ok FROM _t WHERE code = :'parent_code' \gset
+-- Burdwan becomes an area, so its parent must be ABOVE area: national, zone or region
+-- (level_ok: parent > area > headquarter in enum order). Real data: WB is national.
+SELECT (parent_level IS NOT NULL
+        AND array_position(enum_range(NULL::territory_level), parent_level)
+          < array_position(enum_range(NULL::territory_level), 'area'::territory_level))
+       AS parent_ok FROM _t WHERE code = :'parent_code' \gset
 \if :parent_ok
 \else
-  \echo 'ABORT: HQ-BURDWAN is not directly under a region; see the optional block "re-home Burdwan under WB"'
+  \echo 'ABORT: HQ-BURDWAN parent is not above area level (needs national, zone or region); see the optional block "re-home Burdwan under WB"'
   ROLLBACK;
   \quit
 \endif
@@ -65,17 +75,17 @@ CREATE TEMP TABLE _counts (phase text, code text, doctors int, chemists int, sto
 CREATE TEMP VIEW _subtree_counts AS
 SELECT x.code,
   (SELECT count(*) FROM doctors d JOIN territories s ON s.id = d.territory_id
-     WHERE d.deleted_at IS NULL AND (s.id = t.id OR s.path LIKE t.path || '.%'))::int AS doctors,
+     WHERE d.deleted_at IS NULL AND (s.id = t.id OR starts_with(s.path, t.path || '.')))::int AS doctors,
   (SELECT count(*) FROM chemists d JOIN territories s ON s.id = d.territory_id
-     WHERE d.deleted_at IS NULL AND (s.id = t.id OR s.path LIKE t.path || '.%'))::int AS chemists,
+     WHERE d.deleted_at IS NULL AND (s.id = t.id OR starts_with(s.path, t.path || '.')))::int AS chemists,
   (SELECT count(*) FROM stockists d JOIN territories s ON s.id = d.territory_id
-     WHERE d.deleted_at IS NULL AND (s.id = t.id OR s.path LIKE t.path || '.%'))::int AS stockists,
+     WHERE d.deleted_at IS NULL AND (s.id = t.id OR starts_with(s.path, t.path || '.')))::int AS stockists,
   (SELECT count(DISTINCT ut.user_id) FROM user_territories ut JOIN territories s ON s.id = ut.territory_id
-     WHERE (s.id = t.id OR s.path LIKE t.path || '.%'))::int AS users,
+     WHERE (s.id = t.id OR starts_with(s.path, t.path || '.')))::int AS users,
   (SELECT count(*) FROM allowance_places a JOIN territories s ON s.id = a.hq_territory_id
-     WHERE a.deleted_at IS NULL AND (s.id = t.id OR s.path LIKE t.path || '.%'))::int AS allowance_places,
+     WHERE a.deleted_at IS NULL AND (s.id = t.id OR starts_with(s.path, t.path || '.')))::int AS allowance_places,
   (SELECT count(*) FROM sfc_routes a JOIN territories s ON s.id = a.hq_territory_id
-     WHERE a.deleted_at IS NULL AND (s.id = t.id OR s.path LIKE t.path || '.%'))::int AS sfc_routes
+     WHERE a.deleted_at IS NULL AND (s.id = t.id OR starts_with(s.path, t.path || '.')))::int AS sfc_routes
 FROM _t x JOIN territories t ON t.id = x.id;
 INSERT INTO _counts SELECT 'before', * FROM _subtree_counts;
 
@@ -112,10 +122,11 @@ SELECT :'company_id', NULL, 'territory.reparented', 'territory', ch.id::text,
 FROM ch;
 
 -- 3. Rebuild materialised paths below Burdwan from parent_id (moves any descendants along).
+--    Each node keeps its own last segment (code- or uuid-based, whatever is stored).
 WITH RECURSIVE tree AS (
   SELECT t.id, t.path AS p FROM territories t JOIN _t x ON x.id = t.id AND x.code = :'parent_code'
   UNION ALL
-  SELECT c.id, tree.p || '.' || c.id::text
+  SELECT c.id, tree.p || '.' || regexp_replace(c.path, '^.*\.', '')
   FROM territories c JOIN tree ON c.parent_id = tree.id
   WHERE c.deleted_at IS NULL AND c.company_id = :'company_id')
 UPDATE territories t SET path = tree.p FROM tree WHERE t.id = tree.id AND t.path <> tree.p;
@@ -157,9 +168,20 @@ BEGIN
   THEN RAISE EXCEPTION 'post-check: orphan territory (parent missing or deleted)'; END IF;
   IF EXISTS (SELECT 1 FROM territories c JOIN territories p ON p.id = c.parent_id
              JOIN _t x ON x.id IN (c.id, c.parent_id)
-             WHERE c.path <> p.path || '.' || c.id::text)
+             WHERE c.path <> p.path || '.' || regexp_replace(c.path, '^.*\.', ''))
   THEN RAISE EXCEPTION 'post-check: path does not match parent'; END IF;
-  -- Levels: Burdwan area under a region; both children headquarter.
+  -- Segments may repeat across the tree, but two live territories may never share a path.
+  IF EXISTS (SELECT path FROM territories WHERE company_id = current_setting('app.current_company_id')::uuid
+               AND deleted_at IS NULL GROUP BY path HAVING count(*) > 1)
+  THEN RAISE EXCEPTION 'post-check: two territories share a path'; END IF;
+  -- Levels: Burdwan is area, strictly below its parent (national/zone/region) and above both
+  -- children, which stay headquarter.
+  IF EXISTS (SELECT 1 FROM territories t JOIN _t x ON x.id = t.id AND x.kind = 'parent'
+             JOIN territories p ON p.id = t.parent_id
+             WHERE t.level <> 'area'
+                OR array_position(enum_range(NULL::territory_level), p.level)
+                   >= array_position(enum_range(NULL::territory_level), 'area'::territory_level))
+  THEN RAISE EXCEPTION 'post-check: Burdwan is not an area below a national/zone/region parent'; END IF;
   IF EXISTS (SELECT 1 FROM territories t JOIN _t x ON x.id = t.id
              WHERE x.kind = 'child' AND t.level <> 'headquarter')
   THEN RAISE EXCEPTION 'post-check: a child is no longer headquarter level'; END IF;
@@ -186,17 +208,20 @@ COMMIT;
 -- UPDATE territories t SET level = (a.before->>'level')::territory_level
 -- FROM audit_log a WHERE a.action = 'territory.level_changed' AND a.entity_id = t.id::text
 --   AND a.after->>'fix' = '2026-10-27-burdwan-reparent';
--- WITH RECURSIVE tree AS (
---   SELECT id, id::text AS p FROM territories WHERE parent_id IS NULL AND company_id = :'company_id'
+-- WITH RECURSIVE tree AS (   -- roots keep their path; every node keeps its own last segment
+--   SELECT id, path AS p FROM territories WHERE parent_id IS NULL AND company_id = :'company_id'
+--     AND deleted_at IS NULL
 --   UNION ALL
---   SELECT c.id, tree.p || '.' || c.id::text FROM territories c JOIN tree ON c.parent_id = tree.id)
+--   SELECT c.id, tree.p || '.' || regexp_replace(c.path, '^.*\.', '')
+--   FROM territories c JOIN tree ON c.parent_id = tree.id
+--   WHERE c.company_id = :'company_id' AND c.deleted_at IS NULL)
 -- UPDATE territories t SET path = tree.p FROM tree WHERE t.id = tree.id AND t.path <> tree.p;
 -- INSERT INTO audit_log (company_id, actor_user_id, action, entity_type, entity_id)
 -- SELECT company_id, NULL, action || '_rollback', 'territory', entity_id FROM audit_log
 -- WHERE after->>'fix' = '2026-10-27-burdwan-reparent';
 -- COMMIT;
 --
--- OPTIONAL (commented): re-home Burdwan under WB first, if it is not directly under the region.
+-- OPTIONAL (commented): re-home Burdwan under WB first, if its parent is not above area level.
 -- UPDATE territories SET parent_id = (SELECT id FROM territories WHERE code = 'WB' AND company_id = :'company_id')
 -- WHERE code = 'HQ-BURDWAN' AND company_id = :'company_id';   -- then re-run this script
 --

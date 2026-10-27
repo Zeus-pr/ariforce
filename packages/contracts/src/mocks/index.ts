@@ -28,6 +28,7 @@ import { kpiReport, productKpiReport } from './kpis';
 import { listNotifications, seedNotifications } from './notifications';
 import { mockEmployees, teamHandlers, teamProfileHandlers } from './team';
 import { signupHandlers } from './signup';
+import { passwordResetHandlers } from './password-reset';
 import { allowanceHandlers } from './allowances';
 import { sfcHandlers } from './sfc';
 import { expenseHandlers } from './expenses';
@@ -405,6 +406,7 @@ export function createHandlers(baseUrl = '') {
     ...mastersGuardHandlers(baseUrl, mockPrincipal),
     ...productPriceHandlers(baseUrl, mockPrincipal),
     ...signupHandlers(baseUrl, mockPrincipal),
+    ...passwordResetHandlers(baseUrl),
     ...expenseHandlers(baseUrl, mockPrincipal),
     ...allowanceHandlers(baseUrl, mockPrincipal),
     ...sfcHandlers(baseUrl, mockPrincipal),
@@ -1386,3 +1388,4 @@ function fieldHandlers(baseUrl: string) {
     ),
   ];
 }
+export { MOCK_PASSWORD_RESET_CODE } from './password-reset';

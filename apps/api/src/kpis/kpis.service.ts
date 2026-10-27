@@ -160,7 +160,9 @@ export class KpisService {
       case 'byTerritory': {
         const scope = p.scopePaths
           ? sql`and (${sql.join(
-              p.scopePaths.map((s) => sql`(t.path = ${s} or t.path like ${s} || '.%')`),
+              p.scopePaths.map(
+                (s) => sql`(t.path = ${s} or starts_with(t.path, ${s}::text || '.'))`,
+              ),
               sql` or `,
             )})`
           : sql``;
@@ -193,7 +195,7 @@ export class KpisService {
                   await rows<{ user_id: string }>(
                     tx,
                     sql`select distinct ut.user_id from user_territories ut join territories x on x.id = ut.territory_id
-                        where (x.path = ${t.path} or x.path like ${t.path} || '.%') and ut.user_id = any(${arr(ids)})`,
+                        where (x.path = ${t.path} or starts_with(x.path, ${t.path}::text || '.')) and ut.user_id = any(${arr(ids)})`,
                   )
                 ).map((r) => r.user_id)
               : [],
@@ -253,7 +255,7 @@ export class KpisService {
         ? sql`true`
         : g.paths.length
           ? sql`(${sql.join(
-              g.paths.map((s) => sql`(t.path = ${s} or t.path like ${s} || '.%')`),
+              g.paths.map((s) => sql`(t.path = ${s} or starts_with(t.path, ${s}::text || '.'))`),
               sql` or `,
             )})`
           : sql`false`;

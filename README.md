@@ -26,4 +26,4 @@ pnpm dev          # web on :3000, api on :4000
 pnpm lint && pnpm typecheck && pnpm test && pnpm build
 ```
 
-Full setup (Postgres, migrations, seed): [`docs/SETUP.md`](docs/SETUP.md). Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Full setup (Postgres, migrations, seed): [`docs/SETUP.md`](docs/SETUP.md). Forgot password and invite email: [`docs/AUTH-PASSWORD-RESET.md`](docs/AUTH-PASSWORD-RESET.md). Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md).

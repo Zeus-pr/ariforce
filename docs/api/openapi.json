@@ -12150,6 +12150,126 @@
         }
       }
     },
+    "/v1/auth/password/forgot": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "operationId": "forgotPassword",
+        "summary": "Public. Emails a 6-digit reset code (valid 10 minutes, 3 tries) to an ACTIVE account. Always answers 200 with the same message, whether or not the email has an account; suspended, pending, rejected, retired and never-signed-in (invited) accounts get no email.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordForgot"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Accepted (generic)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordForgotAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (email)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED: 3 per email per hour and 10 per IP per hour (Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/password/reset": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "operationId": "resetPassword",
+        "summary": "Public. Sets a new password (min 12) with the emailed code and signs out every device; sign in again afterwards. Unknown or ineligible accounts get the same error as a wrong code.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordReset"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password changed; all sessions revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordResetDone"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "PASSWORD_RESET_CODE_INVALID (wrong code, no code requested, or no eligible account) or PASSWORD_RESET_CODE_EXPIRED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "PASSWORD_RESET_TOO_MANY_ATTEMPTS: 3 wrong codes already used up this code (even the right code is refused); request a new one",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (email, 6-digit code, password 12-128)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED: 20 per IP per hour (Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/auth/sign-up-request": {
       "post": {
         "tags": [
@@ -17213,6 +17333,45 @@
           "paymentRef"
         ]
       },
+      "PasswordForgot": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email",
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "PasswordReset": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email",
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^\\d{6}$"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "email",
+          "code",
+          "password"
+        ]
+      },
       "SignupRequestCreate": {
         "type": "object",
         "properties": {
@@ -18025,7 +18184,7 @@
           },
           "path": {
             "type": "string",
-            "description": "Materialised path of ids, root first, dot-separated"
+            "description": "Materialised path, root first, dot-separated; segments are codes (production) or ids (seed)"
           },
           "centroid": {
             "anyOf": [
@@ -25942,6 +26101,37 @@
           "byCategory",
           "userName",
           "status"
+        ],
+        "additionalProperties": false
+      },
+      "PasswordForgotAccepted": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "message": {
+            "type": "string",
+            "description": "Always the same text, whether or not the email has an account"
+          }
+        },
+        "required": [
+          "ok",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "PasswordResetDone": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "ok"
         ],
         "additionalProperties": false
       },

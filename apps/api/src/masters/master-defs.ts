@@ -105,7 +105,7 @@ const locationToRow = (b: Row) => {
 export const inSubtree = (col: AnyPgColumn, id: string) =>
   exists(
     sql`(select 1 from ${territories} t0 join ${territories} t1 on t1.id = ${col}
-      where t0.id = ${id} and (t1.path = t0.path or t1.path like t0.path || '.%'))`,
+      where t0.id = ${id} and (t1.path = t0.path or starts_with(t1.path, t0.path || '.')))`,
   );
 
 const outlet = (

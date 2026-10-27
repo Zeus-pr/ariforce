@@ -1904,6 +1904,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/auth/password/forgot': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Public. Emails a 6-digit reset code (valid 10 minutes, 3 tries) to an ACTIVE account. Always answers 200 with the same message, whether or not the email has an account; suspended, pending, rejected, retired and never-signed-in (invited) accounts get no email. */
+    post: operations['forgotPassword'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/auth/password/reset': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Public. Sets a new password (min 12) with the emailed code and signs out every device; sign in again afterwards. Unknown or ineligible accounts get the same error as a wrong code. */
+    post: operations['resetPassword'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/auth/sign-up-request': {
     parameters: {
       query?: never;
@@ -3134,6 +3168,16 @@ export interface components {
     ExpensePay: {
       paymentRef: string;
     };
+    PasswordForgot: {
+      /** Format: email */
+      email: string;
+    };
+    PasswordReset: {
+      /** Format: email */
+      email: string;
+      code: string;
+      password: string;
+    };
     SignupRequestCreate: {
       name: string;
       /** Format: email */
@@ -3411,7 +3455,7 @@ export interface components {
       level: components['schemas']['TerritoryLevel'];
       code: string;
       name: string;
-      /** @description Materialised path of ids, root first, dot-separated */
+      /** @description Materialised path, root first, dot-separated; segments are codes (production) or ids (seed) */
       path: string;
       centroid: {
         lat: number;
@@ -5757,6 +5801,16 @@ export interface components {
       };
       userName: string;
       status: components['schemas']['ExpenseStatus'];
+    };
+    PasswordForgotAccepted: {
+      /** @constant */
+      ok: true;
+      /** @description Always the same text, whether or not the email has an account */
+      message: string;
+    };
+    PasswordResetDone: {
+      /** @constant */
+      ok: true;
     };
     SignupRequestAccepted: {
       /** @constant */
@@ -13985,6 +14039,108 @@ export interface operations {
       };
       /** @description Signed in but not allowed (role, hierarchy or tenant) */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  forgotPassword: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['PasswordForgot'];
+      };
+    };
+    responses: {
+      /** @description Accepted (generic) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PasswordForgotAccepted'];
+        };
+      };
+      /** @description Validation failed (email) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description RATE_LIMITED: 3 per email per hour and 10 per IP per hour (Retry-After) */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  resetPassword: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['PasswordReset'];
+      };
+    };
+    responses: {
+      /** @description Password changed; all sessions revoked */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PasswordResetDone'];
+        };
+      };
+      /** @description PASSWORD_RESET_CODE_INVALID (wrong code, no code requested, or no eligible account) or PASSWORD_RESET_CODE_EXPIRED */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description PASSWORD_RESET_TOO_MANY_ATTEMPTS: 3 wrong codes already used up this code (even the right code is refused); request a new one */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed (email, 6-digit code, password 12-128) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description RATE_LIMITED: 20 per IP per hour (Retry-After) */
+      429: {
         headers: {
           [name: string]: unknown;
         };
