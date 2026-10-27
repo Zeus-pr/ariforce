@@ -8,8 +8,10 @@ if (existsSync(envFile)) process.loadEnvFile(envFile);
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { configureApp } from './bootstrap';
+import { validateEnv } from './env';
 
 async function main() {
+  validateEnv(); // fail fast in production (#80); names only in the error
   const app = configureApp(await NestFactory.create(AppModule, { bodyParser: false }));
   const port = Number(process.env.PORT ?? 4000);
   await app.listen(port);

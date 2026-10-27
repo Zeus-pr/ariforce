@@ -152,8 +152,11 @@ describe.skipIf(!OWNER || !APP)('tour plans + approvals (real API)', () => {
     // Weekly off is the company's leave_settings.weekly_off_days.
     const owner = new Pool({ connectionString: OWNER });
     try {
+      // The settings row is created lazily; upsert so this does not depend on test order.
       await owner.query(
-        `update leave_settings set weekly_off_days = '{0,6}' where company_id = (select id from companies where slug = 'demo')`,
+        `insert into leave_settings (id, company_id, weekly_off_days)
+         select gen_random_uuid(), id, '{0,6}' from companies where slug = 'demo'
+         on conflict (company_id) do update set weekly_off_days = '{0,6}'`,
       );
       const c2 = await http().get('/v1/tour-plans/2027-05/calendar').set(as('director'));
       expect(c2.body.weeklyOffDays).toEqual([0, 6]);
