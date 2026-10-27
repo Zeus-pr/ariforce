@@ -13,6 +13,7 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import {
+  AllowanceDraftRequest,
   ExpenseAttachmentCreate,
   ExpenseClaimCreate,
   ExpenseClaimListQuery,
@@ -107,6 +108,17 @@ export class ExpenseClaimsController {
     @Body(new ZodPipe(ExpenseAttachmentCreate)) b: z.infer<typeof ExpenseAttachmentCreate>,
   ) {
     return this.svc.createAttachment(p, id(i), id(l, 'Expense line'), b);
+  }
+
+  @Post(':id/allowances')
+  @HttpCode(200)
+  @RequirePermissions('expenses:write')
+  draftAllowances(
+    @CurrentPrincipal() p: Principal,
+    @Param('id') claimId: string,
+    @Body(new ZodPipe(AllowanceDraftRequest)) b: z.infer<typeof AllowanceDraftRequest>,
+  ) {
+    return this.svc.draftAllowances(p, id(claimId), b);
   }
 
   @Post(':id/submit')

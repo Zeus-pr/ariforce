@@ -26,6 +26,7 @@ import { kpiReport, productKpiReport } from './kpis';
 import { listNotifications, seedNotifications } from './notifications';
 import { teamHandlers, teamProfileHandlers } from './team';
 import { signupHandlers } from './signup';
+import { allowanceHandlers } from './allowances';
 import { expenseHandlers } from './expenses';
 import { exceptionHandlers } from './exceptions';
 import { productPriceHandlers } from './product-prices';
@@ -378,6 +379,7 @@ export function createHandlers(baseUrl = '') {
     ...productPriceHandlers(baseUrl, mockPrincipal),
     ...signupHandlers(baseUrl, mockPrincipal),
     ...expenseHandlers(baseUrl, mockPrincipal),
+    ...allowanceHandlers(baseUrl, mockPrincipal),
     ...leaveHandlers(baseUrl, mockPrincipal),
     ...exceptionHandlers(baseUrl, mockPrincipal),
     http.get(`${baseUrl}/v1/health`, () => HttpResponse.json({ status: 'ok', warnings: [] })),

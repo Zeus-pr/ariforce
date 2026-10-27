@@ -4,6 +4,7 @@ import {
   check,
   date,
   index,
+  jsonb,
   numeric,
   pgTable,
   text,
@@ -12,6 +13,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { companyId, pk, syncCols } from './_common';
+import { allowancePlaces } from './allowances';
 import { dcrs, tourPlans } from './activity';
 import { companies, users } from './tenancy';
 
@@ -58,16 +60,26 @@ export const expenseLines = pgTable(
       .references(() => expenseClaims.id),
     date: date('date').notNull(),
     category: text('category', {
-      enum: ['travel', 'hotel', 'food', 'mileage', 'other'],
+      enum: ['travel', 'hotel', 'food', 'mileage', 'allowance', 'other'],
     }).notNull(),
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
     notes: text('notes'),
     mileageKm: numeric('mileage_km', { precision: 8, scale: 2 }),
     dcrId: uuid('dcr_id').references(() => dcrs.id),
     tourPlanId: uuid('tour_plan_id').references(() => tourPlans.id),
+    /** manual = entered by the rep; auto = drafted by TA/DA (#39), replaced on re-run. */
+    source: text('source', { enum: ['manual', 'auto'] })
+      .notNull()
+      .default('manual'),
+    /** TA/DA snapshot: band, rate id, place id, km, per-km rate. */
+    calc: jsonb('calc'),
+    allowancePlaceId: uuid('allowance_place_id').references(() => allowancePlaces.id),
     ...syncCols(),
   },
-  (t) => [index('expense_lines_claim_idx').on(t.claimId)],
+  (t) => [
+    index('expense_lines_claim_idx').on(t.claimId),
+    check('expense_lines_source_ck', sql`${t.source} in ('manual','auto')`),
+  ],
 );
 
 /** Receipt in R2 (purpose expense_receipt). file_key holds only ids, never names or PII. */

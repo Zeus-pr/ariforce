@@ -80,3 +80,4 @@ Hardening from the Cutly audit (`docs/CUTLY-LESSONS-CHECKLIST.md`). One section 
 - `/docs` (Scalar reference) and `/openapi.json` return 404 in production. In dev they are served; `/docs` skips CSP because the reference UI loads from a CDN.
 - The spec is generated from `packages/contracts` (`pnpm -F @ariforce/contracts openapi` / `openapi:check`), which never needs the HTTP route.
 - CORS is unchanged and strict: only origins listed in `WEB_ORIGIN` are reflected, with credentials; other origins get no `Access-Control-Allow-Origin`.
+- CORS exposes `Retry-After` (so the web app can back off on 429) and `Content-Disposition` (export file names) via `Access-Control-Expose-Headers`; other origins still get no `Access-Control-Allow-Origin`, so they can read nothing.

@@ -1596,6 +1596,95 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/allowance-rates': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** expenses:read, finance:read or settings:write */
+    get: operations['listAllowanceRates'];
+    put?: never;
+    /** settings:write */
+    post: operations['createAllowanceRate'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/allowance-rates/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** settings:write; optimistic version */
+    put: operations['updateAllowanceRate'];
+    post?: never;
+    /** settings:write; soft delete (existing claim lines keep their amounts) */
+    delete: operations['deleteAllowanceRate'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/allowance-places': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** expenses:read, finance:read or settings:write */
+    get: operations['listAllowancePlaces'];
+    put?: never;
+    /** settings:write */
+    post: operations['createAllowancePlace'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/allowance-places/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** settings:write; optimistic version */
+    put: operations['updateAllowancePlace'];
+    post?: never;
+    /** settings:write; soft delete (existing claim lines keep their amounts) */
+    delete: operations['deleteAllowancePlace'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-claims/{id}/allowances': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Owner, draft or rejected claim: compute DA/TA per DCR day of the month from the rate card and fare chart and replace the auto lines (dryRun: preview only). Manual lines are never touched. */
+    post: operations['draftExpenseAllowances'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/expense-claims/{id}/submit': {
     parameters: {
       query?: never;
@@ -2729,7 +2818,7 @@ export interface components {
       tourPlanId: string | null;
     };
     /** @enum {string} */
-    ExpenseCategory: 'travel' | 'hotel' | 'food' | 'mileage' | 'other';
+    ExpenseCategory: 'travel' | 'hotel' | 'food' | 'mileage' | 'allowance' | 'other';
     ExpenseLineUpdate: {
       line: components['schemas']['ExpenseLineInput'];
       version: number;
@@ -2748,6 +2837,92 @@ export interface components {
         | 'application/vnd.ms-excel'
         | 'text/csv';
       sizeBytes: number;
+    };
+    /**
+     * @description From work_types.allowance_band (work types with band none get no TA/DA)
+     * @enum {string}
+     */
+    AllowanceBand: 'hq' | 'ex_hq' | 'outstation';
+    AllowanceRateInput: {
+      band: components['schemas']['AllowanceBand'];
+      /**
+       * @description null = all roles; a role-specific row wins over the all-roles row
+       * @default null
+       */
+      roleKey: components['schemas']['RoleKey'] | null;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      effectiveFrom: string;
+      /** @description Daily allowance per day in this band (INR) */
+      daAmount: number;
+      /** @description TA per km (ex-HQ / outstation), INR */
+      taPerKm: number;
+      /** @description Flat TA per day (e.g. HQ local conveyance), INR */
+      taFixed: number;
+    };
+    AllowanceRateUpdate: {
+      band: components['schemas']['AllowanceBand'];
+      /**
+       * @description null = all roles; a role-specific row wins over the all-roles row
+       * @default null
+       */
+      roleKey: components['schemas']['RoleKey'] | null;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      effectiveFrom: string;
+      /** @description Daily allowance per day in this band (INR) */
+      daAmount: number;
+      /** @description TA per km (ex-HQ / outstation), INR */
+      taPerKm: number;
+      /** @description Flat TA per day (e.g. HQ local conveyance), INR */
+      taFixed: number;
+      version: number;
+    };
+    /** @enum {string} */
+    AllowancePlaceBand: 'ex_hq' | 'outstation';
+    AllowancePlaceInput: {
+      /**
+       * Format: uuid
+       * @description A headquarter-level territory
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      /** @description Town / place name */
+      name: string;
+      band: components['schemas']['AllowancePlaceBand'];
+      oneWayKm: number;
+      /** @default true */
+      active: boolean;
+    };
+    AllowancePlaceUpdate: {
+      /**
+       * Format: uuid
+       * @description A headquarter-level territory
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      /** @description Town / place name */
+      name: string;
+      band: components['schemas']['AllowancePlaceBand'];
+      oneWayKm: number;
+      /** @default true */
+      active: boolean;
+      version: number;
+    };
+    AllowanceDraftRequest: {
+      /** @default false */
+      dryRun: boolean;
+      /**
+       * @description Fare-chart place per ex-HQ/outstation date: {"2026-10-05": placeId}
+       * @default {}
+       */
+      places: {
+        [key: string]: string;
+      };
     };
     ExpenseDecision: {
       /** @enum {string} */
@@ -4890,6 +5065,13 @@ export interface components {
       mileageKm: number | null;
       dcrId: string | null;
       tourPlanId: string | null;
+      /**
+       * @description auto = drafted by TA/DA (#39) and replaced on re-run; editing or attaching a receipt makes it manual
+       * @enum {string}
+       */
+      source: 'manual' | 'auto';
+      /** @description Fare-chart place used for TA (#39) */
+      allowancePlaceId: string | null;
       attachments: components['schemas']['ExpenseAttachment'][];
       version: number;
     };
@@ -4951,6 +5133,97 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       expiresAt: string;
+    };
+    AllowanceRateList: {
+      items: components['schemas']['AllowanceRate'][];
+    };
+    AllowanceRate: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      band: components['schemas']['AllowanceBand'];
+      roleKey: components['schemas']['RoleKey'] | null;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      effectiveFrom: string;
+      daAmount: number;
+      taPerKm: number;
+      taFixed: number;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      version: number;
+    };
+    AllowancePlaceList: {
+      items: components['schemas']['AllowancePlace'][];
+    };
+    AllowancePlace: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      hqName: string;
+      name: string;
+      band: components['schemas']['AllowancePlaceBand'];
+      oneWayKm: number;
+      active: boolean;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      version: number;
+    };
+    AllowanceDraftResult: {
+      dryRun: boolean;
+      days: components['schemas']['AllowanceDay'][];
+      totals: {
+        da: number;
+        ta: number;
+        km: number;
+        lines: number;
+      };
+      /** @description The updated claim; null on dryRun */
+      claim: components['schemas']['ExpenseClaim'] | null;
+    };
+    AllowanceDay: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      dcrId: string;
+      workTypeCode: string;
+      /** @description null = work type pays no TA/DA */
+      band: components['schemas']['AllowanceBand'] | null;
+      rateId: string | null;
+      placeId: string | null;
+      placeName: string | null;
+      /** @description Round trip (2 x one-way) */
+      km: number | null;
+      da: number;
+      ta: number;
+      issues: ('no_rate' | 'place_required' | 'manual_line_exists' | 'dcr_not_submitted')[];
     };
     ExpenseReconciliation: {
       /**
@@ -11800,6 +12073,522 @@ export interface operations {
       };
       /** @description UPLOAD_NOT_CONFIRMED */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listAllowanceRates: {
+    parameters: {
+      query?: {
+        band?: components['schemas']['AllowanceBand'];
+        roleKey?: components['schemas']['RoleKey'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllowanceRateList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createAllowanceRate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['AllowanceRateInput'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllowanceRate'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs settings:write) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description DUPLICATE_RATE (same band, role and effectiveFrom) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  updateAllowanceRate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['AllowanceRateUpdate'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllowanceRate'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs settings:write) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT or DUPLICATE_RATE (same band, role and effectiveFrom) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteAllowanceRate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs settings:write) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listAllowancePlaces: {
+    parameters: {
+      query?: {
+        hqTerritoryId?: string;
+        band?: components['schemas']['AllowancePlaceBand'];
+        q?: string;
+        includeInactive?: 'true' | 'false';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllowancePlaceList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createAllowancePlace: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['AllowancePlaceInput'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllowancePlace'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs settings:write) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description DUPLICATE_PLACE (same HQ and name) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION or NOT_HQ_TERRITORY */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  updateAllowancePlace: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['AllowancePlaceUpdate'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllowancePlace'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs settings:write) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT or DUPLICATE_PLACE (same HQ and name) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION or NOT_HQ_TERRITORY */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteAllowancePlace: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs settings:write) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  draftExpenseAllowances: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['AllowanceDraftRequest'];
+      };
+    };
+    responses: {
+      /** @description Per-day breakdown, totals and the updated claim */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllowanceDraftResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not the owner */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description EXPENSE_NOT_EDITABLE */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION or PLACE_NOT_USABLE */
+      422: {
         headers: {
           [name: string]: unknown;
         };

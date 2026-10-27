@@ -45,6 +45,8 @@ draft --submit--> submitted --approve (last step)--> approved --pay--> paid
 
 Errors use the standard envelope `{ error: { code, message, details? } }` (see API-CONVENTIONS.md).
 
+**TA/DA auto-calculation (#39):** `POST /expense-claims/{id}/allowances` (owner, draft/rejected claim, `expenses:write`) drafts DA/TA lines (`source: 'auto'`, category `allowance`, `mileage` or `travel`) from submitted DCR days, the rate card and the fare chart; re-running replaces only auto lines, and editing a line or attaching a receipt makes it `manual`. Rate card and fare chart endpoints, rules and decisions: docs/TADA.md.
+
 ## Receipt upload flow
 
 1. `POST /expense-claims/{id}/lines/{lineId}/attachments` with `{ fileName, contentType, sizeBytes }`.
