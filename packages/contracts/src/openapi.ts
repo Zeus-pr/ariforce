@@ -94,6 +94,14 @@ import {
   AllowanceRateQuery,
   AllowanceRateUpdate,
 } from './schemas/allowances';
+import {
+  SfcEmployeeList,
+  SfcEmployeeQuery,
+  SfcHqList,
+  SfcSettings,
+  SfcTable,
+  SfcTablePut,
+} from './schemas/sfc';
 import { Me, SessionInfo, SignInEmailBody } from './schemas/auth';
 import { RoleList } from './schemas/roles';
 import { Health } from './schemas/health';
@@ -1434,6 +1442,7 @@ function buildDocument(): OpenApiDocument {
         get: op({
           tags: ['TA/DA'],
           operationId: 'listAllowanceRates',
+          deprecated: true,
           summary: 'expenses:read, finance:read or settings:write',
           requestParams: { query: AllowanceRateQuery },
           responses: {
@@ -1444,6 +1453,7 @@ function buildDocument(): OpenApiDocument {
         post: op({
           tags: ['TA/DA'],
           operationId: 'createAllowanceRate',
+          deprecated: true,
           summary: 'settings:write',
           requestBody: json(AllowanceRateInput),
           responses: {
@@ -1458,6 +1468,7 @@ function buildDocument(): OpenApiDocument {
         put: op({
           tags: ['TA/DA'],
           operationId: 'updateAllowanceRate',
+          deprecated: true,
           summary: 'settings:write; optimistic version',
           requestParams: { path: IdParam },
           requestBody: json(AllowanceRateUpdate),
@@ -1472,6 +1483,7 @@ function buildDocument(): OpenApiDocument {
         delete: op({
           tags: ['TA/DA'],
           operationId: 'deleteAllowanceRate',
+          deprecated: true,
           summary: 'settings:write; soft delete (existing claim lines keep their amounts)',
           requestParams: { path: IdParam },
           responses: {
@@ -1485,6 +1497,7 @@ function buildDocument(): OpenApiDocument {
         get: op({
           tags: ['TA/DA'],
           operationId: 'listAllowancePlaces',
+          deprecated: true,
           summary: 'expenses:read, finance:read or settings:write',
           requestParams: { query: AllowancePlaceQuery },
           responses: {
@@ -1495,6 +1508,7 @@ function buildDocument(): OpenApiDocument {
         post: op({
           tags: ['TA/DA'],
           operationId: 'createAllowancePlace',
+          deprecated: true,
           summary: 'settings:write',
           requestBody: json(AllowancePlaceInput),
           responses: {
@@ -1509,6 +1523,7 @@ function buildDocument(): OpenApiDocument {
         put: op({
           tags: ['TA/DA'],
           operationId: 'updateAllowancePlace',
+          deprecated: true,
           summary: 'settings:write; optimistic version',
           requestParams: { path: IdParam },
           requestBody: json(AllowancePlaceUpdate),
@@ -1523,12 +1538,86 @@ function buildDocument(): OpenApiDocument {
         delete: op({
           tags: ['TA/DA'],
           operationId: 'deleteAllowancePlace',
+          deprecated: true,
           summary: 'settings:write; soft delete (existing claim lines keep their amounts)',
           requestParams: { path: IdParam },
           responses: {
             '204': { description: 'Deleted' },
             '403': err('FORBIDDEN (needs settings:write)'),
             '404': err('Not found'),
+          },
+        }),
+      },
+      '/v1/sfc/settings': {
+        get: op({
+          tags: ['SFC'],
+          operationId: 'getSfcSettings',
+          summary: 'sfc:read. Company TA rate per km used for SFC amounts (default 2.95)',
+          responses: {
+            '200': { description: 'OK', ...json(SfcSettings) },
+            '403': err('FORBIDDEN'),
+          },
+        }),
+        put: op({
+          tags: ['SFC'],
+          operationId: 'putSfcSettings',
+          summary:
+            'settings:write; optimistic version. Existing routes keep their stored amounts until next save',
+          requestBody: json(SfcSettings),
+          responses: {
+            '200': { description: 'Saved', ...json(SfcSettings) },
+            '403': err('FORBIDDEN'),
+            '409': err('VERSION_CONFLICT'),
+            '422': err('VALIDATION'),
+          },
+        }),
+      },
+      '/v1/sfc/hqs': {
+        get: op({
+          tags: ['SFC'],
+          operationId: 'listSfcHqs',
+          summary: 'sfc:read. Headquarter-level territories in the caller scope (subtree included)',
+          responses: { '200': { description: 'OK', ...json(SfcHqList) }, '403': err('FORBIDDEN') },
+        }),
+      },
+      '/v1/sfc/employees': {
+        get: op({
+          tags: ['SFC'],
+          operationId: 'listSfcEmployees',
+          summary:
+            'sfc:read. Visible sales-hierarchy employees, optionally under a territory (subtree)',
+          requestParams: { query: SfcEmployeeQuery },
+          responses: {
+            '200': { description: 'OK', ...json(SfcEmployeeList) },
+            '403': err('FORBIDDEN'),
+          },
+        }),
+      },
+      '/v1/sfc/employees/{userId}/routes': {
+        get: op({
+          tags: ['SFC'],
+          operationId: 'getSfcTable',
+          summary: 'sfc:read. One employee SFC table with its etag',
+          requestParams: { path: z.object({ userId: Id }) },
+          responses: {
+            '200': { description: 'OK', ...json(SfcTable) },
+            '403': err('FORBIDDEN'),
+            '404': err('NOT_FOUND (not visible or not in the sales hierarchy)'),
+          },
+        }),
+        put: op({
+          tags: ['SFC'],
+          operationId: 'putSfcTable',
+          summary:
+            'sfc:write over this employee (never your own unless system_admin). Replaces the whole table; amounts computed by the server; audited (sfc.routes_saved)',
+          requestParams: { path: z.object({ userId: Id }) },
+          requestBody: json(SfcTablePut),
+          responses: {
+            '200': { description: 'Saved', ...json(SfcTable) },
+            '403': err('FORBIDDEN'),
+            '404': err('NOT_FOUND'),
+            '409': err('VERSION_CONFLICT (etag changed; details.etag is current)'),
+            '422': err('VALIDATION, SFC_HQ_NOT_ASSIGNED or SFC_ROUTE_NOT_FOUND'),
           },
         }),
       },

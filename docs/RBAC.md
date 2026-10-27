@@ -58,6 +58,8 @@ Territory levels are a separate, geographic hierarchy (`national > zone > region
 | `finance:write` (mark expense claims paid)                                               |              |     |        |          |              |                   |     ✓      |
 | `leave:read`, `leave:write` (own leave)                                                  |      ✓       |  ✓  |   ✓    |    ✓     |              |                   |            |
 | `leave:approve` (team leave, grants, team calendar)                                      |              |  ✓  |   ✓    |    ✓     |              |                   |            |
+| `sfc:read` (SFC: own for BM, reporting line for managers, all for Director/System Admin) |      ✓       |  ✓  |   ✓    |    ✓     |      ✓       |                   |            |
+| `sfc:write` (edit SFC of people below; System Admin anyone)                              |              |  ✓  |   ✓    |    ✓     |      ✓       |                   |            |
 
 Field-added doctors are `pending` unless created by a director or system admin; a pending doctor opens an approval request (`subjectType: 'doctor'`) to the creator's reporting manager. `POST /v1/doctors/duplicate-check` needs only `masters:read`. Details: docs/DOCTOR-APPROVAL.md (#26).
 
@@ -72,6 +74,10 @@ Field-added doctors are `pending` unless created by a director or system admin; 
 ### Team member profile (#75)
 
 `/v1/team/members/{userId}/*`: own profile for any hierarchy role (BM included); others need ABM+ and `reports:read` and the person strictly below in the viewer's subtree (Director: everyone). system_admin / distribution_head / accountant: 403. Out of scope: 404. Expenses in performance only for own profile or `expenses:approve` / `finance:read`. No new permission. Details: docs/TEAM-PROFILE.md.
+
+### SFC permissions (migration 0039)
+
+`packages/db/migrations/0039_role_permissions_sfc.sql` re-syncs every role after `sfc:read` and `sfc:write` were added; `ROLE_PERMISSIONS_MIGRATION` now names 0039. Details: docs/SFC.md.
 
 ### Leave permissions (migration 0025, #51)
 

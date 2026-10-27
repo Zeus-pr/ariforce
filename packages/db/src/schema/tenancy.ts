@@ -5,6 +5,7 @@ import {
   geometry,
   index,
   integer,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -35,6 +36,8 @@ export const companies = pgTable('companies', {
   /** true = reject out-of-fence visits; false = allow and flag. */
   geofenceBlockOutOfFence: boolean('geofence_block_out_of_fence').notNull().default(false),
   geofenceBlockMock: boolean('geofence_block_mock').notNull().default(true),
+  /** SFC (Standard Fare Chart) TA rate per km, INR; amounts are computed on write. */
+  sfcRatePerKm: numeric('sfc_rate_per_km', { precision: 8, scale: 2 }).notNull().default('2.95'),
   ...syncCols(),
 });
 

@@ -27,6 +27,20 @@ response enums, or changed server behaviour for the same request).
 | Health (`a72e145`)                                             | `HealthWarning` dropped `companyId` / `companySlug` and became aggregate (`NO_WORK_TYPES` with `count`). Only clients of `0c97952` are affected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | TP submit (`36c29f5`, superseded by `0bb7b40`)                 | `POST /v1/tour-plans/{month}/submit` 422 rule changed: weekly offs and past days of the current month (IST) are no longer required                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
+## SFC routes (`feat/sfc-routes`)
+
+**Additive:**
+
+- New endpoints:
+  - `GET`/`PUT /v1/sfc/settings`
+  - `GET /v1/sfc/hqs`
+  - `GET /v1/sfc/employees`
+  - `GET`/`PUT /v1/sfc/employees/{userId}/routes`
+- New schemas: `SfcSettings`, `SfcHq(List)`, `SfcEmployee(List)`, `SfcEmployeeQuery`, `SfcRoute`, `SfcRouteInput`, `SfcTable`, `SfcTablePut`, `SfcTravelMode`.
+- New permissions: `sfc:read` and `sfc:write`. The `Permission` enum is widened (response enum).
+- New error codes: 422 `SFC_HQ_NOT_ASSIGNED`, 422 `SFC_ROUTE_NOT_FOUND`, and 409 `VERSION_CONFLICT` (etag).
+- **Deprecated (still served):** `/v1/allowance-rates*` and `/v1/allowance-places*` (`deprecated: true` in OpenAPI). The web "TA/DA rates" page is replaced by an SFC page. The claims endpoints are unchanged.
+
 ## System admin People page (list + edit)
 
 Additive (new optional fields / params):
