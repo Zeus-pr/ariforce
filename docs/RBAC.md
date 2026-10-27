@@ -170,6 +170,7 @@ The server enforces every rule in `apps/api/src/team/team.service.ts`, and the m
 
 - Anyone can call `POST /v1/auth/sign-up-request` (company `arighna`, set by `SIGNUP_COMPANY_SLUG`). It creates the login and a `users` row with status `pending`. If the email matches one of the loaded employees that has no login yet, it links to that row. The requested role, territory and manager are stored only in `signup_requests`. No role is granted at this point.
 - `pending` and `rejected` users cannot sign in (403 `ACCOUNT_PENDING_APPROVAL` / `ACCOUNT_REJECTED`). Any existing session or bearer token gets the same 403 from every data endpoint.
+- Deactivated (`suspended`) users cannot sign in (403 `ACCOUNT_SUSPENDED`); deactivation and role changes revoke all their sessions (401 on old cookies/tokens). See `docs/SECURITY.md`.
 - Who decides:
   - A **system admin** sees every request and can grant any role, including functional roles.
   - **ABM and above** see a request only for a hierarchy role strictly below their own, and then only if:

@@ -15,6 +15,7 @@ export const SIGNUP_PASSWORD_MIN = 12;
 export const AUTH_STATE_CODES = {
   pending: 'ACCOUNT_PENDING_APPROVAL',
   rejected: 'ACCOUNT_REJECTED',
+  suspended: 'ACCOUNT_SUSPENDED',
   unavailable: 'SIGNUP_UNAVAILABLE',
   rateLimited: 'RATE_LIMITED',
   captcha: 'CAPTCHA_FAILED',

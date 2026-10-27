@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { revokeUserSessions } from '../auth/revoke';
 import {
   EmployeeCreate,
   EmployeeUpdate,
@@ -442,6 +443,17 @@ export class TeamService {
         b.status === 'suspended' ? 'employee.deactivated' : 'employee.updated',
         { entityType: 'user', entityId: id, before: t, after: b },
       );
+      // #79: deactivation or a role change signs the user out everywhere.
+      const statusOff = b.status !== undefined && b.status !== t.status && b.status !== 'active';
+      const roleChanged = b.role !== undefined && !(t.roles.length === 1 && t.roles[0] === b.role);
+      if (statusOff || roleChanged) {
+        const n = await revokeUserSessions(tx, id);
+        await this.audit.record(tx, p, 'auth.sessions_revoked', {
+          entityType: 'user',
+          entityId: id,
+          after: { reason: statusOff ? `status:${b.status}` : 'role_change', sessions: n },
+        });
+      }
       const all2 = await this.people(tx);
       const [n] = await this.nodes(tx, all2, [[all2.get(id)!, 1]]);
       return n!;

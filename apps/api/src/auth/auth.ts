@@ -39,7 +39,13 @@ export function createAuth(db: Db, audit: AuditService) {
         verification: authVerification,
       },
     }),
-    emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 8 },
+    emailAndPassword: {
+      enabled: true,
+      disableSignUp: true,
+      minPasswordLength: 8,
+      // If a reset flow is enabled later, a reset signs out every device (#79).
+      revokeSessionsOnPasswordReset: true,
+    },
     session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24 },
     plugins: [bearer()],
     telemetry: { enabled: false },
@@ -61,6 +67,12 @@ export function createAuth(db: Db, audit: AuditService) {
               throw new APIError('FORBIDDEN', {
                 code: AUTH_STATE_CODES.rejected,
                 message: 'Your sign-up request was not approved',
+              });
+            // Deactivated (suspended) users cannot start a new session (#79).
+            if (st === 'suspended')
+              throw new APIError('FORBIDDEN', {
+                code: AUTH_STATE_CODES.suspended,
+                message: 'Your account is deactivated',
               });
           },
           after: async (session) => {

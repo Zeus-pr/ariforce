@@ -228,6 +228,8 @@ try {
            values ($1, $2, 'credential', $2, $3)`,
           [randomUUID(), authId, hash],
         );
+      // New password: sign out every existing session of this identity (#79).
+      await c.query('delete from auth_session where user_id = $1', [authId]);
       await c.query(
         `update users set auth_user_id = $1,
            status = case when status = 'invited' then 'active' else status end where id = $2`,

@@ -48,6 +48,8 @@ export class SessionGuard implements CanActivate {
         throw err(403, AUTH_STATE_CODES.pending, 'Your account is awaiting approval');
       if (status === 'rejected')
         throw err(403, AUTH_STATE_CODES.rejected, 'Your sign-up request was not approved');
+      if (status === 'suspended')
+        throw err(403, AUTH_STATE_CODES.suspended, 'Your account is deactivated');
       throw new ForbiddenException('No active AriForce user for this identity');
     }
 
