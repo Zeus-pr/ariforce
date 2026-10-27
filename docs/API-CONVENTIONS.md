@@ -134,3 +134,8 @@ See docs/SIGNUP.md for the screen states.
 - Codes: `EXPENSE_NOT_EDITABLE`, `EXPENSE_EMPTY`, `RECEIPT_REQUIRED`, `TOO_MANY_FILES`, `UPLOAD_MISSING`, `UPLOAD_SIZE_MISMATCH`, `UPLOAD_TYPE_MISMATCH`, `UPLOAD_FORMAT_INVALID`, `UPLOAD_NOT_CONFIRMED`, `VERSION_CONFLICT`; multi-step approvals add `APPROVAL_NOT_YOUR_STEP` and `APPROVAL_ALREADY_DECIDED_BY_YOU`.
 - Exports (`/v1/expense-reports/export?format=xlsx|pdf`) stream a file with `Content-Disposition: attachment`.
 - Full list: docs/EXPENSES.md.
+
+## Leave
+
+- `/v1/leave/*`, see docs/LEAVE.md. Codes: `LEAVE_TYPE_UNKNOWN`, `LEAVE_HALF_DAY_NOT_ALLOWED`, `LEAVE_SPANS_YEARS`, `LEAVE_BACKDATE_WINDOW`, `LEAVE_TOO_FAR_AHEAD`, `LEAVE_NO_WORKING_DAYS`, `LEAVE_INSUFFICIENT_BALANCE` (422); `LEAVE_OVERLAP`, `LEAVE_DCR_EXISTS`, `LEAVE_NOT_CANCELLABLE` (409); `LEAVE_SELF_GRANT` (403). Tour plans and DCRs on approved leave days return 422 `LEAVE_DAY_BLOCKED` with `details.dates`.
+- `AttendanceDay.leave` is `{requestId, typeCode, half} | null`; approved leave without a punch-in is status `leave`.
