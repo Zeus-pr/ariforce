@@ -109,3 +109,10 @@ Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the 
 - No missing endpoints. The POB/RCPA product picker uses `GET /v1/products?limit=200` (active only); `GET /v1/rcpa/competitor-brands?q` feeds the brand autocomplete.
 - Web never sends or computes `PobLine.value`; it shows the server value after save ("value after save" before).
 - Nice-to-have (not blocking): a `q` search on `/v1/products` for companies with more than 200 active products.
+
+## #39 TA/DA allowances (web)
+
+- `GET /v1/allowance-places` and `/v1/allowance-rates` return the full list (`{ items }`) with no paging. The web settings page filters on the server (`q`, `band`, `includeInactive`) but cannot page; fine for a rate card and per-HQ fare chart, revisit if places grow past a few hundred.
+- `DELETE /v1/allowance-places/{id}` is a soft delete in the API (docs/TADA.md) but a hard delete in the MSW mock, so "Show removed places" is only meaningful against the real API.
+- The mock draft treats every past non-Sunday as an HQ day and never returns `place_required`, so the place picker in "Add allowances" is covered by code path only, not mock e2e.
+- Mock rates start empty per page load; e2e adds a rate and navigates in-app to keep MSW state.

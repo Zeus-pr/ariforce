@@ -13,6 +13,7 @@ import { api, apiReady, toApiError } from '@/lib/api';
 import { can, CATEGORY_LABEL, isEditable, messageFor, money, monthLabel, selfId } from '@/lib/expenses/model';
 import { useRole } from '@/components/shell/role-context';
 import { LineDialog, type LineDraft } from './line-dialog';
+import { AllowanceDialog } from './allowance-dialog';
 import { Receipts } from './receipts';
 import { StatusBadge } from './status-badge';
 
@@ -34,6 +35,7 @@ export function ClaimView({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [edit, setEdit] = useState<{ line: Line | null } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [allowances, setAllowances] = useState(false);
   const [decide, setDecide] = useState<'approve' | 'reject' | null>(null);
   const [comment, setComment] = useState('');
   const [paying, setPaying] = useState(false);
@@ -132,7 +134,12 @@ export function ClaimView({ id }: { id: string }) {
       <section aria-labelledby="exp-lines-h" className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <h2 id="exp-lines-h" className="text-base font-semibold">Lines</h2>
-          {editable && <Button size="sm" onClick={() => setEdit({ line: null })} data-testid="exp-add-line"><Plus aria-hidden /> Add line</Button>}
+          {editable && (
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setAllowances(true)} data-testid="exp-add-allowances">Add allowances</Button>
+              <Button size="sm" onClick={() => setEdit({ line: null })} data-testid="exp-add-line"><Plus aria-hidden /> Add line</Button>
+            </div>
+          )}
         </div>
         {lines.length === 0 ? (
           <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground" data-testid="exp-no-lines">
@@ -144,7 +151,17 @@ export function ClaimView({ id }: { id: string }) {
               <li key={l.id} className="rounded-lg border p-3" data-testid="exp-line" data-category={l.category}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium">{CATEGORY_LABEL[l.category]}{l.mileageKm != null && ` · ${l.mileageKm} km`}</p>
+                    <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
+                      {CATEGORY_LABEL[l.category]}{l.mileageKm != null && ` · ${l.mileageKm} km`}
+                      <span
+                        className={l.source === 'auto' ? 'rounded bg-sky-100 px-1.5 py-0.5 text-xs font-normal text-sky-900' : 'rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground'}
+                        data-testid="exp-line-source"
+                        data-source={l.source}
+                        title={l.source === 'auto' ? 'Drafted from your DCR and the rate card. Editing it or adding a receipt makes it manual.' : undefined}
+                      >
+                        {l.source === 'auto' ? 'Auto' : 'Manual'}
+                      </span>
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {day(l.date)}
                       {l.dcrId && ' · DCR linked'}
@@ -234,6 +251,7 @@ export function ClaimView({ id }: { id: string }) {
         </section>
       )}
 
+      {editable && <AllowanceDialog claimId={claim.id} open={allowances} onClose={() => setAllowances(false)} onDone={() => { toast.success('Allowances added'); void load(); }} />}
       <LineDialog open={!!edit} month={claim.month} line={edit?.line ?? null} onClose={() => setEdit(null)} onSave={(d) => saveLine(d, edit?.line ?? null)} />
 
       <Dialog open={!!decide} onOpenChange={(o) => !o && setDecide(null)}>

@@ -111,3 +111,7 @@ calls the API with the session cookie. Restart `next dev` after you change the f
 `categoryId`, plus create, PATCH and import dry-run/commit); `/v1/specialties`,
 `/v1/doctor-categories`, `/v1/territories`; `/v1/users`; `/v1/team` and `/v1/employees`. See
 http://localhost:4000/docs for the full list.
+
+## Unit tests in apps/web
+
+apps/web has no vitest dependency, so `scripts/vitest.sh` fails there with `exec: vitest: not found`. Web behaviour is covered by the Playwright evidence scripts in `apps/web/e2e/*-evidence.mjs` (chromium + webkit). vitest runs in the API/packages workspaces only; nothing was installed outside the SSD to change this.

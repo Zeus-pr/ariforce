@@ -1,3 +1,4 @@
+import { DEFAULT_ROLE_PERMISSIONS } from '@ariforce/contracts';
 import type { LucideIcon } from 'lucide-react';
 import {
   UserPlus,
@@ -17,6 +18,7 @@ import {
   ReceiptText,
   CalendarOff,
   Tags,
+  Route,
 } from 'lucide-react';
 
 import { seesExpenses } from './expenses/model';
@@ -184,6 +186,14 @@ export const NAV: NavItem[] = [
     href: '/admin/product-prices',
     icon: Tags,
     roles: ['system_admin'],
+    section: 'admin',
+  },
+  {
+    slug: 'allowances',
+    title: 'TA/DA rates',
+    href: '/settings/allowances',
+    icon: Route,
+    roles: ROLES.filter((r) => (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('settings:write')),
     section: 'admin',
   },
 ];

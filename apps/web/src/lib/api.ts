@@ -40,7 +40,7 @@ api.use({
     if (
       MOCKING &&
       typeof window !== 'undefined' &&
-      /^\/v1\/(expense|leave\/|team\/members\/|exception|notifications|admin\/)/.test(new URL(request.url).pathname)
+      /^\/v1\/(expense|leave\/|team\/members\/|exception|notifications|admin\/|allowance)/.test(new URL(request.url).pathname)
     ) {
       try {
         const s = JSON.parse(localStorage.getItem('af:mock-session') ?? 'null') as {
