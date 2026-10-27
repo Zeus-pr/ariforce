@@ -218,6 +218,13 @@
       "when": 1793095643001,
       "tag": "0030_jobs_functions_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793096130765,
+      "tag": "0031_exceptions",
+      "breakpoints": true
     }
   ]
 }
