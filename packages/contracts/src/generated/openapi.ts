@@ -999,6 +999,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/employees/invite-bulk': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** ABM and above: create + invite up to 200 employees. Each row follows the single createEmployee rules and is saved (and audited) on its own; partial success returns 200 with per-row results */
+    post: operations['inviteEmployeesBulk'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/employees/{id}': {
     parameters: {
       query?: never;
@@ -2198,6 +2215,9 @@ export interface components {
        * @default null
        */
       managerId: string | null;
+    };
+    EmployeeInviteBulk: {
+      employees: components['schemas']['EmployeeCreate'][];
     };
     EmployeeUpdate: {
       version: number;
@@ -3811,7 +3831,33 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       expiresAt: string;
-      /** @description Only returned when the server runs with INVITE_RETURN_LINK=true (dev/test); otherwise delivered by the mailer */
+      /** @description Only returned when the server runs with INVITE_RETURN_LINK=true outside production (dev/test); otherwise null and delivered by the mailer */
+      inviteUrl: string | null;
+    };
+    InviteBulkResponse: {
+      results: components['schemas']['InviteBulkItemResult'][];
+      summary: {
+        invited: number;
+        skipped: number;
+        failed: number;
+      };
+    };
+    InviteBulkItemResult: {
+      /** @description Position in the request array */
+      index: number;
+      /** @description As sent (null if missing) */
+      email: string | null;
+      /**
+       * @description invited = employee created + invite issued; skipped = email/employee code already exists or repeated in this batch; failed = validation or authorization error for this row
+       * @enum {string}
+       */
+      status: 'invited' | 'skipped' | 'failed';
+      /** @description null when invited; skipped: CONFLICT | DUPLICATE_IN_BATCH; failed: VALIDATION | FORBIDDEN | INTERNAL */
+      code: string | null;
+      message: string | null;
+      employeeId: string | null;
+      inviteId: string | null;
+      /** @description Only when INVITE_RETURN_LINK=true and not production; otherwise null */
       inviteUrl: string | null;
     };
     InviteAccepted: {
@@ -8813,6 +8859,57 @@ export interface operations {
       };
     };
   };
+  inviteEmployeesBulk: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['EmployeeInviteBulk'];
+      };
+    };
+    responses: {
+      /** @description Per-row results (invited | skipped | failed) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['InviteBulkResponse'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Only ABM and above can add employees */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Body is not { employees: [1..200 objects] } */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   updateEmployee: {
     parameters: {
       query?: never;
@@ -8957,8 +9054,44 @@ export interface operations {
           'application/json': components['schemas']['InviteAccepted'];
         };
       };
-      /** @description Invalid, used, revoked or expired invite */
+      /** @description INVITE_INVALID: unknown token, or replaced by a newer invite */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description INVITE_USED: already redeemed (or the account already exists) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description INVITE_EXPIRED: past its expiry; ask for a new invite */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION: password shorter than 12 characters (or token malformed) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description RATE_LIMITED: too many attempts from this IP; Retry-After header */
+      429: {
         headers: {
           [name: string]: unknown;
         };

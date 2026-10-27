@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { T, U } from '@ariforce/db';
+import { Pool } from 'pg';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 
@@ -104,15 +105,15 @@ describe.skipIf(!OWNER || !APP)('Team + employees (real API)', () => {
       'token',
     )!;
     const pw = `pw-${RUN}-long`;
-    expect(
-      (await http().post('/v1/invites/accept').send({ token: first, password: pw })).status,
-    ).toBe(404);
+    const revoked = await http().post('/v1/invites/accept').send({ token: first, password: pw });
+    expect(revoked.status).toBe(404);
+    expect(revoked.body.error.code).toBe('INVITE_INVALID');
     const acc = await http().post('/v1/invites/accept').send({ token, password: pw });
     expect(acc.status).toBe(200);
     expect(acc.body.email).toBe(b.email);
-    expect((await http().post('/v1/invites/accept').send({ token, password: pw })).status).toBe(
-      404,
-    );
+    const used = await http().post('/v1/invites/accept').send({ token, password: pw });
+    expect(used.status).toBe(409);
+    expect(used.body.error.code).toBe('INVITE_USED');
     const signIn = () =>
       http().post('/v1/auth/sign-in/email').send({ email: b.email, password: pw });
     const s = await signIn();
@@ -220,10 +221,118 @@ describe.skipIf(!OWNER || !APP)('Team + employees (real API)', () => {
     ).toBe(403);
   });
 
-  it('invalid invite token is a 404', async () => {
+  it('invalid invite token is a 404 INVITE_INVALID', async () => {
     const r = await http()
       .post('/v1/invites/accept')
-      .send({ token: 'x'.repeat(43), password: 'longenough' });
+      .send({ token: 'x'.repeat(43), password: 'long-enough-pw' });
     expect(r.status).toBe(404);
+    expect(r.body.error.code).toBe('INVITE_INVALID');
+  });
+
+  it('invite accept: password min 12 (422) and expired invite is 410 INVITE_EXPIRED', async () => {
+    const res = await http().post('/v1/employees').set(as('abm')).send(emp());
+    expect(res.status).toBe(201);
+    const token = new URL(res.body.invite.inviteUrl).searchParams.get('token')!;
+    const short = await http().post('/v1/invites/accept').send({ token, password: 'elevenchars' });
+    expect(short.status).toBe(422);
+    expect(short.body.error.code).toBe('VALIDATION');
+    const owner = new Pool({ connectionString: OWNER });
+    try {
+      await owner.query(
+        `update user_invites set expires_at = now() - interval '1 minute' where id = $1`,
+        [res.body.invite.id],
+      );
+    } finally {
+      await owner.end();
+    }
+    const exp = await http().post('/v1/invites/accept').send({ token, password: 'twelve-chars' });
+    expect(exp.status).toBe(410);
+    expect(exp.body.error.code).toBe('INVITE_EXPIRED');
+  });
+
+  it('POST /v1/employees/invite-bulk: partial success, per-row results, audited', async () => {
+    const existing = emp();
+    expect((await http().post('/v1/employees').set(as('abm')).send(existing)).status).toBe(201);
+    const a = emp();
+    const b = emp();
+    const rows = [
+      a,
+      b,
+      { ...emp(), email: a.email.toUpperCase() }, // repeated in batch
+      { ...emp(), email: existing.email }, // already exists
+      emp({ role: 'regional_business_manager' }), // above the caller's allowed roles
+      { name: 'No email', role: 'business_manager', territoryIds: [T.hq] }, // invalid row
+    ];
+    const r = await http()
+      .post('/v1/employees/invite-bulk')
+      .set(as('abm'))
+      .send({ employees: rows });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.summary).toEqual({ invited: 2, skipped: 2, failed: 2 });
+    const by = (i: number) => r.body.results[i];
+    expect(by(0)).toMatchObject({ index: 0, email: a.email, status: 'invited', code: null });
+    expect(by(0).employeeId).toBeTruthy();
+    expect(by(0).inviteUrl).toMatch(/\/invite\?token=/); // INVITE_RETURN_LINK=true in tests
+    expect(by(1).status).toBe('invited');
+    expect(by(2)).toMatchObject({ status: 'skipped', code: 'DUPLICATE_IN_BATCH' });
+    expect(by(3)).toMatchObject({ status: 'skipped', code: 'CONFLICT' });
+    expect(by(4)).toMatchObject({ status: 'failed', code: 'FORBIDDEN', employeeId: null });
+    expect(by(5)).toMatchObject({ status: 'failed', code: 'VALIDATION', email: null });
+    // Invited rows can accept their own invite.
+    const token = new URL(by(0).inviteUrl).searchParams.get('token')!;
+    expect(
+      (
+        await http()
+          .post('/v1/invites/accept')
+          .send({ token, password: `bulk-${RUN}-pass` })
+      ).status,
+    ).toBe(200);
+    const owner = new Pool({ connectionString: OWNER });
+    try {
+      const au = await owner.query(
+        `select action from audit_log where entity_id = $1 and action in ('employee.created','employee.invited')`,
+        [by(1).employeeId],
+      );
+      expect(au.rows.map((x) => x.action).sort()).toEqual(['employee.created', 'employee.invited']);
+      const batch = await owner.query(
+        `select after from audit_log where action = 'employee.invite_bulk' and entity_id = $1 order by at desc limit 1`,
+        [U.area],
+      );
+      expect(batch.rows[0].after.summary).toEqual({ invited: 2, skipped: 2, failed: 2 });
+      expect(JSON.stringify(batch.rows[0].after)).not.toContain('@');
+    } finally {
+      await owner.end();
+    }
+  });
+
+  it('invite-bulk: same rank gate, batch cap 200, no link in production', async () => {
+    expect(
+      (
+        await http()
+          .post('/v1/employees/invite-bulk')
+          .set(as('bm'))
+          .send({ employees: [emp()] })
+      ).status,
+    ).toBe(403);
+    const big = Array.from({ length: 201 }, () => emp());
+    expect(
+      (await http().post('/v1/employees/invite-bulk').set(as('abm')).send({ employees: big }))
+        .status,
+    ).toBe(422);
+    expect(
+      (await http().post('/v1/employees/invite-bulk').set(as('abm')).send({ employees: [] }))
+        .status,
+    ).toBe(422);
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const r = await http()
+        .post('/v1/employees/invite-bulk')
+        .set(as('abm'))
+        .send({ employees: [emp()] });
+      expect(r.body.results[0]).toMatchObject({ status: 'invited', inviteUrl: null });
+    } finally {
+      process.env.NODE_ENV = prev;
+    }
   });
 });

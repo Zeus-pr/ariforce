@@ -153,6 +153,17 @@ The server enforces every rule in `apps/api/src/team/team.service.ts`, and the m
 - Invites are single-use, expire after 7 days and are stored only as a SHA-256 hash. Re-inviting
   revokes the earlier token. `POST /v1/invites/accept` (public) creates the better-auth identity
   and activates the user. The mailer is a stub that logs only the invite id.
+- Accept rules (#26): password **at least 12 characters** (`INVITE_PASSWORD_MIN`, else 422 `VALIDATION`).
+  Failures have distinct codes: `404 INVITE_INVALID` (unknown token, or replaced by a newer invite),
+  `409 INVITE_USED` (already redeemed or the account exists), `410 INVITE_EXPIRED`. Per-IP limit
+  (`INVITE_RATE_PER_IP`) applies before any lookup, so every code counts against it (429 `RATE_LIMITED`).
+- Bulk invite (#26): `POST /v1/employees/invite-bulk` `{ employees: EmployeeCreate[1..200] }` (ABM and
+  above, else 403; empty or >200 rows → 422). Each row runs exactly the single `POST /v1/employees`
+  rules in its own transaction (partial success). Response 200
+  `{ results: [{ index, email, status: invited|skipped|failed, code, message, employeeId, inviteId, inviteUrl }], summary: { invited, skipped, failed } }`.
+  `skipped`: `CONFLICT` (email/code exists) or `DUPLICATE_IN_BATCH`; `failed`: `VALIDATION`, `FORBIDDEN`
+  or `INTERNAL`. Invited rows are audited like single creates (`employee.created`, `employee.invited`);
+  the batch adds one `employee.invite_bulk` entry with per-row status (no emails).
 - `designation` is free text from HR and has no effect on permissions.
 - No payroll or HR-sensitive data (PAN, bank, CTC, nominee) is stored in app tables or contracts.
 - Chemists are an independent master with no doctor link, and the chemist import does not need one.
@@ -163,7 +174,7 @@ The server enforces every rule in `apps/api/src/team/team.service.ts`, and the m
 - The system admin is outside the reporting line, so no manager is set by default. A `director` never has a manager: passing `managerId` for a director returns 422.
 - Other managers keep the strict rule: they can only create roles below their own, inside their own subtree.
 - `POST /v1/employees/{id}/invite` also works for an existing employee row that has no login yet (for example imported users). The row goes back to `invited` until the invite is accepted. Users who already have a login get 409.
-- `INVITE_RETURN_LINK=true` (read per request; restart the API after changing it) returns `inviteUrl` = `<WEB_ORIGIN>/invite?token=...`. The web app has no `/invite` page yet; accept with `POST /v1/invites/accept {token,password}`.
+- `INVITE_RETURN_LINK=true` (ignored when `NODE_ENV=production`; read per request; restart the API after changing it) returns `inviteUrl` = `<WEB_ORIGIN>/invite?token=...`. The web app has no `/invite` page yet; accept with `POST /v1/invites/accept {token,password}`.
 - CLI: `pnpm -F @ariforce/api admin:create-first --company <slug> --role <key> --email ... --name ... [--territory <code>]` creates or links a user with that role and sets the password (hidden prompt or `ARIFORCE_ADMIN_PASSWORD`). It is idempotent and never grants `system_admin` unless `--role system_admin` (the default) is used.
 
 ## Sign-up requests
