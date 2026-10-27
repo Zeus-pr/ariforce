@@ -1492,7 +1492,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Your claims; with expenses:approve also non-draft claims of your reporting line; with finance:read approved/paid claims company-wide */
+    /** Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide */
     get: operations['listExpenseClaims'];
     put?: never;
     /** Create your claim for a month (one per user per month); returns the existing one with 200 */
@@ -1627,7 +1627,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * expenses:read, finance:read or settings:write
+     * expenses:read, expenses:pay or settings:write
      * @deprecated
      */
     get: operations['listAllowanceRates'];
@@ -1675,7 +1675,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * expenses:read, finance:read or settings:write
+     * expenses:read, expenses:pay or settings:write
      * @deprecated
      */
     get: operations['listAllowancePlaces'];
@@ -1845,7 +1845,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Accountant (finance:write): approved -> paid */
+    /** Director / system admin (expenses:pay): approved -> paid */
     post: operations['payExpenseClaim'];
     delete?: never;
     options?: never;
@@ -2249,6 +2249,19 @@ export interface components {
     };
     /** @enum {string} */
     TerritoryLevel: 'national' | 'zone' | 'region' | 'area' | 'headquarter';
+    /** @enum {string} */
+    RoleKey:
+      | 'business_manager'
+      | 'area_business_manager'
+      | 'regional_business_manager'
+      | 'zonal_business_manager'
+      | 'sales_manager'
+      | 'general_manager'
+      | 'vice_president'
+      | 'director'
+      | 'system_admin'
+      | 'distribution_head'
+      | 'accountant';
     UploadUrlRequest: {
       purpose: components['schemas']['FilePurpose'];
       /** @enum {string} */
@@ -2519,19 +2532,6 @@ export interface components {
       /** @description Null = whole division */
       productId: string | null;
     };
-    /** @enum {string} */
-    RoleKey:
-      | 'business_manager'
-      | 'area_business_manager'
-      | 'regional_business_manager'
-      | 'zonal_business_manager'
-      | 'sales_manager'
-      | 'general_manager'
-      | 'vice_president'
-      | 'director'
-      | 'system_admin'
-      | 'distribution_head'
-      | 'accountant';
     /** @enum {string} */
     CheckInKind: 'punch_in' | 'visit' | 'punch_out';
     /** @enum {string} */
@@ -3345,6 +3345,7 @@ export interface components {
       | 'expenses:read'
       | 'expenses:approve'
       | 'finance:write'
+      | 'expenses:pay'
       | 'leave:read'
       | 'leave:write'
       | 'leave:approve'
@@ -6616,6 +6617,8 @@ export interface operations {
         ancestorId?: string;
         /** @description Exact code match (import lookup) */
         code?: string;
+        /** @description Only territories this role may hold (business_manager: headquarter only; others: any level). Combine with level. */
+        assignableForRole?: components['schemas']['RoleKey'];
       };
       header?: never;
       path?: never;

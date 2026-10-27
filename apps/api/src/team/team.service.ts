@@ -2,6 +2,8 @@ import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
 import { revokeUserSessions } from '../auth/revoke';
 import {
   EmployeeCreate,
+  assignableTerritoryLevels,
+  TERRITORY_LEVELS,
   EmployeeUpdate,
   type InviteBulkItemResult,
   SignupApprove,
@@ -9,6 +11,7 @@ import {
   ROLE_RANK,
   hierarchyRank,
   isHierarchyRole,
+  isRetiredRole,
   type RoleKey,
   type TeamNode,
   type TeamTree,
@@ -274,10 +277,38 @@ export class TeamService {
   }
 
   private assertRole(p: Principal, role: RoleKey) {
+    if (isRetiredRole(role))
+      throw err(422, 'ROLE_RETIRED', `The ${role} role is retired and can no longer be assigned`, {
+        role,
+      });
     const r = ROLE_RANK[role];
     if (isAdmin(p)) return;
     if (!(r > 0 && r < hierarchyRank(p.roles)))
       throw err(403, 'FORBIDDEN', 'Role must be a hierarchy role below your own');
+  }
+  /**
+   * Part 3: a role may only hold territories at its allowed levels (business_manager: headquarter
+   * only). Checked on writes only (create, invite-bulk, PATCH with role or territories, signup
+   * approve); a PATCH of unrelated fields never trips over legacy data.
+   */
+  private async assertTerritoryLevels(tx: Tx, roleKeys: RoleKey[], ids: string[]) {
+    if (!ids.length) return;
+    for (const role of roleKeys) {
+      const allowed = assignableTerritoryLevels(role);
+      if (allowed.length === TERRITORY_LEVELS.length) continue;
+      const rows = await tx
+        .select({ id: territories.id, level: territories.level })
+        .from(territories)
+        .where(inArray(territories.id, ids));
+      const bad = rows.filter((r) => !allowed.includes(r.level)).map((r) => r.id);
+      if (bad.length)
+        throw err(
+          422,
+          'TERRITORY_LEVEL_INVALID',
+          `A ${role} may only hold ${allowed.join(' or ')}-level territories`,
+          { territoryIds: bad, expectedLevel: allowed[0], role },
+        );
+    }
   }
   private async assertTerritories(tx: Tx, p: Principal, ids: string[]) {
     const ok = await this.scopedTerritoryIds(tx, p, ids);
@@ -348,6 +379,7 @@ export class TeamService {
       if (isHierarchyRole(b.role) && !b.territoryIds.length)
         throw err(422, 'VALIDATION', 'Hierarchy roles need at least one territory');
       await this.assertTerritories(tx, p, b.territoryIds);
+      await this.assertTerritoryLevels(tx, [b.role], b.territoryIds);
       const all = await this.people(tx);
       // System admin is outside the reporting line: no default manager; a director never has one.
       const mgrId = admin ? b.managerId : (b.managerId ?? p.userId);
@@ -503,7 +535,9 @@ export class TeamService {
         throw err(403, 'FORBIDDEN', 'Only a system admin can change email or employee code');
       if (!admin && b.managerId === null)
         throw err(422, 'VALIDATION', 'managerId cannot be cleared');
-      if (b.role) this.assertRole(p, b.role);
+      // Re-sending a retired role the person already holds (unchanged form) is not an assignment.
+      if (b.role && !(isRetiredRole(b.role) && t.roles.includes(b.role)))
+        this.assertRole(p, b.role);
       if (b.territoryIds) await this.assertTerritories(tx, p, b.territoryIds);
       const beforeTerr = (
         await tx
@@ -546,6 +580,7 @@ export class TeamService {
             );
         }
       }
+      if (b.role || b.territoryIds) await this.assertTerritoryLevels(tx, newRoles, terrAfter);
       if (b.status === 'active' && t.status === 'invited')
         throw err(422, 'VALIDATION', 'Invited users activate by accepting their invite');
       const statusAfter = b.status ?? t.status;
@@ -725,6 +760,13 @@ export class TeamService {
       const t = await this.assertManageable(tx, p, all, id);
       if (t.hasLogin || t.status === 'suspended')
         throw err(409, 'CONFLICT', 'User has already joined');
+      if (t.roles.length && t.roles.every(isRetiredRole))
+        throw err(
+          422,
+          'ROLE_RETIRED',
+          'This person holds a retired role; change their role before inviting them',
+          { roles: t.roles },
+        );
       // Existing employee rows without a login (e.g. imported) become 'invited' so they can accept.
       if (t.status === 'active')
         await tx
@@ -764,6 +806,17 @@ export class TeamService {
       if (!claimed.length) throw err(409, 'INVITE_USED', 'This invite has already been used');
       const [u] = await tx.select().from(users).where(eq(users.id, m.user_id));
       if (!u || u.authUserId) throw err(409, 'INVITE_USED', 'This invite has already been used');
+      const held = await tx
+        .select({ key: roles.key })
+        .from(userRoles)
+        .innerJoin(roles, eq(roles.id, userRoles.roleId))
+        .where(eq(userRoles.userId, u.id));
+      if (held.length && held.every((x) => isRetiredRole(x.key)))
+        throw err(
+          422,
+          'ROLE_RETIRED',
+          'Your role is no longer in use; ask your administrator to update your account',
+        );
       const taken = await tx
         .select({ id: authUser.id })
         .from(authUser)
@@ -897,6 +950,15 @@ export class TeamService {
       const { r, u, all } = await this.pendingSignup(tx, p, id);
       const admin = isAdmin(p);
       const role = b.role;
+      if (isRetiredRole(role))
+        throw err(
+          422,
+          'ROLE_RETIRED',
+          `The ${role} role is retired and can no longer be assigned`,
+          {
+            role,
+          },
+        );
       const hierarchy = isHierarchyRole(role);
       if (!hierarchy && !admin)
         throw err(403, 'FORBIDDEN', 'Only a system admin can grant this role');
@@ -905,6 +967,7 @@ export class TeamService {
       if (hierarchy && !tids.length)
         throw err(422, 'VALIDATION', 'At least one territory is required for this role');
       if (tids.length) await this.assertTerritories(tx, p, tids);
+      await this.assertTerritoryLevels(tx, [role], tids);
       let mgrId: string | null;
       if (!hierarchy || role === 'director') {
         if (b.managerId) throw err(422, 'VALIDATION', 'This role has no manager');

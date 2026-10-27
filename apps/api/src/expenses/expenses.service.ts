@@ -61,8 +61,8 @@ export const approvalLevels = () => Math.max(1, Number(process.env.EXPENSE_APPRO
 
 /**
  * Expense claims (#52). One claim per user per month; edit while draft or rejected; submission goes
- * through the generic approval engine (entity `expense`) up the reporting line; accountant reads
- * approved/paid claims company-wide (finance:read) and marks them paid (finance:write).
+ * through the generic approval engine (entity `expense`) up the reporting line; expenses:pay holders
+ * (director, system_admin) read approved/paid claims company-wide and mark them paid.
  */
 @Injectable()
 export class ExpensesService implements OnModuleInit {
@@ -125,7 +125,7 @@ export class ExpensesService implements OnModuleInit {
       'expense',
       (tx, p, req) => this.approvalDetail(tx, p, req.entityId),
       {
-        readPermissions: ['expenses:approve', 'finance:read'],
+        readPermissions: ['expenses:approve', 'expenses:pay'],
       },
     );
   }
@@ -197,7 +197,7 @@ export class ExpensesService implements OnModuleInit {
           p.teamUserIds ? inArray(expenseClaims.userId, p.teamUserIds) : undefined,
         )!,
       );
-    if (p.permissions.includes('finance:read'))
+    if (p.permissions.includes('expenses:pay'))
       parts.push(inArray(expenseClaims.status, FINANCE_VISIBLE));
     return parts.length ? or(...parts)! : sql`false`;
   }
@@ -884,8 +884,8 @@ export class ExpensesService implements OnModuleInit {
   }
 
   private reportScope(p: Principal) {
-    if (!p.permissions.includes('finance:read') && !p.permissions.includes('expenses:read'))
-      throw new ForbiddenException('Missing permission: expenses:read or finance:read');
+    if (!p.permissions.includes('expenses:pay') && !p.permissions.includes('expenses:read'))
+      throw new ForbiddenException('Missing permission: expenses:read or expenses:pay');
   }
 
   /** Claims for the month the caller may read, with reconciliation per claim. */

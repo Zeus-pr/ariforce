@@ -131,38 +131,19 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
     expect(sys.body.managerId).toBeNull();
   });
 
-  it('distribution_head / accountant: outside the hierarchy, domain permission only, no field or doctor data', async () => {
-    for (const [email, role, perm] of [
-      ['dh@demo.ariforce.in', 'distribution_head', 'sales:read'],
-      ['accountant@demo.ariforce.in', 'accountant', 'finance:read'],
-    ] as const) {
-      const auth = await token(email);
-      const me = await http().get('/v1/me').set('authorization', auth);
-      expect(me.status, JSON.stringify(me.body)).toBe(200);
-      expect(me.body.roles).toEqual([role]);
-      expect(me.body.permissions).toContain(perm);
-      expect(me.body.permissions).not.toContain('field:read');
-      expect(me.body.permissions).not.toContain('approvals:decide');
-      expect(me.body.managerId).toBeNull();
-      expect((await http().get('/v1/doctors').set('authorization', auth)).status).toBe(403);
-      expect((await http().get('/v1/dcrs').set('authorization', auth)).status).toBe(403);
-      expect((await http().get('/v1/kpis').set('authorization', auth)).status).toBe(403);
-      // Approvals list is open to everyone (own requests), but nothing is ever routed to them.
-      const queue = await http().get('/v1/approvals?mine=to_decide').set('authorization', auth);
-      expect(queue.body.items).toEqual([]);
+  it('retired roles (distribution_head / accountant): sign-in refused with ROLE_RETIRED; hidden from GET /v1/roles', async () => {
+    for (const email of ['dh@demo.ariforce.in', 'accountant@demo.ariforce.in']) {
+      const res = await signIn(email);
+      expect(res.status, JSON.stringify(res.body)).toBe(403);
+      expect(res.body.code).toBe('ROLE_RETIRED');
+      expect(res.headers['set-auth-token']).toBeFalsy();
     }
     const dirTok = await token('director@demo.ariforce.in');
     const roles = await http().get('/v1/roles').set('authorization', dirTok);
-    const keys = roles.body.items.map((r: { key: string; inHierarchy: boolean }) => [
-      r.key,
-      r.inHierarchy,
-    ]);
-    expect(keys).toEqual(
-      expect.arrayContaining([
-        ['distribution_head', false],
-        ['accountant', false],
-      ]),
-    );
+    const keys = roles.body.items.map((r: { key: string }) => r.key);
+    expect(keys).not.toContain('distribution_head');
+    expect(keys).not.toContain('accountant');
+    expect(keys).toContain('business_manager');
   });
 
   it('RBM (masters write) cannot create a doctor outside their hierarchy (403); inside = 201 + audit row; BM is read-only', async () => {

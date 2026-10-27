@@ -15,14 +15,14 @@ The SFC is one table per employee that lists the routes they travel from their H
   - `da`: optional, stored as typed.
   - `created_by`, `updated_by`, `version`, `deleted_at`.
   - Row-level security works like every other tenant table: RLS and FORCE RLS, the `tenant_isolation` policy for `ariforce_app`, and the `row_meta` trigger.
-- `companies.sfc_rate_per_km`: the company's rate, default **2.95** INR per km.
+- `companies.sfc_rate_per_km`: the company's rate, default **2.95** INR per km. It is **one global setting per company** (no per-person, per-HQ or per-mode rate).
 
 ## Amounts (computed by the server on every save)
 
 - `both_way_km = 2 × one_way_km`
 - `one_way_amount = round2(one_way_km × rate)`, or null for an actual fare
 - `both_way_amount = 2 × one_way_amount`, or null for an actual fare
-- DA is stored as typed.
+- DA is stored as typed: a nullable money amount, `numeric(12,2)` (`Money` in contracts), `>= 0` or null when the route pays no DA.
 
 Changing the rate does not recompute saved rows. A table picks up the new rate the next time it is saved.
 
@@ -36,6 +36,7 @@ Changing the rate does not recompute saved rows. A table picks up the new rate t
 | System Admin                  | Everyone in the company      | Everyone                    |
 | Distribution Head, Accountant | Nothing (403)                | Nothing                     |
 
+- "Below them" means EITHER the reporting line (`managerId` chain) OR a lower-ranked employee holding a territory inside one of the caller's own territories (e.g. an ABM on the HQ-BURDWAN area covers the BMs on its HQs before their `managerId` is set). A same-rank peer on the same territory is not covered.
 - Permissions are `sfc:read` (BM and up, plus system_admin) and `sfc:write` (ABM and up, plus system_admin). Migration 0039 adds them.
 - Only sales-hierarchy employees (rank 1 or higher) have an SFC.
 - Changing the rate needs `settings:write` (director and system_admin).

@@ -6,6 +6,7 @@ import { Pool } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEMO_COMPANY_ID as A, U } from '@ariforce/db';
+import { bearerFor } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 import { JobsRunner } from '../src/jobs/jobs.runner';
@@ -126,10 +127,7 @@ describe.skipIf(!OWNER || !APP)('exceptions (real API)', () => {
     runner = app.get(JobsRunner);
     owner = new Pool({ connectionString: OWNER });
     for (const who of ['bm', 'bm2', 'abm', 'rbm', 'director', 'sysadmin', 'accountant', 'dh']) {
-      const res = await http()
-        .post('/v1/auth/sign-in/email')
-        .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
-      tok[who] = `Bearer ${res.headers['set-auth-token']}`;
+      tok[who] = await bearerFor(http, who, PASSWORD);
     }
     device = uuidv7();
     await owner.query(

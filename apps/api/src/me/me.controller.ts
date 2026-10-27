@@ -1,5 +1,6 @@
 import { Controller, Get, NotFoundException } from '@nestjs/common';
 import type { Me, Permission, Role } from '@ariforce/contracts';
+import { isRetiredRole } from '@ariforce/contracts';
 import { companies, roles, users } from '@ariforce/db';
 import { asc, eq, isNull } from 'drizzle-orm';
 import { CurrentPrincipal, RequirePermissions } from '../auth/decorators';
@@ -39,14 +40,17 @@ export class MeController {
       tx.select().from(roles).where(isNull(roles.deletedAt)).orderBy(asc(roles.rank)),
     );
     return {
-      items: rows.map((r) => ({
-        id: r.id,
-        key: r.key,
-        name: r.name,
-        rank: r.rank,
-        inHierarchy: r.rank > 0,
-        permissions: r.permissions.filter((x) => x.includes(':')) as Permission[],
-      })),
+      // Retired roles stay in the table (old records still read) but are not offered.
+      items: rows
+        .filter((r) => !isRetiredRole(r.key))
+        .map((r) => ({
+          id: r.id,
+          key: r.key,
+          name: r.name,
+          rank: r.rank,
+          inHierarchy: r.rank > 0,
+          permissions: r.permissions.filter((x) => x.includes(':')) as Permission[],
+        })),
     };
   }
 }

@@ -19,7 +19,8 @@ import {
   Territory,
 } from '../index';
 import * as fx from './fixtures';
-import { ROLE_RANK } from '../schemas/roles';
+import { ROLE_RANK, RoleKey, isRetiredRole } from '../schemas/roles';
+import { assignableTerritoryLevels } from '../schemas/territories';
 import { duplicateKeys, mapImportRow, type ImportLookup } from '../import/templates';
 import type { ImportEntity } from '../schemas/imports';
 import { SignInEmailBody } from '../schemas/auth';
@@ -466,7 +467,9 @@ export function createHandlers(baseUrl = '') {
       return u ? HttpResponse.json(Me.parse(u)) : unauthenticated();
     }),
     http.get(`${baseUrl}/v1/roles`, () =>
-      HttpResponse.json({ items: z.array(Role).parse(fx.roles) }),
+      HttpResponse.json({
+        items: z.array(Role).parse(fx.roles.filter((r) => !isRetiredRole(r.key))),
+      }),
     ),
     http.post(`${baseUrl}/v1/divisions/import`, ({ request }) =>
       mockImport('divisions', mockDivisions as never, request),
@@ -479,10 +482,21 @@ export function createHandlers(baseUrl = '') {
     ),
     http.get(`${baseUrl}/v1/territories`, ({ request }) => {
       const url = new URL(request.url);
+      const lvl = url.searchParams.get('level');
+      const role = RoleKey.safeParse(url.searchParams.get('assignableForRole'));
+      if (url.searchParams.has('assignableForRole') && !role.success)
+        return HttpResponse.json(
+          { error: { code: 'VALIDATION', message: 'assignableForRole is not a role' } },
+          { status: 422 },
+        );
+      const ok = role.success ? assignableTerritoryLevels(role.data) : null;
       // HQ-level rows live apart so pickers that list leaf territories keep their fixtures.
+      const hqOnly = lvl === 'headquarter' || (!!ok && ok.length === 1 && ok[0] === 'headquarter');
       return list(
         Territory,
-        url.searchParams.get('level') === 'headquarter' ? fx.hqTerritories : fx.territories,
+        (hqOnly ? fx.hqTerritories : fx.territories).filter(
+          (t) => (!lvl || t.level === lvl) && (!ok || ok.includes(t.level)),
+        ),
         url,
       );
     }),

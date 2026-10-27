@@ -281,6 +281,13 @@
       "when": 1793121618648,
       "tag": "0039_role_permissions_sfc",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793122900548,
+      "tag": "0040_role_permissions_expenses_pay",
+      "breakpoints": true
     }
   ]
 }

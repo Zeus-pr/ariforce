@@ -2,9 +2,18 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError } from 'better-auth/api';
 import { bearer } from 'better-auth/plugins';
-import { sql } from 'drizzle-orm';
-import { AUTH_STATE_CODES } from '@ariforce/contracts';
-import { authAccount, authSession, authUser, authVerification, type Db } from '@ariforce/db';
+import { eq, sql } from 'drizzle-orm';
+import { AUTH_STATE_CODES, isRetiredRole } from '@ariforce/contracts';
+import {
+  authAccount,
+  authSession,
+  authUser,
+  authVerification,
+  roles,
+  userRoles,
+  withTenant,
+  type Db,
+} from '@ariforce/db';
 import type { AuditService } from '../common/audit.service';
 import { CLIENT_IP_HEADER } from '../common/client-ip';
 
@@ -77,6 +86,22 @@ export function createAuth(db: Db, audit: AuditService) {
                 code: AUTH_STATE_CODES.suspended,
                 message: 'Your account is deactivated',
               });
+            // Holders of only retired roles (distribution_head / accountant) get no session.
+            const m = await audit.resolveMembership(session.userId);
+            if (m) {
+              const held = await withTenant(db, m, (tx) =>
+                tx
+                  .select({ key: roles.key })
+                  .from(userRoles)
+                  .innerJoin(roles, eq(roles.id, userRoles.roleId))
+                  .where(eq(userRoles.userId, m.userId)),
+              );
+              if (held.length && held.every((x) => isRetiredRole(x.key)))
+                throw new APIError('FORBIDDEN', {
+                  code: AUTH_STATE_CODES.retired,
+                  message: 'Your role is no longer in use; contact your administrator',
+                });
+            }
           },
           after: async (session) => {
             await audit.recordForAuthUser(session.userId, 'auth.sign_in', {

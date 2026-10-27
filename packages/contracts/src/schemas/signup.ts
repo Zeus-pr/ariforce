@@ -6,6 +6,7 @@ import { HIERARCHY_ROLE_KEYS, FUNCTIONAL_ROLE_KEYS, RoleKey } from './roles';
  * Self sign-up with approval (docs/RBAC.md "Sign-up requests"). The requested role is only a
  * request; nothing is granted until a system admin or a manager above that role approves.
  */
+/** Kept for reading old requests; retired keys in it are rejected on submit with ROLE_RETIRED. */
 export const SIGNUP_ROLE_KEYS = [...HIERARCHY_ROLE_KEYS, ...FUNCTIONAL_ROLE_KEYS] as const;
 export const SignupRoleKey = z.enum(SIGNUP_ROLE_KEYS).meta({ id: 'SignupRoleKey' });
 /** Same minimum as the admin CLI. */
@@ -19,6 +20,8 @@ export const AUTH_STATE_CODES = {
   unavailable: 'SIGNUP_UNAVAILABLE',
   rateLimited: 'RATE_LIMITED',
   captcha: 'CAPTCHA_FAILED',
+  /** Every role the person holds is retired (RETIRED_ROLE_KEYS): no sign-in, invite or sign-up. */
+  retired: 'ROLE_RETIRED',
 } as const;
 
 export const SignupRequestCreate = z

@@ -1308,7 +1308,7 @@ function buildDocument(): OpenApiDocument {
           tags: ['Expenses'],
           operationId: 'listExpenseClaims',
           summary:
-            'Your claims; with expenses:approve also non-draft claims of your reporting line; with finance:read approved/paid claims company-wide',
+            'Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide',
           requestParams: { query: ExpenseClaimListQuery },
           responses: { '200': { description: 'Claims', ...json(ExpenseClaimList) } },
         }),
@@ -1443,7 +1443,7 @@ function buildDocument(): OpenApiDocument {
           tags: ['TA/DA'],
           operationId: 'listAllowanceRates',
           deprecated: true,
-          summary: 'expenses:read, finance:read or settings:write',
+          summary: 'expenses:read, expenses:pay or settings:write',
           requestParams: { query: AllowanceRateQuery },
           responses: {
             '200': { description: 'OK', ...json(AllowanceRateList) },
@@ -1498,7 +1498,7 @@ function buildDocument(): OpenApiDocument {
           tags: ['TA/DA'],
           operationId: 'listAllowancePlaces',
           deprecated: true,
-          summary: 'expenses:read, finance:read or settings:write',
+          summary: 'expenses:read, expenses:pay or settings:write',
           requestParams: { query: AllowancePlaceQuery },
           responses: {
             '200': { description: 'OK', ...json(AllowancePlaceList) },
@@ -1677,7 +1677,7 @@ function buildDocument(): OpenApiDocument {
         post: op({
           tags: ['Expenses'],
           operationId: 'payExpenseClaim',
-          summary: 'Accountant (finance:write): approved -> paid',
+          summary: 'Director / system admin (expenses:pay): approved -> paid',
           requestParams: { path: IdParam },
           requestBody: json(ExpensePay),
           responses: {
