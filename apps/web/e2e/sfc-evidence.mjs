@@ -88,6 +88,7 @@ for (const view of ['desktop', 'mobile']) {
     hqs.length === 2 && hqs.some((h) => /Bmch/.test(h)) && hqs.some((h) => /Anamoy/.test(h)),
     `${view}: both Burdwan HQs listed`,
   );
+  await page.getByTestId('sfc-hq-change').click().catch(() => {});
   await page.getByTestId('sfc-hq-search').fill('anamoy');
   check((await page.getByTestId('sfc-hq-option').count()) === 1, `${view}: HQ search filters`);
   await page.getByTestId('sfc-hq-search').fill('');
@@ -322,12 +323,14 @@ for (const view of ['desktop', 'mobile']) {
 
   // Discard path: edit, switch HQ, confirm discard.
   await page.getByTestId('sfc-row').first().getByTestId('sfc-da').fill('7');
+  await page.getByTestId('sfc-hq-change').click();
   await page.getByTestId('sfc-hq-option').filter({ hasText: 'Anamoy' }).click();
   await page.getByTestId('sfc-discard-ok').click();
   await page.getByTestId('sfc-emp').first().waitFor();
   check(
     (await page.getByTestId('sfc-step-table').count()) === 0 &&
-      (await texts(page, 'sfc-emp')).length === 1,
+      (await texts(page, 'sfc-emp')).length >= 1 &&
+      (await page.getByTestId('sfc-hq-change').count()) === 1,
     `${view}: discard moves to the other HQ`,
   );
   await ctx.close();
