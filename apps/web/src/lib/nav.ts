@@ -229,9 +229,9 @@ export const NAV: NavItem[] = [
   },
 ];
 
-/** Where a role lands after sign-in: the first nav item it can see. */
+/** Where a role lands after sign-in: the first nav item it can see (SFC is a tool, never a landing page). */
 export function homeFor(role: Role): string {
-  return NAV.find((n) => n.roles.includes(role))?.href ?? '/';
+  return NAV.find((n) => n.slug !== 'sfc' && n.roles.includes(role))?.href ?? '/';
 }
 
 /**

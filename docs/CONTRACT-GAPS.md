@@ -200,3 +200,12 @@ The web runs on `apps/web/src/lib/sfc/adapter.ts` (MSW mock in `lib/sfc/mock-han
 
 - Removed from every web picker, filter, nav and mock persona. The contracts fixtures still contain "Demo Distribution Head" and "Demo Accountant" users (the contract's RoleKey is the Architect's), which the web shows as "Other role".
 - Gap: only `accountant` had `finance:write`, so no portal role can mark an expense claim paid now. The pay step was removed from the expenses e2e. Needs an API decision (e.g. give pay to Director or System Admin).
+
+## Forgot password by email code (web, assumed contract; no Architect branch on origin yet)
+
+One thin layer: `apps/web/src/lib/password-reset/adapter.ts` (MSW mock in `lib/password-reset/mock-handler.ts`). Assumed better-auth email-OTP routes under the existing `/v1/auth` base:
+- `POST /v1/auth/email-otp/send-verification-otp` `{ email, type: 'forget-password' }` -> 200 for every email (no account enumeration). The web always shows "If the account exists, we sent a code"; only 429 is surfaced.
+- `POST /v1/auth/email-otp/reset-password` `{ email, otp, password }` -> 200; the API revokes every session of that user (web toast says so).
+- Errors read from either `{ code, message }` (better-auth) or `{ error: { code, message } }`: `INVALID_OTP` (wrong), `OTP_EXPIRED`, `TOO_MANY_ATTEMPTS` (mock: 3 wrong codes, cleared by a new code), 400/422 password rule message, 429 with `Retry-After`.
+- Code: 6 digits. Password minimum 12 (`INVITE_PASSWORD_MIN`) unless the API says otherwise. Resend cooldown 30 s is client-side only.
+- To confirm: code lifetime, attempt limit, whether resend invalidates the old code, and that `revokeSessionsOnPasswordReset` is on.

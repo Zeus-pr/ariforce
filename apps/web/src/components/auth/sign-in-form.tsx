@@ -121,7 +121,11 @@ export function SignInForm() {
             className="af-fade mb-4 rounded-md border border-warning/40 bg-warning-soft px-3 py-2.5 text-[13px] leading-snug text-warning-text"
           >
             <p className="font-medium">
-              {error.account === 'pending' ? 'Awaiting approval' : error.account === 'suspended' ? 'Account suspended' : 'Request not approved'}
+              {error.account === 'pending'
+                ? 'Awaiting approval'
+                : error.account === 'suspended'
+                  ? 'Account suspended'
+                  : 'Request not approved'}
             </p>
             <p className="mt-0.5">{error.message}</p>
           </div>
@@ -189,6 +193,15 @@ export function SignInForm() {
                 {err('password')}
               </p>
             )}
+            <div className="flex justify-end">
+              <Link
+                href={`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ''}`}
+                data-testid="forgot-link"
+                className="rounded-sm text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+              >
+                Forgot password?
+              </Link>
+            </div>
           </div>
 
           <div className="af-enter af-enter-form" style={{ '--i': 3 } as React.CSSProperties}>

@@ -61,3 +61,7 @@ Evidence: `apps/web/e2e/admin-people-evidence.mjs` (Chromium and WebKit, 76 chec
 ## SFC (/sfc)
 
 Replaces the old TA/DA rates page (`/settings/allowances`, removed). Nav entry and route guard: Area Business Manager and above, Director, System Admin (`roleLevel >= 2 || isSystemAdmin`). Business Managers get no entry and are redirected home. HQ list is scoped by the API (`GET /v1/sfc/hqs`); in the mock a Burdwan ABM sees only Burdwan Area (Anamoy and Bmch HQs), RBM and above see all. Everyone who can open the page can edit rows and save (API is the authority: 403/404/409/422/429 are shown as plain messages).
+
+## Public pages
+
+`/sign-in`, `/sign-up`, `/invite` and `/forgot-password` need no session (auth-boot `pub` list). SFC is never a landing page: `homeFor` skips it.
