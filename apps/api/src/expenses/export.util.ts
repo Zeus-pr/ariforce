@@ -18,6 +18,7 @@ export async function toXlsx(month: string, data: Data): Promise<Buffer> {
     { header: 'Hotel', key: 'hotel', width: 12 },
     { header: 'Food', key: 'food', width: 12 },
     { header: 'Mileage', key: 'mileage', width: 12 },
+    { header: 'Allowance', key: 'allowance', width: 12 },
     { header: 'Other', key: 'other', width: 12 },
     { header: 'Claimed days', key: 'claimedDays', width: 13 },
     { header: 'DCR days', key: 'dcrDays', width: 10 },

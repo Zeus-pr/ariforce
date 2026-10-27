@@ -1,6 +1,9 @@
 import { http, HttpResponse } from 'msw';
 import type * as z from 'zod';
+import { AllowanceDraftRequest, AllowanceDraftResult } from '../schemas/allowances';
+import type { AllowanceDay } from '../schemas/allowances';
 import type { Me } from '../schemas/auth';
+import { mockRateFor } from './allowances';
 import {
   EXPENSE_CATEGORIES,
   EXPENSE_MAX_FILES_PER_LINE,
@@ -161,7 +164,15 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
       if (!b.success) return e(422, 'VALIDATION', b.error.issues[0]?.message ?? 'Invalid');
       if (!b.data.date.startsWith(f.c.month))
         return e(422, 'VALIDATION', `date must be in ${f.c.month}`);
-      const line = { ...b.data, id: uuid(), claimId: f.c.id, attachments: [], version: 1 };
+      const line = {
+        ...b.data,
+        id: uuid(),
+        claimId: f.c.id,
+        source: 'manual' as const,
+        allowancePlaceId: null,
+        attachments: [],
+        version: 1,
+      };
       f.c.lines.push(line);
       return HttpResponse.json(out(f.c), { status: 201 });
     }),
@@ -175,7 +186,7 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
       const b = ExpenseLineUpdate.safeParse(await request.json().catch(() => null));
       if (!b.success) return e(422, 'VALIDATION', 'Invalid');
       if (b.data.version !== l.version) return e(409, 'VERSION_CONFLICT', 'Stale version');
-      Object.assign(l, b.data.line, { version: l.version + 1 });
+      Object.assign(l, b.data.line, { source: 'manual', version: l.version + 1 });
       return HttpResponse.json(out(f.c));
     }),
     http.delete(`${B}/expense-claims/:id/lines/:lineId`, ({ request, params }) => {
@@ -207,6 +218,7 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
         confirmedAt: null,
       };
       l.attachments.push(a);
+      l.source = 'manual'; // a receipt makes an auto line manual (as the API)
       return HttpResponse.json(
         ExpenseAttachmentUpload.parse({
           attachment: a,
@@ -249,6 +261,86 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
         ExpenseDownload.parse({
           downloadUrl: `${baseUrl}/mock-r2/${f.a.id}`,
           expiresAt: new Date(Date.now() + 300_000).toISOString(),
+        }),
+      );
+    }),
+    // TA/DA draft (#39). Mock: every weekday of the month up to today is an HQ day of a submitted
+    // DCR; DA + flat TA from the HQ rate. Fare-chart places are accepted but not used.
+    http.post(`${B}/expense-claims/:id/allowances`, async ({ request, params }) => {
+      const g = auth(request);
+      if (g.res) return g.res;
+      const f = editable(g.p, String(params.id));
+      if (f.res) return f.res;
+      const b = AllowanceDraftRequest.safeParse((await request.json().catch(() => null)) ?? {});
+      if (!b.success) return e(422, 'VALIDATION', b.error.issues[0]?.message ?? 'Invalid');
+      const today = new Date().toISOString().slice(0, 10);
+      const [y, m] = f.c.month.split('-').map(Number) as [number, number];
+      const days: AllowanceDay[] = [];
+      const lines: Claim['lines'] = [];
+      for (let d = 1; d <= new Date(Date.UTC(y, m, 0)).getUTCDate(); d++) {
+        const dt = new Date(Date.UTC(y, m - 1, d));
+        const date = dt.toISOString().slice(0, 10);
+        if (date > today || dt.getUTCDay() === 0) continue;
+        const rate = mockRateFor('hq', g.p.roles[0] ?? null, date);
+        const day: AllowanceDay = {
+          date,
+          dcrId: uuid(),
+          workTypeCode: 'FIELD',
+          band: 'hq',
+          rateId: rate?.id ?? null,
+          placeId: null,
+          placeName: null,
+          km: null,
+          da: 0,
+          ta: 0,
+          issues: [],
+        };
+        const manual = f.c.lines.some(
+          (l) =>
+            l.date === date &&
+            l.source === 'manual' &&
+            ['allowance', 'mileage'].includes(l.category),
+        );
+        if (manual) day.issues.push('manual_line_exists');
+        else if (!rate) day.issues.push('no_rate');
+        else {
+          day.da = rate.daAmount;
+          day.ta = rate.taFixed;
+          const base = { date, notes: null, mileageKm: null, dcrId: day.dcrId, tourPlanId: null };
+          const auto = { claimId: f.c.id, source: 'auto' as const, allowancePlaceId: null };
+          if (day.da)
+            lines.push({
+              ...base,
+              ...auto,
+              id: uuid(),
+              category: 'allowance',
+              amount: day.da,
+              notes: 'DA (HQ)',
+              attachments: [],
+              version: 1,
+            });
+          if (day.ta)
+            lines.push({
+              ...base,
+              ...auto,
+              id: uuid(),
+              category: 'travel',
+              amount: day.ta,
+              notes: 'TA (HQ)',
+              attachments: [],
+              version: 1,
+            });
+        }
+        days.push(day);
+      }
+      if (!b.data.dryRun) f.c.lines = [...f.c.lines.filter((l) => l.source !== 'auto'), ...lines];
+      const sum = (k: 'da' | 'ta') => Math.round(days.reduce((s2, d) => s2 + d[k], 0) * 100) / 100;
+      return HttpResponse.json(
+        AllowanceDraftResult.parse({
+          dryRun: b.data.dryRun,
+          days,
+          totals: { da: sum('da'), ta: sum('ta'), km: 0, lines: lines.length },
+          claim: b.data.dryRun ? null : out(f.c),
         }),
       );
     }),

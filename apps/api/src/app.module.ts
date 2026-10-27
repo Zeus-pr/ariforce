@@ -13,6 +13,7 @@ import { PlansModule } from './plans/plans.module';
 import { TeamModule } from './team/team.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { LeaveModule } from './leave/leave.module';
+import { AllowancesModule } from './allowances/allowances.module';
 import { ExceptionsModule } from './exceptions/exceptions.module';
 import { ProductPricesModule } from './product-prices/product-prices.module';
 import { MeController } from './me/me.controller';
@@ -34,6 +35,7 @@ import { OpenApiController } from './openapi/openapi.controller';
     TeamModule,
     ExceptionsModule,
     ProductPricesModule,
+    AllowancesModule,
   ],
   controllers: [HealthController, OpenApiController, MeController],
   providers: [WorkTypesCheck],

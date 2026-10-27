@@ -239,6 +239,13 @@
       "when": 1793098231980,
       "tag": "0033_role_permissions_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793099360335,
+      "tag": "0034_tada_allowances",
+      "breakpoints": true
     }
   ]
 }

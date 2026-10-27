@@ -78,6 +78,20 @@ import {
   TourPlanListQuery,
   TourPlanUpsert,
 } from './schemas/field';
+import {
+  AllowanceDraftRequest,
+  AllowanceDraftResult,
+  AllowancePlace,
+  AllowancePlaceInput,
+  AllowancePlaceList,
+  AllowancePlaceQuery,
+  AllowancePlaceUpdate,
+  AllowanceRate,
+  AllowanceRateInput,
+  AllowanceRateList,
+  AllowanceRateQuery,
+  AllowanceRateUpdate,
+} from './schemas/allowances';
 import { Me, SessionInfo, SignInEmailBody } from './schemas/auth';
 import { RoleList } from './schemas/roles';
 import { Health } from './schemas/health';
@@ -1382,6 +1396,128 @@ function buildDocument(): OpenApiDocument {
             '200': { description: 'Signed URL', ...json(ExpenseDownload) },
             '404': err('Not found or not visible'),
             '409': err('UPLOAD_NOT_CONFIRMED'),
+          },
+        }),
+      },
+      '/v1/allowance-rates': {
+        get: op({
+          tags: ['TA/DA'],
+          operationId: 'listAllowanceRates',
+          summary: 'expenses:read, finance:read or settings:write',
+          requestParams: { query: AllowanceRateQuery },
+          responses: {
+            '200': { description: 'OK', ...json(AllowanceRateList) },
+            '403': err('FORBIDDEN'),
+          },
+        }),
+        post: op({
+          tags: ['TA/DA'],
+          operationId: 'createAllowanceRate',
+          summary: 'settings:write',
+          requestBody: json(AllowanceRateInput),
+          responses: {
+            '201': { description: 'Created', ...json(AllowanceRate) },
+            '403': err('FORBIDDEN (needs settings:write)'),
+            '409': err('DUPLICATE_RATE (same band, role and effectiveFrom)'),
+            '422': err('VALIDATION'),
+          },
+        }),
+      },
+      '/v1/allowance-rates/{id}': {
+        put: op({
+          tags: ['TA/DA'],
+          operationId: 'updateAllowanceRate',
+          summary: 'settings:write; optimistic version',
+          requestParams: { path: IdParam },
+          requestBody: json(AllowanceRateUpdate),
+          responses: {
+            '200': { description: 'Saved', ...json(AllowanceRate) },
+            '403': err('FORBIDDEN (needs settings:write)'),
+            '404': err('Not found'),
+            '409': err('VERSION_CONFLICT or DUPLICATE_RATE (same band, role and effectiveFrom)'),
+            '422': err('VALIDATION'),
+          },
+        }),
+        delete: op({
+          tags: ['TA/DA'],
+          operationId: 'deleteAllowanceRate',
+          summary: 'settings:write; soft delete (existing claim lines keep their amounts)',
+          requestParams: { path: IdParam },
+          responses: {
+            '204': { description: 'Deleted' },
+            '403': err('FORBIDDEN (needs settings:write)'),
+            '404': err('Not found'),
+          },
+        }),
+      },
+      '/v1/allowance-places': {
+        get: op({
+          tags: ['TA/DA'],
+          operationId: 'listAllowancePlaces',
+          summary: 'expenses:read, finance:read or settings:write',
+          requestParams: { query: AllowancePlaceQuery },
+          responses: {
+            '200': { description: 'OK', ...json(AllowancePlaceList) },
+            '403': err('FORBIDDEN'),
+          },
+        }),
+        post: op({
+          tags: ['TA/DA'],
+          operationId: 'createAllowancePlace',
+          summary: 'settings:write',
+          requestBody: json(AllowancePlaceInput),
+          responses: {
+            '201': { description: 'Created', ...json(AllowancePlace) },
+            '403': err('FORBIDDEN (needs settings:write)'),
+            '409': err('DUPLICATE_PLACE (same HQ and name)'),
+            '422': err('VALIDATION or NOT_HQ_TERRITORY'),
+          },
+        }),
+      },
+      '/v1/allowance-places/{id}': {
+        put: op({
+          tags: ['TA/DA'],
+          operationId: 'updateAllowancePlace',
+          summary: 'settings:write; optimistic version',
+          requestParams: { path: IdParam },
+          requestBody: json(AllowancePlaceUpdate),
+          responses: {
+            '200': { description: 'Saved', ...json(AllowancePlace) },
+            '403': err('FORBIDDEN (needs settings:write)'),
+            '404': err('Not found'),
+            '409': err('VERSION_CONFLICT or DUPLICATE_PLACE (same HQ and name)'),
+            '422': err('VALIDATION or NOT_HQ_TERRITORY'),
+          },
+        }),
+        delete: op({
+          tags: ['TA/DA'],
+          operationId: 'deleteAllowancePlace',
+          summary: 'settings:write; soft delete (existing claim lines keep their amounts)',
+          requestParams: { path: IdParam },
+          responses: {
+            '204': { description: 'Deleted' },
+            '403': err('FORBIDDEN (needs settings:write)'),
+            '404': err('Not found'),
+          },
+        }),
+      },
+      '/v1/expense-claims/{id}/allowances': {
+        post: op({
+          tags: ['Expenses', 'TA/DA'],
+          operationId: 'draftExpenseAllowances',
+          summary:
+            'Owner, draft or rejected claim: compute DA/TA per DCR day of the month from the rate card and fare chart and replace the auto lines (dryRun: preview only). Manual lines are never touched.',
+          requestParams: { path: IdParam },
+          requestBody: json(AllowanceDraftRequest),
+          responses: {
+            '200': {
+              description: 'Per-day breakdown, totals and the updated claim',
+              ...json(AllowanceDraftResult),
+            },
+            '403': err('Not the owner'),
+            '404': err('Not found'),
+            '409': err('EXPENSE_NOT_EDITABLE'),
+            '422': err('VALIDATION or PLACE_NOT_USABLE'),
           },
         }),
       },
