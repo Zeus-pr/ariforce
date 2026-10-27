@@ -65,10 +65,12 @@ describe.skipIf(!OWNER || !APP)('leave (real API)', () => {
         .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
       tok[who] = `Bearer ${res.headers['set-auth-token']}`;
     }
+    const d = await http().get('/v1/leave/settings').set(as('director'));
+    expect(d.body.backdateDays, 'new-company default backdating window').toBe(14);
     const s = await http()
       .put('/v1/leave/settings')
       .set(as('director'))
-      .send({ maxFutureDays: 731, approvalLevels: 2, backdateDays: 7, weeklyOffDays: [0] });
+      .send({ maxFutureDays: 731, approvalLevels: 2, backdateDays: 14, weeklyOffDays: [0] });
     expect(s.status, JSON.stringify(s.body)).toBe(200);
   });
   afterAll(async () => {
@@ -157,7 +159,7 @@ describe.skipIf(!OWNER || !APP)('leave (real API)', () => {
       await code({ typeCode: 'CL', fromDate: `${NEXT}-12-31`, toDate: `${NEXT + 1}-01-01` }),
     ).toBe('LEAVE_SPANS_YEARS');
     expect(
-      await code({ typeCode: 'CL', fromDate: addDay(TODAY, -10), toDate: addDay(TODAY, -10) }),
+      await code({ typeCode: 'CL', fromDate: addDay(TODAY, -15), toDate: addDay(TODAY, -15) }),
     ).toBe('LEAVE_BACKDATE_WINDOW');
     expect(await code({ typeCode: 'CL', fromDate: D(6), toDate: D(6) })).toBe(
       'LEAVE_NO_WORKING_DAYS',
