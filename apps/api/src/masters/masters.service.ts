@@ -152,27 +152,7 @@ export class MastersService {
     if (!t) throw new ForbiddenException('Territory outside your hierarchy');
   }
 
-  /**
-   * Product prices are system_admin only (`products:prices`): other masters writers may create or
-   * update products but not set or change MRP/PTR/PTS (403 PRICES_ADMIN_ONLY). Unchanged values
-   * pass; null/absent price fields are dropped so they never clear a stored price.
-   */
-  private guardPrices(def: MasterDef, p: Principal, body: Row, before?: Row) {
-    if (def.entity !== 'product' || p.permissions.includes('products:prices')) return;
-    const num = (v: unknown) => (v == null ? null : Number(v));
-    // Empty price cells (e.g. an import without price columns) keep the stored prices.
-    for (const k of PRICE_KEYS) if (body[k] == null) delete body[k];
-    const bad = PRICE_KEYS.filter(
-      (k) => k in body && num(body[k]) !== (before ? num(before[k]) : null),
-    );
-    if (bad.length)
-      throw new ForbiddenException({
-        code: 'PRICES_ADMIN_ONLY',
-        message: 'Only the System Admin can set product prices',
-        details: { fields: bad },
-      });
-  }
-
+  /** Price changes through the generic product routes are recorded in price history (source 'masters'). */
   private async trackPrices(tx: Tx, def: MasterDef, p: Principal, row: Row, before?: Row) {
     if (def.entity !== 'product') return;
     const pick = (r?: Row) => ({
@@ -189,7 +169,6 @@ export class MastersService {
   async insert(tx: Tx, def: MasterDef, p: Principal, body: Row, action = 'create') {
     if (def.territoryCol && 'territoryId' in body)
       await this.assertTerritory(tx, p, body.territoryId);
-    this.guardPrices(def, p, body);
     const values: Row = {
       ...(def.toRow ? def.toRow(body, p) : body),
       id: uuidv7(),
@@ -222,7 +201,6 @@ export class MastersService {
     const { version, ...changes } = body;
     if (def.territoryCol && changes.territoryId && changes.territoryId !== before.territoryId)
       await this.assertTerritory(tx, p, changes.territoryId);
-    this.guardPrices(def, p, changes, before);
     const set = def.toRow ? def.toRow(changes, p) : changes;
     const [row] = await tx
       .update(def.table)

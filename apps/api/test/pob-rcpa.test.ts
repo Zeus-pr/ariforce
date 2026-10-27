@@ -372,7 +372,8 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
       ptr: 10,
       admin: tok.sysadmin,
     });
-    const first = await put([call({ pob: [{ productId: prod, quantity: 2 }] })]);
+    const c = call({ pob: [{ productId: prod, quantity: 2 }] });
+    const first = await put([c]);
     expect(first.status, JSON.stringify(first.body)).toBe(200);
     expect(first.body.calls[0].pob[0].value).toBe(20);
     const pr = await http()
@@ -392,5 +393,46 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     );
     expect(second.status, JSON.stringify(second.body)).toBe(200);
     expect(second.body.calls[0].pob[0].value).toBe(24);
+
+    // Re-saving the draft unchanged (twice: idempotent re-send) keeps the saved value.
+    for (let i = 0; i < 2; i++) {
+      const again = await put([c]);
+      expect(again.status, JSON.stringify(again.body)).toBe(200);
+      expect(again.body.calls[0].pob[0].value).toBe(20);
+    }
+    expect(await rowsValue(first.body.id, prod)).toBe('20.00');
+
+    // Edited quantity = new line pricing (current PTR 12); an added product uses its current PTR.
+    const prod2 = await createProduct(http, tok.bm!, tok.director!, {
+      ptr: 5,
+      admin: tok.sysadmin,
+    });
+    const edited = await put([
+      {
+        ...c,
+        pob: [
+          { productId: prod, quantity: 3 },
+          { productId: prod2, quantity: 1 },
+        ],
+      },
+    ]);
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+    const byProd = (b: { calls: { pob: { productId: string; value: number }[] }[] }, id: string) =>
+      b.calls[0]!.pob.find((x) => x.productId === id)!.value;
+    expect(byProd(edited.body, prod)).toBe(36);
+    expect(byProd(edited.body, prod2)).toBe(5);
+    // A later PTR change does not touch either line on another unchanged re-send.
+    await http().patch(`/v1/admin/products/${prod}/prices`).set(as('sysadmin')).send({ ptr: 15 });
+    const kept = await put([
+      {
+        ...c,
+        pob: [
+          { productId: prod, quantity: 3 },
+          { productId: prod2, quantity: 1 },
+        ],
+      },
+    ]);
+    expect(byProd(kept.body, prod)).toBe(36);
+    expect(byProd(kept.body, prod2)).toBe(5);
   });
 });

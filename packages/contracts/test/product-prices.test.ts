@@ -56,12 +56,6 @@ describe('product prices admin (mocks)', () => {
       version: p.version,
     });
     expect(stale.status).toBe(409);
-    // The director cannot change a price through the generic masters route either.
-    const masters = await call('director', 'PATCH', `/v1/products/${p.id}`, {
-      ptr: 1,
-      version: saved.version,
-    });
-    expect(masters.status).toBe(403);
 
     const bulk = await call('sysadmin', 'POST', '/v1/admin/products/prices/bulk', {
       rows: [

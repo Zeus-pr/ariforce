@@ -75,7 +75,7 @@ Field-added doctors are `pending` unless created by a director or system admin.
 
 ### Leave permissions (migration 0025, #51)
 
-`packages/db/migrations/0033_role_permissions_prices.sql` re-syncs every role after `products:prices` (system_admin only: product MRP/PTR/PTS and price history) was added; `ROLE_PERMISSIONS_MIGRATION` now names 0033. Details: docs/PRODUCTS.md.
+`packages/db/migrations/0033_role_permissions_prices.sql` re-syncs every role after `products:prices` (system_admin only: the admin price page `/v1/admin/products*` and price history; generic product routes still use `masters:write` for prices) was added; `ROLE_PERMISSIONS_MIGRATION` now names 0033. Details: docs/PRODUCTS.md.
 
 `packages/db/migrations/0025_role_permissions_leave.sql` re-syncs every role from `DEFAULT_ROLE_PERMISSIONS` after `leave:read`, `leave:write` and `leave:approve` were added (`ROLE_PERMISSIONS_MIGRATION` now names 0025; the drift test follows it). Leave policy and carry-forward use `settings:write`. Details: docs/LEAVE.md.
 

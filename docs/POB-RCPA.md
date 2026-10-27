@@ -81,7 +81,7 @@ prescription images.
 2. **POB on doctor, chemist and stockist calls** (Prajesh, 2026-10-27, via lead). An earlier draft
    rejected doctor-call POB with 422 `pobOutletCallIds`; that rule is removed, so doctor-call POB is
    accepted as it was before #40. RCPA stays chemist-only.
-3. **POB value from PTR only** (stored at save; PTR is edited by the System Admin only, see PRODUCTS.md); client value ignored; no PTR → `value: null`. Behaviour change: before,
+3. **POB value from PTR only** (stored at save; PTR is edited by the System Admin only, see PRODUCTS.md). Re-saving a DCR keeps a line's stored value while call, product and quantity are unchanged; an edited quantity or a new line is priced at the current PTR; client value ignored; no PTR → `value: null`. Behaviour change: before,
    the client's value was stored as-is (and fed `pob_value`).
 4. **RCPA row = our product (molecule anchor) + optional competitor brand**; units required,
    Rx count optional. One row per brand per molecule per call.

@@ -13,12 +13,12 @@ System Admin screen for product MRP / PTR / PTS. POB value stays **quantity × P
 
 ## Changes
 
-| Item          | Detail                                                                                                                                                 |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Permission    | New `products:prices`, **system_admin only** (`0033_role_permissions_prices.sql`, generated; drift test follows it)                                    |
-| History       | New append-only `product_price_history` (`0032_product_price_history.sql`): old/new MRP/PTR/PTS, source, bulkId, changed_by, changed_at; RLS forced    |
-| Masters guard | Without `products:prices`, a product create/update/import that sets or changes a price → 403 `PRICES_ADMIN_ONLY`; empty price cells keep stored prices |
-| Audit         | `product.prices_updated` per changed product (before/after), `product.prices_bulk` per bulk call (summary)                                             |
+| Item           | Detail                                                                                                                                                                                                                                                            |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Permission     | New `products:prices`, **system_admin only** (`0033_role_permissions_prices.sql`, generated; drift test follows it)                                                                                                                                               |
+| History        | New append-only `product_price_history` (`0032_product_price_history.sql`): old/new MRP/PTR/PTS, source, bulkId, changed_by, changed_at; RLS forced                                                                                                               |
+| Generic routes | Unchanged (lead, 2026-10-27): `masters:write` holders (RBM and up, director, system_admin) still set prices via `POST/PATCH /v1/products` and import, same contract; price changes there also write history (source `masters`) and `product.prices_updated` audit |
+| Audit          | `product.prices_updated` per changed product (before/after), `product.prices_bulk` per bulk call (summary)                                                                                                                                                        |
 
 ## Endpoints (all `products:prices`)
 
@@ -43,11 +43,15 @@ Row errors: `VALIDATION`, `PRODUCT_NOT_FOUND`, `PTR_ABOVE_MRP`. Codes match case
 
 1. New permission `products:prices` instead of reusing `users:write` (the only other system_admin-only
    permission is about users; roles are editable per company, so a prices-specific key is safer).
-2. Generic masters writes may no longer set or change prices without `products:prices`; this closes the
-   back door (RBM/director could edit PTR). Imports keep working for non-price columns.
-3. PTR ≤ MRP is enforced; PTS is not compared (lead rule only names PTR/MRP).
-4. A **draft DCR re-saved** after a PTR change is re-priced at the current PTR (POB lines are replaced on
-   every save, as before #40). Submitted/locked DCRs never change. Say if re-saves should keep old values.
+2. The generic product routes keep their previous behaviour exactly (Prajesh, 2026-10-27): whoever
+   could edit prices there still can, and import semantics are unchanged (an empty price cell sets the
+   price to null, as before). The admin page is an additional, system_admin-only way in. Price changes
+   on the generic routes are still recorded in history (source `masters`) and audit; no contract change.
+3. PTR ≤ MRP is enforced on the admin endpoints (not added to the generic routes); PTS is not compared (lead rule only names PTR/MRP).
+4. Saved POB values stay as saved (lead rule, 2026-10-27). On `PUT /v1/dcrs` a POB line for the same
+   call (clientId) and product with the **same quantity** keeps its stored value, so idempotent re-sends
+   never change values. **Edited quantity = new line pricing** (current PTR). New lines use the current
+   PTR. A stored `null` (no PTR when saved) is priced at the current PTR on the next save.
 5. Bulk is synchronous (300 rows), not a background import job.
 
 ## Not done

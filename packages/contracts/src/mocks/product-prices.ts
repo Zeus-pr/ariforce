@@ -107,22 +107,6 @@ export function productPriceHandlers(baseUrl: string, who: (r: Request) => Me | 
     e(422, 'VALIDATION', issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
 
   return [
-    // Generic masters route: prices are system_admin only (falls through when allowed).
-    http.patch(`${baseUrl}/v1/products/:id`, async ({ request, params }) => {
-      const me = who(request);
-      if (!me || (me.permissions as string[]).includes('products:prices')) return undefined;
-      const b = (await request
-        .clone()
-        .json()
-        .catch(() => ({}))) as Record<string, unknown>;
-      const cur = fx.products.find((x) => x.id === params.id);
-      const bad = KEYS.filter((k) => b[k] != null && Number(b[k]) !== (cur?.[k] ?? null));
-      return bad.length
-        ? e(403, 'PRICES_ADMIN_ONLY', 'Only the System Admin can set product prices', {
-            fields: bad,
-          })
-        : undefined;
-    }),
     http.get(B, ({ request }) => {
       const a = auth(request);
       if (a.res) return a.res;

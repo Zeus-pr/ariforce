@@ -91,7 +91,7 @@ describe.skipIf(!OWNER || !APP)('masters + import (real API)', () => {
     const key = `k-${RUN}`;
     const dry = await http()
       .post('/v1/products/import')
-      .set(as('sysadmin'))
+      .set(as('director'))
       .set('idempotency-key', key)
       .send({ dryRun: true, rows: products });
     expect(dry.status, JSON.stringify(dry.body)).toBe(200);
@@ -109,14 +109,14 @@ describe.skipIf(!OWNER || !APP)('masters + import (real API)', () => {
 
     const apply = await http()
       .post('/v1/products/import')
-      .set(as('sysadmin'))
+      .set(as('director'))
       .set('idempotency-key', key)
       .send({ dryRun: false, rows: products });
     expect(apply.status).toBe(201);
     expect(apply.body.totals).toMatchObject({ created: 2, error: 2 });
     const again = await http()
       .post('/v1/products/import')
-      .set(as('sysadmin'))
+      .set(as('director'))
       .set('idempotency-key', key)
       .send({ dryRun: false, rows: products });
     expect(again.body.id).toBe(apply.body.id); // idempotent replay
@@ -139,20 +139,7 @@ describe.skipIf(!OWNER || !APP)('masters + import (real API)', () => {
         onDuplicate: 'update',
         rows: [{ code: `p${RUN}1`, name: 'Paracet 650', division_code: div }],
       });
-    expect(upd.body.results[0], JSON.stringify(upd.body.results[0])).toMatchObject({
-      status: 'updated',
-      duplicateRule: 'code',
-    });
-    // Prices are system_admin only: a director import that sets a price fails that row.
-    const priced = await http()
-      .post('/v1/products/import')
-      .set(as('director'))
-      .send({
-        dryRun: false,
-        onDuplicate: 'update',
-        rows: [{ code: `p${RUN}1`, name: 'Paracet 650', division_code: div, ptr: 9 }],
-      });
-    expect(priced.body.results[0].status, JSON.stringify(priced.body)).toBe('error');
+    expect(upd.body.results[0]).toMatchObject({ status: 'updated', duplicateRule: 'code' });
 
     // HQ mapping by code
     const hq = await http()

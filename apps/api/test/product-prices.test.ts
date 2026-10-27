@@ -96,19 +96,27 @@ describe.skipIf(!OWNER || !APP)('product prices admin (real API)', () => {
         403,
       );
     }
-    // Generic masters route: director may edit a product but not its prices.
-    const cur = (await http().get(`/v1/products/${p1}`).set(as('director'))).body;
+    // Generic masters routes keep their old behaviour: masters:write holders (director) may set
+    // prices there; the change is still recorded in price history (source 'masters') and audit.
+    const pm = await createProduct(http, tok.bm!, tok.director!);
+    const cur = (await http().get(`/v1/products/${pm}`).set(as('director'))).body;
     const r = await http()
-      .patch(`/v1/products/${p1}`)
+      .patch(`/v1/products/${pm}`)
       .set(as('director'))
       .send({ ptr: 3, version: cur.version });
-    expect(r.status).toBe(403);
-    expect(r.body.error.code).toBe('PRICES_ADMIN_ONLY');
-    const ok = await http()
-      .patch(`/v1/products/${p1}`)
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.ptr).toBe(3);
+    const h = await http().get(`/v1/admin/products/${pm}/price-history`).set(as('sysadmin'));
+    expect(h.body.items[0]).toMatchObject({ source: 'masters', new: { ptr: 3 } });
+    expect(h.body.items[0].changedBy.name).toBeTruthy();
+    // A name-only edit writes no history row.
+    const n = h.body.items.length;
+    await http()
+      .patch(`/v1/products/${pm}`)
       .set(as('director'))
-      .send({ name: cur.name, ptr: cur.ptr, version: cur.version });
-    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+      .send({ name: cur.name, version: r.body.version });
+    const h2 = await http().get(`/v1/admin/products/${pm}/price-history`).set(as('sysadmin'));
+    expect(h2.body.items).toHaveLength(n);
   });
 
   it('lists with search, missingPtr filter and cursor paging', async () => {
