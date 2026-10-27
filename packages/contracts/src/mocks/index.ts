@@ -850,10 +850,7 @@ function fieldHandlers(baseUrl: string) {
           },
           { status: 422 },
         );
-      // #40: POB on chemist/stockist calls, RCPA on chemist calls, no duplicate lines.
-      const pobOutletCallIds = b.data.calls
-        .filter((c) => c.pob.length && c.outletKind === 'doctor')
-        .map((c) => c.clientId);
+      // #40: POB on any call (doctor/chemist/stockist), RCPA on chemist calls only, no duplicate lines.
       const rcpaOutletCallIds = b.data.calls
         .filter((c) => c.rcpa.length && c.outletKind !== 'chemist')
         .map((c) => c.clientId);
@@ -866,14 +863,8 @@ function fieldHandlers(baseUrl: string) {
           dup(c.rcpa.map((l) => `${l.productId}|${(l.competitorBrand ?? '').toLowerCase()}`)),
         )
         .map((c) => c.clientId);
-      if (
-        pobOutletCallIds.length ||
-        rcpaOutletCallIds.length ||
-        duplicatePob.length ||
-        duplicateRcpa.length
-      )
+      if (rcpaOutletCallIds.length || duplicatePob.length || duplicateRcpa.length)
         return validation('Invalid POB/RCPA lines', {
-          pobOutletCallIds,
           rcpaOutletCallIds,
           duplicatePob,
           duplicateRcpa,

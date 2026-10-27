@@ -44,7 +44,7 @@ prescription images.
 
 ## Rules (server-side, 422 `VALIDATION` with `details`)
 
-- `pob` only on `chemist` / `stockist` calls → `details.pobOutletCallIds`.
+- `pob` on `doctor`, `chemist` and `stockist` calls (no outlet restriction).
 - `rcpa` only on `chemist` calls → `details.rcpaOutletCallIds`.
 - Products (POB and RCPA) must exist, not be deleted and be **active** → `details.inactiveProductIds`
   (unknown ids stay in `details.productIds`).
@@ -78,8 +78,9 @@ prescription images.
 
 1. **Embed in `PUT /v1/dcrs`** rather than separate add/replace endpoints per call. Same lock,
    version and idempotency rules for free; separate endpoints would duplicate them.
-2. **POB on chemist and stockist calls**, not doctor calls (research says "POB at chemist/stockist").
-   This is a behaviour change: doctor-call POB used to be accepted and now returns 422.
+2. **POB on doctor, chemist and stockist calls** (Prajesh, 2026-10-27, via lead). An earlier draft
+   rejected doctor-call POB with 422 `pobOutletCallIds`; that rule is removed, so doctor-call POB is
+   accepted as it was before #40. RCPA stays chemist-only.
 3. **POB value from PTR only**; client value ignored; no PTR → `value: null`. Behaviour change: before,
    the client's value was stored as-is (and fed `pob_value`).
 4. **RCPA row = our product (molecule anchor) + optional competitor brand**; units required,
