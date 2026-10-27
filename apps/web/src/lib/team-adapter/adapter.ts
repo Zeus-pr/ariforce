@@ -5,7 +5,7 @@
  */
 import { roleLevel, type Role, type SalesRole } from '@/lib/roles';
 import { REAL } from '@/lib/api';
-import { apiTeamAdapter } from './api-adapter';
+import { apiTeamAdapter, summarize } from './api-adapter';
 import { HQS, ME_BY_ROLE, seedOrg } from './mock-org';
 import { issueMockInvite } from '@/lib/invites/mock-store';
 import {
@@ -14,6 +14,8 @@ import {
   type EmployeeInput,
   type EmployeePatch,
   type Hq,
+  type BulkInviteResult,
+  type BulkInviteRow,
   type InviteResult,
   type OrgTree,
   type Page,
@@ -158,6 +160,40 @@ const mockTeamAdapter = {
     if (!target.invited) throw new AdapterError(`${target.name} already has a login.`);
     const { token, expiresAt } = issueMockInvite(id);
     return { id, name: target.name, expiresAt, inviteUrl: `${window.location.origin}/invite?token=${token}` };
+  },
+  /** Mock of POST /v1/employees/invite-bulk: each row runs the single-create rules (partial success). */
+  async inviteBulk(role: Role, inputs: EmployeeInput[], onProgress?: (done: number) => void): Promise<BulkInviteResult> {
+    const out: BulkInviteRow[] = [];
+    const seen = new Set<string>();
+    for (const [index, input] of inputs.entries()) {
+      const email = input.email.trim().toLowerCase();
+      const base = { index, name: input.name, email: input.email, inviteUrl: null };
+      if (seen.has(email)) {
+        out.push({ ...base, status: 'skipped', code: 'DUPLICATE_IN_BATCH', message: 'Listed twice in this batch.' });
+        continue;
+      }
+      seen.add(email);
+      if (rows().some((e) => e.email.toLowerCase() === email)) {
+        out.push({ ...base, status: 'skipped', code: 'CONFLICT', message: 'Someone with this email already exists.' });
+        continue;
+      }
+      try {
+        // Phone is optional in bulk (EmployeeCreate.phone nullable); the single-add form requires it.
+        const { phone, ...rest } = input;
+        const e = await mockTeamAdapter.create(role, (phone ? input : rest) as EmployeeInput);
+        if (!phone) {
+          e.phone = '';
+          const row = rows().find((x) => x.id === e.id);
+          if (row) row.phone = '';
+        }
+        const { token } = issueMockInvite(e.id);
+        out.push({ ...base, status: 'invited', code: null, message: null, inviteUrl: `${window.location.origin}/invite?token=${token}` });
+      } catch (err) {
+        out.push({ ...base, status: 'failed', code: 'VALIDATION', message: err instanceof Error ? err.message : 'Not valid.' });
+      }
+      onProgress?.(index + 1);
+    }
+    return { rows: out, summary: summarize(out) };
   },
   /** Roles a caller may create: strictly below their own. */
   creatableRoles(role: Role): SalesRole[] {

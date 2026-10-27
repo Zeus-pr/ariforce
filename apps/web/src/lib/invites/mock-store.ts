@@ -33,10 +33,12 @@ export function issueMockInvite(userId: string, days = 7) {
 }
 
 /** 'ok' marks it used; otherwise why it can't be used. */
-export function acceptMockInvite(token: string): 'ok' | 'invalid' {
+export function acceptMockInvite(token: string): 'ok' | 'invalid' | 'used' | 'expired' {
   const all = read();
   const r = all[token];
-  if (!r || r.used || Date.parse(r.expiresAt) < Date.now()) return 'invalid';
+  if (!r) return 'invalid';
+  if (r.used) return 'used';
+  if (Date.parse(r.expiresAt) < Date.now()) return 'expired';
   r.used = true;
   write(all);
   return 'ok';

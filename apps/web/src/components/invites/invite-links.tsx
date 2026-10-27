@@ -37,7 +37,7 @@ async function copy(text: string) {
   }
 }
 
-function CopyButton({ text, label, testId }: { text: string; label: string; testId: string }) {
+export function CopyButton({ text, label, testId }: { text: string; label: string; testId: string }) {
   const [done, setDone] = useState(false);
   return (
     <Button
@@ -79,7 +79,7 @@ export function InviteLink({ r }: { r: InviteResult }) {
         <CopyButton text={r.inviteUrl} label="Copy" testId="invite-copy" />
       </div>
       <p className="text-xs text-muted-foreground" data-testid="invite-expiry">
-        Single use. Expires {when(r.expiresAt)}. Sending a new invite cancels this link.
+        Single use. {r.expiresAt ? `Expires ${when(r.expiresAt)}.` : 'Expires in 7 days.'} Sending a new invite cancels this link.
       </p>
     </div>
   );
@@ -121,7 +121,7 @@ export function InviteOne({ role, employee, sentBefore }: { role: Role; employee
   );
 }
 
-/** "Invite all pending": one request per person (the API has no bulk endpoint, CONTRACT-GAPS #26). */
+/** "Invite all pending": re-issues links for people who already exist (one POST /v1/employees/{id}/invite each). New people go through Add several (invite-bulk). */
 export function InviteAll({ role, people, onClose }: { role: Role; people: Employee[]; onClose: () => void }) {
   const [rows, setRows] = useState<(InviteResult | { id: string; name: string; error: string })[] | null>(null);
   const [running, setRunning] = useState(false);

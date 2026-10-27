@@ -85,13 +85,13 @@ Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the 
 
 `GET /v1/expense-claims` filters on the server by `month`, `status` and `userId` but has no `cursor`/`limit`/`total` and no `q`. The web filters by month + status on the server and shows the whole month's list; an approver with a large team gets every claim for the month in one response. Ask: `cursor`, `limit` (default 50), `total`, and `q` (claimant name or employee code), same shape as the masters lists. "Team" also hides the viewer's own claims client-side; a `mine=to_decide` style filter (as on DCR/Tour Plan) would move that to the server.
 
-## 26. Employee invites (POST /v1/employees/{id}/invite, POST /v1/invites/accept)
+## 26. Employee invites (resolved by feat/26-invite-gaps a575db1)
 
-- **No bulk endpoint.** "Invite all pending" on My Team sends one `POST /v1/employees/{id}/invite` per person, in order, and shows each result. Proposed: `POST /v1/employees/invites {userIds[]}` → `{results:[{userId, invite|error}]}`.
-- **Links only with `INVITE_RETURN_LINK=true`.** Without it `inviteUrl` is null and the web says "sent by email". The link is built from `WEB_ORIGIN`, which must be the web origin (for example `http://localhost:3200`), or the copied link opens the wrong host.
-- **Password minimum differs.** The accept schema allows 8 characters; the web asks for 12 (same as sign-up). Proposed: raise the API minimum to 12.
-- **One 404 for every failure.** Invalid, used, revoked and expired all return 404, so the page shows one "This link no longer works" message. A reason code would let it say "expired, ask for a new one".
-- The browser calls `/v1/invites/accept` with no session, so API CORS must allow the web origin for that route.
+- **Bulk:** `POST /v1/employees/invite-bulk {employees: EmployeeCreate[1..200]}` creates and invites new people, one transaction per row. Web: My Team "Add several" (ABM and above) takes one person per line (name, email, optional phone) with a shared role and HQ, sends chunks of 200 and lists every row (invited / skipped `CONFLICT`·`DUPLICATE_IN_BATCH` / failed `VALIDATION`·`FORBIDDEN`·`INTERNAL`) with the summary and copyable links. "Invite all pending" still re-issues links for people who already exist (one `POST /v1/employees/{id}/invite` each); bulk would skip them as `CONFLICT`.
+- **Password minimum 12** on both sides (`INVITE_PASSWORD_MIN`).
+- **Distinct accept errors:** 404 `INVITE_INVALID`, 409 `INVITE_USED`, 410 `INVITE_EXPIRED` each get their own page state. 422 shows the server message. 429 shows "Too many attempts, try again in N seconds" (`Retry-After`, else `details.retryAfterSeconds`). 403 `ACCOUNT_SUSPENDED` shows the suspended message.
+- Still applies: links are returned only with `INVITE_RETURN_LINK=true` (built from `WEB_ORIGIN`), and API CORS must allow the web origin for the sessionless `/v1/invites/accept`. For the 429 wait to come from the header, CORS must expose `Retry-After`; otherwise the web uses `details.retryAfterSeconds`.
+- Live: the API on :4000 runs d6bbd5f. The web's real-mode writes stay stubbed in e2e. No open API change.
 
 ## 27. Tour plan submit rule (resolved by fix/tp-submit-any-day 0bb7b40, supersedes 36c29f5)
 

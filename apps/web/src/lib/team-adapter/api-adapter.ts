@@ -12,6 +12,9 @@ import {
   type EmployeeInput,
   type EmployeePatch,
   type Hq,
+  type BulkInviteResult,
+  type BulkInviteRow,
+  BULK_CHUNK,
   type InviteResult,
   type OrgTree,
   type Page,
@@ -140,6 +143,38 @@ export const apiTeamAdapter = {
     const name = [...(last?.nodes ?? []), ...(last?.unassigned ?? [])].find((n) => n.id === id)?.name ?? '';
     return { id, name, expiresAt: data.expiresAt, inviteUrl: absolute(data.inviteUrl) };
   },
+  /** POST /v1/employees/invite-bulk in chunks of 200; each row is created + invited on its own (partial success). */
+  async inviteBulk(_role: Role, inputs: EmployeeInput[], onProgress?: (done: number) => void): Promise<BulkInviteResult> {
+    const rows: BulkInviteRow[] = [];
+    for (let at = 0; at < inputs.length; at += BULK_CHUNK) {
+      const chunk = inputs.slice(at, at + BULK_CHUNK);
+      const { data, error } = await api.POST('/v1/employees/invite-bulk', {
+        body: {
+          employees: chunk.map((i) => ({
+            name: i.name,
+            email: i.email,
+            phone: i.phone || null,
+            role: i.role,
+            territoryIds: i.hqId ? [i.hqId] : [],
+            managerId: i.managerId,
+          })),
+        } as never,
+      });
+      if (error || !data) fail(error);
+      for (const r of data.results)
+        rows.push({
+          index: at + r.index,
+          name: chunk[r.index]?.name ?? '',
+          email: r.email ?? chunk[r.index]?.email ?? '',
+          status: r.status,
+          code: r.code,
+          message: r.message,
+          inviteUrl: absolute(r.inviteUrl),
+        });
+      onProgress?.(Math.min(at + BULK_CHUNK, inputs.length));
+    }
+    return { rows, summary: summarize(rows) };
+  },
   creatableRoles(role: Role): SalesRole[] {
     return (
       [
@@ -154,3 +189,11 @@ export const apiTeamAdapter = {
       .sort((a, b) => roleLevel(b) - roleLevel(a)) as SalesRole[];
   },
 };
+
+export function summarize(rows: BulkInviteRow[]) {
+  return {
+    invited: rows.filter((r) => r.status === 'invited').length,
+    skipped: rows.filter((r) => r.status === 'skipped').length,
+    failed: rows.filter((r) => r.status === 'failed').length,
+  };
+}

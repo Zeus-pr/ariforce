@@ -7,9 +7,19 @@ import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
 import { api, apiReady, toApiError } from '@/lib/api';
-import { SIGNUP_PASSWORD_MIN, strength } from '@/lib/signup/adapter';
+import { INVITE_PASSWORD_MIN as MIN } from '@ariforce/contracts';
+import { strength } from '@/lib/signup/adapter';
+import { authLimitMessage } from '@/lib/auth-errors';
 
-type State = 'reading' | 'missing' | 'form' | 'invalid' | 'done';
+type Dead = 'missing' | 'invalid' | 'used' | 'expired';
+type State = 'reading' | 'form' | 'done' | Dead;
+
+const DEAD: Record<Dead, { title: string; body: string }> = {
+  missing: { title: 'This link is incomplete', body: 'Open the full link your manager sent you, or ask them to copy it again.' },
+  invalid: { title: 'This invite link is not valid', body: 'It may have been replaced by a newer invite. Ask your manager to send a new one.' },
+  used: { title: 'This invite was already used', body: 'Your password is already set. Sign in with your work email, or ask your manager if you cannot get in.' },
+  expired: { title: 'This invite has expired', body: 'Invite links last 7 days. Ask your manager to send a new one.' },
+};
 
 /**
  * POST /v1/invites/accept. The token is read once from ?token=, kept only in memory, and removed from
@@ -41,7 +51,7 @@ export function AcceptInviteForm() {
   const st = strength(pw);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pw.length < SIGNUP_PASSWORD_MIN) return setErr(`Use at least ${SIGNUP_PASSWORD_MIN} characters.`);
+    if (pw.length < MIN) return setErr(`Use at least ${MIN} characters.`);
     if (pw !== pw2) return setErr('The two passwords do not match.');
     setErr(null);
     setBusy(true);
@@ -56,29 +66,30 @@ export function AcceptInviteForm() {
       return setState('done');
     }
     const code = r ? toApiError(r).code : 'NETWORK';
-    if (r?.response.status === 404 || code === 'INVITE_INVALID') {
+    const status = r?.response.status;
+    const dead: Dead | null =
+      code === 'INVITE_USED' || status === 409 ? 'used'
+      : code === 'INVITE_EXPIRED' || status === 410 ? 'expired'
+      : code === 'INVITE_INVALID' || status === 404 ? 'invalid'
+      : null;
+    if (dead) {
       setToken(null);
       setPw('');
       setPw2('');
-      return setState('invalid');
+      return setState(dead);
     }
-    if (r?.response.status === 422) return setErr('That password was not accepted. Try a longer one.');
-    if (r?.response.status === 429) return setErr('Too many tries. Wait a minute and try again.');
+    const limit = authLimitMessage(r);
+    if (limit) return setErr(limit);
+    if (status === 422) return setErr(r ? toApiError(r).message || `Password must be at least ${MIN} characters.` : '');
     setErr('Could not reach the server. Check your connection and try again.');
   };
 
   if (state === 'reading') return <div className="h-64" aria-busy="true" />;
-  if (state === 'missing' || state === 'invalid')
+  if (state in DEAD)
     return (
       <div className="grid gap-3 rounded-xl border bg-background p-5 text-sm shadow-xs" data-testid={`invite-${state}`}>
-        <p className="flex items-center gap-2 font-medium"><LinkIcon className="size-4" aria-hidden />
-          {state === 'missing' ? 'This link is incomplete' : 'This invite link no longer works'}
-        </p>
-        <p className="text-muted-foreground">
-          {state === 'missing'
-            ? 'Open the full link your manager sent you, or ask them to copy it again.'
-            : 'It may have expired (links last 7 days), been used already, or been replaced by a newer invite. Ask your manager to send a new one.'}
-        </p>
+        <p className="flex items-center gap-2 font-medium"><LinkIcon className="size-4" aria-hidden />{DEAD[state as Dead].title}</p>
+        <p className="text-muted-foreground">{DEAD[state as Dead].body}</p>
         <Button asChild variant="outline"><Link href="/sign-in">Go to sign in</Link></Button>
       </div>
     );
@@ -107,7 +118,7 @@ export function AcceptInviteForm() {
               <span key={i} className={`h-1 flex-1 rounded-full ${i <= st.score ? (st.score >= 3 ? 'bg-success' : 'bg-warning') : 'bg-muted'}`} />
             ))}
           </div>
-          <span className="text-xs text-muted-foreground" data-testid="pw-strength">{pw ? st.label : `At least ${SIGNUP_PASSWORD_MIN} characters`}</span>
+          <span className="text-xs text-muted-foreground" data-testid="pw-strength">{pw ? st.label : `At least ${MIN} characters`}</span>
         </div>
       </div>
       <div className="grid gap-1.5">

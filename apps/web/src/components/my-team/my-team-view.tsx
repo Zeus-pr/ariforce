@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronsDownUp, ChevronsUpDown, Search, Send, UserPlus } from 'lucide-react';
+import { ChevronsDownUp, ChevronsUpDown, Search, Send, UserPlus, Users } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
@@ -22,6 +22,7 @@ import type { Employee, Hq, OrgTree } from '@/lib/team-adapter/types';
 import { EmployeeSheet, type SheetState } from './employee-sheet';
 import { OrgTree as Tree } from './org-tree';
 import { InviteAll } from '@/components/invites/invite-links';
+import { BulkInvite } from '@/components/invites/bulk-invite';
 
 export function MyTeamView() {
   const { role } = useRole();
@@ -59,6 +60,7 @@ export function MyTeamView() {
   }, [q]);
   const [sheet, setSheet] = useState<SheetState>(null);
   const [inviteAll, setInviteAll] = useState(false);
+  const [bulk, setBulk] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -128,6 +130,11 @@ export function MyTeamView() {
           {pending.length > 0 && (
             <Button variant="outline" onClick={() => setInviteAll(true)} data-testid="invite-all">
               <Send /> Invite all pending ({pending.length})
+            </Button>
+          )}
+          {teamAdapter.creatableRoles(role).length > 0 && (
+            <Button variant="outline" onClick={() => setBulk(true)} data-testid="add-several">
+              <Users /> Add several
             </Button>
           )}
           <Button onClick={() => setSheet({ mode: 'add' })} data-testid="add-employee">
@@ -248,6 +255,17 @@ export function MyTeamView() {
         </ul>
       </Card>
 
+      {bulk && (
+        <BulkInvite
+          role={role}
+          managerId={tree.rootId}
+          hqs={hqs}
+          onClose={(changed) => {
+            setBulk(false);
+            if (changed) void load();
+          }}
+        />
+      )}
       {inviteAll && <InviteAll role={role} people={pending} onClose={() => setInviteAll(false)} />}
       <EmployeeSheet
         state={sheet}
