@@ -1,5 +1,13 @@
 # TA/DA auto-calculation (#39)
 
+> **SFC replaces the rate admin (2026-10-27).** The web "TA/DA rates" page is replaced by the SFC page (docs/SFC.md). The rate card and fare-chart admin endpoints (`/v1/allowance-rates*`, `/v1/allowance-places*`) still work but are **deprecated** in OpenAPI; do not build new screens on them.
+>
+> **Replaced by SFC:** the rate card and fare chart admin screens, plus the HQ places list.
+>
+> **Unchanged:** expense claims, allowance lines (`source`, `calc`, `allowancePlaceId`), `POST /v1/expense-claims/{id}/allowances`, and claim approval and payment.
+>
+> **Proposal, not built:** TA drafting could read SFC instead of `allowance_places`. For each DCR day, the engine would match the DCR place to an SFC route of the rep (`to_place`, case-insensitive) and use that route's `both_way_amount` as TA. An actual-fare route would become a manual line that needs a receipt. DA would come from `sfc_routes.da` when it is set, otherwise from the rate card. Until then, drafting uses the rate card and fare chart as before.
+
 Issue #39: "TA/DA auto-calc from distance rate card and work type" (research P2; use case "daily auto-draft from DCR work type and distance").
 This adds a company **rate card**, a **standard fare chart** of places per HQ, and an endpoint that drafts TA/DA lines into the rep's monthly expense claim (#52) from their DCRs.
 Regulatory detail (e.g. tax treatment of allowances) is not modelled; verify with counsel before relying on it.

@@ -42,6 +42,7 @@ document is committed at `docs/api/openapi.json` (`pnpm -F @ariforce/contracts o
 | [PRODUCTS.md](PRODUCTS.md)               | System Admin product prices (MRP/PTR/PTS) with append-only history               |
 | [EXPENSES.md](EXPENSES.md)               | Expense claims, lines, receipts, approvals, payment, reports (#52)               |
 | [TADA.md](TADA.md)                       | TA/DA rate card, fare chart and allowance drafting (#39)                         |
+| [SFC.md](SFC.md)                         | SFC (Standard Fare Chart) routes per employee; replaces the TA/DA rates page     |
 | [LEAVE.md](LEAVE.md)                     | Leave types, requests, approvals, balances, grants, backdating window (#51)      |
 | [TEAM-PROFILE.md](TEAM-PROFILE.md)       | Team member profile, performance and export (#75)                                |
 | [NOTIFICATIONS.md](NOTIFICATIONS.md)     | DB job runner and in-app notifications (#35)                                     |

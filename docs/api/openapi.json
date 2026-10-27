@@ -10479,6 +10479,7 @@
           "TA/DA"
         ],
         "operationId": "listAllowanceRates",
+        "deprecated": true,
         "summary": "expenses:read, finance:read or settings:write",
         "parameters": [
           {
@@ -10539,6 +10540,7 @@
           "TA/DA"
         ],
         "operationId": "createAllowanceRate",
+        "deprecated": true,
         "summary": "settings:write",
         "requestBody": {
           "content": {
@@ -10614,6 +10616,7 @@
           "TA/DA"
         ],
         "operationId": "updateAllowanceRate",
+        "deprecated": true,
         "summary": "settings:write; optimistic version",
         "parameters": [
           {
@@ -10712,6 +10715,7 @@
           "TA/DA"
         ],
         "operationId": "deleteAllowanceRate",
+        "deprecated": true,
         "summary": "settings:write; soft delete (existing claim lines keep their amounts)",
         "parameters": [
           {
@@ -10776,6 +10780,7 @@
           "TA/DA"
         ],
         "operationId": "listAllowancePlaces",
+        "deprecated": true,
         "summary": "expenses:read, finance:read or settings:write",
         "parameters": [
           {
@@ -10859,6 +10864,7 @@
           "TA/DA"
         ],
         "operationId": "createAllowancePlace",
+        "deprecated": true,
         "summary": "settings:write",
         "requestBody": {
           "content": {
@@ -10934,6 +10940,7 @@
           "TA/DA"
         ],
         "operationId": "updateAllowancePlace",
+        "deprecated": true,
         "summary": "settings:write; optimistic version",
         "parameters": [
           {
@@ -11032,6 +11039,7 @@
           "TA/DA"
         ],
         "operationId": "deleteAllowancePlace",
+        "deprecated": true,
         "summary": "settings:write; soft delete (existing claim lines keep their amounts)",
         "parameters": [
           {
@@ -11074,6 +11082,400 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sfc/settings": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "SFC"
+        ],
+        "operationId": "getSfcSettings",
+        "summary": "sfc:read. Company TA rate per km used for SFC amounts (default 2.95)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SfcSettingsOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "SFC"
+        ],
+        "operationId": "putSfcSettings",
+        "summary": "settings:write; optimistic version. Existing routes keep their stored amounts until next save",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SfcSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SfcSettingsOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "VERSION_CONFLICT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sfc/hqs": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "SFC"
+        ],
+        "operationId": "listSfcHqs",
+        "summary": "sfc:read. Headquarter-level territories in the caller scope (subtree included)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SfcHqList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sfc/employees": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "SFC"
+        ],
+        "operationId": "listSfcEmployees",
+        "summary": "sfc:read. Visible sales-hierarchy employees, optionally under a territory (subtree)",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "territoryId",
+            "schema": {
+              "description": "HQ (or any territory): employees assigned to it or anywhere below it",
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "description": "HQ (or any territory): employees assigned to it or anywhere below it"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SfcEmployeeList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sfc/employees/{userId}/routes": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "SFC"
+        ],
+        "operationId": "getSfcTable",
+        "summary": "sfc:read. One employee SFC table with its etag",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SfcTable"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND (not visible or not in the sales hierarchy)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "SFC"
+        ],
+        "operationId": "putSfcTable",
+        "summary": "sfc:write over this employee (never your own unless system_admin). Replaces the whole table; amounts computed by the server; audited (sfc.routes_saved)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SfcTablePut"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SfcTable"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "VERSION_CONFLICT (etag changed; details.etag is current)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION, SFC_HQ_NOT_ASSIGNED or SFC_ROUTE_NOT_FOUND",
             "content": {
               "application/json": {
                 "schema": {
@@ -16606,6 +17008,142 @@
           "version"
         ]
       },
+      "SfcSettings": {
+        "type": "object",
+        "properties": {
+          "ratePerKm": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000,
+            "multipleOf": 0.01,
+            "description": "TA per km (INR) used to compute SFC amounts on write"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Company row version (optimistic lock)"
+          }
+        },
+        "required": [
+          "ratePerKm",
+          "version"
+        ]
+      },
+      "SfcTablePut": {
+        "type": "object",
+        "properties": {
+          "etag": {
+            "type": "string",
+            "description": "From the last GET (\"\" for a table that never had rows)"
+          },
+          "hqTerritoryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "One of the employee’s assigned territories",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "routes": {
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SfcRouteInput"
+            },
+            "description": "Full table in display order; rows left out are deleted (soft)"
+          }
+        },
+        "required": [
+          "etag",
+          "hqTerritoryId",
+          "routes"
+        ]
+      },
+      "SfcRouteInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "Existing route id (kept); omit for a new row",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "fromPlace": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "toPlace": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "oneWayKm": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2500,
+            "multipleOf": 0.01
+          },
+          "actualFare": {
+            "default": false,
+            "type": "boolean"
+          },
+          "travelMode": {
+            "default": null,
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SfcTravelMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "da": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000000,
+                "multipleOf": 0.01
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "fromPlace",
+          "toPlace",
+          "oneWayKm"
+        ]
+      },
+      "SfcTravelMode": {
+        "type": "string",
+        "enum": [
+          "bike",
+          "bus",
+          "train",
+          "bus_train",
+          "car",
+          "other"
+        ]
+      },
       "AllowanceDraftRequest": {
         "type": "object",
         "properties": {
@@ -17304,7 +17842,9 @@
           "leave:read",
           "leave:write",
           "leave:approve",
-          "products:prices"
+          "products:prices",
+          "sfc:read",
+          "sfc:write"
         ]
       },
       "RoleList": {
@@ -24628,6 +25168,325 @@
         ],
         "additionalProperties": false
       },
+      "SfcHqList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SfcHq"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "SfcHq": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "level": {
+            "$ref": "#/components/schemas/TerritoryLevel"
+          },
+          "parentId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parentName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "employeeCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Visible sales-hierarchy employees on this HQ"
+          },
+          "routeCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Live SFC routes with this HQ"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "code",
+          "level",
+          "parentId",
+          "parentName",
+          "employeeCount",
+          "routeCount"
+        ],
+        "additionalProperties": false
+      },
+      "SfcEmployeeList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SfcEmployee"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "SfcEmployee": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "name": {
+            "type": "string"
+          },
+          "employeeCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rank": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "hqTerritoryIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "routeCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "hasSfc": {
+            "type": "boolean"
+          },
+          "canEdit": {
+            "type": "boolean",
+            "description": "Caller may PUT this table"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "employeeCode",
+          "role",
+          "rank",
+          "hqTerritoryIds",
+          "routeCount",
+          "hasSfc",
+          "canEdit"
+        ],
+        "additionalProperties": false
+      },
+      "SfcTable": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "userName": {
+            "type": "string"
+          },
+          "hqTerritoryId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "HQ of the stored routes, else the user’s HQ"
+          },
+          "ratePerKm": {
+            "type": "number"
+          },
+          "etag": {
+            "type": "string",
+            "description": "Table version: send it back on PUT; any change by anyone changes it (409 VERSION_CONFLICT)"
+          },
+          "canEdit": {
+            "type": "boolean"
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SfcRoute"
+            }
+          }
+        },
+        "required": [
+          "userId",
+          "userName",
+          "hqTerritoryId",
+          "ratePerKm",
+          "etag",
+          "canEdit",
+          "routes"
+        ],
+        "additionalProperties": false
+      },
+      "SfcRoute": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "fromPlace": {
+            "type": "string"
+          },
+          "toPlace": {
+            "type": "string"
+          },
+          "oneWayKm": {
+            "type": "number"
+          },
+          "bothWayKm": {
+            "type": "number"
+          },
+          "oneWayAmount": {
+            "description": "null = actual fare",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "bothWayAmount": {
+            "description": "null = actual fare",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "actualFare": {
+            "type": "boolean"
+          },
+          "travelMode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SfcTravelMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "da": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "ISO-8601 timestamp (UTC)"
+          }
+        },
+        "required": [
+          "id",
+          "sortOrder",
+          "fromPlace",
+          "toPlace",
+          "oneWayKm",
+          "bothWayKm",
+          "oneWayAmount",
+          "bothWayAmount",
+          "actualFare",
+          "travelMode",
+          "category",
+          "da",
+          "version",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
       "AllowanceDraftResult": {
         "type": "object",
         "properties": {
@@ -27195,6 +28054,29 @@
         ],
         "additionalProperties": false,
         "description": "Retail chemist prescription audit line (chemist calls, #40)"
+      },
+      "SfcSettingsOutput": {
+        "type": "object",
+        "properties": {
+          "ratePerKm": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000,
+            "multipleOf": 0.01,
+            "description": "TA per km (INR) used to compute SFC amounts on write"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Company row version (optimistic lock)"
+          }
+        },
+        "required": [
+          "ratePerKm",
+          "version"
+        ],
+        "additionalProperties": false
       }
     },
     "securitySchemes": {

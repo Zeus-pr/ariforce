@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "sh ../../scripts/vitest.sh run",
     "db:seed": "tsx scripts/seed-auth.mts",
-    "admin:create-first": "tsx scripts/admin-create-first.mts"
+    "admin:create-first": "tsx scripts/admin-create-first.mts",
+    "sfc:import": "tsx scripts/import-sfc.mts"
   },
   "dependencies": {
     "@ariforce/contracts": "workspace:*",

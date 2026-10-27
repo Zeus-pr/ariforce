@@ -97,6 +97,10 @@ export const PERMISSIONS = [
   'leave:approve',
   /** Edit product MRP/PTR/PTS (single and bulk) and read price history: system_admin only. */
   'products:prices',
+  /** Read SFC (Standard Fare Chart) routes: own table (BM), reporting line (managers), company (director, system_admin). */
+  'sfc:read',
+  /** Edit SFC routes of the reporting line (ABM and above), company-wide for director and system_admin. */
+  'sfc:write',
 ] as const;
 export const Permission = z.enum(PERMISSIONS).meta({ id: 'Permission' });
 export type Permission = z.infer<typeof Permission>;
@@ -139,6 +143,8 @@ const MANAGER: Permission[] = [
   'expenses:approve',
   ...LEAVE_OWN,
   'leave:approve',
+  'sfc:read',
+  'sfc:write',
 ];
 /** RBM and above. */
 const SENIOR: Permission[] = [...MANAGER, ...MASTERS_WRITE];
@@ -151,6 +157,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'reports:read',
     ...EXPENSES_OWN,
     ...LEAVE_OWN,
+    'sfc:read',
   ],
   area_business_manager: MANAGER,
   regional_business_manager: SENIOR,
@@ -167,6 +174,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'settings:write',
     'audit:read',
     'products:prices',
+    'sfc:read',
+    'sfc:write',
   ],
   // Accepted by lead: read-only, company-wide; no doctors/chemists; never masters write.
   distribution_head: [

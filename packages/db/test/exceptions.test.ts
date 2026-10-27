@@ -132,11 +132,11 @@ describe.skipIf(!OWNER || !APP)('exceptions (0031)', () => {
     );
     const mine = after.rows.filter((x: { id: string }) => !pre.has(x.id));
     created.push(...mine.map((x: { id: string }) => x.id));
-    const companiesN = (
-      await owner.query(`select count(*)::int as n from companies where deleted_at is null`)
-    ).rows[0].n;
-    // One per company per local day (fewer if an earlier run today already enqueued).
-    expect(mine.length).toBeLessThanOrEqual(companiesN);
+    // At most one per company per local day (fewer if an earlier run today already enqueued).
+    // Counted per company, not against the live company count: db test files run in parallel and
+    // work-types.test.ts creates and soft-deletes companies while this runs.
+    const perCompany = new Set(mine.map((x: { company_id: string }) => x.company_id));
+    expect(perCompany.size).toBe(mine.length);
     for (const j of mine) {
       expect(j.payload).toMatchObject({ notify: true });
       expect(j.payload.from < j.payload.to).toBe(true);
