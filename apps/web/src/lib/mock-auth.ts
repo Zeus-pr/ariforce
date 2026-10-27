@@ -25,6 +25,7 @@ const NAMES: Partial<Record<Role, [string, string]>> = {
   vice_president: ['Sanjay Mehta', 'India'],
   director: ['Kavita Bose', 'India'],
   system_admin: ['System Admin', 'Head office'],
+  accountant: ['Ritu Dey', 'Head office'],
 };
 
 const EMAIL: Partial<Record<Role, string>> = {
@@ -37,6 +38,7 @@ const EMAIL: Partial<Record<Role, string>> = {
   vice_president: 'vp',
   director: 'director',
   system_admin: 'admin',
+  accountant: 'accounts',
 };
 
 /** Demo users for the web's roles (the functional roles have no web pages yet). */

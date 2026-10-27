@@ -80,3 +80,7 @@ The top-bar palette (Cmd/Ctrl+K) works today by fanning out to the list endpoint
 Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the UI can say "All N matching". No emails or phone numbers in items. Errors: 422 (q too short or long), 429 RATE_LIMITED. Pages/navigation stay client-side (from the role's nav).
 
 **Also missing:** a products page in the web. Product hits open Sales by brand (`/sales`) for roles that can see it; roles without it (System Admin) get no Products group.
+
+## 25. Expense claims list has no paging or search (feat/52-expense-claims ddcb66e)
+
+`GET /v1/expense-claims` filters on the server by `month`, `status` and `userId` but has no `cursor`/`limit`/`total` and no `q`. The web filters by month + status on the server and shows the whole month's list; an approver with a large team gets every claim for the month in one response. Ask: `cursor`, `limit` (default 50), `total`, and `q` (claimant name or employee code), same shape as the masters lists. "Team" also hides the viewer's own claims client-side; a `mine=to_decide` style filter (as on DCR/Tour Plan) would move that to the server.

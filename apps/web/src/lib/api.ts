@@ -34,6 +34,21 @@ export const setUnauthenticatedHandler = (fn: () => void) => {
 api.use({
   // A hung or unreachable API must end in an error state, never an endless spinner.
   onRequest({ request }) {
+    // Mock mode: the expense mocks (#52) decide by principal, so tell them who is signed in (the
+    // other mocks still act as the default persona). Never sent in real mode.
+    if (MOCKING && typeof window !== 'undefined' && new URL(request.url).pathname.startsWith('/v1/expense')) {
+      try {
+        const s = JSON.parse(localStorage.getItem('af:mock-session') ?? 'null') as { role?: string; previewRole?: string } | null;
+        const who = s?.previewRole ?? s?.role;
+        if (who) {
+          const headers = new Headers(request.headers);
+          headers.set('x-mock-user', who);
+          return new Request(request, { headers });
+        }
+      } catch {
+        // storage blocked: default persona
+      }
+    }
     if (!REAL || request.signal?.aborted) return request;
     // Keep the caller's abort (stale-search cancellation) and add the timeout.
     const timeout = AbortSignal.timeout(8000);

@@ -14,7 +14,10 @@ import {
   ClipboardList,
   LayoutDashboard,
   MapPin,
+  ReceiptText,
 } from 'lucide-react';
+
+import { seesExpenses } from './expenses/model';
 
 import { WRITE_ROUTES, canReviewSignups } from './permissions';
 import { ROLES, isApprover, isSystemAdmin, type Role } from './roles';
@@ -74,6 +77,14 @@ export const NAV: NavItem[] = [
     href: '/tour-plans',
     icon: CalendarRange,
     roles: SALES,
+    section: 'field',
+  },
+  {
+    slug: 'expenses',
+    title: 'Expenses',
+    href: '/expenses',
+    icon: ReceiptText,
+    roles: ROLES.filter(seesExpenses),
     section: 'field',
   },
   {
