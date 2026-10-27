@@ -104,3 +104,8 @@ Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the 
 
 - Web: `/team/members/{userId}` uses `GET /v1/team/members/{userId}/profile`, `/performance` (month/week), `/doctors` and `/chemists` (server-paged, `q`, `includeTotal`, load more) and `/export` (xlsx/pdf). The exceptions summary renders only when `exceptions` is non-null. Entry points: "Full profile" on a selected person in Team, and "View full profile" in the My Team sheet (real mode).
 - No missing endpoints. One web-only note: mock-mode My Team runs on the local sample org, whose ids are not contract ids, so the sheet link is shown only in real mode.
+
+## 40. POB / RCPA on DCR (web, against de138d4)
+- No missing endpoints. The POB/RCPA product picker uses `GET /v1/products?limit=200` (active only); `GET /v1/rcpa/competitor-brands?q` feeds the brand autocomplete.
+- Web never sends or computes `PobLine.value`; it shows the server value after save ("value after save" before).
+- Nice-to-have (not blocking): a `q` search on `/v1/products` for companies with more than 200 active products.

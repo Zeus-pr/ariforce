@@ -23,6 +23,7 @@ import { LookupsProvider, useLookups } from '@/components/masters/lookups';
 import { api, apiReady, MOCKING, toApiError } from '@/lib/api';
 import { saveMessage } from '@/lib/leave/model';
 import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
+import { PobEditor, RcpaEditor, pobPayload, pobRcpaMessage, pobSummary, rcpaPayload, stripPobValue, type Opt, type PobDraft, type RcpaDraft } from './pob-rcpa';
 
 /** What the call form needs from a product. */
 type PickProduct = { id: string; name: string; detail: string | null; isSample: boolean };
@@ -31,6 +32,8 @@ type PickProduct = { id: string; name: string; detail: string | null; isSample: 
 const SEED_PRODUCTS: PickProduct[] = MOCK_PRODUCT_SEED.map((p) => ({ id: p.id, name: p.name, detail: p.composition, isSample: true }));
 
 type Call = Omit<Dcr['calls'][number], 'id'> & { clientId: string };
+type Kind = Call['outletKind'];
+const KIND_LABEL: Record<Kind, string> = { doctor: 'Doctor', chemist: 'Chemist', stockist: 'Stockist' };
 type Planned = TourPlan['days'][number]['entries'][number];
 const noop = () => () => {};
 
@@ -52,6 +55,9 @@ function DcrDay({ today }: { today: string }) {
   const [workTypes, setWorkTypes] = useState<WorkType[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [products, setProducts] = useState<PickProduct[]>([]);
+  const [orderProducts, setOrderProducts] = useState<Opt[]>([]);
+  const [chemists, setChemists] = useState<Opt[]>([]);
+  const [stockists, setStockists] = useState<Opt[]>([]);
   const [wt, setWt] = useState('');
   const [terr, setTerr] = useState('');
   const [reason, setReason] = useState('');
@@ -63,11 +69,17 @@ function DcrDay({ today }: { today: string }) {
   useEffect(() => {
     void (async () => {
       await apiReady();
-      const [w, d, p] = await Promise.all([
+      const [w, d, p, ch, st] = await Promise.all([
         api.GET('/v1/work-types', { params: { query: { limit: 100 } } }),
         api.GET('/v1/doctors', { params: { query: { limit: 100, sort: 'name' } } }),
         api.GET('/v1/products', { params: { query: { limit: 200 } } }),
+        api.GET('/v1/chemists', { params: { query: { limit: 100 } } }),
+        api.GET('/v1/stockists', { params: { query: { limit: 100 } } }),
       ]);
+      // POB/RCPA lines must reference contract products (the server prices them from PTR).
+      if (p.data) setOrderProducts(p.data.items.filter((x) => x.active).map((x) => ({ id: x.id, name: x.name })));
+      if (ch.data) setChemists(ch.data.items.map((x) => ({ id: x.id, name: x.name })));
+      if (st.data) setStockists(st.data.items.map((x) => ({ id: x.id, name: x.name })));
       if (w.data) setWorkTypes(w.data.items.filter((x) => x.active));
       if (d.data) setDoctors(d.data.items);
       if (MOCKING) setProducts(SEED_PRODUCTS);
@@ -101,8 +113,11 @@ function DcrDay({ today }: { today: string }) {
   const field = workType?.kind === 'field';
   const deviates = !!planned && (planned.workTypeId !== wt || (field && (planned.territoryIds[0] ?? '') !== terr));
   const locked = dcr?.status === 'submitted' || dcr?.status === 'locked';
-  const doctorName = useMemo(() => new Map(doctors.map((d) => [d.id, d.name])), [doctors]);
-  const productName = useMemo(() => new Map(products.map((p) => [p.id, p.name])), [products]);
+  const productName = useMemo(() => new Map([...orderProducts, ...products].map((p) => [p.id, p.name])), [products, orderProducts]);
+  const outletName = useMemo(
+    () => new Map([...doctors, ...chemists, ...stockists].map((o) => [o.id, o.name])),
+    [doctors, chemists, stockists],
+  );
   const leaves = territories.filter((t) => !territories.some((c) => c.parentId === t.id));
 
   const problems = [
@@ -120,14 +135,20 @@ function DcrDay({ today }: { today: string }) {
         workTypeId: wt,
         territoryIds: field && terr ? [terr] : [],
         deviationReason: deviates ? reason.trim() : null,
-        calls,
+        // PobLine.value is computed by the server from PTR; never send it.
+        calls: calls.map((c) => ({ ...c, pob: stripPobValue(c.pob) })),
         submit,
         ...(dcr ? { version: dcr.version } : {}),
       },
     });
     setSaving(false);
-    if (r.error) return toast.error(saveMessage(toApiError(r)), { duration: 10000 });
+    if (r.error) {
+      const e = toApiError(r);
+      const pr = pobRcpaMessage(e.details, (id) => productName.get(id) ?? 'a product');
+      return toast.error(pr ?? saveMessage(e), { duration: 10000 });
+    }
     setDcr(r.data);
+    setCalls(r.data.calls.map(({ id, ...c }) => ({ ...c, clientId: id })));
     toast.success(submit ? `DCR for ${dateLabel(date)} submitted` : 'Draft saved');
   }
 
@@ -198,12 +219,14 @@ function DcrDay({ today }: { today: string }) {
             {calls.map((c) => (
               <li key={c.clientId} className="af-enter flex items-start justify-between gap-3 px-3 py-2.5" data-testid="dcr-call">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium">{doctorName.get(c.outletId) ?? 'Doctor'}</p>
+                  <p className="text-sm font-medium">{outletName.get(c.outletId) ?? KIND_LABEL[c.outletKind]}{c.outletKind !== 'doctor' && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{KIND_LABEL[c.outletKind]}</span>}</p>
                   <p className="text-xs text-muted-foreground">
                     {timeIST(c.calledAt)}
                     {c.productsDetailed.length > 0 && ` · Detailed ${c.productsDetailed.map((p) => productName.get(p.productId) ?? '…').join(', ')}`}
                     {c.samples.length > 0 && ` · Samples ${c.samples.map((s) => `${productName.get(s.productId) ?? '…'} ×${s.quantity}`).join(', ')}`}
                   </p>
+                  {c.pob.length > 0 && <p className="text-xs" data-testid="dcr-call-pob">{pobSummary(c.pob)}</p>}
+                  {c.rcpa.length > 0 && <p className="text-xs text-muted-foreground" data-testid="dcr-call-rcpa">RCPA {c.rcpa.length} line{c.rcpa.length > 1 ? 's' : ''}</p>}
                   {c.remarks && <p className="mt-0.5 text-xs">{c.remarks}</p>}
                 </div>
                 {!locked && (
@@ -232,7 +255,10 @@ function DcrDay({ today }: { today: string }) {
       <CallDialog
         open={adding}
         doctors={doctors}
+        chemists={chemists}
+        stockists={stockists}
         products={products}
+        orderProducts={orderProducts}
         onClose={() => setAdding(false)}
         onAdd={(c) => {
           setCalls((cs) => [...cs, c]);
@@ -246,17 +272,27 @@ function DcrDay({ today }: { today: string }) {
 function CallDialog({
   open,
   doctors,
+  chemists,
+  stockists,
   products,
+  orderProducts,
   onClose,
   onAdd,
 }: {
   open: boolean;
   doctors: Doctor[];
+  chemists: Opt[];
+  stockists: Opt[];
   products: PickProduct[];
+  orderProducts: Opt[];
   onClose: () => void;
   onAdd: (c: Call) => void;
 }) {
+  const [kind, setKind] = useState<Kind>('doctor');
   const [doctorId, setDoctorId] = useState('');
+  const [pob, setPob] = useState<PobDraft[]>([]);
+  const [rcpa, setRcpa] = useState<RcpaDraft[]>([]);
+  const outlets: Opt[] = kind === 'doctor' ? doctors : kind === 'chemist' ? chemists : stockists;
   const [detailed, setDetailed] = useState<string[]>([]);
   const [samples, setSamples] = useState<Record<string, string>>({});
   const [remarks, setRemarks] = useState('');
@@ -271,7 +307,10 @@ function CallDialog({
   useEffect(() => {
     if (!open) return;
     setQ('');
+    setKind('doctor');
     setDoctorId('');
+    setPob([]);
+    setRcpa([]);
     setDetailed([]);
     setSamples({});
     setRemarks('');
@@ -283,15 +322,31 @@ function CallDialog({
       <DialogContent data-testid="dcr-call-dialog" className="max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add call</DialogTitle>
-          <DialogDescription>Who you met, what you detailed, samples given.</DialogDescription>
+          <DialogDescription>Who you met, what you detailed, samples, orders and prescription audit.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="call-doctor">Doctor</Label>
-            <Select value={doctorId} onValueChange={setDoctorId}>
-              <SelectTrigger id="call-doctor" className="w-full" data-testid="call-doctor"><SelectValue placeholder="Choose" /></SelectTrigger>
-              <SelectContent>{doctors.length === 0 && <EmptyOptions>No doctors in your territory yet. Ask your manager to add them.</EmptyOptions>}{doctors.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
-            </Select>
+          <div className="grid gap-3 sm:grid-cols-[9rem_1fr]">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="call-kind">Call on</Label>
+              <Select
+                value={kind}
+                onValueChange={(v) => {
+                  setKind(v as Kind);
+                  setDoctorId('');
+                  if (v !== 'chemist') setRcpa([]);
+                }}
+              >
+                <SelectTrigger id="call-kind" className="w-full" data-testid="call-kind"><SelectValue /></SelectTrigger>
+                <SelectContent>{(Object.keys(KIND_LABEL) as Kind[]).map((k) => <SelectItem key={k} value={k}>{KIND_LABEL[k]}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="call-doctor">{KIND_LABEL[kind]}</Label>
+              <Select value={doctorId} onValueChange={setDoctorId}>
+                <SelectTrigger id="call-doctor" className="w-full" data-testid="call-doctor"><SelectValue placeholder="Choose" /></SelectTrigger>
+                <SelectContent>{outlets.length === 0 && <EmptyOptions>No {KIND_LABEL[kind].toLowerCase()}s in your territory yet. Ask your manager to add them.</EmptyOptions>}{outlets.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
           </div>
           <fieldset className="flex flex-col gap-2">
             <legend className="mb-1.5 text-sm font-medium">Products detailed, in order</legend>
@@ -344,6 +399,8 @@ function CallDialog({
               ))}
             </fieldset>
           )}
+          <PobEditor rows={pob} onChange={setPob} products={orderProducts} stockists={stockists} showStockist={kind !== 'stockist'} />
+          {kind === 'chemist' && <RcpaEditor rows={rcpa} onChange={setRcpa} products={orderProducts} />}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="call-remarks">Remarks</Label>
             <Input id="call-remarks" value={remarks} maxLength={1000} onChange={(e) => setRemarks(e.target.value)} className="md:text-base" />
@@ -356,7 +413,7 @@ function CallDialog({
             onClick={() =>
               onAdd({
                 clientId: crypto.randomUUID(),
-                outletKind: 'doctor',
+                outletKind: kind,
                 outletId: doctorId,
                 checkInId: null,
                 jointWorkUserIds: [],
@@ -364,8 +421,8 @@ function CallDialog({
                 samples: Object.entries(samples)
                   .filter(([id, q]) => Number(q) > 0 && detailed.includes(id))
                   .map(([productId, q]) => ({ productId, quantity: Number(q) })),
-                pob: [],
-                rcpa: [],
+                pob: pobPayload(pob),
+                rcpa: kind === 'chemist' ? rcpaPayload(rcpa) : [],
                 remarks: remarks.trim() || null,
                 calledAt: new Date().toISOString(),
               })
