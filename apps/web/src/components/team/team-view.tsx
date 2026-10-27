@@ -1,6 +1,7 @@
 'use client';
 
 import { ChevronRight } from 'lucide-react';
+import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
@@ -189,6 +190,11 @@ export function TeamView() {
             )}
           </ol>
         </nav>
+        {person?.userId && (
+          <Link href={`/team/members/${person.userId}`} className="text-sm font-medium underline-offset-4 hover:underline" data-testid="open-profile">
+            Full profile
+          </Link>
+        )}
         <ExportMenu spec={spec} disabled={!rows} />
       </div>
 

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { REAL } from '@/lib/api';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
@@ -204,6 +206,11 @@ function Form({
             </p>
           )}
         </div>
+      )}
+      {edit && REAL && (
+        <Link href={`/team/members/${edit.id}`} className="w-fit text-sm font-medium underline-offset-4 hover:underline" data-testid="sheet-profile">
+          View full profile
+        </Link>
       )}
       {edit?.invited && !self && <InviteOne role={role} employee={edit} sentBefore={false} />}
       {!self && (

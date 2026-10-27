@@ -365,6 +365,7 @@ function CallDialog({
                   .filter(([id, q]) => Number(q) > 0 && detailed.includes(id))
                   .map(([productId, q]) => ({ productId, quantity: Number(q) })),
                 pob: [],
+                rcpa: [],
                 remarks: remarks.trim() || null,
                 calledAt: new Date().toISOString(),
               })

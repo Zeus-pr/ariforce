@@ -99,3 +99,8 @@ Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the 
 - Web: Submit is enabled when the plan is editable and `hasPlannedDay(plan.days)`. The header shows an informational "N days planned" with no blocking count. "Fill unplanned days" is an optional helper that skips weekly offs (and, this month, past days). Past days stay clickable and editable. The "Weekly off" and "Past" labels are informational. A submit error shows the server message (`EMPTY_PLAN`). Nothing reads `missingDates` any more.
 - `GET /v1/tour-plans/{month}/calendar`: the web uses `todayIST`/`weeklyOffDays`. `requiredDates` only drives the fill helper and labels.
 - Live: the API on :4000 runs 7f2a55f, which includes this rule. No open API change.
+
+## 75. Team member profile (feat/75-team-profile 8e6b0f9 + exceptions from feat/56-exceptions 5fdd41f)
+
+- Web: `/team/members/{userId}` uses `GET /v1/team/members/{userId}/profile`, `/performance` (month/week), `/doctors` and `/chemists` (server-paged, `q`, `includeTotal`, load more) and `/export` (xlsx/pdf). The exceptions summary renders only when `exceptions` is non-null. Entry points: "Full profile" on a selected person in Team, and "View full profile" in the My Team sheet (real mode).
+- No missing endpoints. One web-only note: mock-mode My Team runs on the local sample org, whose ids are not contract ids, so the sheet link is shown only in real mode.
