@@ -2,7 +2,15 @@ import * as z from 'zod';
 import { DateOnly, Id, Month, Timestamp } from './common';
 
 /** Expense claims (#52): one claim per user per month, lines with receipts in R2. */
-export const EXPENSE_CATEGORIES = ['travel', 'hotel', 'food', 'mileage', 'other'] as const;
+/** `allowance` = daily allowance (DA), usually drafted by TA/DA auto-calc (#39). */
+export const EXPENSE_CATEGORIES = [
+  'travel',
+  'hotel',
+  'food',
+  'mileage',
+  'allowance',
+  'other',
+] as const;
 export const ExpenseCategory = z.enum(EXPENSE_CATEGORIES).meta({ id: 'ExpenseCategory' });
 export const EXPENSE_STATUSES = ['draft', 'submitted', 'approved', 'rejected', 'paid'] as const;
 export const ExpenseStatus = z.enum(EXPENSE_STATUSES).meta({
@@ -80,6 +88,11 @@ export const ExpenseLine = z
     mileageKm: z.number().nullable(),
     dcrId: Id.nullable(),
     tourPlanId: Id.nullable(),
+    source: z.enum(['manual', 'auto']).meta({
+      description:
+        'auto = drafted by TA/DA (#39) and replaced on re-run; editing or attaching a receipt makes it manual',
+    }),
+    allowancePlaceId: Id.nullable().meta({ description: 'Fare-chart place used for TA (#39)' }),
     attachments: z.array(ExpenseAttachment),
     version: z.int(),
   })

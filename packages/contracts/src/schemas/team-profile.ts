@@ -3,6 +3,7 @@ import { DateOnly, Id, ListQuery, Timestamp, page } from './common';
 import { KpiValue, type KpiKey } from './kpis';
 import { RoleKey } from './roles';
 import { TeamNode, TeamTerritory } from './team';
+import { ProfileExceptions } from './exceptions';
 
 /**
  * Team member profile (#75): one person in the viewer's reporting subtree. Read-only. No payroll/HR
@@ -45,6 +46,10 @@ export const TeamProfile = z
         .nullable(),
     }),
     lastPunchInAt: Timestamp.nullable().meta({ description: 'Latest punch-in on any day' }),
+    exceptions: ProfileExceptions.nullable().optional().meta({
+      description:
+        'Exception counts for this person (#56); null when the viewer lacks field:read. See docs/EXCEPTIONS.md',
+    }),
     canSeeExpenses: z.boolean().meta({
       description:
         'Own profile, or viewer has expenses:approve or finance:read; performance.expenses is null otherwise',

@@ -10,6 +10,7 @@ import {
 import {
   chemists,
   dcrCallProducts,
+  dcrCallRcpa,
   dcrCalls,
   dcrs,
   doctors,
@@ -59,6 +60,10 @@ const unlockedUntilSql = (userId: SQL | typeof dcrs.userId, date: SQL | typeof d
        from approval_requests r join approval_steps st on st.request_id = r.id
        where r.entity_type = 'dcr_correction' and r.state = 'approved' and r.requested_by = ${userId}
          and r.payload->>'date' = (${date})::text)`;
+
+/** #40: POB value = quantity × PTR (INR, 2 dp), or null when the product has no PTR. */
+export const pobValue = (quantity: number, ptr: string | null) =>
+  ptr == null ? null : (Math.round(quantity * Number(ptr) * 100) / 100).toFixed(2);
 
 @Injectable()
 export class DcrService {
@@ -112,6 +117,21 @@ export class DcrService {
             ),
           )
       : [];
+    const rcpa = calls.length
+      ? await tx
+          .select()
+          .from(dcrCallRcpa)
+          .where(
+            and(
+              inArray(
+                dcrCallRcpa.callId,
+                calls.map((c) => c.id),
+              ),
+              isNull(dcrCallRcpa.deletedAt),
+            ),
+          )
+          .orderBy(asc(dcrCallRcpa.id))
+      : [];
     const out: Dcr[] = [];
     for (const r of rows) {
       const li = await this.lockInfo(tx, s, r.userId, r.date);
@@ -156,6 +176,16 @@ export class DcrService {
                   quantity: x.quantity ?? 0,
                   stockistId: x.stockistId,
                   value: x.value === null ? null : Number(x.value),
+                })),
+              rcpa: rcpa
+                .filter((x) => x.callId === c.id)
+                .map((x) => ({
+                  productId: x.productId,
+                  competitorBrand: x.competitorBrand,
+                  competitorCompany: x.competitorCompany,
+                  quantity: x.quantity,
+                  prescriptions: x.prescriptions,
+                  doctorId: x.doctorId,
                 })),
               remarks: c.remarks,
               calledAt: (c.calledAt ?? c.createdAt).toISOString(),
@@ -271,17 +301,56 @@ export class DcrService {
           ...c.productsDetailed.map((x) => x.productId),
           ...c.samples.map((x) => x.productId),
           ...c.pob.map((x) => x.productId),
+          ...c.rcpa.map((x) => x.productId),
         ]),
       ),
     ];
+    const ptr = new Map<string, string | null>();
     if (prodIds.length) {
       const found = await tx
-        .select({ id: products.id })
+        .select({ id: products.id, active: products.active, ptr: products.ptr })
         .from(products)
         .where(and(inArray(products.id, prodIds), isNull(products.deletedAt)));
       const miss = prodIds.filter((i) => !found.some((f) => f.id === i));
       if (miss.length) bad.productIds = miss;
+      for (const f of found) ptr.set(f.id, f.ptr);
+      // #40: POB and RCPA lines need an active product (detailing/samples keep the old rule).
+      const orderIds = new Set(
+        b.calls.flatMap((c) => [...c.pob, ...c.rcpa].map((x) => x.productId)),
+      );
+      const inactive = found.filter((f) => !f.active && orderIds.has(f.id)).map((f) => f.id);
+      if (inactive.length) bad.inactiveProductIds = inactive;
     }
+    // #40: POB on doctor/chemist/stockist calls, RCPA on chemist calls only, no duplicate lines in a call.
+    const rcpaOutlet = b.calls.filter((c) => c.rcpa.length && c.outletKind !== 'chemist');
+    if (rcpaOutlet.length) bad.rcpaOutletCallIds = rcpaOutlet.map((c) => c.clientId);
+    const dup = (keys: string[]) => new Set(keys).size !== keys.length;
+    const dupPob = b.calls.filter((c) => dup(c.pob.map((x) => x.productId)));
+    if (dupPob.length) bad.duplicatePob = dupPob.map((c) => c.clientId);
+    const dupRcpa = b.calls.filter((c) =>
+      dup(c.rcpa.map((x) => `${x.productId}|${(x.competitorBrand ?? '').toLowerCase()}`)),
+    );
+    if (dupRcpa.length) bad.duplicateRcpa = dupRcpa.map((c) => c.clientId);
+    const inScope = async (kind: 'doctor' | 'stockist', ids: string[]) => {
+      if (!ids.length) return [];
+      const t = OUTLETS[kind];
+      const found = await tx
+        .select({ id: t.id })
+        .from(t)
+        .innerJoin(territories, eq(territories.id, t.territoryId))
+        .where(and(inArray(t.id, ids), isNull(t.deletedAt), scope));
+      return ids.filter((i) => !found.some((f) => f.id === i));
+    };
+    const badStockists = await inScope('stockist', [
+      ...new Set(
+        b.calls.flatMap((c) => c.pob.flatMap((x) => (x.stockistId ? [x.stockistId] : []))),
+      ),
+    ]);
+    if (badStockists.length) bad.stockistIds = badStockists;
+    const badDoctors = await inScope('doctor', [
+      ...new Set(b.calls.flatMap((c) => c.rcpa.flatMap((x) => (x.doctorId ? [x.doctorId] : [])))),
+    ]);
+    if (badDoctors.length) bad.rcpaDoctorIds = badDoctors;
     const jw = [...new Set(b.calls.flatMap((c) => c.jointWorkUserIds))];
     if (jw.length) {
       const found = await tx.select({ id: users.id }).from(users).where(inArray(users.id, jw));
@@ -339,6 +408,7 @@ export class DcrService {
       throw err(409, 'IDEMPOTENCY_CONFLICT', 'Call clientId belongs to another DCR', {
         clientIds: foreign.map((f) => f.id),
       });
+    return { ptr };
   }
 
   upsert(p: Principal, b: Upsert) {
@@ -407,7 +477,7 @@ export class DcrService {
           },
         );
 
-      await this.validateCalls(tx, p, b, cur?.id);
+      const { ptr } = await this.validateCalls(tx, p, b, cur?.id);
 
       const vals = {
         workTypeId: b.workTypeId,
@@ -469,6 +539,31 @@ export class DcrService {
           .onConflictDoUpdate({ target: dcrCalls.id, set: { ...v, deletedAt: null } });
       }
       if (keep.length) {
+        // Saved POB values stay as saved (lead rule): an existing line for the same call and
+        // product with the same quantity keeps its stored value; an edited quantity or a new
+        // line is priced at the current PTR. A stored null (no PTR then) is priced now.
+        const prior = new Map<string, { quantity: number | null; value: string | null }>();
+        for (const l of await tx
+          .select({
+            callId: dcrCallProducts.callId,
+            productId: dcrCallProducts.productId,
+            quantity: dcrCallProducts.quantity,
+            value: dcrCallProducts.value,
+          })
+          .from(dcrCallProducts)
+          .where(
+            and(
+              inArray(dcrCallProducts.callId, keep),
+              eq(dcrCallProducts.kind, 'pob'),
+              isNull(dcrCallProducts.deletedAt),
+            ),
+          ))
+          prior.set(`${l.callId}|${l.productId}`, { quantity: l.quantity, value: l.value });
+        const pobLineValue = (callId: string, productId: string, quantity: number) => {
+          const was = prior.get(`${callId}|${productId}`);
+          if (was && was.quantity === quantity && was.value !== null) return was.value;
+          return pobValue(quantity, ptr.get(productId) ?? null);
+        };
         await tx
           .update(dcrCallProducts)
           .set({ deletedAt: now })
@@ -492,21 +587,72 @@ export class DcrService {
             kind: 'pob' as const,
             quantity: x.quantity,
             stockistId: x.stockistId ?? null,
-            value: x.value == null ? null : String(x.value),
+            value: pobLineValue(c.clientId, x.productId, x.quantity),
           })),
         ]);
         if (lines.length)
           await tx
             .insert(dcrCallProducts)
             .values(lines.map((l) => ({ id: uuidv7(), companyId: p.companyId, ...l })));
+        await tx
+          .update(dcrCallRcpa)
+          .set({ deletedAt: now })
+          .where(and(inArray(dcrCallRcpa.callId, keep), isNull(dcrCallRcpa.deletedAt)));
+        const rcpa = b.calls.flatMap((c) =>
+          c.rcpa.map((x) => ({
+            id: uuidv7(),
+            companyId: p.companyId,
+            callId: c.clientId,
+            productId: x.productId,
+            competitorBrand: x.competitorBrand ?? null,
+            competitorCompany: x.competitorCompany ?? null,
+            quantity: x.quantity,
+            prescriptions: x.prescriptions ?? null,
+            doctorId: x.doctorId ?? null,
+          })),
+        );
+        if (rcpa.length) await tx.insert(dcrCallRcpa).values(rcpa);
       }
       await this.audit.record(tx, p, b.submit ? 'dcr.submit' : 'dcr.save', {
         entityType: 'dcr',
         entityId: dcrId,
-        after: { date: b.date, calls: b.calls.length, deviation: !!reason },
+        after: {
+          date: b.date,
+          calls: b.calls.length,
+          deviation: !!reason,
+          pobLines: b.calls.reduce((n, c) => n + c.pob.length, 0),
+          rcpaLines: b.calls.reduce((n, c) => n + c.rcpa.length, 0),
+        },
       });
       const [fresh] = await tx.select().from(dcrs).where(eq(dcrs.id, dcrId));
       return (await this.toDto(tx, s, [fresh!]))[0]!;
+    });
+  }
+
+  /** Distinct competitor brands captured in RCPA in the caller's company (#40). */
+  competitorBrands(p: Principal, q: { q?: string; limit: number }) {
+    return this.tenant.run(p, async (tx) => {
+      const term = q.q
+        ?.trim()
+        .toLowerCase()
+        .replace(/[\\%_]/g, (m) => `\\${m}`);
+      const res = await tx.execute(sql`
+        select min(r.competitor_brand) as brand,
+               mode() within group (order by r.competitor_company) as company,
+               count(*)::int as uses
+        from dcr_call_rcpa r
+        join dcr_calls c on c.id = r.call_id and c.deleted_at is null
+        where r.deleted_at is null and r.competitor_brand is not null
+          ${term ? sql`and (lower(r.competitor_brand) like ${`${term}%`} or lower(r.competitor_brand) like ${`% ${term}%`})` : sql``}
+        group by lower(r.competitor_brand)
+        order by uses desc, brand asc
+        limit ${q.limit}`);
+      const rows = ((res as unknown as { rows?: unknown[] }).rows ?? res) as {
+        brand: string;
+        company: string | null;
+        uses: number;
+      }[];
+      return { items: rows.map((r) => ({ brand: r.brand, company: r.company, uses: r.uses })) };
     });
   }
 

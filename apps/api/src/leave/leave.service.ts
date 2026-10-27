@@ -1,3 +1,4 @@
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   ForbiddenException,
   Injectable,
@@ -104,6 +105,7 @@ export class LeaveService implements OnModuleInit {
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
     private readonly approvals: ApprovalsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -124,6 +126,14 @@ export class LeaveService implements OnModuleInit {
           entityId: req.entityId,
           after: { comment, step: req.currentStep },
         });
+        await this.notifications.notify(tx, p, {
+          type: approved ? 'leave.approved' : 'leave.rejected',
+          recipientId: req.requestedBy,
+          entityType: 'leave_request',
+          entityId: req.entityId,
+          dedupeKey: `leave.decided:${req.id}`,
+          data: { ...(req.payload ?? {}), comment },
+        });
       },
       {
         levels: async (tx) => (await this.settingsRow(tx)).approvalLevels,
@@ -133,6 +143,14 @@ export class LeaveService implements OnModuleInit {
             entityType: 'leave_request',
             entityId: req.entityId,
             after: { step: req.currentStep, nextStep, nextApproverId },
+          });
+          await this.notifications.notify(tx, p, {
+            type: 'leave.submitted',
+            recipientId: nextApproverId,
+            entityType: 'leave_request',
+            entityId: req.entityId,
+            dedupeKey: `leave.submitted:${req.id}:${nextStep}`,
+            data: { ...(req.payload ?? {}), step: nextStep },
           });
         },
       },
@@ -529,6 +547,14 @@ export class LeaveService implements OnModuleInit {
           approvalId: reqId,
         },
       });
+      await this.notifications.notify(tx, p, {
+        type: 'leave.submitted',
+        recipientId: await this.approvals.currentApprover(tx, reqId),
+        entityType: 'leave_request',
+        entityId: id,
+        dedupeKey: `leave.submitted:${reqId}:1`,
+        data: { typeCode: pol.code, fromDate: b.fromDate, toDate: b.toDate, days, step: 1 },
+      });
       return this.one(tx, p, id);
     });
   }
@@ -588,6 +614,20 @@ export class LeaveService implements OnModuleInit {
         entityId: r.id,
         before: { status: r.status },
         after: { reason, by: own ? 'owner' : 'manager' },
+      });
+      // Manager cancels -> owner. Owner cancels while pending -> the approver who had it queued.
+      const recipientId = !own
+        ? r.userId
+        : r.status === 'pending' && r.approvalRequestId
+          ? await this.approvals.currentApprover(tx, r.approvalRequestId)
+          : null;
+      await this.notifications.notify(tx, p, {
+        type: 'leave.cancelled',
+        recipientId,
+        entityType: 'leave_request',
+        entityId: r.id,
+        dedupeKey: `leave.cancelled:${r.id}`,
+        data: { fromDate: r.fromDate, toDate: r.toDate, reason },
       });
       return this.one(tx, p, r.id);
     });

@@ -1,3 +1,4 @@
+import { NotificationsModule } from './notifications/notifications.module';
 import { Module } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module';
 import { DbModule } from './db/db.module';
@@ -12,12 +13,16 @@ import { PlansModule } from './plans/plans.module';
 import { TeamModule } from './team/team.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { LeaveModule } from './leave/leave.module';
+import { AllowancesModule } from './allowances/allowances.module';
+import { ExceptionsModule } from './exceptions/exceptions.module';
+import { ProductPricesModule } from './product-prices/product-prices.module';
 import { MeController } from './me/me.controller';
 import { OpenApiController } from './openapi/openapi.controller';
 
 @Module({
   imports: [
     DbModule,
+    NotificationsModule,
     AuthModule,
     FilesModule,
     MastersModule,
@@ -28,6 +33,9 @@ import { OpenApiController } from './openapi/openapi.controller';
     ExpensesModule,
     LeaveModule,
     TeamModule,
+    ExceptionsModule,
+    ProductPricesModule,
+    AllowancesModule,
   ],
   controllers: [HealthController, OpenApiController, MeController],
   providers: [WorkTypesCheck],

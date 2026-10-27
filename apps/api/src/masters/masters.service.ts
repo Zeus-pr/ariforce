@@ -13,6 +13,7 @@ import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
+import { PRICE_KEYS, recordPriceChange } from '../product-prices/product-prices.service';
 import { baseFromRow, type MasterDef } from './master-defs';
 
 type Row = Record<string, unknown>;
@@ -151,6 +152,19 @@ export class MastersService {
     if (!t) throw new ForbiddenException('Territory outside your hierarchy');
   }
 
+  /** Price changes through the generic product routes are recorded in price history (source 'masters'). */
+  private async trackPrices(tx: Tx, def: MasterDef, p: Principal, row: Row, before?: Row) {
+    if (def.entity !== 'product') return;
+    const pick = (r?: Row) => ({
+      mrp: r?.mrp == null ? null : Number(r.mrp),
+      ptr: r?.ptr == null ? null : Number(r.ptr),
+      pts: r?.pts == null ? null : Number(r.pts),
+    });
+    const [b, a] = [pick(before), pick(row)];
+    if (PRICE_KEYS.some((k) => a[k] !== b[k]))
+      await recordPriceChange(tx, this.audit, p, String(row.id), b, a, 'masters');
+  }
+
   /** Insert inside an existing transaction (used by import too). */
   async insert(tx: Tx, def: MasterDef, p: Principal, body: Row, action = 'create') {
     if (def.territoryCol && 'territoryId' in body)
@@ -167,6 +181,7 @@ export class MastersService {
       .insert(def.table)
       .values(values as any)
       .returning();
+    await this.trackPrices(tx, def, p, row as Row);
     const dto = this.dto(def, row as Row);
     await this.audit.record(tx, p, `${def.entity}.${action}`, {
       entityType: def.entity,
@@ -203,6 +218,7 @@ export class MastersService {
         message: 'Stale version',
         details: this.dto(def, before),
       });
+    await this.trackPrices(tx, def, p, row as Row, before);
     const dto = this.dto(def, row as Row);
     await this.audit.record(tx, p, `${def.entity}.${action}`, {
       entityType: def.entity,

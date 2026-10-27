@@ -9,7 +9,13 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
-import { DcrCorrectionRequest, DcrListQuery, DcrUpsert, Id } from '@ariforce/contracts';
+import {
+  CompetitorBrandQuery,
+  DcrCorrectionRequest,
+  DcrListQuery,
+  DcrUpsert,
+  Id,
+} from '@ariforce/contracts';
 import type * as z from 'zod';
 import { CurrentPrincipal, RequirePermissions } from '../auth/decorators';
 import type { Principal } from '../auth/principal';
@@ -50,5 +56,19 @@ export class DcrController {
   get(@CurrentPrincipal() p: Principal, @Param('id') id: string) {
     if (!Id.safeParse(id).success) throw new NotFoundException('DCR not found');
     return this.svc.get(p, id);
+  }
+}
+
+@Controller({ path: 'rcpa', version: '1' })
+export class RcpaController {
+  constructor(private readonly svc: DcrService) {}
+
+  @Get('competitor-brands')
+  @RequirePermissions('field:read')
+  competitorBrands(
+    @CurrentPrincipal() p: Principal,
+    @Query(new ZodPipe(CompetitorBrandQuery)) q: z.infer<typeof CompetitorBrandQuery>,
+  ) {
+    return this.svc.competitorBrands(p, q);
   }
 }

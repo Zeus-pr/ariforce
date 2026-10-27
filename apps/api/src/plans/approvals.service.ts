@@ -95,6 +95,23 @@ export class ApprovalsService {
     this.options.set(entity, options);
   }
 
+  /** Approver of the request's current step (null when unresolved, e.g. no manager). */
+  async currentApprover(tx: Tx, requestId: string): Promise<string | null> {
+    const [r] = await tx
+      .select({ uid: approvalSteps.approverUserId })
+      .from(approvalSteps)
+      .innerJoin(approvalRequests, eq(approvalRequests.id, approvalSteps.requestId))
+      .where(
+        and(
+          eq(approvalSteps.requestId, requestId),
+          eq(approvalSteps.stepNo, approvalRequests.currentStep),
+        ),
+      )
+      .orderBy(desc(approvalSteps.stepNo))
+      .limit(1);
+    return r?.uid ?? null;
+  }
+
   /** Creates a pending request (cancelling an older pending one for the same subject). */
   async request(
     tx: Tx,

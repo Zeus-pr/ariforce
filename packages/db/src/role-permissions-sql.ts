@@ -1,12 +1,12 @@
 /**
- * Builds the latest role-permissions migration (0019 baseline, 0022 expenses, now 0025 with leave) from DEFAULT_ROLE_PERMISSIONS in
+ * Builds the latest role-permissions migration (0019 baseline, 0022 expenses, 0025 leave, now 0033 with product prices) from DEFAULT_ROLE_PERMISSIONS in
  * @ariforce/contracts, the same constant the seed uses, so the SQL and the code cannot drift.
  * Regenerate: pnpm -F @ariforce/db db:role-perms   Check: pnpm -F @ariforce/db db:role-perms:check
  */
 import { DEFAULT_ROLE_PERMISSIONS, ROLE_KEYS } from '../../contracts/src/schemas/roles';
 
 /** Applied 0019 stays frozen; each permission change gets a NEW generated migration (set, not append). */
-export const ROLE_PERMISSIONS_MIGRATION = '0025_role_permissions_leave';
+export const ROLE_PERMISSIONS_MIGRATION = '0033_role_permissions_prices';
 
 /** Sorted, de-duplicated permission list per role (the exact array written to roles.permissions). */
 export function rolePermissionMatrix(): Record<string, string[]> {
@@ -27,6 +27,7 @@ export function rolePermissionsSql(): string {
 -- Expenses (#52): expenses:read/write for the sales hierarchy, expenses:approve for ABM and up,
 -- finance:write (mark paid) for the accountant.
 -- Leave (#51): leave:read/write for the sales hierarchy, leave:approve for ABM and up.
+-- Product prices admin: products:prices for system_admin only.
 -- Masters: BM/ABM read-only; RBM and above + system_admin write. distribution_head / accountant
 -- read-only sets as accepted by the lead (docs/RBAC.md).`;
   const stmts = ROLE_KEYS.map(

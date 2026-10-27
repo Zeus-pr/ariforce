@@ -1,3 +1,4 @@
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   ForbiddenException,
   Injectable,
@@ -7,6 +8,7 @@ import {
 import {
   EXPENSE_MAX_FILES_PER_LINE,
   type ExpenseCategory,
+  type AllowanceDraftRequest,
   type ExpenseAttachmentCreate,
   type ExpenseClaim,
   type ExpenseDecision,
@@ -34,6 +36,7 @@ import { err } from '../field/checkins.service';
 import { StorageService } from '../files/storage.service';
 import { ApprovalsService } from '../plans/approvals.service';
 import { keyExt, sniffMatches } from './files.util';
+import { computeAllowances } from '../allowances/allowances.engine';
 
 type ClaimRow = typeof expenseClaims.$inferSelect;
 type LineRow = typeof expenseLines.$inferSelect;
@@ -65,6 +68,7 @@ export class ExpensesService implements OnModuleInit {
     private readonly audit: AuditService,
     private readonly approvals: ApprovalsService,
     private readonly storage: StorageService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -85,6 +89,14 @@ export class ExpensesService implements OnModuleInit {
           entityId: req.entityId,
           after: { comment, step: req.currentStep },
         });
+        await this.notifications.notify(tx, p, {
+          type: approved ? 'expense.approved' : 'expense.rejected',
+          recipientId: req.requestedBy,
+          entityType: 'expense_claim',
+          entityId: req.entityId,
+          dedupeKey: `expense.decided:${req.id}`,
+          data: { ...(req.payload ?? {}), comment },
+        });
       },
       {
         levels: approvalLevels(),
@@ -94,6 +106,14 @@ export class ExpensesService implements OnModuleInit {
             entityType: 'expense_claim',
             entityId: req.entityId,
             after: { step: req.currentStep, nextStep, nextApproverId },
+          });
+          await this.notifications.notify(tx, p, {
+            type: 'expense.submitted',
+            recipientId: nextApproverId,
+            entityType: 'expense_claim',
+            entityId: req.entityId,
+            dedupeKey: `expense.submitted:${req.id}:${nextStep}`,
+            data: { ...(req.payload ?? {}), step: nextStep },
           });
         },
       },
@@ -210,6 +230,8 @@ export class ExpensesService implements OnModuleInit {
       mileageKm: num(l.mileageKm),
       dcrId: l.dcrId,
       tourPlanId: l.tourPlanId,
+      source: l.source,
+      allowancePlaceId: l.allowancePlaceId,
       attachments: atts.filter((a) => a.lineId === l.id).map((a) => this.attDto(a)),
       version: l.version,
     };
@@ -387,7 +409,10 @@ export class ExpensesService implements OnModuleInit {
       if (cur.version !== version)
         throw err(409, 'VERSION_CONFLICT', 'Stale version', this.lineDto(cur, []));
       await this.checkLine(tx, p, c, l);
-      await tx.update(expenseLines).set(this.lineValues(l)).where(eq(expenseLines.id, lineId));
+      await tx
+        .update(expenseLines)
+        .set({ ...this.lineValues(l), source: 'manual' })
+        .where(eq(expenseLines.id, lineId));
       await this.recomputeTotal(tx, c.id);
       await this.audit.record(tx, p, 'expense.line_updated', {
         entityType: 'expense_claim',
@@ -416,6 +441,56 @@ export class ExpensesService implements OnModuleInit {
         after: { lineId },
       });
       return this.toDto(tx, await this.claimRow(tx, p, c.id));
+    });
+  }
+
+  /** TA/DA auto-draft (#39): replaces this claim's auto lines from the rep's DCRs. */
+  draftAllowances(p: Principal, id: string, req: AllowanceDraftRequest) {
+    return this.tenant.run(p, async (tx) => {
+      const c = await this.ownEditable(tx, p, id);
+      const today = new Date().toISOString().slice(0, 10);
+      const r = await computeAllowances(tx, c, req, today);
+      if (req.dryRun) return { dryRun: true, days: r.days, totals: r.totals, claim: null };
+      const now = new Date();
+      await tx
+        .update(expenseLines)
+        .set({ deletedAt: now })
+        .where(
+          and(
+            eq(expenseLines.claimId, c.id),
+            eq(expenseLines.source, 'auto'),
+            isNull(expenseLines.deletedAt),
+          ),
+        );
+      if (r.lines.length)
+        await tx.insert(expenseLines).values(
+          r.lines.map((l) => ({
+            id: uuidv7(),
+            companyId: p.companyId,
+            claimId: c.id,
+            date: l.date,
+            category: l.category,
+            amount: l.amount.toFixed(2),
+            notes: l.notes,
+            mileageKm: l.mileageKm === null ? null : l.mileageKm.toFixed(2),
+            dcrId: l.dcrId,
+            source: 'auto' as const,
+            calc: l.calc,
+            allowancePlaceId: l.placeId,
+          })),
+        );
+      await this.recomputeTotal(tx, c.id);
+      await this.audit.record(tx, p, 'expense.allowances_drafted', {
+        entityType: 'expense_claim',
+        entityId: c.id,
+        after: { ...r.totals, days: r.days.length },
+      });
+      return {
+        dryRun: false,
+        days: r.days,
+        totals: r.totals,
+        claim: await this.toDto(tx, await this.claimRow(tx, p, c.id)),
+      };
     });
   }
 
@@ -452,6 +527,14 @@ export class ExpensesService implements OnModuleInit {
         entityId: c.id,
         after: { total: dto.total, lines: dto.lines.length, approvalId: reqId },
       });
+      await this.notifications.notify(tx, p, {
+        type: 'expense.submitted',
+        recipientId: await this.approvals.currentApprover(tx, reqId),
+        entityType: 'expense_claim',
+        entityId: c.id,
+        dedupeKey: `expense.submitted:${reqId}:1`,
+        data: { month: dto.month, total: dto.total, step: 1 },
+      });
       return this.toDto(tx, await this.claimRow(tx, p, c.id));
     });
   }
@@ -480,6 +563,14 @@ export class ExpensesService implements OnModuleInit {
         entityType: 'expense_claim',
         entityId: c.id,
         after: { paymentRef, total: Number(c.total) },
+      });
+      await this.notifications.notify(tx, p, {
+        type: 'expense.paid',
+        recipientId: c.userId,
+        entityType: 'expense_claim',
+        entityId: c.id,
+        dedupeKey: `expense.paid:${c.id}`,
+        data: { month: String(c.month).slice(0, 7), total: Number(c.total), paymentRef },
       });
       return this.toDto(tx, await this.claimRow(tx, p, c.id));
     });
@@ -516,6 +607,11 @@ export class ExpensesService implements OnModuleInit {
           uploadedBy: p.userId,
         })
         .returning();
+      // A receipt on a drafted TA/DA line makes it the rep's own (kept on re-run).
+      await tx
+        .update(expenseLines)
+        .set({ source: 'manual' })
+        .where(and(eq(expenseLines.id, lineId), eq(expenseLines.source, 'auto')));
       await this.audit.record(tx, p, 'expense.attachment_requested', {
         entityType: 'expense_attachment',
         entityId: a!.id,
@@ -665,10 +761,14 @@ export class ExpensesService implements OnModuleInit {
       );
     const byDate = new Map<string, LineRow[]>();
     for (const l of lines) byDate.set(l.date, [...(byDate.get(l.date) ?? []), l]);
-    const byCategory = { travel: 0, hotel: 0, food: 0, mileage: 0, other: 0 } as Record<
-      Category,
-      number
-    >;
+    const byCategory = {
+      travel: 0,
+      hotel: 0,
+      food: 0,
+      mileage: 0,
+      allowance: 0,
+      other: 0,
+    } as Record<Category, number>;
     for (const l of lines) byCategory[l.category] = r2(byCategory[l.category] + Number(l.amount));
     let unmatched = 0;
     const out = [...byDate.entries()]
@@ -763,10 +863,14 @@ export class ExpensesService implements OnModuleInit {
 
   async report(p: Principal, q: Parameters<ExpensesService['reportData']>[1]) {
     const data = await this.reportData(p, q);
-    const byCategory = { travel: 0, hotel: 0, food: 0, mileage: 0, other: 0 } as Record<
-      Category,
-      number
-    >;
+    const byCategory = {
+      travel: 0,
+      hotel: 0,
+      food: 0,
+      mileage: 0,
+      allowance: 0,
+      other: 0,
+    } as Record<Category, number>;
     for (const d of data)
       for (const k of Object.keys(byCategory) as Category[])
         byCategory[k] = r2(byCategory[k] + d.rec.byCategory[k]);

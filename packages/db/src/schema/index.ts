@@ -7,3 +7,6 @@ export * from './products';
 export * from './activity';
 export * from './expenses';
 export * from './leave';
+export * from './notifications';
+export * from './exceptions';
+export * from './allowances';

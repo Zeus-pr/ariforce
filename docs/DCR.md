@@ -22,3 +22,5 @@ Endpoints (`apps/api/src/dcr`; contract in `packages/contracts`, mock in `src/mo
 ## Storage
 
 Migration `0013_dcr_detail.sql` adds `dcrs.territory_ids`, `dcrs.tour_plan_id` and `dcr_calls.joint_work_user_ids`. Product lines live in `dcr_call_products` (`detailed` with `seq`, `sample`, `pob` with `stockist_id`/`value`).
+
+POB and RCPA (#40, migration `0029_dcr_call_rcpa.sql`): POB lines on doctor, chemist and stockist calls, with `value` computed by the server as quantity × product PTR (null without a PTR); RCPA lines (`dcr_call_rcpa`) only on chemist calls. Both are replaced with the call on every save; `rcpa` defaults to `[]` for older clients. Rules, the competitor-brand lookup (`GET /v1/rcpa/competitor-brands`) and open decisions: [POB-RCPA.md](POB-RCPA.md).

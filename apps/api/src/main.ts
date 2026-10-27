@@ -14,6 +14,7 @@ async function main() {
   validateEnv(); // fail fast in production (#80); names only in the error
   const app = configureApp(await NestFactory.create(AppModule, { bodyParser: false }));
   const port = Number(process.env.PORT ?? 4000);
+  app.enableShutdownHooks();
   await app.listen(port);
   console.log(`AriForce API on http://localhost:${port}`);
 }

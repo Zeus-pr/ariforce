@@ -46,7 +46,13 @@ export function configureApp(app: INestApplication) {
     !isProd() && req.path.startsWith('/docs') ? docsPage(req, res, next) : strict(req, res, next),
   );
   // CORS must run before the better-auth handler so sign-in/out also get the headers.
-  app.enableCors({ origin: webOrigins(), credentials: true });
+  // Strict: only WEB_ORIGIN origins. Expose Retry-After (429 back-off) and Content-Disposition
+  // (export file names) to the web app's fetch.
+  app.enableCors({
+    origin: webOrigins(),
+    credentials: true,
+    exposedHeaders: ['Retry-After', 'Content-Disposition'],
+  });
   const authHandler = toNodeHandler(app.get(AuthService).auth);
   // Our own public sign-up request route lives under /v1/auth but is handled by Nest.
   // Trusted client IP for every request (never X-Forwarded-For), exposed to better-auth (#77).

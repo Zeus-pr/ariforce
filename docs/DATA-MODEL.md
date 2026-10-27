@@ -31,6 +31,7 @@ Source: `packages/db/src/schema/*.ts` (Drizzle). `drizzle-kit generate` writes `
 | Field-added doctor approval (#26)  | `doctors.approval_status` + approval request `entity_type='doctor'`                                                                                                                |
 | Registration verification (#27)    | `doctors.registration_no/council`, `verification_status`                                                                                                                           |
 | KPI views (#28), samples (#37/#38) | Later migrations (views over DCR/TP; sample ledger + per-doctor cap). Not in v1.                                                                                                   |
+| POB / RCPA (#40)                   | POB: `dcr_call_products(kind='pob')`, value = qty × `products.ptr`; RCPA: `dcr_call_rcpa` (0029). See [POB-RCPA.md](POB-RCPA.md)                                                   |
 
 ## ER diagram
 

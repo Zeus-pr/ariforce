@@ -23,9 +23,13 @@ import { duplicateKeys, mapImportRow, type ImportLookup } from '../import/templa
 import type { ImportEntity } from '../schemas/imports';
 import { SignInEmailBody } from '../schemas/auth';
 import { kpiReport, productKpiReport } from './kpis';
+import { listNotifications, seedNotifications } from './notifications';
 import { teamHandlers, teamProfileHandlers } from './team';
 import { signupHandlers } from './signup';
+import { allowanceHandlers } from './allowances';
 import { expenseHandlers } from './expenses';
+import { exceptionHandlers } from './exceptions';
+import { productPriceHandlers } from './product-prices';
 import { leaveHandlers, mockLeaveOn, mockWeeklyOffDays } from './leave';
 import { mastersGuardHandlers } from './masters-guard';
 import {
@@ -372,9 +376,12 @@ const unauthenticated = () =>
 export function createHandlers(baseUrl = '') {
   return [
     ...mastersGuardHandlers(baseUrl, mockPrincipal),
+    ...productPriceHandlers(baseUrl, mockPrincipal),
     ...signupHandlers(baseUrl, mockPrincipal),
     ...expenseHandlers(baseUrl, mockPrincipal),
+    ...allowanceHandlers(baseUrl, mockPrincipal),
     ...leaveHandlers(baseUrl, mockPrincipal),
+    ...exceptionHandlers(baseUrl, mockPrincipal),
     http.get(`${baseUrl}/v1/health`, () => HttpResponse.json({ status: 'ok', warnings: [] })),
     http.post(`${baseUrl}/v1/files/upload-url`, () =>
       HttpResponse.json({
@@ -468,6 +475,7 @@ export function createHandlers(baseUrl = '') {
 }
 
 function fieldHandlers(baseUrl: string) {
+  const inbox = seedNotifications();
   const checkIns: CheckIn[] = [];
   const tourPlans: TourPlan[] = [];
   let stp: StandardTourPlan | null = null;
@@ -795,6 +803,24 @@ function fieldHandlers(baseUrl: string) {
     http.get(`${baseUrl}/v1/dcrs`, ({ request }) =>
       list(Dcr, dcrs.map(withLock), new URL(request.url)),
     ),
+    http.get(`${baseUrl}/v1/rcpa/competitor-brands`, ({ request }) => {
+      const q = (new URL(request.url).searchParams.get('q') ?? '').trim().toLowerCase();
+      const counts = new Map<string, { brand: string; company: string | null; uses: number }>();
+      for (const l of dcrs.flatMap((d) => d.calls.flatMap((c) => c.rcpa))) {
+        if (!l.competitorBrand) continue;
+        const k = l.competitorBrand.toLowerCase();
+        const e = counts.get(k) ?? { brand: l.competitorBrand, company: null, uses: 0 };
+        e.uses += 1;
+        e.company ??= l.competitorCompany ?? null;
+        counts.set(k, e);
+      }
+      const items = [...counts.entries()]
+        .filter(([k]) => !q || k.split(' ').some((w) => w.startsWith(q)) || k.startsWith(q))
+        .map(([, v]) => v)
+        .sort((a, b) => b.uses - a.uses || a.brand.localeCompare(b.brand))
+        .slice(0, 20);
+      return HttpResponse.json({ items });
+    }),
     http.get(`${baseUrl}/v1/dcrs/:id`, ({ params }) => {
       const d = dcrs.find((x) => x.id === params.id);
       return d ? HttpResponse.json(withLock(d)) : notFound();
@@ -830,7 +856,34 @@ function fieldHandlers(baseUrl: string) {
           },
           { status: 422 },
         );
-      const calls = b.data.calls.map(({ clientId, ...c }) => ({ ...c, id: clientId }));
+      // #40: POB on any call (doctor/chemist/stockist), RCPA on chemist calls only, no duplicate lines.
+      const rcpaOutletCallIds = b.data.calls
+        .filter((c) => c.rcpa.length && c.outletKind !== 'chemist')
+        .map((c) => c.clientId);
+      const dup = (keys: string[]) => new Set(keys).size !== keys.length;
+      const duplicatePob = b.data.calls
+        .filter((c) => dup(c.pob.map((l) => l.productId)))
+        .map((c) => c.clientId);
+      const duplicateRcpa = b.data.calls
+        .filter((c) =>
+          dup(c.rcpa.map((l) => `${l.productId}|${(l.competitorBrand ?? '').toLowerCase()}`)),
+        )
+        .map((c) => c.clientId);
+      if (rcpaOutletCallIds.length || duplicatePob.length || duplicateRcpa.length)
+        return validation('Invalid POB/RCPA lines', {
+          rcpaOutletCallIds,
+          duplicatePob,
+          duplicateRcpa,
+        });
+      const ptr = (id: string) => fx.products.find((p) => p.id === id)?.ptr ?? null;
+      const calls = b.data.calls.map(({ clientId, ...c }) => ({
+        ...c,
+        id: clientId,
+        pob: c.pob.map((l) => {
+          const r = ptr(l.productId);
+          return { ...l, value: r == null ? null : Math.round(l.quantity * r * 100) / 100 };
+        }),
+      }));
       if (!d) {
         d = {
           ...stamp(),
@@ -934,5 +987,32 @@ function fieldHandlers(baseUrl: string) {
       const r = productKpiReport(new URL(request.url));
       return 'error' in r ? validation(r.error) : HttpResponse.json(r);
     }),
+    // ---- notifications (#35): the mock user's own inbox ----
+    http.get(`${baseUrl}/v1/notifications`, ({ request }) => {
+      const r = listNotifications(inbox, new URL(request.url));
+      return 'error' in r ? validation(r.error) : HttpResponse.json(r);
+    }),
+    http.get(`${baseUrl}/v1/notifications/unread-count`, () =>
+      HttpResponse.json({ count: inbox.filter((n) => !n.readAt).length }),
+    ),
+    http.post(`${baseUrl}/v1/notifications/read-all`, () => {
+      const now = new Date().toISOString();
+      let updated = 0;
+      for (const n of inbox)
+        if (!n.readAt) {
+          n.readAt = now;
+          updated++;
+        }
+      return HttpResponse.json({ updated });
+    }),
+    http.post(`${baseUrl}/v1/notifications/:id/read`, ({ params }) => {
+      const n = inbox.find((x) => x.id === params.id);
+      if (!n) return notFound();
+      n.readAt ??= new Date().toISOString();
+      return HttpResponse.json(n);
+    }),
+    http.get(`${baseUrl}/v1/jobs/stats`, () =>
+      HttpResponse.json({ queued: 0, running: 0, done: 12, dead: 0 }),
+    ),
   ];
 }

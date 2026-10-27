@@ -899,6 +899,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/rcpa/competitor-brands': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Competitor brands already captured in RCPA in your company (#40)
+     * @description Distinct brands (case-insensitive, most used first) so reps reuse an existing spelling. q matches a prefix of any word. Needs field:read.
+     */
+    get: operations['listCompetitorBrands'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/dcrs/correction-requests': {
     parameters: {
       query?: never;
@@ -1238,6 +1258,89 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/notifications': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Your own in-app notifications, newest first (cursor paged) */
+    get: operations['listNotifications'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/notifications/unread-count': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['getUnreadNotificationCount'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/notifications/{id}/read': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Idempotent; keeps the first readAt */
+    post: operations['markNotificationRead'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/notifications/read-all': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['markAllNotificationsRead'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/jobs/stats': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** System admin only: background job counts for the caller's company */
+    get: operations['getJobStats'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/leave/requests': {
     parameters: {
       query?: never;
@@ -1493,6 +1596,95 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/allowance-rates': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** expenses:read, finance:read or settings:write */
+    get: operations['listAllowanceRates'];
+    put?: never;
+    /** settings:write */
+    post: operations['createAllowanceRate'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/allowance-rates/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** settings:write; optimistic version */
+    put: operations['updateAllowanceRate'];
+    post?: never;
+    /** settings:write; soft delete (existing claim lines keep their amounts) */
+    delete: operations['deleteAllowanceRate'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/allowance-places': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** expenses:read, finance:read or settings:write */
+    get: operations['listAllowancePlaces'];
+    put?: never;
+    /** settings:write */
+    post: operations['createAllowancePlace'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/allowance-places/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** settings:write; optimistic version */
+    put: operations['updateAllowancePlace'];
+    post?: never;
+    /** settings:write; soft delete (existing claim lines keep their amounts) */
+    delete: operations['deleteAllowancePlace'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/expense-claims/{id}/allowances': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Owner, draft or rejected claim: compute DA/TA per DCR day of the month from the rate card and fare chart and replace the auto lines (dryRun: preview only). Manual lines are never touched. */
+    post: operations['draftExpenseAllowances'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/expense-claims/{id}/submit': {
     parameters: {
       query?: never;
@@ -1674,6 +1866,237 @@ export interface paths {
     put?: never;
     /** Approve or reject. Only a manager above the requester in the reporting line (approvals:decide). */
     post: operations['decideApproval'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/exceptions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Needs Attention list: exceptions in your scope (#56, #29)
+     * @description Own exceptions plus your reporting-line subtree (Director: company). Sorted by severity (high first), then periodDate desc. Needs field:read. See docs/EXCEPTIONS.md.
+     */
+    get: operations['listExceptions'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/exceptions/summary': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Exception counts by rule and severity for a period, in your scope */
+    get: operations['exceptionSummary'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/exceptions/evaluate': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Backfill: queue a rule evaluation for a past date range (settings:write)
+     * @description Max 92 days, to < today (company-local). Idempotent per (user, rule, period). No digest notifications.
+     */
+    post: operations['evaluateExceptions'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/exceptions/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** One exception with context, owner, status and follow-up date */
+    get: operations['getException'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Assign an owner and/or set the follow-up date (manager in scope)
+     * @description Needs approvals:decide; the person must be strictly below you. assigneeId must be you or someone in your scope.
+     */
+    patch: operations['updateException'];
+    trace?: never;
+  };
+  '/v1/exceptions/{id}/explain': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Add your explanation (the person the exception is about); status -> acknowledged */
+    post: operations['explainException'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/exceptions/{id}/resolve': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resolve with a note (manager in scope, approvals:decide) */
+    post: operations['resolveException'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/exceptions/{id}/dismiss': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Dismiss (not a real issue) with a note (manager in scope, approvals:decide) */
+    post: operations['dismissException'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/exception-rules': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Exception rules with effective thresholds (defaults + company overrides) */
+    get: operations['listExceptionRules'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/exception-rules/{code}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Override a rule for your company (settings:write); reset=true restores defaults */
+    put: operations['updateExceptionRule'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/products': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Products with current MRP/PTR/PTS for the prices admin (system_admin only) */
+    get: operations['listAdminProducts'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/products/{id}/prices': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Set MRP/PTR/PTS of one product (system_admin only). Saved POB values are never re-priced. */
+    patch: operations['updateProductPrices'];
+    trace?: never;
+  };
+  '/v1/admin/products/prices/bulk': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Up to 300 rows by productId or code; each row in its own transaction, per-row results */
+    post: operations['bulkUpdateProductPrices'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/products/{id}/price-history': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Price changes of one product, newest first (max 200; system_admin only) */
+    get: operations['getProductPriceHistory'];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -2132,6 +2555,7 @@ export interface components {
       productsDetailed: components['schemas']['DetailedProduct'][];
       samples: components['schemas']['SampleGiven'][];
       pob: components['schemas']['PobLine'][];
+      rcpa?: components['schemas']['RcpaLine'][];
       remarks: string | null;
       /**
        * Format: date-time
@@ -2165,7 +2589,7 @@ export interface components {
       productId: string;
       quantity: number;
     };
-    /** @description Personal order booking line */
+    /** @description Personal order booking line (chemist and stockist calls only, #40) */
     PobLine: {
       /**
        * Format: uuid
@@ -2175,8 +2599,26 @@ export interface components {
       productId: string;
       quantity: number;
       stockistId?: string | null;
-      /** @description INR, at PTR */
+      /** @description INR = quantity × product PTR, computed by the server (null when the product has no PTR). Ignored on input. */
       value?: number | null;
+    };
+    /** @description Retail chemist prescription audit line (chemist calls, #40) */
+    RcpaLine: {
+      /**
+       * Format: uuid
+       * @description Our product; anchors the molecule being audited
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      /** @description Null/absent = this line counts our own brand */
+      competitorBrand?: string | null;
+      competitorCompany?: string | null;
+      /** @description Units sold/seen at the chemist */
+      quantity: number;
+      /** @description Prescription (Rx) count, if captured */
+      prescriptions?: number | null;
+      /** @description Prescribing doctor, in your scope */
+      doctorId?: string | null;
     };
     DcrCorrectionRequest: {
       /**
@@ -2376,7 +2818,7 @@ export interface components {
       tourPlanId: string | null;
     };
     /** @enum {string} */
-    ExpenseCategory: 'travel' | 'hotel' | 'food' | 'mileage' | 'other';
+    ExpenseCategory: 'travel' | 'hotel' | 'food' | 'mileage' | 'allowance' | 'other';
     ExpenseLineUpdate: {
       line: components['schemas']['ExpenseLineInput'];
       version: number;
@@ -2395,6 +2837,92 @@ export interface components {
         | 'application/vnd.ms-excel'
         | 'text/csv';
       sizeBytes: number;
+    };
+    /**
+     * @description From work_types.allowance_band (work types with band none get no TA/DA)
+     * @enum {string}
+     */
+    AllowanceBand: 'hq' | 'ex_hq' | 'outstation';
+    AllowanceRateInput: {
+      band: components['schemas']['AllowanceBand'];
+      /**
+       * @description null = all roles; a role-specific row wins over the all-roles row
+       * @default null
+       */
+      roleKey: components['schemas']['RoleKey'] | null;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      effectiveFrom: string;
+      /** @description Daily allowance per day in this band (INR) */
+      daAmount: number;
+      /** @description TA per km (ex-HQ / outstation), INR */
+      taPerKm: number;
+      /** @description Flat TA per day (e.g. HQ local conveyance), INR */
+      taFixed: number;
+    };
+    AllowanceRateUpdate: {
+      band: components['schemas']['AllowanceBand'];
+      /**
+       * @description null = all roles; a role-specific row wins over the all-roles row
+       * @default null
+       */
+      roleKey: components['schemas']['RoleKey'] | null;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      effectiveFrom: string;
+      /** @description Daily allowance per day in this band (INR) */
+      daAmount: number;
+      /** @description TA per km (ex-HQ / outstation), INR */
+      taPerKm: number;
+      /** @description Flat TA per day (e.g. HQ local conveyance), INR */
+      taFixed: number;
+      version: number;
+    };
+    /** @enum {string} */
+    AllowancePlaceBand: 'ex_hq' | 'outstation';
+    AllowancePlaceInput: {
+      /**
+       * Format: uuid
+       * @description A headquarter-level territory
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      /** @description Town / place name */
+      name: string;
+      band: components['schemas']['AllowancePlaceBand'];
+      oneWayKm: number;
+      /** @default true */
+      active: boolean;
+    };
+    AllowancePlaceUpdate: {
+      /**
+       * Format: uuid
+       * @description A headquarter-level territory
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      /** @description Town / place name */
+      name: string;
+      band: components['schemas']['AllowancePlaceBand'];
+      oneWayKm: number;
+      /** @default true */
+      active: boolean;
+      version: number;
+    };
+    AllowanceDraftRequest: {
+      /** @default false */
+      dryRun: boolean;
+      /**
+       * @description Fare-chart place per ex-HQ/outstation date: {"2026-10-05": placeId}
+       * @default {}
+       */
+      places: {
+        [key: string]: string;
+      };
     };
     ExpenseDecision: {
       /** @enum {string} */
@@ -2455,6 +2983,62 @@ export interface components {
       /** @enum {string} */
       decision: 'approve' | 'reject';
       comment?: string;
+    };
+    ExceptionEvaluateRequest: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+    };
+    ExceptionUpdate: {
+      assigneeId?: string | null;
+      followUpOn?: string | null;
+      version?: number;
+    };
+    ExceptionNote: {
+      note: string;
+    };
+    /** @enum {string} */
+    ExceptionRuleCode:
+      | 'dcr_missing'
+      | 'punch_without_dcr'
+      | 'dcr_late'
+      | 'low_call_average'
+      | 'no_punch_in'
+      | 'geofence_breach'
+      | 'tp_not_submitted'
+      | 'coverage_gap';
+    ExceptionRuleUpdate: {
+      enabled?: boolean;
+      severity?: components['schemas']['ExceptionSeverity'];
+      threshold?: number;
+      action?: string;
+      /** @description true = delete the override (back to defaults); other fields ignored */
+      reset?: boolean;
+      /** @description Optimistic lock on the override row */
+      version?: number;
+    };
+    /** @enum {string} */
+    ExceptionSeverity: 'low' | 'medium' | 'high';
+    ProductPricesUpdate: {
+      /** @description MRP; null clears it */
+      mrp?: number | null;
+      /** @description Price to retailer; drives POB value */
+      ptr?: number | null;
+      /** @description Price to stockist; null clears it */
+      pts?: number | null;
+      /** @description Send to get 409 VERSION_CONFLICT on a stale row */
+      version?: number;
+    };
+    ProductPricesBulkRequest: {
+      /** @description ProductPricesBulkRow[]; each row is validated on its own */
+      rows: unknown[];
     };
     Health: {
       /** @constant */
@@ -2557,7 +3141,8 @@ export interface components {
       | 'finance:write'
       | 'leave:read'
       | 'leave:write'
-      | 'leave:approve';
+      | 'leave:approve'
+      | 'products:prices';
     RoleList: {
       items: components['schemas']['Role'][];
     };
@@ -3686,12 +4271,22 @@ export interface components {
       productsDetailed: components['schemas']['DetailedProductOutput'][];
       samples: components['schemas']['SampleGivenOutput'][];
       pob: components['schemas']['PobLineOutput'][];
+      rcpa: components['schemas']['RcpaLineOutput'][];
       remarks: string | null;
       /**
        * Format: date-time
        * @description ISO-8601 timestamp (UTC)
        */
       calledAt: string;
+    };
+    CompetitorBrandList: {
+      items: components['schemas']['CompetitorBrand'][];
+    };
+    CompetitorBrand: {
+      brand: string;
+      /** @description Most-used company for this brand */
+      company: string | null;
+      uses: number;
     };
     Approval: {
       /**
@@ -3960,12 +4555,25 @@ export interface components {
       };
       /** @description Latest punch-in on any day */
       lastPunchInAt: string | null;
+      /** @description Exception counts for this person (#56); null when the viewer lacks field:read. See docs/EXCEPTIONS.md */
+      exceptions?: components['schemas']['ProfileExceptions'] | null;
       /** @description Own profile, or viewer has expenses:approve or finance:read; performance.expenses is null otherwise */
       canSeeExpenses: boolean;
     };
     /** @enum {string} */
     ProfileAttendanceStatus:
       'present' | 'absent' | 'leave' | 'holiday' | 'incomplete' | 'weekly_off';
+    ProfileExceptions: {
+      /** @description open + acknowledged, any period */
+      open: number;
+      openHigh: number;
+      /** @description Exceptions with periodDate in the last 30 days */
+      last30Days: number;
+      byRule: {
+        ruleCode: components['schemas']['ExceptionRuleCode'];
+        count: number;
+      }[];
+    };
     TeamPerformance: {
       /**
        * Format: uuid
@@ -4159,6 +4767,62 @@ export interface components {
       pending: number;
       /** @description null = unlimited */
       available: number | null;
+    };
+    NotificationPage: {
+      items: components['schemas']['Notification'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+    };
+    Notification: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      type: components['schemas']['NotificationType'];
+      title: string;
+      body: string;
+      /** @description Deep link target type */
+      entityType: ('leave_request' | 'expense_claim') | null;
+      /** @description Deep link target id */
+      entityId: string | null;
+      data: {
+        [key: string]: unknown;
+      } | null;
+      readAt: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+    };
+    /** @enum {string} */
+    NotificationType:
+      | 'leave.submitted'
+      | 'leave.approved'
+      | 'leave.rejected'
+      | 'leave.cancelled'
+      | 'expense.submitted'
+      | 'expense.approved'
+      | 'expense.rejected'
+      | 'expense.paid'
+      | 'exceptions.digest';
+    UnreadCount: {
+      count: number;
+    };
+    ReadAllResult: {
+      updated: number;
+    };
+    JobStats: {
+      queued: number;
+      running: number;
+      done: number;
+      dead: number;
     };
     LeaveRequestList: {
       items: components['schemas']['LeaveRequest'][];
@@ -4401,6 +5065,13 @@ export interface components {
       mileageKm: number | null;
       dcrId: string | null;
       tourPlanId: string | null;
+      /**
+       * @description auto = drafted by TA/DA (#39) and replaced on re-run; editing or attaching a receipt makes it manual
+       * @enum {string}
+       */
+      source: 'manual' | 'auto';
+      /** @description Fare-chart place used for TA (#39) */
+      allowancePlaceId: string | null;
       attachments: components['schemas']['ExpenseAttachment'][];
       version: number;
     };
@@ -4462,6 +5133,97 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       expiresAt: string;
+    };
+    AllowanceRateList: {
+      items: components['schemas']['AllowanceRate'][];
+    };
+    AllowanceRate: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      band: components['schemas']['AllowanceBand'];
+      roleKey: components['schemas']['RoleKey'] | null;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      effectiveFrom: string;
+      daAmount: number;
+      taPerKm: number;
+      taFixed: number;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      version: number;
+    };
+    AllowancePlaceList: {
+      items: components['schemas']['AllowancePlace'][];
+    };
+    AllowancePlace: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      hqName: string;
+      name: string;
+      band: components['schemas']['AllowancePlaceBand'];
+      oneWayKm: number;
+      active: boolean;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      version: number;
+    };
+    AllowanceDraftResult: {
+      dryRun: boolean;
+      days: components['schemas']['AllowanceDay'][];
+      totals: {
+        da: number;
+        ta: number;
+        km: number;
+        lines: number;
+      };
+      /** @description The updated claim; null on dryRun */
+      claim: components['schemas']['ExpenseClaim'] | null;
+    };
+    AllowanceDay: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      dcrId: string;
+      workTypeCode: string;
+      /** @description null = work type pays no TA/DA */
+      band: components['schemas']['AllowanceBand'] | null;
+      rateId: string | null;
+      placeId: string | null;
+      placeName: string | null;
+      /** @description Round trip (2 x one-way) */
+      km: number | null;
+      da: number;
+      ta: number;
+      issues: ('no_rate' | 'place_required' | 'manual_line_exists' | 'dcr_not_submitted')[];
     };
     ExpenseReconciliation: {
       /**
@@ -4588,6 +5350,253 @@ export interface components {
        */
       createdAt: string;
     };
+    ExceptionPage: {
+      items: components['schemas']['Exception'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    Exception: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      ruleCode: components['schemas']['ExceptionRuleCode'];
+      ruleName: string;
+      severity: components['schemas']['ExceptionSeverity'];
+      status: components['schemas']['ExceptionStatus'];
+      /**
+       * Format: date
+       * @description Day rules: the date. Month rules: 1st of the month
+       */
+      periodDate: string;
+      /** @description Whose exception it is */
+      user: components['schemas']['ExceptionPersonRef'];
+      /** @description Owner for follow-up */
+      assignee: components['schemas']['ExceptionPersonRef'] | null;
+      followUpOn: string | null;
+      /** @description Measured value (calls, visits, % ...) */
+      value: number | null;
+      threshold: number | null;
+      context: {
+        [key: string]: unknown;
+      };
+      suggestedAction: string;
+      explanation: string | null;
+      explainedAt: string | null;
+      resolutionNote: string | null;
+      resolvedBy: components['schemas']['ExceptionPersonRef'] | null;
+      resolvedAt: string | null;
+      autoResolved: boolean;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      version: number;
+    };
+    /** @enum {string} */
+    ExceptionStatus: 'open' | 'acknowledged' | 'resolved' | 'dismissed';
+    ExceptionPersonRef: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+    };
+    ExceptionSummary: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+      total: number;
+      /** @description open + acknowledged */
+      open: number;
+      bySeverity: {
+        low: number;
+        medium: number;
+        high: number;
+      };
+      openBySeverity: {
+        low: number;
+        medium: number;
+        high: number;
+      };
+      byRule: {
+        ruleCode: components['schemas']['ExceptionRuleCode'];
+        /** @description Current rule severity */
+        severity: components['schemas']['ExceptionSeverity'];
+        total: number;
+        open: number;
+      }[];
+    };
+    ExceptionEvaluateResult: {
+      queued: boolean;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+    };
+    ExceptionRuleList: {
+      items: components['schemas']['ExceptionRule'][];
+    };
+    ExceptionRule: {
+      code: components['schemas']['ExceptionRuleCode'];
+      name: string;
+      description: string;
+      /** @enum {string} */
+      grain: 'day' | 'month';
+      enabled: boolean;
+      severity: components['schemas']['ExceptionSeverity'];
+      threshold: number | null;
+      thresholdUnit: string | null;
+      /** @description Suggested corrective action shown with exceptions */
+      action: string;
+      /** @description true = no company override stored */
+      isDefault: boolean;
+      /** @description Override row version; null when default */
+      version: number | null;
+    };
+    AdminProductList: {
+      items: components['schemas']['AdminProduct'][];
+      nextCursor: string | null;
+    };
+    AdminProduct: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      code: string;
+      name: string;
+      brand: string | null;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      divisionId: string;
+      active: boolean;
+      mrp: number | null;
+      ptr: number | null;
+      pts: number | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Who last changed a price (from price history); null if never */
+      updatedBy: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+      } | null;
+      pricesUpdatedAt: string | null;
+      version: number;
+    };
+    ProductPricesBulkResponse: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      bulkId: string;
+      summary: {
+        total: number;
+        updated: number;
+        unchanged: number;
+        failed: number;
+      };
+      results: components['schemas']['ProductPricesBulkResult'][];
+    };
+    ProductPricesBulkResult: {
+      index: number;
+      productId: string | null;
+      productCode: string | null;
+      /** @enum {string} */
+      status: 'updated' | 'unchanged' | 'failed';
+      /**
+       * @description Error code when failed
+       * @example PRODUCT_NOT_FOUND
+       */
+      code: string | null;
+      message: string | null;
+    };
+    ProductPriceHistory: {
+      items: components['schemas']['ProductPriceHistoryEntry'][];
+    };
+    ProductPriceHistoryEntry: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      old: {
+        mrp: number | null;
+        ptr: number | null;
+        pts: number | null;
+      };
+      new: {
+        mrp: number | null;
+        ptr: number | null;
+        pts: number | null;
+      };
+      /** @enum {string} */
+      source: 'single' | 'bulk' | 'masters';
+      bulkId: string | null;
+      changedBy: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+      };
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      changedAt: string;
+    };
     GeoPointOutput: {
       lat: number;
       lng: number;
@@ -4656,7 +5665,7 @@ export interface components {
       productId: string;
       quantity: number;
     };
-    /** @description Personal order booking line */
+    /** @description Personal order booking line (chemist and stockist calls only, #40) */
     PobLineOutput: {
       /**
        * Format: uuid
@@ -4666,8 +5675,26 @@ export interface components {
       productId: string;
       quantity: number;
       stockistId?: string | null;
-      /** @description INR, at PTR */
+      /** @description INR = quantity × product PTR, computed by the server (null when the product has no PTR). Ignored on input. */
       value?: number | null;
+    };
+    /** @description Retail chemist prescription audit line (chemist calls, #40) */
+    RcpaLineOutput: {
+      /**
+       * Format: uuid
+       * @description Our product; anchors the molecule being audited
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      /** @description Null/absent = this line counts our own brand */
+      competitorBrand?: string | null;
+      competitorCompany?: string | null;
+      /** @description Units sold/seen at the chemist */
+      quantity: number;
+      /** @description Prescription (Rx) count, if captured */
+      prescriptions?: number | null;
+      /** @description Prescribing doctor, in your scope */
+      doctorId?: string | null;
     };
   };
   responses: never;
@@ -8524,8 +9551,49 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown products, or a check-in that is not your visit to that outlet */
+      /** @description Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown or inactive products, a check-in that is not your visit to that outlet, RCPA on a non-chemist call (details.rcpaOutletCallIds), duplicate POB products or RCPA brands in a call (details.duplicatePob / duplicateRcpa), or an out-of-scope stockistId / RCPA doctorId */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listCompetitorBrands: {
+    parameters: {
+      query?: {
+        q?: string;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CompetitorBrandList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
         headers: {
           [name: string]: unknown;
         };
@@ -9691,6 +10759,213 @@ export interface operations {
       };
     };
   };
+  listNotifications: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        unreadOnly?: 'true' | 'false';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['NotificationPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getUnreadNotificationCount: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Unread count */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['UnreadCount'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  markNotificationRead: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Notification */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Notification'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found (or not yours) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  markAllNotificationsRead: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Rows marked read */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ReadAllResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getJobStats: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Counts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['JobStats'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description System admin only */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   listLeaveRequests: {
     parameters: {
       query?: {
@@ -10807,6 +12082,522 @@ export interface operations {
       };
     };
   };
+  listAllowanceRates: {
+    parameters: {
+      query?: {
+        band?: components['schemas']['AllowanceBand'];
+        roleKey?: components['schemas']['RoleKey'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllowanceRateList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createAllowanceRate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['AllowanceRateInput'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllowanceRate'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs settings:write) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description DUPLICATE_RATE (same band, role and effectiveFrom) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  updateAllowanceRate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['AllowanceRateUpdate'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllowanceRate'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs settings:write) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT or DUPLICATE_RATE (same band, role and effectiveFrom) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteAllowanceRate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs settings:write) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listAllowancePlaces: {
+    parameters: {
+      query?: {
+        hqTerritoryId?: string;
+        band?: components['schemas']['AllowancePlaceBand'];
+        q?: string;
+        includeInactive?: 'true' | 'false';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllowancePlaceList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createAllowancePlace: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['AllowancePlaceInput'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllowancePlace'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs settings:write) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description DUPLICATE_PLACE (same HQ and name) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION or NOT_HQ_TERRITORY */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  updateAllowancePlace: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['AllowancePlaceUpdate'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllowancePlace'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs settings:write) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT or DUPLICATE_PLACE (same HQ and name) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION or NOT_HQ_TERRITORY */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteAllowancePlace: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs settings:write) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  draftExpenseAllowances: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['AllowanceDraftRequest'];
+      };
+    };
+    responses: {
+      /** @description Per-day breakdown, totals and the updated claim */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllowanceDraftResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not the owner */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description EXPENSE_NOT_EDITABLE */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION or PLACE_NOT_USABLE */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   submitExpenseClaim: {
     parameters: {
       query?: never;
@@ -11452,6 +13243,794 @@ export interface operations {
       };
       /** @description Already decided */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listExceptions: {
+    parameters: {
+      query?: {
+        status?: string;
+        severity?: string;
+        ruleCode?: string;
+        userId?: string;
+        assignedToMe?: 'true' | 'false';
+        /** @description periodDate >= from */
+        from?: string;
+        /** @description periodDate <= to */
+        to?: string;
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExceptionPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Invalid filters */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  exceptionSummary: {
+    parameters: {
+      query?: {
+        /** @description Default: today - 30 days */
+        from?: string;
+        /** @description Default: today */
+        to?: string;
+        userId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExceptionSummary'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  evaluateExceptions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ExceptionEvaluateRequest'];
+      };
+    };
+    responses: {
+      /** @description Queued */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExceptionEvaluateResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Range invalid, too long or not in the past */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getException: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Exception'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found or out of scope */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  updateException: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ExceptionUpdate'];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Exception'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found or out of scope */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT or EXCEPTION_CLOSED */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description ASSIGNEE_OUT_OF_SCOPE */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  explainException: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ExceptionNote'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Exception'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found or out of scope */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description EXCEPTION_CLOSED */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  resolveException: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ExceptionNote'];
+      };
+    };
+    responses: {
+      /** @description Resolved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Exception'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found or out of scope */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description EXCEPTION_CLOSED */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  dismissException: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ExceptionNote'];
+      };
+    };
+    responses: {
+      /** @description Dismissed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Exception'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found or out of scope */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description EXCEPTION_CLOSED */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listExceptionRules: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExceptionRuleList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  updateExceptionRule: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        code: components['schemas']['ExceptionRuleCode'];
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ExceptionRuleUpdate'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExceptionRule'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description THRESHOLD_OUT_OF_RANGE or rule has no threshold */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listAdminProducts: {
+    parameters: {
+      query?: {
+        /** @description Search code or name */
+        q?: string;
+        missingPtr?: 'true' | 'false';
+        active?: 'true' | 'false';
+        /** @description Exact brand (case-insensitive) */
+        brand?: string;
+        divisionId?: string;
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminProductList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs products:prices) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  updateProductPrices: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ProductPricesUpdate'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminProduct'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs products:prices) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description PRODUCT_NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION or PTR_ABOVE_MRP */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  bulkUpdateProductPrices: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ProductPricesBulkRequest'];
+      };
+    };
+    responses: {
+      /** @description Per-row results and summary */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProductPricesBulkResponse'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs products:prices) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (rows missing, empty or more than 300) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getProductPriceHistory: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProductPriceHistory'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs products:prices) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description PRODUCT_NOT_FOUND */
+      404: {
         headers: {
           [name: string]: unknown;
         };

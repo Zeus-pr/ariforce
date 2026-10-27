@@ -245,9 +245,42 @@ export const PobLine = z
     productId: Id,
     quantity: z.int().min(1),
     stockistId: Id.nullable().optional(),
-    value: z.number().min(0).nullable().optional().meta({ description: 'INR, at PTR' }),
+    value: z.number().min(0).nullable().optional().meta({
+      description:
+        'INR = quantity × product PTR, computed by the server (null when the product has no PTR). Ignored on input.',
+    }),
   })
-  .meta({ id: 'PobLine', description: 'Personal order booking line' });
+  .meta({
+    id: 'PobLine',
+    description: 'Personal order booking line (chemist and stockist calls only, #40)',
+  });
+/** Brand names are trimmed and inner whitespace collapsed before storage and comparison. */
+const BrandName = z
+  .string()
+  .trim()
+  .transform((v) => v.replace(/\s+/g, ' '))
+  .pipe(z.string().min(1).max(100));
+export const RcpaLine = z
+  .object({
+    productId: Id.meta({ description: 'Our product; anchors the molecule being audited' }),
+    competitorBrand: BrandName.nullable()
+      .optional()
+      .meta({ description: 'Null/absent = this line counts our own brand' }),
+    competitorCompany: BrandName.nullable().optional(),
+    quantity: z.int().min(1).max(100000).meta({ description: 'Units sold/seen at the chemist' }),
+    prescriptions: z.int().min(0).max(100000).nullable().optional().meta({
+      description: 'Prescription (Rx) count, if captured',
+    }),
+    doctorId: Id.nullable().optional().meta({ description: 'Prescribing doctor, in your scope' }),
+  })
+  .refine((l) => !l.competitorCompany || l.competitorBrand, {
+    message: 'competitorCompany needs competitorBrand',
+    path: ['competitorCompany'],
+  })
+  .meta({
+    id: 'RcpaLine',
+    description: 'Retail chemist prescription audit line (chemist calls, #40)',
+  });
 
 export const DcrCall = z
   .object({
@@ -259,14 +292,33 @@ export const DcrCall = z
     productsDetailed: z.array(DetailedProduct),
     samples: z.array(SampleGiven),
     pob: z.array(PobLine),
+    rcpa: z.array(RcpaLine),
     remarks: z.string().max(1000).nullable(),
     calledAt: Timestamp,
   })
   .meta({ id: 'DcrCall' });
 export type DcrCall = z.infer<typeof DcrCall>;
 export const DcrCallInput = DcrCall.omit({ id: true })
-  .extend({ clientId: Id })
+  .extend({
+    clientId: Id,
+    pob: z.array(PobLine).max(100),
+    rcpa: z.array(RcpaLine).max(100).default([]),
+  })
   .meta({ id: 'DcrCallInput' });
+export const CompetitorBrandQuery = z.object({
+  q: z.string().trim().max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+export const CompetitorBrand = z
+  .object({
+    brand: z.string(),
+    company: z.string().nullable().meta({ description: 'Most-used company for this brand' }),
+    uses: z.int(),
+  })
+  .meta({ id: 'CompetitorBrand' });
+export const CompetitorBrandList = z
+  .object({ items: z.array(CompetitorBrand) })
+  .meta({ id: 'CompetitorBrandList' });
 
 export const Dcr = Syncable.extend({
   userId: Id,
