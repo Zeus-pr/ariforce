@@ -34,11 +34,18 @@ export const setUnauthenticatedHandler = (fn: () => void) => {
 api.use({
   // A hung or unreachable API must end in an error state, never an endless spinner.
   onRequest({ request }) {
-    // Mock mode: the expense mocks (#52) decide by principal, so tell them who is signed in (the
-    // other mocks still act as the default persona). Never sent in real mode.
-    if (MOCKING && typeof window !== 'undefined' && new URL(request.url).pathname.startsWith('/v1/expense')) {
+    // Mock mode: the expense (#52) and leave (#51) mocks decide by principal, so tell them who is
+    // signed in (the other mocks still act as the default persona). Never sent in real mode.
+    if (
+      MOCKING &&
+      typeof window !== 'undefined' &&
+      /^\/v1\/(expense|leave\/)/.test(new URL(request.url).pathname)
+    ) {
       try {
-        const s = JSON.parse(localStorage.getItem('af:mock-session') ?? 'null') as { role?: string; previewRole?: string } | null;
+        const s = JSON.parse(localStorage.getItem('af:mock-session') ?? 'null') as {
+          role?: string;
+          previewRole?: string;
+        } | null;
         const who = s?.previewRole ?? s?.role;
         if (who) {
           const headers = new Headers(request.headers);
@@ -86,13 +93,25 @@ export function apiReady(): Promise<void> {
   if (typeof window === 'undefined' || !MOCKING) return Promise.resolve();
   readyPromise ??= (async () => {
     try {
-      const [{ setupWorker }, { createHandlers }, { mastersWriteGuard }, { mockInviteAccept }] = await Promise.all([
+      const [
+        { setupWorker },
+        { createHandlers },
+        { mastersWriteGuard },
+        { mockInviteAccept },
+        { mockLeaveDayBlock },
+      ] = await Promise.all([
         import('msw/browser'),
         import('@ariforce/contracts/mocks'),
         import('./mock-permissions'),
         import('./invites/mock-handler'),
+        import('./leave/mock-handler'),
       ]);
-      await setupWorker(...mockInviteAccept(API_URL), ...mastersWriteGuard(API_URL), ...createHandlers(API_URL)).start({
+      await setupWorker(
+        ...mockInviteAccept(API_URL),
+        ...mockLeaveDayBlock(API_URL),
+        ...mastersWriteGuard(API_URL),
+        ...createHandlers(API_URL),
+      ).start({
         quiet: true,
       });
     } catch {
@@ -104,7 +123,14 @@ export function apiReady(): Promise<void> {
 
 export type ApiError = { code: string; message: string; details?: unknown };
 
+/**
+ * Accepts either the response body (`{ error: ApiError }`) or the whole openapi-fetch result
+ * (`{ error: { error: ApiError }, response }`); both shapes are used across the app.
+ */
 export function toApiError(error: unknown): ApiError {
-  const e = (error as { error?: ApiError } | undefined)?.error;
-  return e ?? { code: 'NETWORK', message: 'Could not reach the server.' };
+  let e = (error as { error?: unknown } | undefined)?.error;
+  const inner = (e as { error?: unknown } | undefined)?.error;
+  if (inner && typeof inner === 'object' && 'code' in inner) e = inner;
+  const a = e as Partial<ApiError> | undefined;
+  return a?.code ? { code: a.code, message: a.message ?? '', details: a.details } : { code: 'NETWORK', message: 'Could not reach the server.' };
 }

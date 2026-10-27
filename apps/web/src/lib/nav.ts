@@ -15,9 +15,11 @@ import {
   LayoutDashboard,
   MapPin,
   ReceiptText,
+  CalendarOff,
 } from 'lucide-react';
 
 import { seesExpenses } from './expenses/model';
+import { seesLeave } from './leave/model';
 
 import { WRITE_ROUTES, canReviewSignups } from './permissions';
 import { ROLES, isApprover, isSystemAdmin, type Role } from './roles';
@@ -85,6 +87,14 @@ export const NAV: NavItem[] = [
     href: '/expenses',
     icon: ReceiptText,
     roles: ROLES.filter(seesExpenses),
+    section: 'field',
+  },
+  {
+    slug: 'leave',
+    title: 'Leave',
+    href: '/leave',
+    icon: CalendarOff,
+    roles: ROLES.filter(seesLeave),
     section: 'field',
   },
   {
