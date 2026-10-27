@@ -183,6 +183,13 @@
       "when": 1793079740474,
       "tag": "0025_role_permissions_leave",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793091395174,
+      "tag": "0026_work_types_defaults",
+      "breakpoints": true
     }
   ]
 }

@@ -372,7 +372,7 @@ export function createHandlers(baseUrl = '') {
     ...signupHandlers(baseUrl, mockPrincipal),
     ...expenseHandlers(baseUrl, mockPrincipal),
     ...leaveHandlers(baseUrl, mockPrincipal),
-    http.get(`${baseUrl}/v1/health`, () => HttpResponse.json({ status: 'ok' })),
+    http.get(`${baseUrl}/v1/health`, () => HttpResponse.json({ status: 'ok', warnings: [] })),
     http.post(`${baseUrl}/v1/files/upload-url`, () =>
       HttpResponse.json({
         fileKey: 'mock/doctor_photo/2026/10/mock.jpg',

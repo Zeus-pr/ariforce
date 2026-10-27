@@ -3,6 +3,7 @@ import { AuthModule } from './auth/auth.module';
 import { DbModule } from './db/db.module';
 import { FilesModule } from './files/files.module';
 import { HealthController } from './health/health.controller';
+import { WorkTypesCheck } from './health/work-types.check';
 import { DcrModule } from './dcr/dcr.module';
 import { KpisModule } from './kpis/kpis.module';
 import { FieldModule } from './field/field.module';
@@ -29,5 +30,6 @@ import { OpenApiController } from './openapi/openapi.controller';
     TeamModule,
   ],
   controllers: [HealthController, OpenApiController, MeController],
+  providers: [WorkTypesCheck],
 })
 export class AppModule {}

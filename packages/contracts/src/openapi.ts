@@ -45,6 +45,7 @@ import {
 } from './schemas/field';
 import { Me, SessionInfo, SignInEmailBody } from './schemas/auth';
 import { RoleList } from './schemas/roles';
+import { Health } from './schemas/health';
 import { KpiQuery, KpiReport, ProductKpiReport } from './schemas/kpis';
 import { Territory, TerritoryListQuery } from './schemas/territories';
 import {
@@ -310,7 +311,10 @@ function buildDocument(): OpenApiDocument {
           tags: ['System'],
           operationId: 'health',
           responses: {
-            '200': { description: 'OK', ...json(z.object({ status: z.literal('ok') })) },
+            '200': {
+              description: 'OK. `warnings` are informational and never change the status',
+              ...json(Health),
+            },
           },
         },
       },

@@ -2419,6 +2419,22 @@ export interface components {
       decision: 'approve' | 'reject';
       comment?: string;
     };
+    Health: {
+      /** @constant */
+      status: 'ok';
+      /** @description Empty when all is well; cached ~60 s */
+      warnings: components['schemas']['HealthWarning'][];
+    };
+    HealthWarning: {
+      /**
+       * @description NO_WORK_TYPES: a company has no active work types (DCR/Tour Plan dropdowns empty); WORK_TYPES_CHECK_FAILED: the check could not run (DB unreachable or migration 0026 missing)
+       * @enum {string}
+       */
+      code: 'NO_WORK_TYPES' | 'WORK_TYPES_CHECK_FAILED';
+      companyId: string | null;
+      companySlug: string | null;
+      message: string;
+    };
     Error: {
       error: {
         /** @example FORBIDDEN */
@@ -4583,16 +4599,13 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description OK */
+      /** @description OK. `warnings` are informational and never change the status */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': {
-            /** @constant */
-            status: 'ok';
-          };
+          'application/json': components['schemas']['Health'];
         };
       };
     };

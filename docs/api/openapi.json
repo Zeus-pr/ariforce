@@ -20,21 +20,11 @@
         "operationId": "health",
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "OK. `warnings` are informational and never change the status",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "const": "ok"
-                    }
-                  },
-                  "required": [
-                    "status"
-                  ],
-                  "additionalProperties": false
+                  "$ref": "#/components/schemas/Health"
                 }
               }
             }
@@ -13715,6 +13705,70 @@
         "required": [
           "decision"
         ]
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HealthWarning"
+            },
+            "description": "Empty when all is well; cached ~60 s"
+          }
+        },
+        "required": [
+          "status",
+          "warnings"
+        ],
+        "additionalProperties": false
+      },
+      "HealthWarning": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "NO_WORK_TYPES",
+              "WORK_TYPES_CHECK_FAILED"
+            ],
+            "description": "NO_WORK_TYPES: a company has no active work types (DCR/Tour Plan dropdowns empty); WORK_TYPES_CHECK_FAILED: the check could not run (DB unreachable or migration 0026 missing)"
+          },
+          "companyId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "companySlug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "companyId",
+          "companySlug",
+          "message"
+        ],
+        "additionalProperties": false
       },
       "Error": {
         "type": "object",
