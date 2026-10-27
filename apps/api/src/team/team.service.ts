@@ -495,29 +495,108 @@ export class TeamService {
 
   update(p: Principal, id: string, b: z.infer<typeof EmployeeUpdate>) {
     return this.tenant.run(p, async (tx) => {
+      const admin = isAdmin(p);
       const all = await this.people(tx);
       const t = await this.assertManageable(tx, p, all, id);
       if (b.version !== t.version) throw err(409, 'VERSION_CONFLICT', 'Record changed; reload');
+      if (!admin && (b.email !== undefined || b.employeeCode !== undefined))
+        throw err(403, 'FORBIDDEN', 'Only a system admin can change email or employee code');
+      if (!admin && b.managerId === null)
+        throw err(422, 'VALIDATION', 'managerId cannot be cleared');
       if (b.role) this.assertRole(p, b.role);
       if (b.territoryIds) await this.assertTerritories(tx, p, b.territoryIds);
+      const beforeTerr = (
+        await tx
+          .select({ id: userTerritories.territoryId })
+          .from(userTerritories)
+          .where(eq(userTerritories.userId, id))
+      ).map((r) => r.id);
+      const newRoles: RoleKey[] = b.role ? [b.role] : t.roles;
       const newRank = b.role ? ROLE_RANK[b.role] : t.rank;
+      const noManager = newRank === 0 || newRank >= DIRECTOR_RANK;
+      const terrAfter = b.territoryIds ?? beforeTerr;
+      if (newRank > 0 && !terrAfter.length)
+        throw err(422, 'VALIDATION', 'Hierarchy roles need at least one territory');
       if (b.managerId) {
         if (this.subtree(all, id).has(b.managerId)) throw err(409, 'CONFLICT', 'Reporting cycle');
         this.assertManager(p, all, b.managerId, newRank);
       }
+      // Functional roles and directors have no manager; moving to one clears it.
+      const mgrAfter = b.managerId !== undefined ? b.managerId : noManager ? null : t.managerId;
+      if (admin) {
+        // Keep the reporting line valid: the (kept) manager must outrank the new role...
+        if (b.role && mgrAfter && b.managerId === undefined) {
+          const m = all.get(mgrAfter);
+          if (!m || m.rank <= newRank)
+            throw err(
+              422,
+              'MANAGER_RANK',
+              'Current manager does not outrank the new role; set managerId',
+            );
+        }
+        // ...and the person must still outrank their direct reports.
+        if (b.role && newRank < t.rank) {
+          const bad = [...all.values()].filter((u) => u.managerId === id && u.rank >= newRank);
+          if (bad.length)
+            throw err(
+              422,
+              'REPORTS_OUTRANK',
+              `${bad.length} direct report(s) would outrank this role; reassign them first`,
+              { userIds: bad.map((u) => u.id) },
+            );
+        }
+      }
       if (b.status === 'active' && t.status === 'invited')
         throw err(422, 'VALIDATION', 'Invited users activate by accepting their invite');
+      const statusAfter = b.status ?? t.status;
+      // Never leave the company without an active system admin.
+      if (
+        t.roles.includes('system_admin') &&
+        t.status === 'active' &&
+        (!newRoles.includes('system_admin') || statusAfter !== 'active') &&
+        ![...all.values()].some(
+          (u) => u.id !== id && u.status === 'active' && u.roles.includes('system_admin'),
+        )
+      )
+        throw err(422, 'LAST_SYSTEM_ADMIN', 'The company needs at least one active system admin');
+      const emailChanged = b.email !== undefined && b.email !== t.email;
+      if (emailChanged) {
+        if (t.hasLogin)
+          throw err(
+            409,
+            'EMAIL_LOCKED_HAS_LOGIN',
+            'Email cannot change after the person has a login',
+          );
+        const [dup] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(sql`lower(${users.email}) = ${b.email!.toLowerCase()} and ${users.id} <> ${id}`);
+        if (dup) throw err(409, 'EMAIL_TAKEN', 'Email already exists');
+      }
+      if (b.employeeCode && b.employeeCode !== t.employeeCode) {
+        const [dup] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.employeeCode, b.employeeCode), sql`${users.id} <> ${id}`));
+        if (dup) throw err(409, 'EMPLOYEE_CODE_TAKEN', 'Employee code already exists');
+      }
       const patch = {
         name: b.name,
+        email: emailChanged ? b.email : undefined,
+        employeeCode: b.employeeCode,
         phone: b.phone,
         designation: b.designation,
         joinedOn: b.joinedOn,
-        // Moving to a functional role drops the reporting line (functional roles have no manager).
-        managerId: newRank === 0 && t.managerId ? null : b.managerId,
+        managerId: mgrAfter === t.managerId ? undefined : mgrAfter,
         status: b.status,
         updatedAt: new Date(),
       };
-      await tx.update(users).set(patch).where(eq(users.id, id));
+      const done = await tx
+        .update(users)
+        .set(patch)
+        .where(and(eq(users.id, id), eq(users.version, b.version)))
+        .returning({ id: users.id });
+      if (!done.length) throw err(409, 'VERSION_CONFLICT', 'Record changed; reload');
       if (b.role) {
         await tx.delete(userRoles).where(eq(userRoles.userId, id));
         await tx
@@ -526,21 +605,38 @@ export class TeamService {
       }
       if (b.territoryIds) {
         await tx.delete(userTerritories).where(eq(userTerritories.userId, id));
-        await tx.insert(userTerritories).values(
-          b.territoryIds.map((territoryId, i) => ({
-            companyId: p.companyId,
-            userId: id,
-            territoryId,
-            isPrimary: i === 0,
-          })),
-        );
+        if (b.territoryIds.length)
+          await tx.insert(userTerritories).values(
+            b.territoryIds.map((territoryId, i) => ({
+              companyId: p.companyId,
+              userId: id,
+              territoryId,
+              isPrimary: i === 0,
+            })),
+          );
       }
+      const { hasLogin: _h, rank: _r, ...before } = t;
       await this.audit.record(
         tx,
         p,
         b.status === 'suspended' ? 'employee.deactivated' : 'employee.updated',
-        { entityType: 'user', entityId: id, before: t, after: b },
+        {
+          entityType: 'user',
+          entityId: id,
+          before: { ...before, territoryIds: beforeTerr },
+          after: {
+            ...before,
+            ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)),
+            managerId: mgrAfter,
+            roles: newRoles,
+            territoryIds: terrAfter,
+            updatedAt: undefined,
+          },
+        },
       );
+      // A pending invite follows the new email (old link revoked, new one sent).
+      if (emailChanged && t.status === 'invited') await this.issueInvite(tx, p, id);
+      await this.repointApprovals(tx, p, t, mgrAfter, newRank, statusAfter);
       // #79: deactivation or a role change signs the user out everywhere.
       const statusOff = b.status !== undefined && b.status !== t.status && b.status !== 'active';
       const roleChanged = b.role !== undefined && !(t.roles.length === 1 && t.roles[0] === b.role);
@@ -558,6 +654,51 @@ export class TeamService {
     });
   }
 
+  /**
+   * Keeps pending approvals decidable after a people change:
+   * - the person's own pending first-step approvals move from the old manager to the new one;
+   * - steps waiting on the person move to their manager when they are deactivated or drop below
+   *   ABM (they can no longer decide). Without a manager the step stays; directors can still decide.
+   */
+  private async repointApprovals(
+    tx: Tx,
+    p: Principal,
+    t: Person,
+    mgrAfter: string | null,
+    newRank: number,
+    statusAfter: string,
+  ) {
+    let moved = 0;
+    if (mgrAfter !== t.managerId && t.managerId && mgrAfter) {
+      const r = await tx.execute(sql`
+        update approval_steps s set approver_user_id = ${mgrAfter}
+        from approval_requests r
+        where r.id = s.request_id and r.requested_by = ${t.id} and r.state = 'pending'
+          and s.step_no = r.current_step and s.step_no = 1 and s.decision = 'pending'
+          and s.approver_user_id = ${t.managerId}`);
+      moved += r.rowCount ?? 0;
+    }
+    const lost =
+      (statusAfter === 'suspended' && t.status !== 'suspended') ||
+      (newRank < MIN_MANAGER_RANK && t.rank >= MIN_MANAGER_RANK);
+    const up = mgrAfter ?? t.managerId;
+    if (lost && up) {
+      const r = await tx.execute(sql`
+        update approval_steps s set approver_user_id = ${up}
+        from approval_requests r
+        where r.id = s.request_id and r.state = 'pending' and s.step_no = r.current_step
+          and s.decision = 'pending' and s.approver_user_id = ${t.id}
+          and r.requested_by <> ${up}`);
+      moved += r.rowCount ?? 0;
+    }
+    if (moved)
+      await this.audit.record(tx, p, 'approval.steps_reassigned', {
+        entityType: 'user',
+        entityId: t.id,
+        after: { steps: moved },
+      });
+  }
+
   assignManager(p: Principal, id: string, managerId: string) {
     return this.tenant.run(p, async (tx) => {
       const all = await this.people(tx);
@@ -565,6 +706,7 @@ export class TeamService {
       if (this.subtree(all, id).has(managerId)) throw err(409, 'CONFLICT', 'Reporting cycle');
       this.assertManager(p, all, managerId, t.rank);
       await tx.update(users).set({ managerId, updatedAt: new Date() }).where(eq(users.id, id));
+      await this.repointApprovals(tx, p, t, managerId, t.rank, t.status);
       await this.audit.record(tx, p, 'employee.manager_assigned', {
         entityType: 'user',
         entityId: id,

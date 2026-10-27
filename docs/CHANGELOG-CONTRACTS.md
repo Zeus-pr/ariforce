@@ -27,6 +27,21 @@ response enums, or changed server behaviour for the same request).
 | Health (`a72e145`)                                             | `HealthWarning` dropped `companyId` / `companySlug` and became aggregate (`NO_WORK_TYPES` with `count`). Only clients of `0c97952` are affected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | TP submit (`36c29f5`, superseded by `0bb7b40`)                 | `POST /v1/tour-plans/{month}/submit` 422 rule changed: weekly offs and past days of the current month (IST) are no longer required                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
+## System admin People page (list + edit)
+
+Additive (new optional fields / params):
+
+- `GET /v1/users`: items gain `primaryRole`, `rank`, `managerName`, `territories[] {id,name,code,level}` (primary first), `version`, `lastActiveAt` (latest live-session activity; null when signed out everywhere). New query `hasLogin=true|false`. Existing: `q` (name, employee code, email), `role`, `status`, `territoryId` (whole subtree), `managerId`, `sort=name|-name|employeeCode|-employeeCode` (id tiebreak), `limit` ≤ 200, `cursor`, `includeTotal`.
+- `EmployeeUpdate` (`PATCH /v1/employees/{id}`): new optional `email`, `employeeCode` (system admin only); `territoryIds` may be `[]` (functional roles only); `managerId` accepts `null` (system admin only).
+- New error codes: 409 `EMAIL_LOCKED_HAS_LOGIN`, 409 `EMAIL_TAKEN`, 409 `EMPLOYEE_CODE_TAKEN`, 422 `LAST_SYSTEM_ADMIN`, 422 `REPORTS_OUTRANK` (`details.userIds`), 422 `MANAGER_RANK`.
+
+Breaking (behaviour, same request):
+
+- A non-admin sending `email` or `employeeCode` on PATCH gets 403 (was silently ignored).
+- System admin PATCH: changing role re-checks the kept manager (422 `MANAGER_RANK`) and direct reports (422 `REPORTS_OUTRANK`); moving to director or a functional role clears `managerId`.
+- PATCH and `POST /v1/team/{id}/manager` now move pending approval steps: a person's pending first step follows them to the new manager; steps waiting on a person who is suspended or drops below ABM move to that person's manager (audit `approval.steps_reassigned`).
+- PATCH `version` is also enforced in the UPDATE (concurrent edits get 409 `VERSION_CONFLICT`).
+
 ## System admin invites any role / any territory
 
 - Additive. `EmployeeCreate.territoryIds` now defaults to `[]` (was required, min 1). Hierarchy roles still need at least one (422 `VALIDATION` "Hierarchy roles need at least one territory"); functional roles (`distribution_head`, `accountant`, `system_admin`) may send none.
