@@ -84,7 +84,7 @@ for (const view of ['desktop', 'mobile']) {
   // BM sees the comment, resubmits.
   await as(page, 'business_manager');
   await page.getByText('Add the bus ticket').waitFor({ timeout: 10000 });
-  check(/^Rejected: Add the bus ticket, \d/.test(await page.getByTestId('exp-reject-comment').innerText()), `${view}: owner sees "Rejected: <reason>, <date>"`);
+  check(/^Rejected: Add the bus ticket, by [^,]+, \d/.test(await page.getByTestId('exp-reject-comment').innerText()), `${view}: owner sees "Rejected: <reason>, by <name>, <date>"`);
   await page.getByTestId('exp-submit').click();
   await page.getByText('Waiting for approval').first().waitFor({ timeout: 10000 });
   check(true, `${view}: resubmitted`);

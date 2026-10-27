@@ -424,17 +424,19 @@ function RejectDialog({
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            void run(() => signupAdapter.reject(req.id, reason), 'rejected');
+            if (reason.trim()) void run(() => signupAdapter.reject(req.id, reason.trim()), 'rejected');
           }}
         >
           <div className="grid gap-1.5">
             <Label htmlFor={`${id}-reason`}>
-              Reason <span className="font-normal text-muted-foreground">(optional)</span>
+              Reason <span className="font-normal text-muted-foreground">(required)</span>
             </Label>
             <textarea
               id={`${id}-reason`}
               value={reason}
-              maxLength={300}
+              maxLength={500}
+              required
+              data-testid="signup-reject-reason"
               onChange={(e) => setReason(e.target.value)}
               rows={3}
               className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm"
@@ -449,7 +451,7 @@ function RejectDialog({
             <Button
               type="submit"
               variant="destructive"
-              disabled={busy}
+              disabled={busy || !reason.trim()}
               data-testid="confirm-reject"
             >
               {busy && <LoaderCircle className="animate-spin motion-reduce:animate-none" />}

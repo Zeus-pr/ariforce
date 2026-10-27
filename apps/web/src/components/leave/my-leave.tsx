@@ -81,10 +81,15 @@ export function MyLeave({ data, year }: { data: LeaveData; year: number }) {
                     {r.typeName} <span className="font-normal text-muted-foreground">· {daysLabel(r.days)}</span>
                   </p>
                   <p className="text-sm text-muted-foreground">{rangeLabel(r)}</p>
-                  {r.decisionComment &&
+                  {(r.rejectionReason ?? r.decisionComment) &&
                     (r.status === 'rejected' ? (
                       <div className="mt-1">
-                        <RejectionNote reason={r.decisionComment} at={r.decidedAt} testId="leave-rejection" />
+                        <RejectionNote
+                          reason={(r.rejectionReason ?? r.decisionComment)!}
+                          byName={r.rejectedBy?.name}
+                          at={r.rejectedAt ?? r.decidedAt}
+                          testId="leave-rejection"
+                        />
                       </div>
                     ) : (
                       <p className="mt-1 text-sm">Manager: {r.decisionComment}</p>

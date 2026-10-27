@@ -144,3 +144,12 @@ Built only from endpoints that exist; nothing is faked. Gaps for the API:
 - Notifications: templates exist for `leave.*` and `expense.*` (data carries `comment` + `actorName`); none for tour plan or doctor rejection.
 - Reject comment: required, max 1000 (ApprovalDecision, LeaveDecision, ExpenseDecision); the UI enforces the same.
 - Approver read access to a subordinate's leave request, claim and doctor depends on API scoping; unverified without a real login.
+
+### Resolved by feat/approvals-detail (e757379), adopted in web
+- RESOLVED: approver detail → `GET /v1/approvals/{id}` (ApprovalDetail.subject; `null` shown as "details not visible to you").
+- RESOLVED: `GET /v1/tour-plans/{id}` (used for `/tour-plans?plan=<id>` deep links); `submitterNote` shown to the approver.
+- RESOLVED: rejecter name/date → `rejectionReason`, `rejectedBy {id,name}`, `rejectedAt` on TourPlan, LeaveRequest, ExpenseClaim, Doctor; UI shows "Rejected: <reason>, by <name>, <date>".
+- RESOLVED: tour_plan/doctor approved/rejected notifications (deep links added; rejection text prefers `data.reason`).
+- RESOLVED: `GET /v1/doctors?ids=` exists; the approver view no longer needs it (names come resolved in ApprovalDetail). Doctor 360 now uses `GET /v1/doctors/{id}`.
+- `REJECTION_REASON_REQUIRED` shown as "Give a reason to reject this request."; sign-up reject now requires a reason (max 500).
+- Open: rejected sign-up applicants cannot read their reason (API does not support it).

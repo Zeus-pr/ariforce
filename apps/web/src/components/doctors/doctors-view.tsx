@@ -147,7 +147,6 @@ function Doctor360({ id }: { id: string }) {
   const { role } = useRole();
   const [editing, setEditing] = useState(false);
   const [rev, setRev] = useState(0);
-  const [rejection, setRejection] = useState<{ comment: string; at: string | null } | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -155,16 +154,15 @@ function Doctor360({ id }: { id: string }) {
       await apiReady();
       const today = todayYmd();
       const from = addDays(today, -HISTORY_DAYS);
-      // No GET /v1/doctors/{id} in the contract: read the list and pick (CONTRACT-GAPS #18).
-      const [docs, dcrs, ci] = await Promise.all([
-        api.GET('/v1/doctors', { params: { query: { limit: 200 } } }),
+      const [one, dcrs, ci] = await Promise.all([
+        api.GET('/v1/doctors/{id}', { params: { path: { id } } }),
         api.GET('/v1/dcrs', { params: { query: { from, to: today, limit: 200 } } }),
         api.GET('/v1/check-ins', {
           params: { query: { from, to: today, kind: 'visit', limit: 200 } },
         }),
       ]);
       if (!live) return;
-      setDoc(docs.data?.items.find((d) => d.id === id) ?? null);
+      setDoc(one.data ?? null);
       setReal(visitsFrom(id, dcrs.data?.items ?? [], ci.data?.items ?? []));
     })().catch(() => {});
     return () => {
@@ -172,21 +170,12 @@ function Doctor360({ id }: { id: string }) {
     };
   }, [id, rev]);
 
-  // Rejected field-added doctor: the reason lives on the approval request (Doctor has no decision fields).
-  useEffect(() => {
-    if (doc?.approvalStatus !== 'rejected') return setRejection(null);
-    let live = true;
-    void (async () => {
-      const r = await api.GET('/v1/approvals', {
-        params: { query: { subjectType: 'doctor', status: 'rejected', mine: 'requested', limit: 50 } },
-      });
-      const a = r.data?.items.find((x) => x.subjectId === doc.id);
-      if (live) setRejection(a?.comment ? { comment: a.comment, at: a.decidedAt } : null);
-    })().catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [doc?.id, doc?.approvalStatus]);
+  // Rejected field-added doctor: Doctor carries rejectionReason/rejectedBy/rejectedAt (latest approval
+  // decision; null when the viewer is outside the adder's line or the approvers).
+  const rejection =
+    doc?.approvalStatus === 'rejected' && doc.rejectionReason
+      ? { comment: doc.rejectionReason, by: doc.rejectedBy?.name, at: doc.rejectedAt ?? null }
+      : null;
 
   const category = lk.categories.find((c) => c.id === doc?.categoryId);
   const target = category?.visitsPerMonth ?? 0;
@@ -242,7 +231,7 @@ function Doctor360({ id }: { id: string }) {
       >
         <ArrowLeft className="size-4" /> Doctors
       </Link>
-      {rejection && <RejectionNote reason={rejection.comment} at={rejection.at} testId="doctor-rejection" />}
+      {rejection && <RejectionNote reason={rejection.comment} byName={rejection.by} at={rejection.at} testId="doctor-rejection" />}
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-xl font-semibold tracking-tight" data-testid="doctor-name">

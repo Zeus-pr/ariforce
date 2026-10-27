@@ -535,7 +535,11 @@ function fieldHandlers(baseUrl: string) {
       decidedAt: null,
       decidedBy: null,
       decisionComment: null,
-    },
+      submitterNote: 'Hospital wing opens on the 1st',
+      rejectionReason: null,
+      rejectedBy: null,
+      rejectedAt: null,
+    } as TourPlan,
   ];
   let stp: StandardTourPlan | null = null;
   const dcrs: Dcr[] = [];

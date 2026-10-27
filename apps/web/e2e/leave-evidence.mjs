@@ -118,7 +118,7 @@ for (const view of ['desktop', 'mobile']) {
   await page.getByTestId('tab-mine').click();
   await page.locator('[data-testid=leave-row][data-status=approved]').waitFor({ timeout: 10000 });
   check((await page.locator('[data-testid=leave-row][data-status=rejected]').textContent()).includes('Month-end review'), `${view}: BM sees the reject comment`);
-  check(/^Rejected: Month-end review that week, \d+ \w+ \d{4}$/.test(await page.getByTestId('leave-rejection').first().innerText()), `${view}: rejection reads "Rejected: <reason>, <date>"`);
+  check(/^Rejected: Month-end review that week, by [^,]+, \d+ \w+ \d{4}$/.test(await page.getByTestId('leave-rejection').first().innerText()), `${view}: rejection reads "Rejected: <reason>, by <name>, <date>"`);
   check(await avail(page) === before - 1, `${view}: CL balance down by 1 after approval`);
   check((await page.getByTestId('tab-approvals').count()) === 0, `${view}: BM has no approvals tab`);
 

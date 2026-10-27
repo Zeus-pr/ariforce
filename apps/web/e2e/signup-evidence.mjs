@@ -116,12 +116,16 @@ await a.getByTestId('confirm-approve').click();
 await a.getByTestId('approve-dialog').waitFor({ state: 'detached' });
 check((await rows.count()) === before - 1, 'approve removes the row');
 await rows.first().getByRole('button', { name: 'Reject' }).click();
+check(await a.getByTestId('confirm-reject').isDisabled(), 'sign-up Reject disabled until a reason is typed');
+await a.getByLabel(/Reason/).fill('  ');
+check(await a.getByTestId('confirm-reject').isDisabled(), 'sign-up Reject: whitespace is not a reason');
 await a.getByLabel(/Reason/).fill('Duplicate request');
 await a.getByTestId('confirm-reject').click();
 await a.getByTestId('reject-dialog').waitFor({ state: 'detached' });
 check((await rows.count()) === before - 2, 'reject removes the row');
 while ((await rows.count()) > 0) {
   await rows.first().getByRole('button', { name: 'Reject' }).click();
+  await a.getByLabel(/Reason/).fill('Not part of the company');
   await a.getByTestId('confirm-reject').click();
   await a.getByTestId('reject-dialog').waitFor({ state: 'detached' });
 }

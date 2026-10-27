@@ -70,6 +70,16 @@ export function TourPlansView() {
 function Planner({ initialMonth }: { initialMonth: string }) {
   const { role } = useRole();
   const [month, setMonth] = useState(initialMonth);
+  // Deep link from a notification: /tour-plans?plan=<id> opens that plan's month.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('plan');
+    if (!id) return;
+    void (async () => {
+      await apiReady();
+      const r = await api.GET('/v1/tour-plans/{month}', { params: { path: { month: id } } });
+      if (r.data?.month) setMonth(r.data.month);
+    })().catch(() => {});
+  }, []);
   const [plan, setPlan] = useState<TourPlan | null | undefined>(undefined);
   const [workTypes, setWorkTypes] = useState<WorkType[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
@@ -269,10 +279,11 @@ function Planner({ initialMonth }: { initialMonth: string }) {
           )}
         </div>
 
-        {plan?.status === 'rejected' && plan.decisionComment && (
+        {plan?.status === 'rejected' && (plan.rejectionReason ?? plan.decisionComment) && (
           <RejectionNote
-            reason={plan.decisionComment}
-            at={plan.decidedAt}
+            reason={(plan.rejectionReason ?? plan.decisionComment)!}
+            byName={plan.rejectedBy?.name}
+            at={plan.rejectedAt ?? plan.decidedAt}
             hint="Change the plan and submit it again."
           />
         )}

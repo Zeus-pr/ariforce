@@ -1,22 +1,43 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { Approval } from '@ariforce/contracts';
+import type { Approval, ApprovalDetail, ApprovalSubject } from '@ariforce/contracts';
 import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
 import { api, apiReady } from '@/lib/api';
 import { openReceipt } from '@/lib/expenses/upload';
 
 /**
- * Read-only view of what an approval decides on, loaded from the subject's own endpoints
- * (the Approval itself carries only subjectType/subjectId/summary).
+ * Read-only view of what an approval decides on. Primary source: GET /v1/approvals/{id} (ApprovalDetail,
+ * subject resolved server-side). `subject: null` means the caller may decide but not read the subject
+ * (e.g. a manager above the requester) — shown plainly. Leave/expense/doctor requests that are not in the
+ * approvals store (mock leave/expense flows) fall back to the subject's own endpoint.
  */
 export function ApprovalReview({ approval }: { approval: Approval }) {
   const t = approval.subjectType;
+  const [detail, setDetail] = useState<ApprovalDetail | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      await apiReady();
+      const r = await api.GET('/v1/approvals/{id}', { params: { path: { id: approval.id } } });
+      if (live) setDetail((r.data as ApprovalDetail | undefined) ?? null);
+    })().catch(() => live && setDetail(null));
+    return () => {
+      live = false;
+    };
+  }, [approval.id]);
+  const s = detail?.subject ?? null;
   return (
     <div className="mt-2 rounded-md border bg-muted/40 p-3 text-sm" data-testid="approval-review" data-type={t}>
-      {t === 'tour_plan' ? (
-        <TourPlanReview a={approval} />
+      {detail === undefined ? (
+        <Loading />
+      ) : s ? (
+        <SubjectView a={approval} s={s} />
+      ) : detail && t === 'tour_plan' ? (
+        <p className="text-muted-foreground" data-testid="review-no-access">
+          {approval.summary}. You can decide this request, but its details are not visible to you.
+        </p>
       ) : t === 'leave' ? (
         <LeaveReview a={approval} />
       ) : t === 'expense' ? (
@@ -26,6 +47,149 @@ export function ApprovalReview({ approval }: { approval: Approval }) {
       ) : (
         <p>{approval.summary}</p>
       )}
+    </div>
+  );
+}
+
+function SubjectView({ a, s }: { a: Approval; s: ApprovalSubject }) {
+  if (s.type === 'tour_plan') return <TourPlanDetail a={a} s={s} />;
+  if (s.type === 'leave') {
+    const lv = s.request;
+    return (
+      <div className="grid gap-2">
+        <dl className="grid gap-1">
+          <Row k="Submitted by" v={a.requestedByName} />
+          <Row k="Type" v={<span data-testid="review-leave-type">{lv.typeName}</span>} />
+          <Row k="Dates" v={lv.fromDate === lv.toDate ? dayLabel(lv.fromDate) : `${dayLabel(lv.fromDate)} – ${dayLabel(lv.toDate)}`} />
+          <Row k="Days" v={`${lv.days}${lv.half ? ` (${lv.half})` : ''}`} />
+          <Row k="Reason" v={lv.reason || '—'} />
+          <Row
+            k="Balance"
+            v={
+              <span data-testid="review-balance">
+                {!s.balance
+                  ? '—'
+                  : s.balance.availableBefore === null
+                    ? 'Unlimited'
+                    : `${s.balance.availableBefore} available now, ${s.balance.availableAfter ?? '—'} after this request`}
+              </span>
+            }
+          />
+        </dl>
+        {s.overlaps.length > 0 && (
+          <div data-testid="review-overlaps">
+            <p className="font-medium">Also away on these dates</p>
+            <ul className="grid gap-0.5">
+              {s.overlaps.map((o) => (
+                <li key={`${o.userId}-${o.fromDate}`}>
+                  {o.userName} <span className="text-muted-foreground">{o.typeCode}, {dayLabel(o.fromDate)}{o.toDate !== o.fromDate ? ` – ${dayLabel(o.toDate)}` : ''}, {o.status === 'approved' ? 'Approved' : 'Pending'}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (s.type === 'expense') {
+    const c = s.claim;
+    const receipts = (lineId: string) => s.receipts.filter((r) => r.lineId === lineId);
+    return (
+      <div className="grid gap-2">
+        <dl className="grid gap-1">
+          <Row k="Submitted by" v={a.requestedByName} />
+          <Row k="Month" v={monthLabel(c.month)} />
+          <Row k="Total" v={<span data-testid="review-total">{money(c.total)}</span>} />
+        </dl>
+        <ul className="max-h-80 divide-y overflow-y-auto overscroll-contain rounded-md border bg-background">
+          {c.lines.map((l) => (
+            <li key={l.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2" data-testid="review-line">
+              <span className="w-24 text-muted-foreground">{dayLabel(l.date)}</span>
+              <span className="flex-1 capitalize">
+                {l.category.replace(/_/g, ' ')}
+                {l.notes && <span className="text-muted-foreground"> · {l.notes}</span>}
+              </span>
+              <span className="tabular-nums">{money(l.amount)}</span>
+              {receipts(l.id).map((f, i, all) => (
+                <Button key={f.attachmentId} asChild size="sm" variant="outline">
+                  <a href={f.downloadUrl} target="_blank" rel="noreferrer" data-testid="review-receipt">
+                    Receipt{all.length > 1 ? ` ${i + 1}` : ''}
+                  </a>
+                </Button>
+              ))}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  if (s.type === 'doctor') {
+    const d = s.doctor;
+    return (
+      <div className="grid gap-2">
+        <dl className="grid gap-1">
+          <Row k="Added by" v={a.requestedByName} />
+          <Row k="Name" v={<span data-testid="review-doctor-name">{d.name}</span>} />
+          <Row k="Registration no." v={d.registrationNo || '—'} />
+          <Row k="Specialty" v={d.specialtyName || '—'} />
+          <Row k="Category" v={d.categoryName || '—'} />
+          <Row k="Territory" v={d.territory?.name || '—'} />
+          <Row k="City" v={[d.city, d.pincode].filter(Boolean).join(', ') || '—'} />
+        </dl>
+        {s.possibleDuplicates.length > 0 && (
+          <div data-testid="review-dups">
+            <p className="font-medium">Possible duplicates flagged when added</p>
+            <ul className="grid gap-0.5">
+              {s.possibleDuplicates.map((x) => (
+                <li key={x.id}>{x.name}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
+  return (
+    <dl className="grid gap-1">
+      <Row k="Requested by" v={a.requestedByName} />
+      <Row k="DCR date" v={s.date ? dayLabel(s.date) : '—'} />
+      <Row k="Reason" v={s.reason || '—'} />
+    </dl>
+  );
+}
+
+function TourPlanDetail({ a, s }: { a: Approval; s: Extract<ApprovalSubject, { type: 'tour_plan' }> }) {
+  const sub = (s as { submission?: { submitterNote?: string | null; dates?: string[] } | null }).submission ?? null;
+  const note = sub?.submitterNote ?? (s.plan as { submitterNote?: string | null }).submitterNote ?? null;
+  const days = s.days.filter((d) => d.entries.length > 0);
+  return (
+    <div className="grid gap-2">
+      <dl className="grid gap-1">
+        <Row k="Submitted by" v={a.requestedByName} />
+        <Row k="Month" v={<span data-testid="review-month">{monthLabel(s.plan.month)}</span>} />
+        <Row k="Days in request" v={days.length} />
+        {note && <Row k="Note" v={<span data-testid="review-note" className="whitespace-pre-wrap">{note}</span>} />}
+      </dl>
+      <ul className="max-h-80 divide-y overflow-y-auto overscroll-contain rounded-md border bg-background">
+        {days.map((d) => (
+          <li key={d.date} className="px-3 py-2" data-testid="review-day">
+            <div className="font-medium">{dayLabel(d.date)}</div>
+            {d.entries.map((e, i) => (
+              <div key={i} className="text-muted-foreground">
+                {e.session !== 'full' && <span className="uppercase">{e.session} · </span>}
+                <span className="text-foreground">{e.workType?.name || 'Work type'}</span>
+                {e.territories.length > 0 && <> · {e.territories.map((x) => x.name || '—').join(', ')}</>}
+                {e.doctors.length > 0 && (
+                  <div data-testid="review-doctors">Doctors: {e.doctors.map((x) => x.name || '—').join(', ')}</div>
+                )}
+                {e.chemists.length > 0 && <div>Chemists: {e.chemists.map((x) => x.name || '—').join(', ')}</div>}
+                {e.jointWorkUsers.length > 0 && <div>Joint work: {e.jointWorkUsers.map((x) => x.name).join(', ')}</div>}
+                {e.notes && <div className="italic">{e.notes}</div>}
+              </div>
+            ))}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -49,98 +213,6 @@ const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
     <dd className="min-w-0">{v}</dd>
   </div>
 );
-
-type Plan = {
-  id: string;
-  month: string;
-  days: {
-    date: string;
-    entries: { session: string; workTypeId: string; territoryIds: string[]; plannedDoctorIds?: string[]; notes?: string | null }[];
-  }[];
-};
-
-function TourPlanReview({ a }: { a: Approval }) {
-  const [plan, setPlan] = useState<Plan | null | undefined>(undefined);
-  const [names, setNames] = useState<Map<string, string>>(new Map());
-  useEffect(() => {
-    let live = true;
-    void (async () => {
-      await apiReady();
-      // No GET /v1/tour-plans/{id}: list the submitter's plans (approvers have field:read over their team) and pick this one.
-      let found: Plan | null = null;
-      let cursor: string | undefined;
-      for (let i = 0; i < 5 && !found; i++) {
-        const r = await api.GET('/v1/tour-plans', {
-          params: { query: { userId: a.requestedBy, limit: 50, cursor } as never },
-        });
-        const items = (r.data?.items ?? []) as unknown as Plan[];
-        found = items.find((p) => p.id === a.subjectId) ?? null;
-        cursor = (r.data as { nextCursor?: string | null } | undefined)?.nextCursor ?? undefined;
-        if (!cursor) break;
-      }
-      if (!live) return;
-      setPlan(found);
-      if (!found) return;
-      const [wt, tr] = await Promise.all([
-        api.GET('/v1/work-types', { params: { query: { limit: 100 } } }),
-        api.GET('/v1/territories', { params: { query: { limit: 200 } as never } }),
-      ]);
-      const m = new Map<string, string>();
-      for (const w of wt.data?.items ?? []) m.set(w.id, w.name);
-      for (const t of (tr.data?.items ?? []) as { id: string; name: string }[]) m.set(t.id, t.name);
-      // No batch lookup by ids on /v1/doctors: fetch each planned doctor (deduplicated).
-      const ids = [...new Set(found.days.flatMap((d) => d.entries.flatMap((e) => e.plannedDoctorIds ?? [])))];
-      for (let i = 0; i < ids.length; i += 8) {
-        const got = await Promise.all(
-          ids.slice(i, i + 8).map((id) => api.GET('/v1/doctors/{id}', { params: { path: { id } } })),
-        );
-        got.forEach((r, j) => r.data && m.set(ids[i + j]!, r.data.name));
-      }
-      if (live) setNames(m);
-    })().catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [a.requestedBy, a.subjectId]);
-
-  if (plan === undefined) return <Loading />;
-  if (plan === null) return <Missing what="This tour plan" />;
-  const days = plan.days.filter((d) => d.entries.length).sort((x, y) => x.date.localeCompare(y.date));
-  const n = (id: string) => names.get(id) ?? '…';
-  return (
-    <div className="grid gap-2">
-      <dl className="grid gap-1">
-        <Row k="Submitted by" v={a.requestedByName} />
-        <Row k="Month" v={<span data-testid="review-month">{monthLabel(plan.month)}</span>} />
-        <Row k="Planned days" v={days.length} />
-      </dl>
-      {days.length === 0 ? (
-        <p className="text-muted-foreground">No days planned.</p>
-      ) : (
-        <ul className="max-h-80 divide-y overflow-y-auto overscroll-contain rounded-md border bg-background">
-          {days.map((d) =>
-            d.entries.map((e, i) => (
-              <li key={`${d.date}-${i}`} className="grid gap-0.5 px-3 py-2" data-testid="review-day" data-date={d.date}>
-                <p className="font-medium">
-                  {dayLabel(d.date)}
-                  {e.session !== 'full' && <span className="text-muted-foreground"> · {e.session.toUpperCase()}</span>}
-                  <span className="font-normal"> · {n(e.workTypeId)}</span>
-                </p>
-                {e.territoryIds.length > 0 && (
-                  <p className="text-muted-foreground">{e.territoryIds.map(n).join(', ')}</p>
-                )}
-                {(e.plannedDoctorIds ?? []).length > 0 && (
-                  <p data-testid="review-doctors">Doctors: {(e.plannedDoctorIds ?? []).map(n).join(', ')}</p>
-                )}
-                {e.notes && <p className="text-muted-foreground">Note: {e.notes}</p>}
-              </li>
-            )),
-          )}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 type Leave = { typeName: string; typeCode: string; fromDate: string; toDate: string; half: string | null; days: number; reason: string | null; year: number };
 function LeaveReview({ a }: { a: Approval }) {

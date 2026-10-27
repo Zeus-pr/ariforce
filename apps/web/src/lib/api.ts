@@ -128,5 +128,7 @@ export function toApiError(error: unknown): ApiError {
   const inner = (e as { error?: unknown } | undefined)?.error;
   if (inner && typeof inner === 'object' && 'code' in inner) e = inner;
   const a = e as Partial<ApiError> | undefined;
+  if (a?.code === 'REJECTION_REASON_REQUIRED') return { code: a.code, message: 'Give a reason to reject this request.', details: a.details };
+  if (a?.code === 'DAY_LOCKED') return { code: a.code, message: 'Some days are already submitted or approved and can’t be changed.', details: a.details };
   return a?.code ? { code: a.code, message: a.message ?? '', details: a.details } : { code: 'NETWORK', message: 'Could not reach the server.' };
 }

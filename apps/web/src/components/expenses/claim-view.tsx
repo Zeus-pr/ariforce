@@ -121,10 +121,11 @@ export function ClaimView({ id }: { id: string }) {
         </div>
       </div>
 
-      {claim.status === 'rejected' && claim.decisionComment && (
+      {claim.status === 'rejected' && (claim.rejectionReason ?? claim.decisionComment) && (
         <RejectionNote
-          reason={claim.decisionComment}
-          at={claim.decidedAt}
+          reason={(claim.rejectionReason ?? claim.decisionComment)!}
+          byName={claim.rejectedBy?.name}
+          at={claim.rejectedAt ?? claim.decidedAt}
           hint={mine ? 'Fix the lines and submit again.' : undefined}
           testId="exp-reject-comment"
         />

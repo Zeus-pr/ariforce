@@ -180,11 +180,11 @@ export function NotificationBell({ pageSize = PAGE }: { pageSize?: number }) {
                   />
                   <span className="min-w-0 flex-1">
                     <span className={`block text-sm ${n.readAt ? '' : 'font-medium'}`}>{n.title}</span>
-                    {n.type.endsWith('.rejected') && typeof n.data?.comment === 'string' ? (
+                    {n.type.endsWith('.rejected') && typeof (n.data?.reason ?? n.data?.comment) === 'string' ? (
                       <span className="block text-xs text-red-900" data-testid="notif-rejection">
                         {rejectionText(
-                          n.data.comment,
-                          typeof n.data.actorName === 'string' ? n.data.actorName : null,
+                          String(n.data?.reason ?? n.data?.comment),
+                          typeof n.data?.actorName === 'string' ? n.data.actorName : null,
                           n.createdAt,
                         )}
                       </span>

@@ -14,6 +14,8 @@ for (const view of ['desktop', 'mobile']) {
   await review.getByTestId('review-month').waitFor({ timeout: 10000 });
   check(/\w+ \d{4}/.test(await review.getByTestId('review-month').innerText()), `${view}: plan review shows the month`);
   check(await review.getByText('Business Manager').first().isVisible(), `${view}: plan review shows the submitter`);
+  check((await review.getByTestId('review-note').innerText()) === 'Hospital wing opens on the 1st', `${view}: plan review shows the submitter note (GET /v1/approvals/{id})`);
+  check((await review.getByTestId('review-doctors').count()) > 0, `${view}: planned doctors named`);
   const days = await review.getByTestId('review-day').count();
   check(days > 0, `${view}: plan review lists planned days (${days})`);
   const first = days ? await review.getByTestId('review-day').first().innerText() : '';
