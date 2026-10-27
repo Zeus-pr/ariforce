@@ -8,6 +8,7 @@ import type { MasterRow } from '@/components/masters/config';
 import { Button } from '@ariforce/ui/components/button';
 import { useRole } from '@/components/shell/role-context';
 import { canWriteMasters } from '@/lib/permissions';
+import { APPROVAL_LABEL } from '@/components/pickers/pickers';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -76,6 +77,18 @@ function DoctorList() {
     },
     { id: 'territory', header: 'Territory', cell: (d) => lk.byId.get(d.territoryId) ?? '—' },
     { id: 'city', header: 'City', mobile: 'secondary', cell: (d) => d.city ?? '—' },
+    {
+      id: 'approval',
+      header: 'Status',
+      mobile: 'secondary',
+      // Plain-text badge; approved doctors show nothing.
+      cell: (d) =>
+        d.approvalStatus && d.approvalStatus !== 'approved' ? (
+          <Badge variant="outline" data-testid="doctor-approval" data-status={d.approvalStatus}>
+            {APPROVAL_LABEL[d.approvalStatus] ?? d.approvalStatus}
+          </Badge>
+        ) : null,
+    },
   ];
   const canWrite = canWriteMasters(role);
   const [adding, setAdding] = useState(false);

@@ -2,6 +2,7 @@
 
 import { Loader2, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
 import {
   Dialog,
@@ -23,11 +24,20 @@ import {
 } from '@ariforce/ui/components/sheet';
 import { toast } from '@ariforce/ui/components/sonner';
 import { api, toApiError } from '@/lib/api';
+import { APPROVAL_LABEL } from '@/components/pickers/pickers';
 import { blankRecord, MASTERS, type MasterKind, type MasterRow } from './config';
 import { FieldInput } from './field-input';
 import { useLookups } from './lookups';
 
 type Values = Record<string, string | null>;
+type Match = {
+  id: string;
+  name: string;
+  territoryName: string;
+  rule: 'registration_no' | 'name_pincode';
+  approvalStatus: string;
+};
+const RULE_LABEL = { registration_no: 'Same registration no.', name_pincode: 'Same name and PIN code' };
 
 /** Create / edit / delete one master record. Validation is the contract's zod schema. */
 export function RecordSheet({
@@ -51,6 +61,30 @@ export function RecordSheet({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  // Doctors only (add form): live duplicate check and the 409 outcome of the last save.
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [conflict, setConflict] = useState<'hard' | 'soft' | null>(null);
+  const dupCheck = kind === 'doctors' && !row && !readOnly && open;
+  const dupName = String(values.name ?? '').trim();
+  const dupPin = values.pincode ?? null;
+  const dupReg = String(values.registrationNo ?? '').trim();
+
+  useEffect(() => {
+    setConflict(null);
+    if (!dupCheck || dupName.length < 3) return setMatches([]);
+    const pin = dupPin && /^[1-9][0-9]{5}$/.test(dupPin) ? dupPin : null;
+    let live = true;
+    const t = setTimeout(async () => {
+      const res = await api.POST('/v1/doctors/duplicate-check', {
+        body: { name: dupName, pincode: pin, registrationNo: dupReg || null },
+      });
+      if (live && res.data) setMatches(res.data.matches as Match[]);
+    }, 400);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [dupCheck, dupName, dupPin, dupReg]);
 
   useEffect(() => {
     if (!open) return;
@@ -68,8 +102,8 @@ export function RecordSheet({
     return out;
   };
 
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
+  async function save(e: React.FormEvent | null, allowPossibleDuplicate = false) {
+    e?.preventDefault();
     const parsed = cfg.create.safeParse(body());
     if (!parsed.success) {
       const errs: Record<string, string> = {};
@@ -92,12 +126,20 @@ export function RecordSheet({
           body: { ...(parsed.data as object), version: row.version } as never,
         })
       : await api.POST(cfg.path, {
-          body: parsed.data as never,
+          body: (allowPossibleDuplicate
+            ? { ...(parsed.data as object), allowPossibleDuplicate: true }
+            : parsed.data) as never,
           headers: { 'idempotency-key': crypto.randomUUID() },
         });
     setBusy(false);
     if (res.error) {
       const err = toApiError(res.error);
+      const m = (err.details as { matches?: Match[] } | undefined)?.matches;
+      if (err.code === 'DOCTOR_DUPLICATE' || err.code === 'DOCTOR_POSSIBLE_DUPLICATE') {
+        if (m) setMatches(m);
+        setConflict(err.code === 'DOCTOR_DUPLICATE' ? 'hard' : 'soft');
+        return;
+      }
       if (err.code === 'VERSION_CONFLICT')
         toast.error('Someone else changed this record. Close and reopen it to see the latest.');
       else if (err.code === 'VALIDATION')
@@ -105,7 +147,14 @@ export function RecordSheet({
       else toast.error(err.message);
       return;
     }
-    toast.success(row ? `Saved ${String(values.name)}` : `Added ${String(values.name)}`);
+    const pending = (res.data as { approvalStatus?: string } | undefined)?.approvalStatus === 'pending';
+    toast.success(
+      row
+        ? `Saved ${String(values.name)}`
+        : pending
+          ? `Added ${String(values.name)}. Awaiting approval.`
+          : `Added ${String(values.name)}`,
+    );
     onSaved();
     onOpenChange(false);
   }
@@ -175,6 +224,14 @@ export function RecordSheet({
                   );
                 })}
               </div>
+              {dupCheck && matches.length > 0 && (
+                <DuplicatePanel
+                  matches={matches}
+                  conflict={conflict}
+                  busy={busy}
+                  onAddAnyway={() => void save(null, true)}
+                />
+              )}
             </form>
           )}
           {!readOnly && (
@@ -226,6 +283,61 @@ export function RecordSheet({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function DuplicatePanel({
+  matches,
+  conflict,
+  busy,
+  onAddAnyway,
+}: {
+  matches: Match[];
+  conflict: 'hard' | 'soft' | null;
+  busy: boolean;
+  onAddAnyway: () => void;
+}) {
+  const hard = matches.some((m) => m.rule === 'registration_no');
+  return (
+    <div
+      className="mt-4 grid gap-2 rounded-md border bg-muted p-3 text-sm"
+      data-testid="dup-panel"
+      data-conflict={conflict ?? ''}
+    >
+      <p className="font-medium" data-testid="dup-title">
+        {conflict === 'hard'
+          ? 'This registration number is already used. The doctor cannot be added again.'
+          : conflict === 'soft'
+            ? 'A doctor with the same name and PIN code exists. Add anyway?'
+            : hard
+              ? 'A doctor with this registration number already exists.'
+              : 'Possible duplicates'}
+      </p>
+      <ul className="grid gap-1">
+        {matches.map((m) => (
+          <li key={m.id} className="flex flex-wrap items-center gap-2" data-testid="dup-match" data-rule={m.rule}>
+            <span>{m.name}</span>
+            <span className="text-muted-foreground">{m.territoryName}</span>
+            <Badge variant="outline">{RULE_LABEL[m.rule]}</Badge>
+            {m.approvalStatus !== 'approved' && (
+              <Badge variant="outline">{APPROVAL_LABEL[m.approvalStatus] ?? m.approvalStatus}</Badge>
+            )}
+          </li>
+        ))}
+      </ul>
+      {conflict === 'soft' && (
+        <Button
+          type="button"
+          variant="outline"
+          className="justify-self-start"
+          disabled={busy}
+          onClick={onAddAnyway}
+          data-testid="dup-add-anyway"
+        >
+          Add anyway
+        </Button>
+      )}
+    </div>
   );
 }
 
