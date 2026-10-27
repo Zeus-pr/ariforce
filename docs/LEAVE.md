@@ -14,7 +14,9 @@ Backend only. Leave types and their quotas are **data** (`leave_policies`), not 
 
 Half days are allowed for every default type (`half_day_allowed`).
 
-`leave_settings` (one row per company): `approval_levels` (default 2), `backdate_days` (default 7), `weekly_off_days` (default `{0}` = Sunday), `max_future_days` (default null = up to 31 Dec of the current year).
+`leave_settings` (one row per company): `approval_levels` (default 2), `backdate_days` (default 14; confirmed by Prajesh 2026-10-27, live row set to 14 at version 2), `weekly_off_days` (default `{0}` = Sunday), `max_future_days` (default null = up to 31 Dec of the current year).
+
+Backdating default: the column default in the applied migration `0023_leave.sql` is still `7` (applied migrations are never edited, and no new migration changes it so a company's live value is never overwritten). The API creates a missing settings row with `LEAVE_DEFAULT_BACKDATE_DAYS = 14` (`@ariforce/contracts`). Companies that already had a row from 0023 (created at 7) must be set via `PUT /v1/leave/settings` — done for the live company (backdate_days = 14, version 2).
 
 ## States
 

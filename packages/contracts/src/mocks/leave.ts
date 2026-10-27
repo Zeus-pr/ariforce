@@ -1,3 +1,4 @@
+import { LEAVE_DEFAULT_BACKDATE_DAYS } from '../schemas/leave';
 import { http, HttpResponse } from 'msw';
 import type * as z from 'zod';
 import type { Me } from '../schemas/auth';
@@ -42,7 +43,7 @@ const types: Type[] = [
 }));
 const settings: z.infer<typeof LeaveSettings> = {
   approvalLevels: 2,
-  backdateDays: 7,
+  backdateDays: LEAVE_DEFAULT_BACKDATE_DAYS,
   weeklyOffDays: [0],
   maxFutureDays: null,
   version: 1,

@@ -47,6 +47,10 @@ export const LeaveTypeUpdate = z
   })
   .meta({ id: 'LeaveTypeUpdate', description: 'PUT creates the type when the code is new' });
 
+/** Backdating window for new companies (confirmed 14 days). The SQL column default from 0023 is 7; the API
+ * always inserts this value when it creates a company's settings row and never overwrites an existing row. */
+export const LEAVE_DEFAULT_BACKDATE_DAYS = 14;
+
 export const LeaveSettings = z
   .object({
     approvalLevels: z.int().min(1).max(5),

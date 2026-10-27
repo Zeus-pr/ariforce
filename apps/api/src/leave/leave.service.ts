@@ -11,6 +11,7 @@ import type {
   LeaveStatus,
   LeaveTypeUpdate,
 } from '@ariforce/contracts';
+import { LEAVE_DEFAULT_BACKDATE_DAYS } from '@ariforce/contracts';
 import {
   approvalRequests,
   leaveGrants,
@@ -142,7 +143,10 @@ export class LeaveService implements OnModuleInit {
 
   /** Creates the company's default settings and policies if missing (new companies). */
   private async ensureDefaults(tx: Tx, companyId: string) {
-    await tx.insert(leaveSettings).values({ companyId }).onConflictDoNothing();
+    await tx
+      .insert(leaveSettings)
+      .values({ companyId, backdateDays: LEAVE_DEFAULT_BACKDATE_DAYS })
+      .onConflictDoNothing();
     await tx
       .insert(leavePolicies)
       .values(
