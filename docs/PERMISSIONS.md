@@ -44,3 +44,16 @@ Doctors, Chemists and Stockists are standalone pages at `/doctors`, `/chemists`,
 - Director's My Team invite flow is unchanged.
 
 Evidence: `apps/web/e2e/admin-invites-evidence.mjs` (Chromium and WebKit, 36 checks each).
+
+## People (System Admin)
+
+`/admin/people`, nav entry "People" next to "Invite people". Same gate: `system_admin` with `users:write`; everyone else gets no entry and is sent home.
+
+- List: `GET /v1/users` with server-side search (name, code, email), role, status, HQ (`territoryId`, whole subtree) and sign-in (`hasLogin`) filters, sorted by name, 50 per page with "Show more" (cursor). Columns: name, code, email, role, HQ, manager (`managerName`), status, sign-in. Your own row is marked "You".
+- Edit sheet: name, email (only while the person has no login; read-only after), phone, employee code, designation, joined date, role (any), status (Suspend / Reactivate for active or suspended people; invited people become active by accepting), HQ picker (Business Manager: HQ-level only, empty HQs included; other sales roles: non-HQ levels), manager picker (only people who outrank the role). Directors have no manager; functional roles and System Admin have no HQ and no manager.
+- Your own record can't be saved here (the API returns 403); the sheet says so.
+- Confirm dialog before a role change or suspension (warns they are signed out on every device), reactivation, an HQ change (applies from their next action) and a manager change (their requests waiting for first approval move to the new manager).
+- Errors in plain words: version conflict (latest record is reloaded), email locked or taken, employee code taken, reporting loop, manager doesn't outrank the new role (pick a new manager with the role), direct reports would outrank the new role (their names are listed), last System Admin, 403, 404 (list refreshes), 422, 429.
+- My Team's edit (`PATCH /v1/employees/{id}` for non-admins) sends only name, phone, role, territory, manager and status, never email or employee code.
+
+Evidence: `apps/web/e2e/admin-people-evidence.mjs` (Chromium and WebKit, 76 checks each).

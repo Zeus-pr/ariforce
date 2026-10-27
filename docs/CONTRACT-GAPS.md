@@ -175,3 +175,12 @@ Adopted in web `/admin/invites`. Still open, by design or not yet in the API:
 - The server does no territory-level check; the web limits Business Managers to HQ-level territories.
 - Mock: `/v1/employees*` requests now carry the mock session (`x-mock-user`), so mock create/invite rules match the signed-in role.
 
+## System Admin People (feat/sysadmin-people 310ae1c, merged f4e38c1)
+
+Adopted in web `/admin/people`. Open items:
+- No `GET /v1/users/{id}`; after a save or a conflict the web re-reads the person with `GET /v1/users?q=<email>` and matches the id.
+- No `inviteStatus` filter on `GET /v1/users`, so "invite expired" is shown per row only, not as a filter.
+- `lastActiveAt` exists but the list doesn't show it yet; there is no `lastLoginAt`.
+- Territory level is not checked server-side; the web limits Business Managers to HQ-level territories.
+- The web edits one territory per person (the primary); a territory change replaces the list with that one.
+- Mock: added `MANAGER_RANK` and `REPORTS_OUTRANK` (with `details.userIds`) to the PATCH mock, and `primaryRole`, `rank`, `managerName`, `territories[]`, `version` and a subtree `territoryId` filter to the `/v1/users` mock, to match the API. The mock caps `limit` at 200 instead of returning 422.

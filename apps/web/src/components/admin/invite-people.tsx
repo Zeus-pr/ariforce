@@ -21,11 +21,11 @@ import type { InviteResult } from '@/lib/team-adapter/types';
 import { cn } from '@ariforce/ui/lib/utils';
 
 type User = components['schemas']['UserSummary'];
-type Terr = { id: string; name: string; code: string; level: string };
+export type Terr = { id: string; name: string; code: string; level: string };
 
 /** System admin may invite any role (feat/sysadmin-invite-any). Functional roles have no territory or manager. */
-const functional = (r: Role) => roleLevel(r) === 0;
-const topRole = (u: User) =>
+export const functional = (r: Role) => roleLevel(r) === 0;
+export const topRole = (u: User) =>
   ([...u.roles].sort((a, b) => roleLevel(b as Role) - roleLevel(a as Role))[0] ??
     null) as Role | null;
 const absolute = (u: string | null | undefined) =>
@@ -40,7 +40,7 @@ async function searchUsers(q: string, extra: Record<string, string> = {}) {
 }
 
 /** Every territory in the company (HQs included, even ones with nobody assigned yet). */
-function useHqs() {
+export function useHqs() {
   const [hqs, setHqs] = useState<Terr[] | null>(null);
   useEffect(() => {
     void (async () => {
@@ -102,7 +102,7 @@ export function InvitePeople() {
   );
 }
 
-function UserSearch({
+export function UserSearch({
   label,
   testId,
   onPick,

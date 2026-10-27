@@ -1,6 +1,7 @@
 import { DEFAULT_ROLE_PERMISSIONS } from '@ariforce/contracts';
 import type { LucideIcon } from 'lucide-react';
 import {
+  UserCog,
   UserPlus,
   CalendarRange,
   Pill,
@@ -186,6 +187,15 @@ export const NAV: NavItem[] = [
     href: '/admin/invites',
     icon: UserPlus,
     // System admin with users:write (the API's isAdmin): any hierarchy role, any HQ, company-wide.
+    roles: ROLES.filter((r) => isSystemAdmin(r) && (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never)),
+    section: 'admin',
+  },
+  {
+    slug: 'people',
+    title: 'People',
+    href: '/admin/people',
+    icon: UserCog,
+    // Same gate as Invite people: system admin with users:write.
     roles: ROLES.filter((r) => isSystemAdmin(r) && (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never)),
     section: 'admin',
   },
