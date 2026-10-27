@@ -27,6 +27,7 @@ import { and, asc, desc, eq, inArray, isNull, ne, notInArray, sql, type SQL } fr
 import { v7 as uuidv7 } from 'uuid';
 import type * as z from 'zod';
 import type { Principal } from '../auth/principal';
+import { dayStates, loadSubs } from '../plans/tp-submissions';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { CheckInsService, err } from '../field/checkins.service';
@@ -262,22 +263,23 @@ export class DcrService {
     });
   }
 
-  /** Approved TP for the date's month and its entries for that date. */
+  /** The TP for the date's month and its entries for that date, if that day is approved (#86). */
   private async plan(tx: Tx, userId: string, date: string) {
     const [tp] = await tx
-      .select({ id: tourPlans.id, days: tourPlans.days })
+      .select()
       .from(tourPlans)
       .where(
         and(
           eq(tourPlans.userId, userId),
           eq(tourPlans.month, `${date.slice(0, 7)}-01`),
-          eq(tourPlans.status, 'approved'),
           isNull(tourPlans.deletedAt),
         ),
       );
+    if (!tp || dayStates(tp, await loadSubs(tx, [tp.id])).get(date)?.status !== 'approved')
+      return { tourPlanId: null, entries: [] };
     const entries =
-      ((tp?.days ?? []) as TourPlan['days']).find((d) => d.date === date)?.entries ?? [];
-    return { tourPlanId: tp?.id ?? null, entries };
+      ((tp.days ?? []) as TourPlan['days']).find((d) => d.date === date)?.entries ?? [];
+    return { tourPlanId: tp.id, entries };
   }
 
   private async validateCalls(tx: Tx, p: Principal, b: Upsert, dcrId: string | undefined) {

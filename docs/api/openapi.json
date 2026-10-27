@@ -6171,7 +6171,7 @@
         },
         "responses": {
           "200": {
-            "description": "Saved draft",
+            "description": "Saved",
             "content": {
               "application/json": {
                 "schema": {
@@ -6201,7 +6201,7 @@
             }
           },
           "409": {
-            "description": "Not editable (submitted/approved) or version conflict",
+            "description": "DAY_LOCKED (details.dates): a submitted/approved day was changed or removed (#86); or VERSION_CONFLICT. Other days are always editable",
             "content": {
               "application/json": {
                 "schema": {
@@ -6299,7 +6299,7 @@
             }
           },
           "409": {
-            "description": "Target plan is submitted or approved",
+            "description": "VERSION_CONFLICT. Submitted/approved days are kept as they are (#86)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6348,7 +6348,7 @@
         },
         "responses": {
           "200": {
-            "description": "Submitted; approval created",
+            "description": "New submission (its own approval request) holding the chosen days; see `submissions` (#86)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6388,7 +6388,7 @@
             }
           },
           "409": {
-            "description": "Not in draft",
+            "description": "DAY_LOCKED (details.dates): a chosen day is already submitted or approved",
             "content": {
               "application/json": {
                 "schema": {
@@ -15223,12 +15223,41 @@
             "items": {
               "$ref": "#/components/schemas/TourPlanEntry"
             }
+          },
+          "status": {
+            "description": "Response only (ignored on input). submitted/approved days are locked",
+            "$ref": "#/components/schemas/TourPlanDayStatus"
+          },
+          "submissionId": {
+            "description": "Response only: the submission that set `status` (null for draft)",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "date",
           "entries"
         ]
+      },
+      "TourPlanDayStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "submitted",
+          "approved",
+          "rejected"
+        ],
+        "description": "Status of the latest submission holding the day (#86); draft when none, or when a rejected day has no entries left"
       },
       "TourPlanCopy": {
         "type": "object",
@@ -15260,6 +15289,18 @@
                 "type": "null"
               }
             ]
+          },
+          "dates": {
+            "description": "Days to submit together (#86). Default: every planned day that is draft or rejected. Days without entries are skipped; none left = 422 EMPTY_PLAN; a submitted/approved day = 409 DAY_LOCKED",
+            "minItems": 1,
+            "maxItems": 31,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+              "description": "Calendar date (YYYY-MM-DD, IST)"
+            }
           }
         }
       },
@@ -20488,12 +20529,20 @@
             "description": "Standard (template) or monthly plan"
           },
           "status": {
+            "description": "Aggregate of the day statuses (#86): submitted if any submission is pending, else rejected if any day is rejected, else draft if any planned day is unsubmitted, else approved if any day is approved, else draft",
             "$ref": "#/components/schemas/ApprovalStatus"
           },
           "days": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/TourPlanDayOutput"
+            }
+          },
+          "submissions": {
+            "description": "All submissions of this plan, oldest first (#86)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TourPlanSubmission"
             }
           },
           "submittedAt": {
@@ -20604,6 +20653,144 @@
         ],
         "additionalProperties": false
       },
+      "TourPlanSubmission": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "tourPlanId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "dates": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+              "description": "Calendar date (YYYY-MM-DD, IST)"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "submitted",
+              "approved",
+              "rejected"
+            ]
+          },
+          "approvalId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its approval request (GET /v1/approvals/{id})"
+          },
+          "submitterNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "ISO-8601 timestamp (UTC)"
+          },
+          "decidedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decidedBy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decisionComment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rejectionReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rejectedBy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rejectedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "tourPlanId",
+          "dates",
+          "status",
+          "approvalId",
+          "submitterNote",
+          "submittedAt",
+          "decidedAt",
+          "decidedBy",
+          "decisionComment",
+          "rejectionReason",
+          "rejectedBy",
+          "rejectedAt"
+        ],
+        "additionalProperties": false
+      },
       "StandardTourPlan": {
         "type": "object",
         "properties": {
@@ -20702,6 +20889,44 @@
               "maximum": 6
             },
             "description": "From leave settings (0 = Sunday .. 6 = Saturday); default [0]"
+          },
+          "days": {
+            "description": "Days present in the plan with their own status (#86)",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "description": "Calendar date (YYYY-MM-DD, IST)"
+                },
+                "status": {
+                  "$ref": "#/components/schemas/TourPlanDayStatus"
+                },
+                "submissionId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "description": "UUIDv7 identifier",
+                      "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "date",
+                "status",
+                "submissionId"
+              ],
+              "additionalProperties": false
+            }
           },
           "requiredDates": {
             "type": "array",
@@ -25062,6 +25287,17 @@
           "plan": {
             "$ref": "#/components/schemas/TourPlan"
           },
+          "submission": {
+            "description": "The submission being decided (#86); null for requests made before #86",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TourPlanSubmission"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "days": {
             "type": "array",
             "items": {
@@ -25086,7 +25322,7 @@
               ],
               "additionalProperties": false
             },
-            "description": "plan.days with every id resolved to a name (deleted masters keep their id)"
+            "description": "The submission's days (all plan days for pre-#86 requests) with every id resolved to a name"
           }
         },
         "required": [
@@ -26492,6 +26728,25 @@
             "items": {
               "$ref": "#/components/schemas/TourPlanEntryOutput"
             }
+          },
+          "status": {
+            "description": "Response only (ignored on input). submitted/approved days are locked",
+            "$ref": "#/components/schemas/TourPlanDayStatus"
+          },
+          "submissionId": {
+            "description": "Response only: the submission that set `status` (null for draft)",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

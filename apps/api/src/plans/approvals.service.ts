@@ -16,6 +16,7 @@ import {
   doctors,
   specialties,
   territories,
+  tourPlanSubmissions,
   tourPlans,
   users,
   workTypes,
@@ -29,7 +30,7 @@ import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { rejectionReason } from '../common/rejection';
-import { toPlan } from './tour-plan.dto';
+import { plansOut, syncStatus } from './tp-submissions';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 
 type EntityType = (typeof approvalRequests.$inferInsert)['entityType'];
@@ -142,16 +143,27 @@ export class ApprovalsService {
       date: typeof req.payload?.date === 'string' ? req.payload.date : null,
       reason: req.reason,
     }));
+    // entity_id is a submission id (#86); requests made before #86 point at the plan itself.
     this.register('tour_plan', async (tx, p, req, approved, comment) => {
+      const now = new Date();
+      const decided = {
+        status: approved ? ('approved' as const) : ('rejected' as const),
+        decidedAt: now,
+        decidedBy: p.userId,
+        decisionComment: comment,
+      };
+      const [sub] = await tx
+        .update(tourPlanSubmissions)
+        .set(decided)
+        .where(eq(tourPlanSubmissions.id, req.entityId))
+        .returning({ planId: tourPlanSubmissions.tourPlanId });
+      const planId = sub?.planId ?? req.entityId;
+      const { status: _s, ...last } = decided;
       await tx
         .update(tourPlans)
-        .set({
-          status: approved ? 'approved' : 'rejected',
-          decidedAt: new Date(),
-          decidedBy: p.userId,
-          decisionComment: comment,
-        })
-        .where(eq(tourPlans.id, req.entityId));
+        .set(sub ? last : decided)
+        .where(eq(tourPlans.id, planId));
+      if (sub) await syncStatus(tx, planId);
     });
   }
 
@@ -262,10 +274,22 @@ export class ApprovalsService {
     });
   }
 
-  private async tourPlanDetail(tx: Tx, planId: string): Promise<ApprovalSubject | null> {
-    const [row] = await tx.select().from(tourPlans).where(eq(tourPlans.id, planId));
+  private async tourPlanDetail(tx: Tx, entityId: string): Promise<ApprovalSubject | null> {
+    const [sub] = await tx
+      .select({ planId: tourPlanSubmissions.tourPlanId })
+      .from(tourPlanSubmissions)
+      .where(eq(tourPlanSubmissions.id, entityId));
+    const [row] = await tx
+      .select()
+      .from(tourPlans)
+      .where(eq(tourPlans.id, sub?.planId ?? entityId));
     if (!row) return null;
-    const plan = toPlan(row);
+    const full = (await plansOut(tx, [row]))[0]!;
+    const submission = sub ? (full.submissions ?? []).find((x) => x.id === entityId)! : null;
+    // Scoped to the submission's days (the whole plan for pre-#86 requests).
+    const plan = submission
+      ? { ...full, days: full.days.filter((d) => submission.dates.includes(d.date)) }
+      : full;
     const entries = plan.days.flatMap((d) => d.entries);
     const ids = (f: (e: (typeof entries)[number]) => string[]) => [...new Set(entries.flatMap(f))];
     const wt = ids((e) => [e.workTypeId]);
@@ -320,7 +344,8 @@ export class ApprovalsService {
     const ref = (m: Map<string, string>, id: string) => ({ id, name: m.get(id) ?? '' });
     return {
       type: 'tour_plan',
-      plan,
+      plan: full,
+      submission,
       days: plan.days.map((d) => ({
         date: d.date,
         entries: d.entries.map((e) => ({
@@ -648,7 +673,12 @@ export class ApprovalsService {
           type: notice.type,
           recipientId: req.requestedBy,
           entityType: notice.entityType,
-          entityId: notice.entityType === 'approval_request' ? req.id : req.entityId,
+          entityId:
+            notice.entityType === 'approval_request'
+              ? req.id
+              : typeof req.payload?.planId === 'string'
+                ? req.payload.planId
+                : req.entityId,
           dedupeKey: `${notice.type}:${req.id}`,
           data: {
             ...(req.payload ?? {}),
