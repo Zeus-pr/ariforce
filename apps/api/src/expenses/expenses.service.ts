@@ -1,3 +1,4 @@
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   ForbiddenException,
   Injectable,
@@ -65,6 +66,7 @@ export class ExpensesService implements OnModuleInit {
     private readonly audit: AuditService,
     private readonly approvals: ApprovalsService,
     private readonly storage: StorageService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -85,6 +87,14 @@ export class ExpensesService implements OnModuleInit {
           entityId: req.entityId,
           after: { comment, step: req.currentStep },
         });
+        await this.notifications.notify(tx, p, {
+          type: approved ? 'expense.approved' : 'expense.rejected',
+          recipientId: req.requestedBy,
+          entityType: 'expense_claim',
+          entityId: req.entityId,
+          dedupeKey: `expense.decided:${req.id}`,
+          data: { ...(req.payload ?? {}), comment },
+        });
       },
       {
         levels: approvalLevels(),
@@ -94,6 +104,14 @@ export class ExpensesService implements OnModuleInit {
             entityType: 'expense_claim',
             entityId: req.entityId,
             after: { step: req.currentStep, nextStep, nextApproverId },
+          });
+          await this.notifications.notify(tx, p, {
+            type: 'expense.submitted',
+            recipientId: nextApproverId,
+            entityType: 'expense_claim',
+            entityId: req.entityId,
+            dedupeKey: `expense.submitted:${req.id}:${nextStep}`,
+            data: { ...(req.payload ?? {}), step: nextStep },
           });
         },
       },
@@ -452,6 +470,14 @@ export class ExpensesService implements OnModuleInit {
         entityId: c.id,
         after: { total: dto.total, lines: dto.lines.length, approvalId: reqId },
       });
+      await this.notifications.notify(tx, p, {
+        type: 'expense.submitted',
+        recipientId: await this.approvals.currentApprover(tx, reqId),
+        entityType: 'expense_claim',
+        entityId: c.id,
+        dedupeKey: `expense.submitted:${reqId}:1`,
+        data: { month: dto.month, total: dto.total, step: 1 },
+      });
       return this.toDto(tx, await this.claimRow(tx, p, c.id));
     });
   }
@@ -480,6 +506,14 @@ export class ExpensesService implements OnModuleInit {
         entityType: 'expense_claim',
         entityId: c.id,
         after: { paymentRef, total: Number(c.total) },
+      });
+      await this.notifications.notify(tx, p, {
+        type: 'expense.paid',
+        recipientId: c.userId,
+        entityType: 'expense_claim',
+        entityId: c.id,
+        dedupeKey: `expense.paid:${c.id}`,
+        data: { month: String(c.month).slice(0, 7), total: Number(c.total), paymentRef },
       });
       return this.toDto(tx, await this.claimRow(tx, p, c.id));
     });

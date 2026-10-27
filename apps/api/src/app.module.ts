@@ -1,3 +1,4 @@
+import { NotificationsModule } from './notifications/notifications.module';
 import { Module } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module';
 import { DbModule } from './db/db.module';
@@ -18,6 +19,7 @@ import { OpenApiController } from './openapi/openapi.controller';
 @Module({
   imports: [
     DbModule,
+    NotificationsModule,
     AuthModule,
     FilesModule,
     MastersModule,

@@ -23,6 +23,7 @@ import { duplicateKeys, mapImportRow, type ImportLookup } from '../import/templa
 import type { ImportEntity } from '../schemas/imports';
 import { SignInEmailBody } from '../schemas/auth';
 import { kpiReport, productKpiReport } from './kpis';
+import { listNotifications, seedNotifications } from './notifications';
 import { teamHandlers, teamProfileHandlers } from './team';
 import { signupHandlers } from './signup';
 import { expenseHandlers } from './expenses';
@@ -468,6 +469,7 @@ export function createHandlers(baseUrl = '') {
 }
 
 function fieldHandlers(baseUrl: string) {
+  const inbox = seedNotifications();
   const checkIns: CheckIn[] = [];
   const tourPlans: TourPlan[] = [];
   let stp: StandardTourPlan | null = null;
@@ -934,5 +936,32 @@ function fieldHandlers(baseUrl: string) {
       const r = productKpiReport(new URL(request.url));
       return 'error' in r ? validation(r.error) : HttpResponse.json(r);
     }),
+    // ---- notifications (#35): the mock user's own inbox ----
+    http.get(`${baseUrl}/v1/notifications`, ({ request }) => {
+      const r = listNotifications(inbox, new URL(request.url));
+      return 'error' in r ? validation(r.error) : HttpResponse.json(r);
+    }),
+    http.get(`${baseUrl}/v1/notifications/unread-count`, () =>
+      HttpResponse.json({ count: inbox.filter((n) => !n.readAt).length }),
+    ),
+    http.post(`${baseUrl}/v1/notifications/read-all`, () => {
+      const now = new Date().toISOString();
+      let updated = 0;
+      for (const n of inbox)
+        if (!n.readAt) {
+          n.readAt = now;
+          updated++;
+        }
+      return HttpResponse.json({ updated });
+    }),
+    http.post(`${baseUrl}/v1/notifications/:id/read`, ({ params }) => {
+      const n = inbox.find((x) => x.id === params.id);
+      if (!n) return notFound();
+      n.readAt ??= new Date().toISOString();
+      return HttpResponse.json(n);
+    }),
+    http.get(`${baseUrl}/v1/jobs/stats`, () =>
+      HttpResponse.json({ queued: 0, running: 0, done: 12, dead: 0 }),
+    ),
   ];
 }

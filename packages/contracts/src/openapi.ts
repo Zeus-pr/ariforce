@@ -1,3 +1,11 @@
+import {
+  JobStats,
+  NotificationPage,
+  NotificationQuery,
+  Notification as NotificationSchema,
+  ReadAllResult,
+  UnreadCount,
+} from './schemas/notifications';
 import * as z from 'zod';
 import { masterReadPermission } from './schemas/roles';
 import {
@@ -1049,6 +1057,52 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '200': { description: 'Balance', ...json(LeaveBalance) },
             '404': err('User not found / not in your reporting line'),
+          },
+        }),
+      },
+      '/v1/notifications': {
+        get: op({
+          tags: ['Notifications'],
+          operationId: 'listNotifications',
+          summary: 'Your own in-app notifications, newest first (cursor paged)',
+          requestParams: { query: NotificationQuery },
+          responses: { '200': { description: 'Page', ...json(NotificationPage) } },
+        }),
+      },
+      '/v1/notifications/unread-count': {
+        get: op({
+          tags: ['Notifications'],
+          operationId: 'getUnreadNotificationCount',
+          responses: { '200': { description: 'Unread count', ...json(UnreadCount) } },
+        }),
+      },
+      '/v1/notifications/{id}/read': {
+        post: op({
+          tags: ['Notifications'],
+          operationId: 'markNotificationRead',
+          summary: 'Idempotent; keeps the first readAt',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'Notification', ...json(NotificationSchema) },
+            '404': err('Not found (or not yours)'),
+          },
+        }),
+      },
+      '/v1/notifications/read-all': {
+        post: op({
+          tags: ['Notifications'],
+          operationId: 'markAllNotificationsRead',
+          responses: { '200': { description: 'Rows marked read', ...json(ReadAllResult) } },
+        }),
+      },
+      '/v1/jobs/stats': {
+        get: op({
+          tags: ['Notifications'],
+          operationId: 'getJobStats',
+          summary: "System admin only: background job counts for the caller's company",
+          responses: {
+            '200': { description: 'Counts', ...json(JobStats) },
+            '403': err('System admin only'),
           },
         }),
       },
