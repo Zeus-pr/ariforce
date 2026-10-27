@@ -5,9 +5,8 @@ All switching lives in `apps/web/src/lib/api.ts`.
 | Variable | Values | Default | Meaning |
 |---|---|---|---|
 | `NEXT_PUBLIC_API_MODE` | `mock` \| `real` | `mock` | `mock` starts MSW in the browser with the contract mocks. `real` never loads MSW and calls the API. |
-| `NEXT_PUBLIC_API_BASE_URL` | URL | `http://localhost:4000` | API origin. `NEXT_PUBLIC_API_URL` is still read as a fallback. |
+| `NEXT_PUBLIC_API_BASE_URL` | URL | `http://localhost:4000` | API origin. |
 
-Legacy: `NEXT_PUBLIC_API_MOCKING=disabled` also means real.
 
 ## Real mode behaviour
 

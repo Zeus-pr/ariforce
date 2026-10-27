@@ -3,17 +3,9 @@ import { createApiClient } from '@ariforce/contracts';
 /**
  * THE switch between the contract mocks and the real API (docs/WEB-ENV.md):
  * NEXT_PUBLIC_API_MODE=mock|real (default mock), NEXT_PUBLIC_API_BASE_URL for the real API.
- * The older NEXT_PUBLIC_API_URL / NEXT_PUBLIC_API_MOCKING names are still read as fallbacks.
  */
-export const API_MODE: 'mock' | 'real' =
-  process.env.NEXT_PUBLIC_API_MODE === 'real' ||
-  (!process.env.NEXT_PUBLIC_API_MODE && process.env.NEXT_PUBLIC_API_MOCKING === 'disabled')
-    ? 'real'
-    : 'mock';
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  'http://localhost:4000';
+export const API_MODE: 'mock' | 'real' = process.env.NEXT_PUBLIC_API_MODE === 'real' ? 'real' : 'mock';
+export const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 export const API_BASE_URL = API_URL;
 export const MOCKING = API_MODE === 'mock';
 export const REAL = API_MODE === 'real';
