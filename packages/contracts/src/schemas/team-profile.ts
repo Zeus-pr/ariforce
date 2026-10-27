@@ -1,14 +1,16 @@
 import * as z from 'zod';
 import { DateOnly, Id, ListQuery, Timestamp, page } from './common';
-import { KpiValue } from './kpis';
+import { KpiValue, type KpiKey } from './kpis';
 import { RoleKey } from './roles';
 import { TeamNode, TeamTerritory } from './team';
 
 /**
  * Team member profile (#75): one person in the viewer's reporting subtree. Read-only. No payroll/HR
  * data; contact fields are exactly what GET /v1/team already shows the same viewer.
- * Who: ABM and above (rank >= 2) with `reports:read`, for themselves or anyone strictly below them in
- * their subtree; Director for every hierarchy user. Out of scope = 404.
+ * Who: anyone with a hierarchy role (BM included) may view their OWN profile. Others: ABM and above
+ * (rank >= 2) with `reports:read`, strictly above the person in their own subtree; Director for every
+ * hierarchy user. Non-hierarchy roles (System Admin, Distribution Head, Accountant) get 403.
+ * Out of scope / unknown / non-hierarchy target = 404. See docs/TEAM-PROFILE.md.
  */
 
 export const AttendanceStatus = z
@@ -45,7 +47,7 @@ export const TeamProfile = z
     lastPunchInAt: Timestamp.nullable().meta({ description: 'Latest punch-in on any day' }),
     canSeeExpenses: z.boolean().meta({
       description:
-        'Viewer has expenses:approve or finance:read; performance.expenses is null otherwise',
+        'Own profile, or viewer has expenses:approve or finance:read; performance.expenses is null otherwise',
     }),
   })
   .meta({ id: 'TeamProfile' });
@@ -69,12 +71,23 @@ export const TeamPerformanceQuery = PerformanceRange.refine(ordered, {
   path: ['to'],
 }).meta({ id: 'TeamPerformanceQuery' });
 export type TeamPerformanceQuery = z.infer<typeof TeamPerformanceQuery>;
+/** KPIs computable per ISO week (day-grain views). Month buckets carry every KPI_KEYS entry. */
+export const WEEK_KPI_KEYS = [
+  'call_average',
+  'chemist_call_average',
+  'doctor_visits_per_day',
+  'dcr_compliance_pct',
+  'dcr_on_time_pct',
+  'pob_value',
+] as const satisfies readonly KpiKey[];
 /** Max buckets per request (422 RANGE_TOO_LONG above). */
 export const PERFORMANCE_MAX_BUCKETS = { week: 26, month: 24 } as const;
 
 export const PerformanceBucket = z
   .object({
-    label: z.string().meta({ example: '2026-10 / 2026-W43' }),
+    label: z
+      .string()
+      .meta({ description: 'YYYY-MM (month) or ISO week YYYY-Www', example: '2026-W43' }),
     from: DateOnly,
     to: DateOnly,
     workingDays: z.int(),

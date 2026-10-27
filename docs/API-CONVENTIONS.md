@@ -137,5 +137,6 @@ See docs/SIGNUP.md for the screen states.
 
 ## Leave
 
+- `/v1/team/members/{userId}/*`, see docs/TEAM-PROFILE.md. 403 `FORBIDDEN` (viewing others below ABM/without `reports:read`, non-hierarchy roles); 404 `NOT_FOUND` out of subtree; 422 `RANGE_TOO_LONG` (> 26 weeks / 24 months). Export = binary xlsx/pdf like the expense export.
 - `/v1/leave/*`, see docs/LEAVE.md. Codes: `LEAVE_TYPE_UNKNOWN`, `LEAVE_HALF_DAY_NOT_ALLOWED`, `LEAVE_SPANS_YEARS`, `LEAVE_BACKDATE_WINDOW`, `LEAVE_TOO_FAR_AHEAD`, `LEAVE_NO_WORKING_DAYS`, `LEAVE_INSUFFICIENT_BALANCE` (422); `LEAVE_OVERLAP`, `LEAVE_DCR_EXISTS`, `LEAVE_NOT_CANCELLABLE` (409); `LEAVE_SELF_GRANT` (403). Tour plans and DCRs on approved leave days return 422 `LEAVE_DAY_BLOCKED` with `details.dates`.
 - `AttendanceDay.leave` is `{requestId, typeCode, half} | null`; approved leave without a punch-in is status `leave`.

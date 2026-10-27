@@ -12,6 +12,7 @@ import {
 } from '../schemas/team';
 import * as fx from './fixtures';
 import { KPI_KEYS, type KpiKey } from '../schemas/kpis';
+import { WEEK_KPI_KEYS } from '../schemas/team-profile';
 import {
   TeamMemberChemistPage,
   TeamMemberDoctorPage,
@@ -268,18 +269,30 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
  * Team member profile (#75) mocks. Same scope rules and error codes as the API; performance numbers are
  * deterministic placeholders (shape only), expenses are 0, doctors/chemists come from the fixtures.
  */
+function isoWeek(d: string) {
+  const t = new Date(`${d}T00:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + 3 - ((t.getUTCDay() + 6) % 7));
+  const y = t.getUTCFullYear();
+  const w = 1 + Math.floor((t.getTime() - Date.UTC(y, 0, 1)) / (7 * 86_400_000));
+  return `${y}-W${String(w).padStart(2, '0')}`;
+}
+
 export function teamProfileHandlers(baseUrl: string, who: (r: Request) => Me | undefined) {
   const B = `${baseUrl}/v1/team/members/:userId`;
   const guard = (request: Request, userId: string) => {
     const p = who(request);
     if (!p) return { res: e(401, 'UNAUTHENTICATED', 'Sign in required') };
+    const self = p.id === userId;
+    if (hierarchyRank(p.roles) === 0)
+      return { res: e(403, 'FORBIDDEN', 'Team profiles need a hierarchy role') };
     if (
-      !(p.permissions as string[]).includes('reports:read') ||
-      hierarchyRank(p.roles) < MIN_MANAGER_RANK
+      !self &&
+      (!(p.permissions as string[]).includes('reports:read') ||
+        hierarchyRank(p.roles) < MIN_MANAGER_RANK)
     )
-      return { res: e(403, 'FORBIDDEN', 'Team profiles are for ABM and above') };
+      return { res: e(403, 'FORBIDDEN', 'Only ABM and above with reports:read may view others') };
     const t = emps.find((x) => x.id === userId);
-    if (!t || rank(t) === 0 || !(wide(p) || subtree(p.id).has(userId)))
+    if (!t || rank(t) === 0 || !(self || wide(p) || subtree(p.id).has(userId)))
       return { res: e(404, 'NOT_FOUND', 'Team member not found') };
     return { p, t };
   };
@@ -303,17 +316,7 @@ export function teamProfileHandlers(baseUrl: string, who: (r: Request) => Me | u
     from,
     to,
     workingDays: week ? 6 : 26,
-    metrics: (week
-      ? [
-          'call_average',
-          'chemist_call_average',
-          'doctor_visits_per_day',
-          'dcr_compliance_pct',
-          'dcr_on_time_pct',
-          'pob_value',
-        ]
-      : [...KPI_KEYS]
-    ).map((kpi) => ({
+    metrics: (week ? [...WEEK_KPI_KEYS] : [...KPI_KEYS]).map((kpi) => ({
       kpi: kpi as KpiKey,
       value: null,
       numerator: 0,
@@ -350,9 +353,11 @@ export function teamProfileHandlers(baseUrl: string, who: (r: Request) => Me | u
             leave: null,
           },
           lastPunchInAt: null,
-          canSeeExpenses: (g.p.permissions as string[]).some(
-            (x) => x === 'expenses:approve' || x === 'finance:read',
-          ),
+          canSeeExpenses:
+            g.p.id === g.t.id ||
+            (g.p.permissions as string[]).some(
+              (x) => x === 'expenses:approve' || x === 'finance:read',
+            ),
         }),
       );
     }),
@@ -371,7 +376,12 @@ export function teamProfileHandlers(baseUrl: string, who: (r: Request) => Me | u
           const f = new Date(Date.parse(`${mon}T00:00:00Z`) - i * 7 * 86_400_000);
           const t = new Date(f.getTime() + 6 * 86_400_000);
           buckets.push(
-            bucket(`W-${i}`, f.toISOString().slice(0, 10), t.toISOString().slice(0, 10), true),
+            bucket(
+              isoWeek(f.toISOString().slice(0, 10)),
+              f.toISOString().slice(0, 10),
+              t.toISOString().slice(0, 10),
+              true,
+            ),
           );
         }
       } else {

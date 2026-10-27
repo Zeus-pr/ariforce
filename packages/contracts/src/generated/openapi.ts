@@ -3856,7 +3856,7 @@ export interface components {
       };
       /** @description Latest punch-in on any day */
       lastPunchInAt: string | null;
-      /** @description Viewer has expenses:approve or finance:read; performance.expenses is null otherwise */
+      /** @description Own profile, or viewer has expenses:approve or finance:read; performance.expenses is null otherwise */
       canSeeExpenses: boolean;
     };
     /** @enum {string} */
@@ -3890,7 +3890,10 @@ export interface components {
       total: components['schemas']['PerformanceBucket'];
     };
     PerformanceBucket: {
-      /** @example 2026-10 / 2026-W43 */
+      /**
+       * @description YYYY-MM (month) or ISO week YYYY-Www
+       * @example 2026-W43
+       */
       label: string;
       /**
        * Format: date
@@ -8937,7 +8940,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant) */
+      /** @description FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always */
       403: {
         headers: {
           [name: string]: unknown;
@@ -8993,7 +8996,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant) */
+      /** @description FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always */
       403: {
         headers: {
           [name: string]: unknown;
@@ -9062,7 +9065,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant) */
+      /** @description FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always */
       403: {
         headers: {
           [name: string]: unknown;
@@ -9122,7 +9125,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant) */
+      /** @description FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always */
       403: {
         headers: {
           [name: string]: unknown;
@@ -9180,7 +9183,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant) */
+      /** @description FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always */
       403: {
         headers: {
           [name: string]: unknown;

@@ -41,7 +41,7 @@ const isAdmin = (p: Principal) =>
   p.roles.includes('system_admin') && p.permissions.includes('users:write');
 const DIRECTOR_RANK = ROLE_RANK.director;
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
-type Person = {
+export type Person = {
   id: string;
   name: string;
   email: string;
@@ -74,6 +74,18 @@ export class TeamService {
     private readonly mailer: InviteMailer,
     @Inject(DB) private readonly db: Db,
   ) {}
+
+  /** Read-only helpers for the team member profile (#75); call inside TenantService.run. */
+  peopleFor(tx: Tx) {
+    return this.people(tx);
+  }
+  subtreeOf(all: Map<string, Person>, root: string) {
+    return this.subtree(all, root);
+  }
+  async nodeFor(tx: Tx, all: Map<string, Person>, id: string) {
+    const u = all.get(id);
+    return u ? (await this.nodes(tx, all, [[u, 0]]))[0]! : null;
+  }
 
   private async people(tx: Tx): Promise<Map<string, Person>> {
     const rows = await tx

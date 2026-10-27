@@ -318,6 +318,35 @@ export class KpisService {
     return { workingDays, metrics: keys.map((k) => all[k]()) };
   }
 
+  /**
+   * One person's KPIs for [from, to] (same maths as rollup=self). Caller must already be inside
+   * TenantService.run and must have checked scope. Used by the team member profile (#75).
+   */
+  async userMetrics(
+    tx: Tx,
+    userId: string,
+    from: string,
+    to: string,
+    today: string,
+    keys: KpiKey[],
+  ) {
+    const paths = (
+      await rows<{ path: string }>(
+        tx,
+        sql`select t.path from user_territories ut join territories t on t.id = ut.territory_id
+            where ut.user_id = ${userId} and t.deleted_at is null`,
+      )
+    ).map((r) => r.path);
+    return this.metrics(
+      tx,
+      { userId, territoryId: null, label: '', users: [userId], paths },
+      from,
+      to,
+      today,
+      keys,
+    );
+  }
+
   report(p: Principal, q: Q) {
     return this.tenant.run(p, async (tx): Promise<KpiReport> => {
       const s = await companySettings(tx, p);

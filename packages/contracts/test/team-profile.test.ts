@@ -31,7 +31,8 @@ describe('team profile contracts + mocks', () => {
     expect((await get('abm', p('abm', 'abm'))).status).toBe(200);
     expect((await get('abm', p('abm', 'rbm'))).status).toBe(404);
     expect((await get('director', p('director', 'bm'))).status).toBe(200);
-    expect((await get('bm', p('bm', 'bm'))).status).toBe(403);
+    expect((await get('bm', p('bm', 'bm'))).status).toBe(200);
+    expect((await get('bm', p('bm', 'abm'))).status).toBe(403);
     expect((await get('sysadmin', p('sysadmin', 'bm'))).status).toBe(403);
     expect((await get('accountant', p('accountant', 'bm'))).status).toBe(403);
     expect((await get('director', p('director', 'accountant'))).status).toBe(404);
@@ -45,6 +46,7 @@ describe('team profile contracts + mocks', () => {
       await get('abm', `/v1/team/members/${id('bm')}/performance?granularity=week`)
     ).json();
     expect(perf.buckets).toHaveLength(8);
+    expect(perf.buckets.at(-1).label).toMatch(/^\d{4}-W\d{2}$/);
     expect(perf.buckets[0].metrics.map((m: any) => m.kpi)).not.toContain('coverage_pct');
     const docs: any = await (
       await get('abm', `/v1/team/members/${id('bm')}/doctors?includeTotal=true`)

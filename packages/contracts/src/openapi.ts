@@ -883,7 +883,7 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '200': { description: 'Profile', ...json(TeamProfile) },
             '403': err(
-              'FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant)',
+              'FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always',
             ),
             '404': err('Not in your subtree (or not a hierarchy user)'),
           },
@@ -898,7 +898,7 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '200': { description: 'Series', ...json(TeamPerformance) },
             '403': err(
-              'FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant)',
+              'FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always',
             ),
             '404': err('Not in your subtree (or not a hierarchy user)'),
             '422': err('RANGE_TOO_LONG (max 26 weeks / 24 months), VALIDATION'),
@@ -914,7 +914,7 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '200': { description: 'Page', ...json(TeamMemberDoctorPage) },
             '403': err(
-              'FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant)',
+              'FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always',
             ),
             '404': err('Not in your subtree (or not a hierarchy user)'),
           },
@@ -929,7 +929,7 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '200': { description: 'Page', ...json(TeamMemberChemistPage) },
             '403': err(
-              'FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant)',
+              'FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always',
             ),
             '404': err('Not in your subtree (or not a hierarchy user)'),
           },
@@ -952,7 +952,7 @@ function buildDocument(): OpenApiDocument {
               },
             },
             '403': err(
-              'FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant)',
+              'FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always',
             ),
             '404': err('Not in your subtree (or not a hierarchy user)'),
             '422': err('RANGE_TOO_LONG, VALIDATION'),
