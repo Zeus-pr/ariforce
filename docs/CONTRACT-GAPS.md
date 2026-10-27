@@ -126,3 +126,9 @@ Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the 
 
 ## Exceptions (web)
 - Mock `/v1/me` is not persona-scoped by the x-mock-user middleware; the Exceptions detail sends `x-mock-user` explicitly (mock only) to decide subject vs manager actions. Real mode uses the session.
+
+## Real API read-only check (2026-10-27, :3200 → :4000, no login available)
+- No non-admin credentials were available, and accounts must not be created, so only unauthenticated GETs were run.
+- Every route the web uses returns 401 with `{"error":{"code":"UNAUTHENTICATED","message":"Sign in required"}}` (JSON): /v1/me, /v1/doctors (incl. ?approvalStatus=pending), /v1/chemists, /v1/territories, /v1/allowance-rates, /v1/allowance-places, /v1/notifications, /v1/notifications/unread-count, /v1/products, /v1/exceptions, /v1/exceptions/summary, /v1/exception-rules. Unknown routes return 404 NOT_FOUND, so all of these are mounted. This matches the contract's error envelope.
+- `/health` is not under that path (404); not used by the web.
+- Still unverified against real data: response bodies (approvalStatus values, pagination cursors, the TA/DA, notification, price and exception shapes). This needs a seeded non-admin login.
