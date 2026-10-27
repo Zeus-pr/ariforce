@@ -1,7 +1,7 @@
 # Contract changelog
 
 API contract changes per feature, newest first. Scope: commits reachable from
-`feat/26-doctor-approval` (`e578119`). Endpoint and schema lists were derived by diffing
+`feat/26-doctor-approval` (`e578119`) plus `fix/tp-submit-any-day` (`0bb7b40`), merged at `74ab9a9`. Endpoint and schema lists were derived by diffing
 `docs/api/openapi.json` between consecutive commits; error codes by grepping `apps/api/src` and
 `packages/contracts/src` at each commit. Prose notes come from the feature docs and commit
 messages. Anything not checked that way is marked **unverified**.
@@ -12,17 +12,18 @@ response enums, or changed server behaviour for the same request).
 
 ## Breaking changes
 
-| Feature (commit)                    | Change                                                                                                                                                                                                                  |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Doctor approval #26 (`e578119`)     | `POST /v1/doctors` can now return `409 DOCTOR_DUPLICATE` / `DOCTOR_POSSIBLE_DUPLICATE`; doctors created by non-company-wide users start `pending`; DCR refuses rejected doctors (`422 VALIDATION`, `details.doctorIds`) |
-| TA/DA #39 (`6d66770`)               | `ExpenseCategory` gains `allowance` (response enum widened); `ExpenseLine` gains required `source` and `allowancePlaceId`                                                                                               |
-| POB/RCPA #40 (`72c770a`, `48a135c`) | POB line `value` is computed by the server (`quantity × PTR`, else `null`); a client-sent `value` is ignored. Before, it was stored as sent                                                                             |
-| Invite gaps (`a575db1`)             | `POST /v1/invites/accept`: password minimum 8 → 12; used/expired tokens now `409 INVITE_USED` / `410 INVITE_EXPIRED` instead of `404 INVITE_INVALID`                                                                    |
-| Security #81 (`2789b64`)            | `/docs` and `/openapi.json` are not served when `NODE_ENV=production`                                                                                                                                                   |
-| Security #79 (`4dea14b`)            | Deactivation or role change revokes all sessions; suspended users get `ACCOUNT_SUSPENDED` on sign-in                                                                                                                    |
-| Security #77 (`16e1116`)            | Auth, sign-up and invite-accept routes can return `429 RATE_LIMITED` with `Retry-After`                                                                                                                                 |
-| Health (`a72e145`)                  | `HealthWarning` dropped `companyId` / `companySlug` and became aggregate (`NO_WORK_TYPES` with `count`). Only clients of `0c97952` are affected                                                                         |
-| TP submit (`36c29f5`)               | `POST /v1/tour-plans/{month}/submit` 422 rule changed: weekly offs and past days of the current month (IST) are no longer required                                                                                      |
+| Feature (commit)                                     | Change                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TP submit `EMPTY_PLAN` (`0bb7b40`, merged `74ab9a9`) | **Breaking for web.** `POST /v1/tour-plans/{month}/submit` no longer returns `422` with `details { missingDates, todayIST, weeklyOffDays }`. One planned day is enough; an empty plan returns `422 EMPTY_PLAN`. Past days stay editable; `requiredDates` on the calendar is informational only. Now on this line |
+| Doctor approval #26 (`e578119`)                      | `POST /v1/doctors` can now return `409 DOCTOR_DUPLICATE` / `DOCTOR_POSSIBLE_DUPLICATE`; doctors created by non-company-wide users start `pending`; DCR refuses rejected doctors (`422 VALIDATION`, `details.doctorIds`)                                                                                          |
+| TA/DA #39 (`6d66770`)                                | `ExpenseCategory` gains `allowance` (response enum widened); `ExpenseLine` gains required `source` and `allowancePlaceId`                                                                                                                                                                                        |
+| POB/RCPA #40 (`72c770a`, `48a135c`)                  | POB line `value` is computed by the server (`quantity × PTR`, else `null`); a client-sent `value` is ignored. Before, it was stored as sent                                                                                                                                                                      |
+| Invite gaps (`a575db1`)                              | `POST /v1/invites/accept`: password minimum 8 → 12; used/expired tokens now `409 INVITE_USED` / `410 INVITE_EXPIRED` instead of `404 INVITE_INVALID`                                                                                                                                                             |
+| Security #81 (`2789b64`)                             | `/docs` and `/openapi.json` are not served when `NODE_ENV=production`                                                                                                                                                                                                                                            |
+| Security #79 (`4dea14b`)                             | Deactivation or role change revokes all sessions; suspended users get `ACCOUNT_SUSPENDED` on sign-in                                                                                                                                                                                                             |
+| Security #77 (`16e1116`)                             | Auth, sign-up and invite-accept routes can return `429 RATE_LIMITED` with `Retry-After`                                                                                                                                                                                                                          |
+| Health (`a72e145`)                                   | `HealthWarning` dropped `companyId` / `companySlug` and became aggregate (`NO_WORK_TYPES` with `count`). Only clients of `0c97952` are affected                                                                                                                                                                  |
+| TP submit (`36c29f5`, superseded by `0bb7b40`)       | `POST /v1/tour-plans/{month}/submit` 422 rule changed: weekly offs and past days of the current month (IST) are no longer required                                                                                                                                                                               |
 
 ## Doctor approval #26
 
@@ -124,6 +125,17 @@ response enums, or changed server behaviour for the same request).
 - No path or schema change in OpenAPI for #79/#80/#81; the 429 responses appear in OpenAPI from
   `a575db1`. Breaking as listed above.
 
+## Tour plan submit: one planned day, EMPTY_PLAN
+
+- Branch `fix/tp-submit-any-day`, commit `0bb7b40`; merged into this line with a no-ff merge at
+  `74ab9a9`. No migration. Doc: `TOUR-PLANS.md`.
+- Changed `POST /v1/tour-plans/{month}/submit`: succeeds with at least one day that has an entry;
+  otherwise `422 EMPTY_PLAN`. Supersedes the missing-dates rule of `36c29f5`. Past dates stay
+  editable in a draft. Weekly offs come from `leave_settings.weekly_off_days`.
+- `GET /v1/tour-plans/{month}/calendar` unchanged in shape; `requiredDates` is informational and
+  `requiredDates` / `missingRequiredDates` helpers are deprecated (`hasPlannedDay` replaces them).
+- Breaking for web clients that read `details.missingDates`.
+
 ## Tour plan submit rule and calendar
 
 - Branch `fix/tp-submit-past-days`, commit `36c29f5`. No migration. Doc: `TOUR-PLANS.md`.
@@ -131,10 +143,7 @@ response enums, or changed server behaviour for the same request).
 - Changed `POST /v1/tour-plans/{month}/submit`: `422` with `details { missingDates, todayIST,
 weeklyOffDays }`; required dates are non-weekly-off dates, and in the current month (IST) only
   today and later.
-- **`EMPTY_PLAN` is not on this line.** The "one planned day is enough; `422 EMPTY_PLAN` for an
-  empty plan" rule is commit `0bb7b40` on `fix/tp-submit-any-day`, merged only into
-  `feat/20-real-api` (and the web there expects it). On `e578119` the API still uses the
-  missing-dates rule above.
+- Superseded by `0bb7b40` (see above): the missing-dates 422 no longer applies.
 
 ## Work types seed and health warnings
 
@@ -201,7 +210,6 @@ weeklyOffDays }`; required dates are non-weekly-off dates, and in the current mo
 
 ## Not verified / inconsistencies
 
-- `EMPTY_PLAN` is missing from this line (see Tour plans).
 - `PATCH /v1/doctors/{id}` re-pending and the RCPA error details are from the feature docs only.
 - `GET /v1/users` (`c067e17`) and `GET /v1/approvals` (`ddcb66e`) changed in OpenAPI only in their
   operation text; no parameter or response change was found.
