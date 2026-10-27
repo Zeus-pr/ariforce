@@ -1,16 +1,24 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import {
   EmployeeCreate,
   EmployeeUpdate,
+  INVITE_BULK_MAX,
   Id,
   InviteAccept,
   ManagerAssign,
 } from '@ariforce/contracts';
-import type * as z from 'zod';
+import * as z from 'zod';
 import { CurrentPrincipal, Public } from '../auth/decorators';
 import type { Principal } from '../auth/principal';
 import { ZodPipe } from '../common/zod.pipe';
+import { clientIp } from '../common/client-ip';
+import { enforce, LIMITS } from '../common/rate-limit';
 import { TeamService } from './team.service';
+
+const BulkEnvelope = z.object({
+  employees: z.array(z.unknown()).min(1).max(INVITE_BULK_MAX),
+});
 
 /** Rank/scope rules are enforced in TeamService (docs/RBAC.md "Team and employees"). */
 @Controller({ version: '1' })
@@ -41,6 +49,16 @@ export class TeamController {
     return this.svc.create(p, b);
   }
 
+  /** Rows are validated one by one in the service so a bad row fails alone (#26). */
+  @Post('employees/invite-bulk')
+  @HttpCode(200)
+  inviteBulk(
+    @CurrentPrincipal() p: Principal,
+    @Body(new ZodPipe(BulkEnvelope)) b: z.infer<typeof BulkEnvelope>,
+  ) {
+    return this.svc.inviteBulk(p, b.employees);
+  }
+
   @Patch('employees/:id')
   update(
     @CurrentPrincipal() p: Principal,
@@ -59,7 +77,11 @@ export class TeamController {
   @Public()
   @Post('invites/accept')
   @HttpCode(200)
-  accept(@Body(new ZodPipe(InviteAccept)) b: z.infer<typeof InviteAccept>) {
+  async accept(
+    @Body(new ZodPipe(InviteAccept)) b: z.infer<typeof InviteAccept>,
+    @Req() req: Request,
+  ) {
+    await enforce([{ key: `invite-accept:ip:${clientIp(req) ?? '?'}`, ...LIMITS.inviteAccept() }]);
     return this.svc.accept(b.token, b.password);
   }
 }

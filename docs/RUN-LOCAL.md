@@ -34,6 +34,14 @@ returns "tenant/user not found".) The API never uses prepared statements and set
 
 ## 1. Start the API (port 4000)
 
+> With `NODE_ENV=production` the API validates its environment at boot and exits listing the
+> problem variable **names** (never values): `DATABASE_URL`, `BETTER_AUTH_SECRET` (>= 32 chars),
+> `BETTER_AUTH_URL` (https), `WEB_ORIGIN` (https origins), `TRUST_PROXY`, `R2_ACCOUNT_ID`,
+> `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`; optional ones are type-checked
+> (`R2_ENDPOINT`/`R2_PUBLIC_URL` https, `PORT`, `DB_POOL_MAX`, `SIGNUP_RATE_*` integers,
+> `EXPENSE_APPROVAL_LEVELS` 1|2) and `INVITE_RETURN_LINK=true` is refused. Local dev/test stay
+> lenient. Names: `.env.example`.
+
 ```sh
 pnpm install                                 # first time only
 pnpm -F @ariforce/contracts build && pnpm -F @ariforce/db build

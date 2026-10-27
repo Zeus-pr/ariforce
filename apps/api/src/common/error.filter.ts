@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, HttpException, Logger, type ExceptionFilter } from '@nestjs/common';
 import type { Response } from 'express';
+import { RateLimitedException } from './rate-limit';
 
 const CODES: Record<number, string> = {
   400: 'BAD_REQUEST',
@@ -30,6 +31,7 @@ export class ErrorFilter implements ExceptionFilter {
         ? b.message.join('; ')
         : String(b.message ?? err.message);
       const code = typeof b.code === 'string' ? b.code : (CODES[status] ?? 'ERROR');
+      if (err instanceof RateLimitedException) res.setHeader('Retry-After', String(err.retryAfter));
       res.status(status).json({
         error: { code, message, ...(b.details === undefined ? {} : { details: b.details }) },
       });

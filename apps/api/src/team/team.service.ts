@@ -1,7 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
+import { revokeUserSessions } from '../auth/revoke';
 import {
   EmployeeCreate,
   EmployeeUpdate,
+  type InviteBulkItemResult,
   SignupApprove,
   MIN_MANAGER_RANK,
   ROLE_RANK,
@@ -68,6 +70,7 @@ export class InviteMailer {
 
 @Injectable()
 export class TeamService {
+  private readonly log = new Logger('TeamService');
   constructor(
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
@@ -332,7 +335,7 @@ export class TeamService {
       userId,
       expiresAt: expiresAt.toISOString(),
       inviteUrl:
-        process.env.INVITE_RETURN_LINK === 'true'
+        process.env.INVITE_RETURN_LINK === 'true' && process.env.NODE_ENV !== 'production'
           ? `${base}/invite?token=${encodeURIComponent(token)}`
           : null,
     };
@@ -395,6 +398,100 @@ export class TeamService {
     });
   }
 
+  /**
+   * Bulk create + invite (#26). Every row runs the single create() (same role/scope rules, own
+   * transaction, employee.created + employee.invited audit), so one bad row never blocks the rest.
+   * The batch itself is audited once as employee.invite_bulk with per-row status (no emails).
+   */
+  async inviteBulk(p: Principal, rows: unknown[]) {
+    if (!isAdmin(p) && hierarchyRank(p.roles) < MIN_MANAGER_RANK)
+      throw err(403, 'FORBIDDEN', 'Only ABM and above can add employees');
+    type Row = z.infer<typeof InviteBulkItemResult>;
+    const results: Row[] = [];
+    const seen = new Set<string>();
+    for (const [index, raw] of rows.entries()) {
+      const rawEmail = (raw as { email?: unknown } | null)?.email;
+      const base: Row = {
+        index,
+        email: typeof rawEmail === 'string' ? rawEmail : null,
+        status: 'failed',
+        code: null,
+        message: null,
+        employeeId: null,
+        inviteId: null,
+        inviteUrl: null,
+      };
+      const parsed = EmployeeCreate.safeParse(raw);
+      if (!parsed.success) {
+        const i = parsed.error.issues[0];
+        results.push({
+          ...base,
+          code: 'VALIDATION',
+          message: i ? `${i.path.join('.') || 'row'}: ${i.message}` : 'Invalid',
+        });
+        continue;
+      }
+      const keys = [`e:${parsed.data.email.toLowerCase()}`];
+      if (parsed.data.employeeCode) keys.push(`c:${parsed.data.employeeCode}`);
+      if (keys.some((k) => seen.has(k))) {
+        results.push({
+          ...base,
+          status: 'skipped',
+          code: 'DUPLICATE_IN_BATCH',
+          message: 'Email or employee code repeated earlier in this batch',
+        });
+        continue;
+      }
+      keys.forEach((k) => seen.add(k));
+      try {
+        const r = await this.create(p, parsed.data);
+        results.push({
+          ...base,
+          status: 'invited',
+          employeeId: r.employee.id,
+          inviteId: r.invite.id,
+          inviteUrl: r.invite.inviteUrl,
+        });
+      } catch (e) {
+        if (!(e instanceof HttpException)) {
+          this.log.error(`invite-bulk row ${index} failed: ${(e as Error).name}`);
+          results.push({ ...base, code: 'INTERNAL', message: 'Unexpected error' });
+          continue;
+        }
+        const body = e.getResponse() as { code?: string; message?: string };
+        const conflict = e.getStatus() === 409;
+        results.push({
+          ...base,
+          status: conflict ? 'skipped' : 'failed',
+          code: body.code ?? (conflict ? 'CONFLICT' : 'ERROR'),
+          message: body.message ?? e.message,
+        });
+      }
+    }
+    const count = (s: Row['status']) => results.filter((r) => r.status === s).length;
+    const summary = {
+      invited: count('invited'),
+      skipped: count('skipped'),
+      failed: count('failed'),
+    };
+    await this.tenant.run(p, (tx) =>
+      this.audit.record(tx, p, 'employee.invite_bulk', {
+        entityType: 'user',
+        entityId: p.userId,
+        after: {
+          summary,
+          rows: results.map(({ index, status, code, employeeId }) => ({
+            index,
+            status,
+            code,
+            employeeId,
+          })),
+        },
+      }),
+    );
+    return { results, summary };
+  }
+
   update(p: Principal, id: string, b: z.infer<typeof EmployeeUpdate>) {
     return this.tenant.run(p, async (tx) => {
       const all = await this.people(tx);
@@ -442,6 +539,17 @@ export class TeamService {
         b.status === 'suspended' ? 'employee.deactivated' : 'employee.updated',
         { entityType: 'user', entityId: id, before: t, after: b },
       );
+      // #79: deactivation or a role change signs the user out everywhere.
+      const statusOff = b.status !== undefined && b.status !== t.status && b.status !== 'active';
+      const roleChanged = b.role !== undefined && !(t.roles.length === 1 && t.roles[0] === b.role);
+      if (statusOff || roleChanged) {
+        const n = await revokeUserSessions(tx, id);
+        await this.audit.record(tx, p, 'auth.sessions_revoked', {
+          entityType: 'user',
+          entityId: id,
+          after: { reason: statusOff ? `status:${b.status}` : 'role_change', sessions: n },
+        });
+      }
       const all2 = await this.people(tx);
       const [n] = await this.nodes(tx, all2, [[all2.get(id)!, 1]]);
       return n!;
@@ -483,13 +591,25 @@ export class TeamService {
     });
   }
 
+  /** Why a token is unusable (#26): unknown/revoked → INVALID, redeemed → USED, expired → EXPIRED. */
+  private async inviteFailure(tokenHash: string) {
+    const r = await this.db.execute<{ s: string | null }>(
+      sql`select invite_status(${tokenHash}) as s`,
+    );
+    const s = r.rows[0]?.s;
+    if (s === 'used') return err(409, 'INVITE_USED', 'This invite has already been used');
+    if (s === 'expired')
+      return err(410, 'INVITE_EXPIRED', 'This invite has expired; ask for a new one');
+    return err(404, 'INVITE_INVALID', 'This invite link is not valid');
+  }
+
   /** Public: redeem a single-use invite, create the auth identity, activate the user. */
   async accept(token: string, password: string) {
     const r = await this.db.execute<{ invite_id: string; company_id: string; user_id: string }>(
       sql`select invite_id, company_id, user_id from invite_resolve(${sha256(token)})`,
     );
     const m = r.rows[0];
-    if (!m) throw err(404, 'INVITE_INVALID', 'Invite is invalid, used, revoked or expired');
+    if (!m) throw await this.inviteFailure(sha256(token));
     const hash = await hashPassword(password);
     return withTenant(this.db, { companyId: m.company_id, userId: m.user_id }, async (tx) => {
       const claimed = await tx
@@ -497,9 +617,9 @@ export class TeamService {
         .set({ usedAt: new Date() })
         .where(and(eq(userInvites.id, m.invite_id), isNull(userInvites.usedAt)))
         .returning({ id: userInvites.id });
-      if (!claimed.length) throw err(404, 'INVITE_INVALID', 'Invite already used');
+      if (!claimed.length) throw err(409, 'INVITE_USED', 'This invite has already been used');
       const [u] = await tx.select().from(users).where(eq(users.id, m.user_id));
-      if (!u || u.authUserId) throw err(409, 'CONFLICT', 'Account already exists');
+      if (!u || u.authUserId) throw err(409, 'INVITE_USED', 'This invite has already been used');
       const taken = await tx
         .select({ id: authUser.id })
         .from(authUser)
