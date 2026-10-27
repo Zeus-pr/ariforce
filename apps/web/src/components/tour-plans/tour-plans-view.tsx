@@ -6,6 +6,7 @@ import {
   requiredDates,
   istDate,
   DEFAULT_WEEKLY_OFF_DAYS,
+  hasPlannedDay,
   type Approval,
   type TourPlan,
   type WorkType,
@@ -33,6 +34,7 @@ import { cn } from '@ariforce/ui/lib/utils';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
 import { useRole } from '@/components/shell/role-context';
 import { api, apiReady, toApiError } from '@/lib/api';
+import { saveMessage } from '@/lib/leave/model';
 import { isApprover } from '@/lib/roles';
 import { datesOf, dayLabel, monthLabel, shiftMonth, thisMonthIST, weekdayMon } from './month';
 
@@ -118,7 +120,11 @@ function Planner({ initialMonth }: { initialMonth: string }) {
         };
   const today = c.todayIST;
   const required = useMemo(() => new Set(c.requiredDates), [c.requiredDates]);
+  // Fill helper targets: unplanned working days (weekly offs and, this month, past days skipped).
   const missing = dates.filter((d) => required.has(d) && !byDate.get(d)?.entries.length);
+  // Submit needs at least one planned day; full coverage is not required.
+  const plannedCount = dates.filter((d) => byDate.get(d)?.entries.length).length;
+  const canSubmit = !!plan && hasPlannedDay(plan.days);
   const notRequired = (d: string) =>
     required.has(d)
       ? null
@@ -148,17 +154,8 @@ function Planner({ initialMonth }: { initialMonth: string }) {
     }
     setBusy(false);
     if (r.error) {
-      // Server may still require dates the web treats as optional (past days, weekly off):
-      // show its message and the dates it listed, never swallow it.
-      const e = toApiError(r);
-      const list = (r.error as { error?: { details?: { missingDates?: string[] } } }).error?.details
-        ?.missingDates;
-      return toast.error(e.message, {
-        description: list?.length
-          ? `Missing: ${list.slice(0, 8).map(dayLabel).join(', ')}${list.length > 8 ? '…' : ''}`
-          : undefined,
-        duration: 10000,
-      });
+      // Only failure is 422 EMPTY_PLAN (no day has an entry); show the server's message.
+      return toast.error(toApiError(r).message, { duration: 10000 });
     }
     setPlan(r.data);
   }
@@ -173,7 +170,7 @@ function Planner({ initialMonth }: { initialMonth: string }) {
       body: { days, version: plan.version },
     });
     if (r.error) {
-      toast.error(toApiError(r).message);
+      toast.error(saveMessage(toApiError(r)), { duration: 10000 });
       return false;
     }
     setPlan(r.data);
@@ -185,17 +182,8 @@ function Planner({ initialMonth }: { initialMonth: string }) {
     const r = await api.POST('/v1/tour-plans/{month}/submit', { params: { path: { month } } });
     setBusy(false);
     if (r.error) {
-      // Server may still require dates the web treats as optional (past days, weekly off):
-      // show its message and the dates it listed, never swallow it.
-      const e = toApiError(r);
-      const list = (r.error as { error?: { details?: { missingDates?: string[] } } }).error?.details
-        ?.missingDates;
-      return toast.error(e.message, {
-        description: list?.length
-          ? `Missing: ${list.slice(0, 8).map(dayLabel).join(', ')}${list.length > 8 ? '…' : ''}`
-          : undefined,
-        duration: 10000,
-      });
+      // Only failure is 422 EMPTY_PLAN (no day has an entry); show the server's message.
+      return toast.error(toApiError(r).message, { duration: 10000 });
     }
     setPlan(r.data);
     setApprovalsKey((k) => k + 1);
@@ -250,11 +238,9 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                     className="text-sm text-muted-foreground tabular-nums"
                     data-testid="tp-missing"
                   >
-                    {missing.length
-                      ? `${missing.length} of ${required.size} working days not planned`
-                      : required.size
-                        ? 'Every working day planned'
-                        : 'No days left to plan'}
+                    {plannedCount === 0
+                      ? 'No days planned yet'
+                      : `${plannedCount} ${plannedCount === 1 ? 'day' : 'days'} planned`}
                   </span>
                   {missing.length > 0 && (
                     <Button
@@ -267,7 +253,8 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                   )}
                   <Button
                     onClick={submit}
-                    disabled={busy || missing.length > 0}
+                    disabled={busy || !canSubmit}
+                    title={!canSubmit ? 'Plan at least one day first' : undefined}
                     data-testid="tp-submit"
                   >
                     Submit for approval

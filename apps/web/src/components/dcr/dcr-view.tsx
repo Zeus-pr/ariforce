@@ -21,6 +21,7 @@ import { cn } from '@ariforce/ui/lib/utils';
 import { dateLabel, timeIST, todayIST } from '@/components/attendance/format';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
 import { api, apiReady, MOCKING, toApiError } from '@/lib/api';
+import { saveMessage } from '@/lib/leave/model';
 import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
 
 /** What the call form needs from a product. */
@@ -125,7 +126,7 @@ function DcrDay({ today }: { today: string }) {
       },
     });
     setSaving(false);
-    if (r.error) return toast.error(toApiError(r).message);
+    if (r.error) return toast.error(saveMessage(toApiError(r)), { duration: 10000 });
     setDcr(r.data);
     toast.success(submit ? `DCR for ${dateLabel(date)} submitted` : 'Draft saved');
   }

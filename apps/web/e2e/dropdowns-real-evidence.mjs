@@ -64,6 +64,13 @@ async function run(view, emptyMasters) {
       plan = { ...base(id(31)), userId: id(99), month, kind: 'mtp', status: 'draft', days: b.days, submittedAt: null, decidedAt: null, decidedBy: null, decisionComment: null };
       return json(plan);
     }
+    if (m === 'POST' && u.pathname === `/v1/tour-plans/${month}/submit`) {
+      // Server rule since 0bb7b40: at least one planned day, no full coverage.
+      if (!plan?.days?.some((d) => d.entries.length)) return json({ error: { code: 'EMPTY_PLAN', message: 'Add at least one day to the plan before submitting' } }, 422);
+      plan = { ...plan, status: 'submitted', submittedAt: T };
+      bodies.submitted = true;
+      return json(plan);
+    }
     if (m === 'PUT' && u.pathname === '/v1/dcrs') {
       const b = r.request().postDataJSON();
       bodies.dcr = b;
@@ -99,7 +106,8 @@ async function run(view, emptyMasters) {
   await p.goto(`${BASE}/tour-plans`, { waitUntil: 'networkidle' });
   await p.getByTestId('tp-start').click();
   await p.getByTestId('tp-missing').waitFor();
-  check((await p.getByTestId('tp-missing').textContent()) === '1 of 1 working days not planned', `${view} real tp: missing count from GET /v1/tour-plans/{month}/calendar requiredDates`);
+  check((await p.getByTestId('tp-missing').textContent()) === 'No days planned yet', `${view} real tp: informational count with nothing planned`);
+  check(await p.getByTestId('tp-submit').isDisabled(), `${view} real tp: submit disabled with 0 planned days`);
   await p.locator(`[data-testid=tp-day][data-date="${today}"]`).click();
   await open('tp-wt');
   check((await p.getByRole('option').count()) === 3, `${view} real tp-wt: lists the 3 work types`);
@@ -111,6 +119,11 @@ async function run(view, emptyMasters) {
   await p.getByTestId('tp-editor').waitFor({ state: 'hidden' });
   const e = bodies.tp?.days?.find((d) => d.date === today)?.entries?.[0];
   check(e && e.workTypeId === WT[0].id && JSON.stringify(e.territoryIds) === JSON.stringify([TERR[1].id]) && e.session && Array.isArray(e.jointWorkUserIds), `${view} real PUT /v1/tour-plans/{month}: entry ${JSON.stringify(e)}`);
+  check((await p.getByTestId('tp-missing').textContent()) === '1 day planned', `${view} real tp: "1 day planned"`);
+  check(await p.getByTestId('tp-submit').isEnabled(), `${view} real tp: submit enabled with 1 planned day`);
+  await p.getByTestId('tp-submit').click();
+  await p.waitForFunction(() => document.querySelector('[data-testid=tp-status]')?.textContent === 'Waiting for approval', null, { timeout: 10000 });
+  check(bodies.submitted === true, `${view} real tp: submit with 1 planned day works (POST /submit)`);
 
   // DCR: choose work type + territory, save draft, check the PUT body shape.
   await nav(p, '/dcr');

@@ -93,9 +93,9 @@ Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the 
 - **One 404 for every failure.** Invalid, used, revoked and expired all return 404, so the page shows one "This link no longer works" message. A reason code would let it say "expired, ask for a new one".
 - The browser calls `/v1/invites/accept` with no session, so API CORS must allow the web origin for that route.
 
-## 27. Tour plan submit: past days and weekly offs (resolved by fix/tp-submit-past-days 36c29f5)
+## 27. Tour plan submit rule (resolved by fix/tp-submit-any-day 0bb7b40, supersedes 36c29f5)
 
-- Before: at 8e6b0f9 `submit()` required every date except full approved-leave days. Weekly offs and past dates were both required, so a plan started mid-month got 422.
-- Now (merged here): the server and the MSW mock require only dates that are not a weekly off and not fully on approved leave. For the current month, only today (IST) onward counts. Past months are unchanged.
-- Web: missing-days count, "Fill unplanned days" and labels ("Weekly off", "Past") come from `GET /v1/tour-plans/{month}/calendar` `requiredDates`/`weeklyOffDays`. If that endpoint is missing (404), the web applies the same rule from the contracts' `requiredDates()`. A submit 422 shows the server message and the listed `missingDates`.
-- Still open: the API on :4000 must run 36c29f5 or later, or current-month submits keep failing on past dates. The web shows that 422 message.
+- Rule now: `POST /v1/tour-plans/{month}/submit` succeeds when at least one day has an entry. Partial months, past-only plans, and empty weekly-off or leave days are all fine. The only failure is 422 `EMPTY_PLAN` (no details). The old 422 VALIDATION with `missingDates` is gone.
+- Web: Submit is enabled when the plan is editable and `hasPlannedDay(plan.days)`. The header shows an informational "N days planned" with no blocking count. "Fill unplanned days" is an optional helper that skips weekly offs (and, this month, past days). Past days stay clickable and editable. The "Weekly off" and "Past" labels are informational. A submit error shows the server message (`EMPTY_PLAN`). Nothing reads `missingDates` any more.
+- `GET /v1/tour-plans/{month}/calendar`: the web uses `todayIST`/`weeklyOffDays`. `requiredDates` only drives the fill helper and labels.
+- Live: the API on :4000 runs 7f2a55f, which includes this rule. No open API change.

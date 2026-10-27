@@ -43,15 +43,13 @@ for (const view of ['desktop', 'mobile']) {
   await page.getByTestId('tp-calendar').waitFor();
   const days = await page.getByTestId('tp-day').count();
   check(days >= 28 && days <= 31, `${view}: calendar has every date (${days})`);
-  check(await page.getByTestId('tp-submit').isDisabled(), `${view}: submit blocked until every date is planned`);
-  check(/of \d+ working days not planned/.test(await page.getByTestId('tp-missing').textContent()), `${view}: unplanned count shown`);
+  check(await page.getByTestId('tp-submit').isDisabled(), `${view}: submit disabled with 0 planned days`);
+  check((await page.getByTestId('tp-missing').textContent()) === 'No days planned yet', `${view}: informational count with nothing planned`);
   // Only today (IST) onward and not Sundays are required: past days and Sundays are muted and not counted.
   const todayIst = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
   const all = await page.getByTestId('tp-day').evaluateAll((els) => els.map((e) => [e.dataset.date, e.dataset.optional ?? '']));
   const sun = (d) => new Date(`${d}T00:00:00Z`).getUTCDay() === 0;
-  const wantReq = all.filter(([d]) => d >= todayIst && !sun(d)).length;
   check(all.every(([d, o]) => (sun(d) ? o === 'weekly-off' : d < todayIst ? o === 'past' : o === '')), `${view}: past days marked "Past", Sundays "Weekly off", the rest required`);
-  check((await page.getByTestId('tp-missing').textContent()).includes(`of ${wantReq} working days`), `${view}: current month counts only today onward without Sundays (${wantReq})`);
 
   await page.getByTestId('tp-day').first().click();
   await page.getByTestId('tp-wt').click();
@@ -60,14 +58,19 @@ for (const view of ['desktop', 'mobile']) {
   await page.getByRole('option').first().click();
   await page.getByTestId('tp-save').click();
   await page.getByTestId('tp-editor').waitFor({ state: 'hidden' });
-  check((await page.getByTestId('tp-day').first().getAttribute('data-empty')) === 'false', `${view}: day 1 saved via PUT /v1/tour-plans/{month}`);
+  check((await page.getByTestId('tp-day').first().getAttribute('data-empty')) === 'false', `${view}: day 1 (a past or off day is still clickable) saved via PUT /v1/tour-plans/{month}`);
+  check((await page.getByTestId('tp-missing').textContent()) === '1 day planned', `${view}: "1 day planned"`);
+  check(await page.getByTestId('tp-submit').isEnabled(), `${view}: submit enabled with 1 planned day`);
 
   await page.getByTestId('tp-fill').click();
   await page.getByTestId('tp-wt').click();
   await page.getByRole('option', { name: 'Meeting' }).click();
   await page.getByTestId('tp-save').click();
   await page.getByTestId('tp-editor').waitFor({ state: 'hidden' });
-  check((await page.getByTestId('tp-missing').textContent()) === 'Every working day planned', `${view}: bulk fill planned the rest`);
+  const after = await page.getByTestId('tp-day').evaluateAll((els) => els.map((e) => [e.dataset.optional ?? '', e.dataset.empty]));
+  check(after.filter(([o]) => o === '').every(([, e]) => e === 'false'), `${view}: bulk fill planned every working day`);
+  check(after.filter(([o]) => o === 'weekly-off').slice(1).every(([, e]) => e === 'true'), `${view}: Fill unplanned days skipped weekly-off days`);
+  check((await page.getByTestId('tp-missing').textContent()) === `${after.filter(([, e]) => e === 'false').length} days planned`, `${view}: count is informational ("N days planned")`);
   check((await page.locator('[data-testid=tp-day][data-optional=past][data-empty=true]').count()) > 0 || todayIst.endsWith('-01'), `${view}: Fill unplanned days skipped past days`);
   check(await page.getByTestId('tp-submit').isEnabled(), `${view}: submit enabled`);
   await page.screenshot({ path: path.join(OUT, `planned-${view}.png`), fullPage: true });
@@ -108,8 +111,16 @@ for (const view of ['desktop', 'mobile']) {
   const nx = await page.getByTestId('tp-day').evaluateAll((els) => els.map((e) => [e.dataset.date, e.dataset.optional ?? '']));
   const nReq = nx.filter(([d]) => !sun(d)).length;
   check(nx.every(([d, o]) => (sun(d) ? o === 'weekly-off' : o === '')), `${view}: next month: only Sundays optional`);
-  const nm = await page.getByTestId('tp-missing').textContent();
-  check(nm.includes(`of ${nReq} working days`) || nm === 'Every working day planned', `${view}: next month requires all ${nReq} non-Sunday dates (${nm})`);
+  // Submit with exactly one planned day works (rule since fix/tp-submit-any-day 0bb7b40).
+  await page.locator('[data-testid=tp-day]:not([data-optional])').nth(2).click();
+  await page.getByTestId('tp-wt').click();
+  await page.getByRole('option', { name: 'Meeting' }).click();
+  await page.getByTestId('tp-save').click();
+  await page.getByTestId('tp-editor').waitFor({ state: 'hidden' });
+  check(await page.getByTestId('tp-submit').isEnabled(), `${view}: next month: submit enabled with 1 of ${nReq} days planned`);
+  await page.getByTestId('tp-submit').click();
+  await page.waitForFunction(() => document.querySelector('[data-testid=tp-status]')?.textContent === 'Waiting for approval', null, { timeout: 10000 });
+  check(true, `${view}: next month: submit with 1 planned day works`);
   await page.screenshot({ path: path.join(OUT, `next-month-${view}.png`), fullPage: true });
   // Past month: the server's rule leaves past months unchanged (every non-Sunday date required).
   await page.getByRole('button', { name: 'Previous month' }).click();
