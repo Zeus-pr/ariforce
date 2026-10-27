@@ -53,6 +53,14 @@ describe('security headers (#81)', () => {
       .get('/health')
       .set('Origin', 'https://evil.example.test');
     expect(bad.headers['access-control-allow-origin']).toBeUndefined();
+    // (cors still sends Access-Control-Expose-Headers here, but without Allow-Origin the browser
+    // exposes nothing to that origin.)
+    // Allowed origin: the web app may read Retry-After (429) and Content-Disposition (exports).
+    const got = await request(app.getHttpServer())
+      .get('/health')
+      .set('Origin', 'https://app.example.test');
+    expect(got.headers['access-control-allow-origin']).toBe('https://app.example.test');
+    expect(got.headers['access-control-expose-headers']).toBe('Retry-After,Content-Disposition');
     await app.close();
   });
 
