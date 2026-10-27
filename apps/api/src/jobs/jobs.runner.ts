@@ -27,6 +27,8 @@ type Claimed = {
   job_payload: Record<string, unknown>;
   job_attempts: number;
   job_max_attempts: number;
+  /** Per-claim lock token (0030); finish/fail need it. */
+  job_lock_token: string;
 };
 
 const num = (name: string, def: number) => {
@@ -46,7 +48,8 @@ export const runnerEnabled = () =>
 
 /**
  * DB-backed job runner (#35). Polls jobs_claim() (FOR UPDATE SKIP LOCKED, one statement), runs each
- * handler in its own transaction (withTenant for company jobs), then jobs_finish / jobs_fail.
+ * handler in its own transaction (withTenant for company jobs), then jobs_finish / jobs_fail with
+ * the per-claim lock token. Claim/cleanup/system enqueue must run outside a tenant transaction (0030).
  */
 @Injectable()
 export class JobsRunner implements OnApplicationBootstrap, BeforeApplicationShutdown {
@@ -111,11 +114,11 @@ export class JobsRunner implements OnApplicationBootstrap, BeforeApplicationShut
     const r = await this.db.execute<Claimed>(
       sql`select * from jobs_claim(${worker}, ${limit}, ${lockTimeout})`,
     );
-    for (const j of r.rows) await this.runJob(j, worker);
+    for (const j of r.rows) await this.runJob(j);
     return r.rows.length;
   }
 
-  private async runJob(j: Claimed, worker: string) {
+  private async runJob(j: Claimed) {
     const handler = this.handlers.get(j.job_type);
     try {
       if (!handler) throw new Error(`No handler for job type ${j.job_type}`);
@@ -128,11 +131,11 @@ export class JobsRunner implements OnApplicationBootstrap, BeforeApplicationShut
         });
       if (j.job_company_id) await withTenant(this.db, { companyId: j.job_company_id }, ctx);
       else await this.db.transaction(ctx);
-      await this.db.execute(sql`select jobs_finish(${j.job_id}::uuid, ${worker})`);
+      await this.db.execute(sql`select jobs_finish(${j.job_id}::uuid, ${j.job_lock_token})`);
     } catch (e) {
       const msg = e instanceof Error ? `${e.name}: ${e.message}` : 'Unknown error';
       const res = await this.db.execute<{ jobs_fail: string | null }>(
-        sql`select jobs_fail(${j.job_id}::uuid, ${worker}, ${msg}, ${backoffSeconds(j.job_attempts)})`,
+        sql`select jobs_fail(${j.job_id}::uuid, ${j.job_lock_token}, ${msg}, ${backoffSeconds(j.job_attempts)})`,
       );
       const status = res.rows[0]?.jobs_fail;
       if (status === 'dead')

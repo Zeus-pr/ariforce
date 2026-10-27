@@ -37,12 +37,57 @@ attempts=attempts+1 WHERE id IN (SELECT id ... WHERE (status='queued' AND run_at
 (status='running' AND locked_at < now()-timeout) ORDER BY run_at LIMIT n FOR UPDATE SKIP LOCKED)
 RETURNING *`. Two workers never get the same job; a crashed worker's job is reclaimed after the
   lock timeout.
-- `jobs_finish(id, worker)` → `done` (only if still locked by this worker).
+- `jobs_finish(id, lock_token)` → `done` (only if still locked with this token; see Hardening).
 - `jobs_fail(id, worker, error, retry_after_s)` → back to `queued` with `run_at = now()+retry`, or
   `dead` once `attempts >= max_attempts`. Errors are truncated to 500 chars.
 - `jobs_enqueue_system(type, payload, run_at, dedupe_key)`: system jobs (company null), e.g. cleanup.
 - `jobs_cleanup(read_days, done_days)`: deletes read notifications older than `read_days` (90) and
   `done` jobs older than `done_days` (14). Dead jobs are kept for inspection.
+
+### Hardening (migration `0030_jobs_functions_hardening`)
+
+0028 is applied live and is not edited; 0030 replaces the function bodies (`CREATE OR REPLACE`,
+`jobs_claim` is dropped and re-created because its result gained a column) and re-applies grants.
+
+**Threat model.** Every API process, request handlers and the runner alike, connects as `ariforce_app`
+through the transaction pooler. The SECURITY DEFINER functions run as the owner and bypass RLS, so
+a bug in request code, or SQL injection, could call them with arbitrary arguments. Risks in 0028:
+finishing/failing any job by guessing a worker name (`host:pid:8 hex`), claiming other companies'
+jobs and reading their payloads, enqueuing arbitrary system jobs (company null) that the runner
+then executes without a tenant, and calling `jobs_cleanup(0, 0)` to wipe all read notifications.
+
+**Chosen fix (option b, safe by construction).** Option (a), a NOLOGIN `ariforce_worker` role
+entered with `SET LOCAL ROLE`, was skipped: `ariforce_app` would need membership in it, and
+membership is per role, not per code path, so any request transaction (or injected SQL) could run
+`SET LOCAL ROLE ariforce_worker` too. It would add a role to provision without closing the hole.
+A runner secret checked against a DB setting was skipped too: it would be a new secret to provision
+and rotate, and the app role can read anything it can pass in, so it only helps against injection
+that cannot read env vars. Instead:
+
+- `jobs_claim`, `jobs_cleanup` and `jobs_enqueue_system` call `jobs_assert_runner()` and fail with
+  `42501` inside a tenant transaction (`app.current_company_id` set, i.e. every `withTenant` /
+  request transaction). This blocks honest misuse from request code. It is **not** a boundary
+  against arbitrary SQL, which can leave the setting empty.
+- `jobs_claim` stores a per-job lock token `worker/<random uuid>` in `locked_by` and returns it as
+  `job_lock_token`. `jobs_finish` / `jobs_fail` need that exact token (the worker name alone no
+  longer works), the job must still be `running`, and inside a tenant transaction the job must
+  belong to that tenant. A job nobody claimed, or one claimed by another worker, cannot be completed
+  or failed. Lock timeout has a 30 s floor and retry delay is capped at 1 day.
+- `jobs_enqueue_system` accepts only known system job types (`maintenance.cleanup`), payloads up to
+  4 KB and `run_at` at most 7 days ahead. Company jobs have no function: they are plain INSERTs
+  under RLS, so they can only be enqueued for the caller's own company (direct inserts of system
+  jobs are refused by RLS as well).
+- `jobs_cleanup` floors win over arguments: read notifications are kept at least 30 days and `done`
+  jobs at least 1 day, whatever is passed (null → 90 / 14). At most 50 000 rows per table per call;
+  the daily job catches up. Unread notifications and `dead` jobs are never deleted, and there is no
+  per-company delete.
+
+**Residual risk.** Arbitrary SQL as `ariforce_app` can still claim queued jobs (delaying them until
+the lock timeout and reading their payloads) and run cleanup at the floors. Closing that needs a
+separate login (a worker-only DB user and pool, e.g. `JOBS_DATABASE_URL`), a deployment change for
+later. Deploy note: the new runner code passes `job_lock_token`. An old runner against 0030 can
+still claim, but its `jobs_finish` returns false and the job is retried after the lock timeout;
+deploy API and migration together.
 
 ## Runner (`apps/api/src/jobs`)
 
@@ -55,7 +100,7 @@ RETURNING *`. Two workers never get the same job; a crashed worker's job is recl
 - Handlers are idempotent (notifications use `dedupe_key` + `ON CONFLICT DO NOTHING`).
 - Graceful shutdown: stop polling, wait for the in-flight batch (Nest `enableShutdownHooks`).
 - A job left `running` longer than `JOBS_LOCK_TIMEOUT_S` (default 300) is reclaimed by the next
-  claim (attempts +1); the stale worker's `jobs_finish` then returns false.
+  claim (attempts +1) with a new lock token; the stale worker's `jobs_finish` then returns false.
 - Once a day (any runner tick) it enqueues `maintenance.cleanup` with `dedupe_key = YYYY-MM-DD`, so
   only one instance does it.
 

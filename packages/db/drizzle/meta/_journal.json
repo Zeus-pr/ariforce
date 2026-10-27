@@ -211,6 +211,13 @@
       "when": 1793094896404,
       "tag": "0029_dcr_call_rcpa",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793095643001,
+      "tag": "0030_jobs_functions_hardening",
+      "breakpoints": true
     }
   ]
 }
