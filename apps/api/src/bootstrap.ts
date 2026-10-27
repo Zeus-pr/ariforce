@@ -2,6 +2,7 @@ import { VersioningType, type INestApplication } from '@nestjs/common';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import { toNodeHandler } from 'better-auth/node';
 import express, { type Express } from 'express';
+import helmet from 'helmet';
 import { AUTH_BASE_PATH, webOrigins } from './auth/auth';
 
 /** Our own public routes under /v1/auth, handled by Nest rather than better-auth. */
@@ -13,6 +14,9 @@ import { AuthService } from './auth/auth.service';
 import { CLIENT_IP_HEADER, clientIp } from './common/client-ip';
 import { LIMITS, rateLimitStore } from './common/rate-limit';
 
+/** Production hides /docs and /openapi.json and enables HSTS. */
+export const isProd = () => process.env.NODE_ENV === 'production';
+
 /**
  * Shared app configuration used by main.ts and tests. The app must be created with
  * `bodyParser: false`: better-auth reads the raw body, so it is mounted first and JSON parsing after.
@@ -20,6 +24,27 @@ import { LIMITS, rateLimitStore } from './common/rate-limit';
 export function configureApp(app: INestApplication) {
   const server = app.getHttpAdapter().getInstance() as Express;
   server.set('trust proxy', process.env.TRUST_PROXY ?? 'loopback');
+  server.disable('x-powered-by');
+  // Security headers for a JSON API (#81): nothing may be framed, loaded or executed from our responses.
+  const strict = helmet({
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        defaultSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'none'"],
+        formAction: ["'none'"],
+      },
+    },
+    crossOriginResourcePolicy: { policy: 'same-site' },
+    referrerPolicy: { policy: 'no-referrer' },
+    hsts: isProd() ? { maxAge: 31_536_000, includeSubDomains: true } : false,
+  });
+  // The dev-only API reference page loads its UI from a CDN: same headers minus CSP there.
+  const docsPage = helmet({ contentSecurityPolicy: false, hsts: false });
+  server.use((req, res, next) =>
+    !isProd() && req.path.startsWith('/docs') ? docsPage(req, res, next) : strict(req, res, next),
+  );
   // CORS must run before the better-auth handler so sign-in/out also get the headers.
   app.enableCors({ origin: webOrigins(), credentials: true });
   const authHandler = toNodeHandler(app.get(AuthService).auth);
@@ -59,7 +84,8 @@ export function configureApp(app: INestApplication) {
   });
   app.use(express.json({ limit: '1mb' }));
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
-  app.use('/docs', apiReference({ url: '/openapi.json', theme: 'default' }));
+  // API reference only outside production (#81); /openapi.json is hidden by its controller.
+  if (!isProd()) app.use('/docs', apiReference({ url: '/openapi.json', theme: 'default' }));
   app.enableShutdownHooks();
   return app;
 }

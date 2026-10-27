@@ -72,3 +72,11 @@ Hardening from the Cutly audit (`docs/CUTLY-LESSONS-CHECKLIST.md`). One section 
 5. Cache rule: **bypass cache** for `api.<domain>/v1/*` (authenticated JSON must never be cached).
 6. SSL/TLS Full (strict), minimum TLS 1.2, Always Use HTTPS, HSTS.
 7. Optional: Turnstile on sign-up (`TURNSTILE_SECRET`), Cloudflare Access in front of any admin tools.
+
+## HTTP security headers and API docs (#81)
+
+- Helmet is applied to every response: `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: no-referrer`, `Cross-Origin-Resource-Policy: same-site`, COOP; `X-Powered-By` is removed.
+- `Strict-Transport-Security` (1 year, includeSubDomains) is sent only when `NODE_ENV=production`.
+- `/docs` (Scalar reference) and `/openapi.json` return 404 in production. In dev they are served; `/docs` skips CSP because the reference UI loads from a CDN.
+- The spec is generated from `packages/contracts` (`pnpm -F @ariforce/contracts openapi` / `openapi:check`), which never needs the HTTP route.
+- CORS is unchanged and strict: only origins listed in `WEB_ORIGIN` are reflected, with credentials; other origins get no `Access-Control-Allow-Origin`.
