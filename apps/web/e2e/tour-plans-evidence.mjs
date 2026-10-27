@@ -44,7 +44,14 @@ for (const view of ['desktop', 'mobile']) {
   const days = await page.getByTestId('tp-day').count();
   check(days >= 28 && days <= 31, `${view}: calendar has every date (${days})`);
   check(await page.getByTestId('tp-submit').isDisabled(), `${view}: submit blocked until every date is planned`);
-  check(/of \d+ days not planned/.test(await page.getByTestId('tp-missing').textContent()), `${view}: unplanned count shown`);
+  check(/of \d+ working days not planned/.test(await page.getByTestId('tp-missing').textContent()), `${view}: unplanned count shown`);
+  // Only today (IST) onward and not Sundays are required: past days and Sundays are muted and not counted.
+  const todayIst = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
+  const all = await page.getByTestId('tp-day').evaluateAll((els) => els.map((e) => [e.dataset.date, e.dataset.optional ?? '']));
+  const sun = (d) => new Date(`${d}T00:00:00Z`).getUTCDay() === 0;
+  const wantReq = all.filter(([d]) => d >= todayIst && !sun(d)).length;
+  check(all.every(([d, o]) => (sun(d) ? o === 'weekly-off' : d < todayIst ? o === 'past' : o === '')), `${view}: past days marked "Past", Sundays "Weekly off", the rest required`);
+  check((await page.getByTestId('tp-missing').textContent()).includes(`of ${wantReq} working days`), `${view}: current month counts only today onward without Sundays (${wantReq})`);
 
   await page.getByTestId('tp-day').first().click();
   await page.getByTestId('tp-wt').click();
@@ -60,7 +67,8 @@ for (const view of ['desktop', 'mobile']) {
   await page.getByRole('option', { name: 'Meeting' }).click();
   await page.getByTestId('tp-save').click();
   await page.getByTestId('tp-editor').waitFor({ state: 'hidden' });
-  check((await page.getByTestId('tp-missing').textContent()) === 'Every day planned', `${view}: bulk fill planned the rest`);
+  check((await page.getByTestId('tp-missing').textContent()) === 'Every working day planned', `${view}: bulk fill planned the rest`);
+  check((await page.locator('[data-testid=tp-day][data-optional=past][data-empty=true]').count()) > 0 || todayIst.endsWith('-01'), `${view}: Fill unplanned days skipped past days`);
   check(await page.getByTestId('tp-submit').isEnabled(), `${view}: submit enabled`);
   await page.screenshot({ path: path.join(OUT, `planned-${view}.png`), fullPage: true });
 
@@ -92,6 +100,29 @@ for (const view of ['desktop', 'mobile']) {
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByTestId('tp-month').waitFor();
   check((await page.getByTestId('tp-approvals').count()) === 0, `${view}: BM has no approvals panel`);
+  // Future month: every non-Sunday date is required.
+  await page.getByRole('button', { name: 'Next month' }).click();
+  await page.getByTestId('tp-empty').waitFor({ timeout: 10000 });
+  await page.getByTestId('tp-start').click();
+  await page.getByTestId('tp-calendar').waitFor();
+  const nx = await page.getByTestId('tp-day').evaluateAll((els) => els.map((e) => [e.dataset.date, e.dataset.optional ?? '']));
+  const nReq = nx.filter(([d]) => !sun(d)).length;
+  check(nx.every(([d, o]) => (sun(d) ? o === 'weekly-off' : o === '')), `${view}: next month: only Sundays optional`);
+  const nm = await page.getByTestId('tp-missing').textContent();
+  check(nm.includes(`of ${nReq} working days`) || nm === 'Every working day planned', `${view}: next month requires all ${nReq} non-Sunday dates (${nm})`);
+  await page.screenshot({ path: path.join(OUT, `next-month-${view}.png`), fullPage: true });
+  // Past month: the server's rule leaves past months unchanged (every non-Sunday date required).
+  await page.getByRole('button', { name: 'Previous month' }).click();
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Previous month' }).click();
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(800);
+  if (await page.getByTestId('tp-empty').isVisible()) {
+    await page.getByTestId('tp-start').click();
+    await page.getByTestId('tp-calendar').waitFor();
+  }
+  const pv = await page.getByTestId('tp-day').evaluateAll((els) => els.map((e) => [e.dataset.date, e.dataset.optional ?? '']));
+  check(pv.every(([d, o]) => (sun(d) ? o === 'weekly-off' : o === '')), `${view}: past month: Sundays "Weekly off", other days required (server rule: past months unchanged)`);
   await ctx.close();
 }
 

@@ -21,6 +21,7 @@ import {
 } from '@ariforce/ui/components/sheet';
 import { toast } from '@ariforce/ui/components/sonner';
 import { ROLE_LABEL, ROLE_SHORT, roleLevel, type Role, type SalesRole } from '@/lib/roles';
+import { InviteOne } from '@/components/invites/invite-links';
 import { teamAdapter } from '@/lib/team-adapter/adapter';
 import { AdapterError, type Employee, type EmployeeInput, type Hq } from '@/lib/team-adapter/types';
 
@@ -204,6 +205,7 @@ function Form({
           )}
         </div>
       )}
+      {edit?.invited && !self && <InviteOne role={role} employee={edit} sentBefore={false} />}
       {!self && (
         <SheetFooter className="mt-auto flex-row flex-wrap justify-between gap-2">
           {edit ? (

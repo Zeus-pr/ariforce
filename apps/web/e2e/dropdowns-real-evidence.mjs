@@ -21,7 +21,11 @@ const WT = [
   { ...base(id(12)), code: 'MEET', name: 'Meeting', kind: 'non_field', requiresCalls: false, active: true },
   { ...base(id(13)), code: 'LEAVE', name: 'Leave', kind: 'leave', requiresCalls: false, active: true },
 ];
-const TERR = [{ ...base(id(21)), parentId: null, level: 'hq', code: 'KOL', name: 'Kolkata HQ', path: id(21), centroid: null }];
+// Like the API's scoped list for a BM: the parent area plus the BM's leaf HQ; only the leaf is offered.
+const TERR = [
+  { ...base(id(20)), parentId: null, level: 'area', code: 'SB', name: 'South Bengal Area', path: id(20), centroid: null },
+  { ...base(id(21)), parentId: id(20), level: 'hq', code: 'KOL', name: 'Kolkata HQ', path: `${id(20)}.${id(21)}`, centroid: null },
+];
 const page_ = (items) => ({ items, nextCursor: null });
 const browser = await engine.launch();
 /** Client-side nav through the sidebar; on mobile the links live in a closed sheet, so open it first. */
@@ -49,6 +53,8 @@ async function run(view, emptyMasters) {
     const json = (b, status = 200) => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
     if (m === 'GET' && u.pathname === '/v1/work-types') return json(page_(emptyMasters ? [] : WT));
     if (m === 'GET' && u.pathname === '/v1/territories') return json(page_(emptyMasters ? [] : TERR));
+    if (m === 'GET' && u.pathname === `/v1/tour-plans/${month}/calendar`)
+      return json({ month, todayIST: today, weeklyOffDays: [0], requiredDates: [today] });
     if (m === 'GET' && u.pathname === `/v1/tour-plans/${month}`)
       return plan ? json(plan) : json({ error: { code: 'NOT_FOUND', message: 'Not found' } }, 404);
     if (m === 'POST' && u.pathname === `/v1/tour-plans/${month}/copy`) return json({ error: { code: 'NOT_FOUND', message: 'No standard plan' } }, 404);
@@ -84,7 +90,7 @@ async function run(view, emptyMasters) {
     await p.goto(`${BASE}/dcr`, { waitUntil: 'networkidle' });
     await p.getByTestId('dcr-wt').waitFor({ timeout: 15000 });
     await open('dcr-wt');
-    check(await p.getByTestId('select-empty').isVisible(), `${view} real dcr: empty work-types list explains itself instead of a dead dropdown`);
+    check((await p.getByTestId('select-empty').textContent()).includes('Ask your administrator'), `${view} real dcr: empty work types say what to do`);
     await ctx.close();
     return;
   }
@@ -92,16 +98,19 @@ async function run(view, emptyMasters) {
   // Tour plan: start a blank month, plan today, check the PUT body shape.
   await p.goto(`${BASE}/tour-plans`, { waitUntil: 'networkidle' });
   await p.getByTestId('tp-start').click();
+  await p.getByTestId('tp-missing').waitFor();
+  check((await p.getByTestId('tp-missing').textContent()) === '1 of 1 working days not planned', `${view} real tp: missing count from GET /v1/tour-plans/{month}/calendar requiredDates`);
   await p.locator(`[data-testid=tp-day][data-date="${today}"]`).click();
   await open('tp-wt');
   check((await p.getByRole('option').count()) === 3, `${view} real tp-wt: lists the 3 work types`);
   await choose('Field work');
   await open('tp-terr');
+  check((await p.getByRole('option').allTextContents()).join('|') === 'Kolkata HQ', `${view} real tp-terr: offers only the BM's leaf HQ, not the parent area`);
   await choose('Kolkata HQ');
   await p.getByTestId('tp-save').click();
   await p.getByTestId('tp-editor').waitFor({ state: 'hidden' });
   const e = bodies.tp?.days?.find((d) => d.date === today)?.entries?.[0];
-  check(e && e.workTypeId === WT[0].id && JSON.stringify(e.territoryIds) === JSON.stringify([TERR[0].id]) && e.session && Array.isArray(e.jointWorkUserIds), `${view} real PUT /v1/tour-plans/{month}: entry ${JSON.stringify(e)}`);
+  check(e && e.workTypeId === WT[0].id && JSON.stringify(e.territoryIds) === JSON.stringify([TERR[1].id]) && e.session && Array.isArray(e.jointWorkUserIds), `${view} real PUT /v1/tour-plans/{month}: entry ${JSON.stringify(e)}`);
 
   // DCR: choose work type + territory, save draft, check the PUT body shape.
   await nav(p, '/dcr');

@@ -84,3 +84,18 @@ Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the 
 ## 25. Expense claims list has no paging or search (feat/52-expense-claims ddcb66e)
 
 `GET /v1/expense-claims` filters on the server by `month`, `status` and `userId` but has no `cursor`/`limit`/`total` and no `q`. The web filters by month + status on the server and shows the whole month's list; an approver with a large team gets every claim for the month in one response. Ask: `cursor`, `limit` (default 50), `total`, and `q` (claimant name or employee code), same shape as the masters lists. "Team" also hides the viewer's own claims client-side; a `mine=to_decide` style filter (as on DCR/Tour Plan) would move that to the server.
+
+## 26. Employee invites (POST /v1/employees/{id}/invite, POST /v1/invites/accept)
+
+- **No bulk endpoint.** "Invite all pending" on My Team sends one `POST /v1/employees/{id}/invite` per person, in order, and shows each result. Proposed: `POST /v1/employees/invites {userIds[]}` → `{results:[{userId, invite|error}]}`.
+- **Links only with `INVITE_RETURN_LINK=true`.** Without it `inviteUrl` is null and the web says "sent by email". The link is built from `WEB_ORIGIN`, which must be the web origin (for example `http://localhost:3200`), or the copied link opens the wrong host.
+- **Password minimum differs.** The accept schema allows 8 characters; the web asks for 12 (same as sign-up). Proposed: raise the API minimum to 12.
+- **One 404 for every failure.** Invalid, used, revoked and expired all return 404, so the page shows one "This link no longer works" message. A reason code would let it say "expired, ask for a new one".
+- The browser calls `/v1/invites/accept` with no session, so API CORS must allow the web origin for that route.
+
+## 27. Tour plan submit: past days and weekly offs (resolved by fix/tp-submit-past-days 36c29f5)
+
+- Before: at 8e6b0f9 `submit()` required every date except full approved-leave days. Weekly offs and past dates were both required, so a plan started mid-month got 422.
+- Now (merged here): the server and the MSW mock require only dates that are not a weekly off and not fully on approved leave. For the current month, only today (IST) onward counts. Past months are unchanged.
+- Web: missing-days count, "Fill unplanned days" and labels ("Weekly off", "Past") come from `GET /v1/tour-plans/{month}/calendar` `requiredDates`/`weeklyOffDays`. If that endpoint is missing (404), the web applies the same rule from the contracts' `requiredDates()`. A submit 422 shows the server message and the listed `missingDates`.
+- Still open: the API on :4000 must run 36c29f5 or later, or current-month submits keep failing on past dates. The web shows that 422 message.

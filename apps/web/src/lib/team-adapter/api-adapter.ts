@@ -12,6 +12,7 @@ import {
   type EmployeeInput,
   type EmployeePatch,
   type Hq,
+  type InviteResult,
   type OrgTree,
   type Page,
 } from './types';
@@ -34,6 +35,7 @@ const toEmployee = (n: Node, rootId?: string): Employee => {
     hqId: n.territories[0]?.id ?? null,
     managerId: n.id === rootId ? null : n.managerId,
     active: n.status !== 'suspended',
+    invited: n.status === 'invited',
   };
 };
 
@@ -65,6 +67,10 @@ async function load() {
   hqCache = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
   return data;
 }
+
+/** The API builds links from WEB_ORIGIN; a relative one is made absolute for copying. */
+const absolute = (u: string | null | undefined) =>
+  !u ? null : /^https?:\/\//.test(u) ? u : new URL(u, window.location.origin).toString();
 
 export const apiTeamAdapter = {
   async tree(_role: Role): Promise<OrgTree> {
@@ -126,6 +132,13 @@ export const apiTeamAdapter = {
     });
     if (error || !data) fail(error);
     return toEmployee(data as unknown as Node);
+  },
+  /** POST /v1/employees/{id}/invite: revokes earlier links. */
+  async invite(_role: Role, id: string): Promise<InviteResult> {
+    const { data, error } = await api.POST('/v1/employees/{id}/invite', { params: { path: { id } } });
+    if (error || !data) fail(error);
+    const name = [...(last?.nodes ?? []), ...(last?.unassigned ?? [])].find((n) => n.id === id)?.name ?? '';
+    return { id, name, expiresAt: data.expiresAt, inviteUrl: absolute(data.inviteUrl) };
   },
   creatableRoles(role: Role): SalesRole[] {
     return (

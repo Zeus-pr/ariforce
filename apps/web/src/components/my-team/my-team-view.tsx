@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronsDownUp, ChevronsUpDown, Search, UserPlus } from 'lucide-react';
+import { ChevronsDownUp, ChevronsUpDown, Search, Send, UserPlus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
@@ -21,6 +21,7 @@ import { teamAdapter } from '@/lib/team-adapter/adapter';
 import type { Employee, Hq, OrgTree } from '@/lib/team-adapter/types';
 import { EmployeeSheet, type SheetState } from './employee-sheet';
 import { OrgTree as Tree } from './org-tree';
+import { InviteAll } from '@/components/invites/invite-links';
 
 export function MyTeamView() {
   const { role } = useRole();
@@ -57,6 +58,7 @@ export function MyTeamView() {
     };
   }, [q]);
   const [sheet, setSheet] = useState<SheetState>(null);
+  const [inviteAll, setInviteAll] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -80,6 +82,7 @@ export function MyTeamView() {
   }, [load]);
 
   const hqMap = useMemo(() => new Map(teamAdapter.allHqs().map((h) => [h.id, h])), [tree]);
+  const pending = useMemo(() => (tree ? tree.nodes.filter((e) => e.id !== tree.rootId && e.invited && e.active) : []), [tree]);
   const below = useMemo(() => (tree ? tree.nodes.filter((e) => e.id !== tree.rootId) : []), [tree]);
   const managers = useMemo(
     () => (tree ? tree.nodes.filter((e) => e.role !== 'business_manager' && e.active) : []),
@@ -121,9 +124,16 @@ export function MyTeamView() {
           {below.length} {below.length === 1 ? 'person' : 'people'} in your team ·{' '}
           {below.filter((e) => e.active).length} active
         </p>
-        <Button onClick={() => setSheet({ mode: 'add' })} data-testid="add-employee">
-          <UserPlus /> Add employee
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {pending.length > 0 && (
+            <Button variant="outline" onClick={() => setInviteAll(true)} data-testid="invite-all">
+              <Send /> Invite all pending ({pending.length})
+            </Button>
+          )}
+          <Button onClick={() => setSheet({ mode: 'add' })} data-testid="add-employee">
+            <UserPlus /> Add employee
+          </Button>
+        </div>
       </div>
 
       <Card className="gap-0 py-0 shadow-xs" data-testid="location-summary">
@@ -238,6 +248,7 @@ export function MyTeamView() {
         </ul>
       </Card>
 
+      {inviteAll && <InviteAll role={role} people={pending} onClose={() => setInviteAll(false)} />}
       <EmployeeSheet
         state={sheet}
         onClose={() => setSheet(null)}

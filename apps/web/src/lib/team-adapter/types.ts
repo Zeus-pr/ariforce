@@ -19,6 +19,8 @@ export type Employee = {
   /** null = no reporting manager yet (the Unassigned group). */
   managerId: string | null;
   active: boolean;
+  /** Has no login yet (status invited): can be sent an invite link. */
+  invited?: boolean;
 };
 
 /** GET /v1/org/tree: the caller plus everyone under them, flat with managerId links. */
@@ -40,3 +42,6 @@ export class AdapterError extends Error {
     super(message);
   }
 }
+
+/** POST /v1/employees/{id}/invite. `inviteUrl` is null when the API emails it (INVITE_RETURN_LINK off). */
+export type InviteResult = { id: string; name: string; expiresAt: string; inviteUrl: string | null };

@@ -159,7 +159,7 @@ function DcrDay({ today }: { today: string }) {
           <Label htmlFor="dcr-wt">Worked on</Label>
           <Select value={wt} onValueChange={setWt} disabled={locked}>
             <SelectTrigger id="dcr-wt" className="w-full" data-testid="dcr-wt"><SelectValue placeholder="Choose" /></SelectTrigger>
-            <SelectContent>{workTypes.length === 0 && <EmptyOptions>No work types set up yet. An admin can add them in Masters.</EmptyOptions>}{workTypes.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
+            <SelectContent>{workTypes.length === 0 && <EmptyOptions>No work types are set up yet. Ask your administrator.</EmptyOptions>}{workTypes.map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         {field && (
@@ -167,7 +167,7 @@ function DcrDay({ today }: { today: string }) {
             <Label htmlFor="dcr-terr">Territory</Label>
             <Select value={terr} onValueChange={setTerr} disabled={locked}>
               <SelectTrigger id="dcr-terr" className="w-full" data-testid="dcr-terr"><SelectValue placeholder="Choose" /></SelectTrigger>
-              <SelectContent>{leaves.length === 0 && <EmptyOptions>No territories assigned to you yet.</EmptyOptions>}{leaves.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+              <SelectContent>{leaves.length === 0 && <EmptyOptions>No territories are assigned to you yet. Ask your administrator.</EmptyOptions>}{leaves.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
             </Select>
           </div>
         )}
@@ -289,7 +289,7 @@ function CallDialog({
             <Label htmlFor="call-doctor">Doctor</Label>
             <Select value={doctorId} onValueChange={setDoctorId}>
               <SelectTrigger id="call-doctor" className="w-full" data-testid="call-doctor"><SelectValue placeholder="Choose" /></SelectTrigger>
-              <SelectContent>{doctors.length === 0 && <EmptyOptions>No doctors in your territory yet.</EmptyOptions>}{doctors.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+              <SelectContent>{doctors.length === 0 && <EmptyOptions>No doctors in your territory yet. Ask your manager to add them.</EmptyOptions>}{doctors.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <fieldset className="flex flex-col gap-2">

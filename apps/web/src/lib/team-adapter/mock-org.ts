@@ -46,6 +46,8 @@ const emp = (
 /** Director → VP → GM → SM → ZBM → 2 RBMs → 4 ABMs → 9 BMs, plus people with no manager yet. */
 export function seedOrg(): Employee[] {
   n = 0;
+  const INVITED = new Set(['Riya Sarkar', 'Moumita Halder', 'Pritam Bose', 'Debarati Nandi']);
+  const done = (list: Employee[]) => list.map((e) => (INVITED.has(e.name) ? { ...e, invited: true } : e));
   const dir = emp('Arindam Basu', 'director', 'kol-dunlop', null, 'org-director');
   const vp = emp('Sanjay Mitra', 'vice_president', 'kol-dunlop', dir.id, 'org-vp');
   const gm = emp('Debashis Roy', 'general_manager', 'kol-dunlop', vp.id, 'org-gm');
@@ -57,7 +59,7 @@ export function seedOrg(): Employee[] {
   const abmH = emp('Sourav Mondal', 'area_business_manager', 'howrah', rbmS.id);
   const abmD = emp('Tanmoy Banerjee', 'area_business_manager', 'durgapur', rbmN.id);
   const abmM = emp('Prosenjit Saha', 'area_business_manager', 'malda', rbmN.id);
-  return [
+  return done([
     dir,
     vp,
     gm,
@@ -83,7 +85,7 @@ export function seedOrg(): Employee[] {
     emp('Rajib Biswas', 'business_manager', 'bankura', null),
     emp('Sudip Karmakar', 'business_manager', 'suri', null),
     emp('Abhishek Guha', 'area_business_manager', 'burdwan', null),
-  ];
+  ]);
 }
 
 /** Where each mock sign-in sits in the sample org. */

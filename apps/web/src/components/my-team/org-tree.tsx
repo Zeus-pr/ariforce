@@ -245,6 +245,11 @@ export function OrgTree({
                   <Badge variant="secondary" className="font-normal" title={e.role}>
                     {ROLE_SHORT[e.role]}
                   </Badge>
+                  {e.invited && (
+                    <Badge variant="outline" className="font-normal text-muted-foreground" data-testid="node-no-login">
+                      No login yet
+                    </Badge>
+                  )}
                   <span className="text-xs text-muted-foreground tabular-nums">
                     <Highlight text={e.employeeCode} q={query} />
                   </span>

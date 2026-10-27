@@ -7,12 +7,14 @@ import { roleLevel, type Role, type SalesRole } from '@/lib/roles';
 import { REAL } from '@/lib/api';
 import { apiTeamAdapter } from './api-adapter';
 import { HQS, ME_BY_ROLE, seedOrg } from './mock-org';
+import { issueMockInvite } from '@/lib/invites/mock-store';
 import {
   AdapterError,
   type Employee,
   type EmployeeInput,
   type EmployeePatch,
   type Hq,
+  type InviteResult,
   type OrgTree,
   type Page,
 } from './types';
@@ -132,6 +134,7 @@ const mockTeamAdapter = {
       id: `emp-new-${n}`,
       employeeCode: `ARI${2000 + n}`,
       active: true,
+      invited: true,
     };
     rows().push(e);
     return { ...e };
@@ -144,6 +147,17 @@ const mockTeamAdapter = {
     check(role, patch, target);
     Object.assign(target, patch);
     return { ...target };
+  },
+  /** POST /v1/employees/{id}/invite (mock: link returned, like INVITE_RETURN_LINK=true). */
+  async invite(role: Role, id: string): Promise<InviteResult> {
+    await delay();
+    const self = me(role);
+    const target = rows().find((e) => e.id === id);
+    if (!target || target.id === self.id || (target.managerId !== null && !subtreeIds(rows(), self.id).has(id)))
+      throw new AdapterError('This person is not in your team.');
+    if (!target.invited) throw new AdapterError(`${target.name} already has a login.`);
+    const { token, expiresAt } = issueMockInvite(id);
+    return { id, name: target.name, expiresAt, inviteUrl: `${window.location.origin}/invite?token=${token}` };
   },
   /** Roles a caller may create: strictly below their own. */
   creatableRoles(role: Role): SalesRole[] {
