@@ -161,7 +161,7 @@ export const NAV: NavItem[] = [
     title: 'Exceptions',
     href: '/exceptions',
     icon: CircleAlert,
-    roles: SALES,
+    roles: ROLES.filter((r) => (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('field:read')),
     section: 'intelligence',
   },
   {
@@ -186,6 +186,14 @@ export const NAV: NavItem[] = [
     href: '/admin/product-prices',
     icon: Tags,
     roles: ['system_admin'],
+    section: 'admin',
+  },
+  {
+    slug: 'exception-rules',
+    title: 'Exception rules',
+    href: '/settings/exception-rules',
+    icon: CircleAlert,
+    roles: ROLES.filter((r) => (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('settings:write')),
     section: 'admin',
   },
   {

@@ -18,7 +18,7 @@ const seed = (page, names, territoryOf) =>
       list = await (await fetch(`${base}?limit=1`, { headers: h })).json().catch(() => null);
       if (!list?.items) await new Promise((r) => setTimeout(r, 300));
     }
-    const { id, version, createdAt, updatedAt, deletedAt, approvalStatus, ...rest } = list.items[0];
+    const { id: _i, version: _v, createdAt: _c, updatedAt: _u, deletedAt: _d, approvalStatus: _a, ...rest } = list.items[0];
     if (territoryOf) {
       const me = await (await fetch('http://localhost:4000/v1/me', { headers: { 'x-mock-user': territoryOf } })).json();
       if (me.territoryIds?.[0]) rest.territoryId = me.territoryIds[0];

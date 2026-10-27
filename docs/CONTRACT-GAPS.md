@@ -123,3 +123,6 @@ Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the 
 - The mock has no doctor rejection flow (all fixtures `approved`, POST gives `pending`), so "rejected = disabled in the DCR picker" and the 422 `details.doctorIds` message are verified by code path only.
 - The web mock-permission guard blocks master writes by role, so e2e seeds pending doctors from a Director session with an RBM `x-mock-user` header.
 - Territory choice for the day stays a dropdown of the user's own HQs (already scoped and short; type-ahead works); the outlet picker has a Region / HQ filter over all territories in scope.
+
+## Exceptions (web)
+- Mock `/v1/me` is not persona-scoped by the x-mock-user middleware; the Exceptions detail sends `x-mock-user` explicitly (mock only) to decide subject vs manager actions. Real mode uses the session.
