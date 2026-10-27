@@ -173,7 +173,7 @@ The server enforces every rule in `apps/api/src/team/team.service.ts`, and the m
 
 ### System admin creates directors and other employees (2026-10-27)
 
-- A `system_admin` holding `users:write` may create (`POST /v1/employees`), edit and re-invite **any hierarchy role, including `director`**. Every action is audit-logged (`employee.created`, `employee.invited`).
+- A `system_admin` holding `users:write` may create (`POST /v1/employees`, `/invite-bulk`), edit and re-invite **any role**: every hierarchy role including `director`, plus `distribution_head`, `accountant` and another `system_admin`, on any territory in the company. Functional roles need no territory and never have a manager (422). Every action is audit-logged (`employee.created`, `employee.invited`).
 - The system admin is outside the reporting line, so no manager is set by default. A `director` never has a manager: passing `managerId` for a director returns 422.
 - Other managers keep the strict rule: they can only create roles below their own, inside their own subtree.
 - `POST /v1/employees/{id}/invite` also works for an existing employee row that has no login yet (for example imported users). The row goes back to `invited` until the invite is accepted. Users who already have a login get 409.

@@ -83,6 +83,19 @@ export const UserSummary = z
     managerId: Id.nullable(),
     territoryIds: z.array(Id),
     status: z.enum(['invited', 'active', 'suspended', 'pending', 'rejected']),
+    hasLogin: z
+      .boolean()
+      .optional()
+      .meta({ description: 'True once the person has a sign-in (invite accepted or linked)' }),
+    inviteStatus: z.enum(['none', 'pending', 'expired', 'accepted']).optional().meta({
+      description:
+        'accepted = has a login; pending/expired = latest open invite; none = never invited or invite revoked',
+    }),
+    inviteExpiresAt: z.iso
+      .datetime()
+      .nullable()
+      .optional()
+      .meta({ description: 'Expiry of the latest open (unused, unrevoked) invite' }),
   })
   .meta({ id: 'UserSummary' });
 export type UserSummary = z.infer<typeof UserSummary>;
