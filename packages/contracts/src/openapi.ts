@@ -105,6 +105,8 @@ import {
   Doctor,
   DoctorCategory,
   DoctorCreate,
+  DoctorDuplicateCheck,
+  DoctorDuplicateResult,
   DoctorListQuery,
   DoctorUpdate,
   OutletListQuery,
@@ -237,6 +239,7 @@ function crud(
   name: string,
   query: z.ZodObject = CodeNameListQuery,
   importable = false,
+  createConflict?: string,
 ): ZodOpenApiPathsObject {
   const imp: ZodOpenApiPathsObject = importable ? importPath(tag, base, name) : {};
   return {
@@ -256,6 +259,7 @@ function crud(
         requestBody: json(create),
         responses: {
           '201': { description: 'Created', ...json(item) },
+          ...(createConflict ? { '409': err(createConflict) } : {}),
           '422': err('Validation failed'),
         },
       }),
@@ -311,7 +315,7 @@ export function mastersPermissions(path: string, method: string): string[] | und
   if (!seg || !MASTER_SEGMENTS.has(seg)) return undefined;
   const read = masterReadPermission(seg);
   const write = seg === 'territories' ? 'territories:write' : 'masters:write';
-  if (method === 'get') return [read];
+  if (method === 'get' || (seg === 'doctors' && rest === 'duplicate-check')) return [read];
   return rest === 'import' ? ['imports:write', write] : [write];
 }
 
@@ -522,7 +526,21 @@ function buildDocument(): OpenApiDocument {
         'Doctor',
         DoctorListQuery,
         true,
+        'DOCTOR_DUPLICATE: same registration number (cannot be overridden); DOCTOR_POSSIBLE_DUPLICATE: same name (without "Dr.") + pincode, re-send with allowPossibleDuplicate: true. details.matches: DoctorDuplicate[]. Field-added doctors are created pending with an approval request (docs/DOCTOR-APPROVAL.md)',
       ),
+      '/v1/doctors/duplicate-check': {
+        post: op({
+          tags: ['Doctors'],
+          operationId: 'checkDoctorDuplicates',
+          summary:
+            'Existing doctors (company-wide) matching registration no. or name + pincode, for the add-doctor form (#26)',
+          requestBody: json(DoctorDuplicateCheck),
+          responses: {
+            '200': { description: 'Matches, strong first', ...json(DoctorDuplicateResult) },
+            '422': err('Validation failed'),
+          },
+        }),
+      },
       ...crud(
         'Chemists',
         '/v1/chemists',

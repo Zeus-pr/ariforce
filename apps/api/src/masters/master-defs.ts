@@ -155,6 +155,9 @@ export const MASTERS: Record<string, MasterDef> = {
       q.territoryId ? inSubtree(doctors.territoryId, String(q.territoryId)) : undefined,
       q.specialtyId ? eq(doctors.specialtyId, String(q.specialtyId)) : undefined,
       q.categoryId ? eq(doctors.categoryId, String(q.categoryId)) : undefined,
+      q.approvalStatus
+        ? eq(doctors.approvalStatus, q.approvalStatus as 'pending' | 'approved' | 'rejected')
+        : undefined,
     ],
     fromRow: withLocation,
     toRow: locationToRow,

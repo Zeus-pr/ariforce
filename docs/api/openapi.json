@@ -1325,6 +1325,19 @@
               "description": "UUIDv7 identifier",
               "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
             }
+          },
+          {
+            "in": "query",
+            "name": "approvalStatus",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected"
+              ],
+              "description": "Field-added doctors start pending until their manager decides (#26); company-wide roles add approved doctors. Read-only."
+            }
           }
         ],
         "responses": {
@@ -1418,6 +1431,16 @@
           },
           "403": {
             "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DOCTOR_DUPLICATE: same registration number (cannot be overridden); DOCTOR_POSSIBLE_DUPLICATE: same name (without \"Dr.\") + pincode, re-send with allowPossibleDuplicate: true. details.matches: DoctorDuplicate[]. Field-added doctors are created pending with an approval request (docs/DOCTOR-APPROVAL.md)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1682,6 +1705,75 @@
           "masters:write"
         ],
         "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
+      }
+    },
+    "/v1/doctors/duplicate-check": {
+      "post": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Doctors"
+        ],
+        "operationId": "checkDoctorDuplicates",
+        "summary": "Existing doctors (company-wide) matching registration no. or name + pincode, for the add-doctor form (#26)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DoctorDuplicateCheck"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Matches, strong first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DoctorDuplicateResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-required-permissions": [
+          "masters:read"
+        ],
+        "description": "Requires: masters:read. Results are territory-subtree scoped."
       }
     },
     "/v1/chemists/import": {
@@ -13629,6 +13721,10 @@
                 "type": "null"
               }
             ]
+          },
+          "allowPossibleDuplicate": {
+            "description": "Create even when a doctor with the same name (without \"Dr.\") and pincode exists (409 DOCTOR_POSSIBLE_DUPLICATE). A registration number match can never be overridden.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -13803,6 +13899,41 @@
         },
         "required": [
           "version"
+        ]
+      },
+      "DoctorDuplicateCheck": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "pincode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{5}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "registrationNo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name"
         ]
       },
       "ChemistCreate": {
@@ -18145,6 +18276,15 @@
                 "type": "null"
               }
             ]
+          },
+          "approvalStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "description": "Field-added doctors start pending until their manager decides (#26); company-wide roles add approved doctors. Read-only."
           }
         },
         "required": [
@@ -18165,7 +18305,73 @@
           "state",
           "pincode",
           "location",
-          "phone"
+          "phone",
+          "approvalStatus"
+        ],
+        "additionalProperties": false
+      },
+      "DoctorDuplicateResult": {
+        "type": "object",
+        "properties": {
+          "matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DoctorDuplicate"
+            }
+          }
+        },
+        "required": [
+          "matches"
+        ],
+        "additionalProperties": false
+      },
+      "DoctorDuplicate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "name": {
+            "type": "string"
+          },
+          "territoryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "territoryName": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string",
+            "enum": [
+              "registration_no",
+              "name_pincode"
+            ]
+          },
+          "approvalStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "description": "Field-added doctors start pending until their manager decides (#26); company-wide roles add approved doctors. Read-only."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "territoryId",
+          "territoryName",
+          "rule",
+          "approvalStatus"
         ],
         "additionalProperties": false
       },

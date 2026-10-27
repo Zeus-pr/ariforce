@@ -59,7 +59,7 @@ Territory levels are a separate, geographic hierarchy (`national > zone > region
 | `leave:read`, `leave:write` (own leave)                                                  |      ✓       |  ✓  |   ✓    |    ✓     |              |                   |            |
 | `leave:approve` (team leave, grants, team calendar)                                      |              |  ✓  |   ✓    |    ✓     |              |                   |            |
 
-Field-added doctors are `pending` unless created by a director or system admin.
+Field-added doctors are `pending` unless created by a director or system admin; a pending doctor opens an approval request (`subjectType: 'doctor'`) to the creator's reporting manager. `POST /v1/doctors/duplicate-check` needs only `masters:read`. Details: docs/DOCTOR-APPROVAL.md (#26).
 
 ### Baseline sync (migration 0019)
 
