@@ -59,13 +59,13 @@ Every non-2xx response has the shape:
 
 ```ts
 import { createApiClient } from '@ariforce/contracts';
-const api = createApiClient(process.env.NEXT_PUBLIC_API_URL!);
+const api = createApiClient(process.env.NEXT_PUBLIC_API_BASE_URL!);
 const { data, error } = await api.GET('/v1/doctors', { params: { query: { limit: 20 } } });
 ```
 
 Mock mode (no API needed): `@ariforce/contracts/mocks` exports `createHandlers(baseUrl)` (MSW v2). In the browser:
 `pnpm -F @ariforce/web exec msw init public` once, then `setupWorker(...createHandlers(apiUrl)).start()` when
-`NEXT_PUBLIC_API_MOCKING=enabled`. Responses are parsed through the zod schemas, so mocks match the contract.
+`NEXT_PUBLIC_API_MODE=mock` (the default). Responses are parsed through the zod schemas, so mocks match the contract.
 
 ## Files
 

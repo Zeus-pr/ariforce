@@ -55,6 +55,10 @@ idempotent, so applying the full set again is safe. They are exported from Drizz
 | `0034_tada_allowances.sql`           | `allowance_rates`, `allowance_places`, `expense_lines` allowance columns, category `allowance`                        |
 | `0035_doctor_duplicate_idx.sql`      | Two doctor lookup indexes for duplicate detection; no data change                                                     |
 
+Leave backdating: the SQL column default in `0023` is 7 days, but the effective default is 14. The API
+creates missing settings rows with 14 (`LEAVE_DEFAULT_BACKDATE_DAYS`), and the live company's row is
+set to 14. No migration changes this (`docs/LEAVE.md`).
+
 How they are applied:
 
 - **Production (Supabase):** the lead applies migrations through the Supabase connector, one file
@@ -78,39 +82,39 @@ Names and purpose only. Source: `apps/api/src/config/env.ts` (validated at boot 
 `NODE_ENV=production`; the process exits listing the bad variable **names**, never values) and
 `.env.example`. "Prod" = required in production.
 
-| Variable                  | Prod | Purpose                                                                                                                    |
-| ------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`            | yes  | API connection as `ariforce_app` (postgres URL; Supabase transaction pooler)                                               |
-| `BETTER_AUTH_SECRET`      | yes  | better-auth signing secret, at least 32 characters                                                                         |
-| `BETTER_AUTH_URL`         | yes  | Public API base URL; https in production (`http://localhost:4000` locally)                                                 |
-| `WEB_ORIGIN`              | yes  | Comma-separated web origins for CORS and auth; https in production (default `http://localhost:3000,http://localhost:3200`) |
-| `TRUST_PROXY`             | yes  | Express `trust proxy` setting (default `loopback`)                                                                         |
-| `R2_ACCOUNT_ID`           | yes  | Cloudflare R2 account for presigned uploads (`docs/STORAGE.md`)                                                            |
-| `R2_ACCESS_KEY_ID`        | yes  | R2 access key id                                                                                                           |
-| `R2_SECRET_ACCESS_KEY`    | yes  | R2 secret key                                                                                                              |
-| `R2_BUCKET`               | yes  | R2 bucket name                                                                                                             |
-| `R2_ENDPOINT`             | no   | R2 S3 endpoint override (https)                                                                                            |
-| `R2_PUBLIC_URL`           | no   | Validated as https in production; not read anywhere else in the API today                                                  |
-| `NODE_ENV`                | —    | `production` turns on env validation, HSTS, hides `/docs` and `/openapi.json`, and enables the jobs runner                 |
-| `PORT`                    | no   | API port (default 4000)                                                                                                    |
-| `DB_POOL_MAX`             | no   | Postgres pool size                                                                                                         |
-| `CLIENT_IP_MODE`          | no   | `cloudflare` (trust `CF-Connecting-IP`) or `socket`; `X-Forwarded-For` is never trusted                                    |
-| `AUTH_RATE_PER_IP`        | no   | Sign-in attempts per IP per 15 min (default 20; other auth routes 3×)                                                      |
-| `INVITE_RATE_PER_IP`      | no   | Invite accepts per IP per hour (default 10)                                                                                |
-| `SIGNUP_RATE_PER_IP`      | no   | Sign-up requests per IP per hour (default 10; sign-up options 6×)                                                          |
-| `SIGNUP_RATE_PER_EMAIL`   | no   | Sign-up requests per email per hour (default 3)                                                                            |
-| `SIGNUP_COMPANY_SLUG`     | no   | Company that self sign-up requests go to (default `arighna`)                                                               |
-| `TURNSTILE_SECRET`        | no   | Cloudflare Turnstile check on sign-up, active only when set (`CAPTCHA_FAILED`)                                             |
-| `INVITE_RETURN_LINK`      | no   | Local only: return the invite link in the response (mailer is a stub). Refused when `true` in production                   |
-| `EXPENSE_APPROVAL_LEVELS` | no   | `1` or `2` approval steps for expense claims                                                                               |
-| `JOBS_RUNNER_ENABLED`     | no   | `true`/`false`; default on when `NODE_ENV=production`, off otherwise                                                       |
-| `JOBS_POLL_MS`            | no   | Runner poll interval (default 2000)                                                                                        |
-| `JOBS_BATCH_SIZE`         | no   | Jobs claimed per poll (default 10)                                                                                         |
-| `JOBS_LOCK_TIMEOUT_S`     | no   | Seconds before a locked job is considered stale (default 300)                                                              |
-| `DIRECT_URL`              | —    | Owner connection for migrations and seeds only (`packages/db/.env`). Never set it for the API                              |
-| `APP_DB_PASSWORD`         | —    | Local/CI: login password that `db:migrate` gives `ariforce_app`                                                            |
-| `NEXT_PUBLIC_API_URL`     | —    | Listed in `.env.example` but not read by the web app (it reads `NEXT_PUBLIC_API_BASE_URL`); see README                     |
-| `NEXT_PUBLIC_API_MOCKING` | —    | Listed in `.env.example` but not read by the web app (it reads `NEXT_PUBLIC_API_MODE`); see README                         |
+| Variable                   | Prod | Purpose                                                                                                                    |
+| -------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`             | yes  | API connection as `ariforce_app` (postgres URL; Supabase transaction pooler)                                               |
+| `BETTER_AUTH_SECRET`       | yes  | better-auth signing secret, at least 32 characters                                                                         |
+| `BETTER_AUTH_URL`          | yes  | Public API base URL; https in production (`http://localhost:4000` locally)                                                 |
+| `WEB_ORIGIN`               | yes  | Comma-separated web origins for CORS and auth; https in production (default `http://localhost:3000,http://localhost:3200`) |
+| `TRUST_PROXY`              | yes  | Express `trust proxy` setting (default `loopback`)                                                                         |
+| `R2_ACCOUNT_ID`            | yes  | Cloudflare R2 account for presigned uploads (`docs/STORAGE.md`)                                                            |
+| `R2_ACCESS_KEY_ID`         | yes  | R2 access key id                                                                                                           |
+| `R2_SECRET_ACCESS_KEY`     | yes  | R2 secret key                                                                                                              |
+| `R2_BUCKET`                | yes  | R2 bucket name                                                                                                             |
+| `R2_ENDPOINT`              | no   | R2 S3 endpoint override (https)                                                                                            |
+| `R2_PUBLIC_URL`            | no   | Validated as https in production; not read anywhere else in the API today                                                  |
+| `NODE_ENV`                 | —    | `production` turns on env validation, HSTS, hides `/docs` and `/openapi.json`, and enables the jobs runner                 |
+| `PORT`                     | no   | API port (default 4000)                                                                                                    |
+| `DB_POOL_MAX`              | no   | Postgres pool size                                                                                                         |
+| `CLIENT_IP_MODE`           | no   | `cloudflare` (trust `CF-Connecting-IP`) or `socket`; `X-Forwarded-For` is never trusted                                    |
+| `AUTH_RATE_PER_IP`         | no   | Sign-in attempts per IP per 15 min (default 20; other auth routes 3×)                                                      |
+| `INVITE_RATE_PER_IP`       | no   | Invite accepts per IP per hour (default 10)                                                                                |
+| `SIGNUP_RATE_PER_IP`       | no   | Sign-up requests per IP per hour (default 10; sign-up options 6×)                                                          |
+| `SIGNUP_RATE_PER_EMAIL`    | no   | Sign-up requests per email per hour (default 3)                                                                            |
+| `SIGNUP_COMPANY_SLUG`      | no   | Company that self sign-up requests go to (default `arighna`)                                                               |
+| `TURNSTILE_SECRET`         | no   | Cloudflare Turnstile check on sign-up, active only when set (`CAPTCHA_FAILED`)                                             |
+| `INVITE_RETURN_LINK`       | no   | Local only: return the invite link in the response (mailer is a stub). Refused when `true` in production                   |
+| `EXPENSE_APPROVAL_LEVELS`  | no   | `1` or `2` approval steps for expense claims                                                                               |
+| `JOBS_RUNNER_ENABLED`      | no   | `true`/`false`; default on when `NODE_ENV=production`, off otherwise                                                       |
+| `JOBS_POLL_MS`             | no   | Runner poll interval (default 2000)                                                                                        |
+| `JOBS_BATCH_SIZE`          | no   | Jobs claimed per poll (default 10)                                                                                         |
+| `JOBS_LOCK_TIMEOUT_S`      | no   | Seconds before a locked job is considered stale (default 300)                                                              |
+| `DIRECT_URL`               | —    | Owner connection for migrations and seeds only (`packages/db/.env`). Never set it for the API                              |
+| `APP_DB_PASSWORD`          | —    | Local/CI: login password that `db:migrate` gives `ariforce_app`                                                            |
+| `NEXT_PUBLIC_API_MODE`     | —    | Web (`apps/web/.env.local`): `mock` (default, MSW) or `real`                                                               |
+| `NEXT_PUBLIC_API_BASE_URL` | —    | Web: API base URL, e.g. `http://localhost:4000`                                                                            |
 
 Script-only, read from your own shell: `ARIFORCE_ADMIN_PASSWORD` and `ARIFORCE_DEMO_PASSWORD`
 (`admin:create-first`), `DEMO_PASSWORD` (`pnpm -F @ariforce/api db:seed`, refuses production; has a local default), `CI`.

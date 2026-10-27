@@ -68,9 +68,13 @@ document is committed at `docs/api/openapi.json` (`pnpm -F @ariforce/contracts o
 
 ## Cutly checklist
 
-No Cutly checklist file exists in `docs/`. `SECURITY.md` refers to `docs/CUTLY-LESSONS-CHECKLIST.md`,
-which is not in the repository. Its findings are covered section by section in
-[SECURITY.md](SECURITY.md).
+There is no separate checklist file in `docs/`; the Cutly audit items are covered section by section
+in [SECURITY.md](SECURITY.md).
+
+## Decisions recorded
+
+- Doctors (#26): BM/ABM cannot propose doctors (Prajesh decided; `doctors:propose` cancelled).
+  Doctor-approval notifications come later. See [DOCTOR-APPROVAL.md](DOCTOR-APPROVAL.md).
 
 ## Branch and migration map
 
