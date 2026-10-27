@@ -307,6 +307,26 @@ export interface paths {
     patch: operations['updateDoctor'];
     trace?: never;
   };
+  '/v1/doctors/duplicate-check': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Existing doctors (company-wide) matching registration no. or name + pincode, for the add-doctor form (#26)
+     * @description Requires: masters:read. Results are territory-subtree scoped.
+     */
+    post: operations['checkDoctorDuplicates'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/chemists/import': {
     parameters: {
       query?: never;
@@ -2195,6 +2215,8 @@ export interface components {
       pincode: string | null;
       location: components['schemas']['GeoPoint'] | null;
       phone: string | null;
+      /** @description Create even when a doctor with the same name (without "Dr.") and pincode exists (409 DOCTOR_POSSIBLE_DUPLICATE). A registration number match can never be overridden. */
+      allowPossibleDuplicate?: boolean;
     };
     GeoPoint: {
       lat: number;
@@ -2219,6 +2241,11 @@ export interface components {
       location?: components['schemas']['GeoPoint'] | null;
       phone?: string | null;
       version: number;
+    };
+    DoctorDuplicateCheck: {
+      name: string;
+      pincode?: string | null;
+      registrationNo?: string | null;
     };
     ChemistCreate: {
       /**
@@ -3518,6 +3545,37 @@ export interface components {
       pincode: string | null;
       location: components['schemas']['GeoPointOutput'] | null;
       phone: string | null;
+      /**
+       * @description Field-added doctors start pending until their manager decides (#26); company-wide roles add approved doctors. Read-only.
+       * @enum {string}
+       */
+      approvalStatus: 'pending' | 'approved' | 'rejected';
+    };
+    DoctorDuplicateResult: {
+      matches: components['schemas']['DoctorDuplicate'][];
+    };
+    DoctorDuplicate: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      territoryName: string;
+      /** @enum {string} */
+      rule: 'registration_no' | 'name_pincode';
+      /**
+       * @description Field-added doctors start pending until their manager decides (#26); company-wide roles add approved doctors. Read-only.
+       * @enum {string}
+       */
+      approvalStatus: 'pending' | 'approved' | 'rejected';
     };
     ChemistPage: {
       items: components['schemas']['Chemist'][];
@@ -6484,6 +6542,7 @@ export interface operations {
         territoryId?: string;
         specialtyId?: string;
         categoryId?: string;
+        approvalStatus?: 'pending' | 'approved' | 'rejected';
       };
       header?: never;
       path?: never;
@@ -6556,6 +6615,15 @@ export interface operations {
       };
       /** @description Signed in but not allowed (role, hierarchy or tenant) */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description DOCTOR_DUPLICATE: same registration number (cannot be overridden); DOCTOR_POSSIBLE_DUPLICATE: same name (without "Dr.") + pincode, re-send with allowPossibleDuplicate: true. details.matches: DoctorDuplicate[]. Field-added doctors are created pending with an approval request (docs/DOCTOR-APPROVAL.md) */
+      409: {
         headers: {
           [name: string]: unknown;
         };
@@ -6726,6 +6794,57 @@ export interface operations {
       };
       /** @description Version conflict */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  checkDoctorDuplicates: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DoctorDuplicateCheck'];
+      };
+    };
+    responses: {
+      /** @description Matches, strong first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DoctorDuplicateResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
         headers: {
           [name: string]: unknown;
         };

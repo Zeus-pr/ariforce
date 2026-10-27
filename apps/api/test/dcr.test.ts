@@ -17,6 +17,18 @@ const ist = (d: Date) => new Date(d.getTime() + 5.5 * 36e5).toISOString().slice(
 const TODAY = ist(new Date());
 const OLD = ist(new Date(Date.now() - 10 * 864e5));
 const M = TODAY.slice(0, 7);
+const NEW_DOCTOR = {
+  qualification: null,
+  specialtyId: null,
+  categoryId: null,
+  registrationNo: null,
+  addressLine: null,
+  city: null,
+  state: null,
+  pincode: null,
+  location: null,
+  phone: null,
+};
 
 describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
   let app: INestApplication;
@@ -29,7 +41,7 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = configureApp(mod.createNestApplication({ bodyParser: false }));
     await app.init();
-    for (const who of ['bm', 'abm', 'director']) {
+    for (const who of ['bm', 'abm', 'director', 'rbm', 'zbm']) {
       const res = await http()
         .post('/v1/auth/sign-in/email')
         .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
@@ -38,7 +50,8 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
     const wt = (await http().get('/v1/work-types?limit=50').set(as('bm'))).body.items;
     field = wt.find((w: { kind: string }) => w.kind === 'field').id;
     leave = wt.find((w: { kind: string }) => w.kind !== 'field').id;
-    doctor = (await http().get('/v1/doctors?limit=1').set(as('bm'))).body.items[0].id;
+    doctor = (await http().get('/v1/doctors?approvalStatus=approved&limit=1').set(as('bm'))).body
+      .items[0].id;
     product = await ensureProduct(http, tok.bm!, tok.director!);
     // Approved tour plan for this month: field work in T.hq every day.
     const entry = { session: 'full', workTypeId: field, territoryIds: [T.hq] };
@@ -107,6 +120,35 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
         calls: [call({ samples: [{ productId: uuidv7(), quantity: 1 }] })],
       });
     expect(badProduct.status).toBe(422);
+    // #26: a rejected field-added doctor cannot be reported.
+    const tag = uuidv7().slice(-6);
+    const added = await http()
+      .post('/v1/doctors')
+      .set(as('rbm'))
+      .send({ ...NEW_DOCTOR, name: `Dr. Rejected ${tag}`, territoryId: T.hq });
+    expect(added.status, JSON.stringify(added.body)).toBe(201);
+    const ask = (
+      await http().get('/v1/approvals?mine=to_decide&subjectType=doctor').set(as('zbm'))
+    ).body.items.find((a: { subjectId: string }) => a.subjectId === added.body.id);
+    expect(
+      (
+        await http()
+          .post(`/v1/approvals/${ask.id}/decision`)
+          .set(as('zbm'))
+          .send({ decision: 'reject', comment: 'not in this HQ' })
+      ).status,
+    ).toBe(200);
+    const rejectedCall = await http()
+      .put('/v1/dcrs')
+      .set(as('bm'))
+      .send({
+        date: TODAY,
+        workTypeId: field,
+        territoryIds: [T.hq],
+        calls: [call({ outletId: added.body.id })],
+      });
+    expect(rejectedCall.status).toBe(422);
+    expect(rejectedCall.body.error.details.doctorIds).toEqual([added.body.id]);
     const emptySubmit = await http()
       .put('/v1/dcrs')
       .set(as('bm'))

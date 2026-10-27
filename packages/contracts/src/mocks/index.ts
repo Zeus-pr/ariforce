@@ -289,8 +289,22 @@ async function mockImport(
 
 function crud<
   T extends { id: string; updatedAt: string; version: number; deletedAt: string | null },
->(baseUrl: string, path: string, schema: z.ZodType<T>, createSchema: z.ZodType, seed: T[]) {
-  const rows = structuredClone(seed);
+>(
+  baseUrl: string,
+  path: string,
+  schema: z.ZodType<T>,
+  createSchema: z.ZodType,
+  seed: T[],
+  /** Entity rules before insert: return a Response to refuse, or extra fields for the row. */
+  onCreate?: (
+    body: Record<string, unknown>,
+    request: Request,
+    rows: T[],
+  ) => Response | Record<string, unknown>,
+  /** false = `seed` is already a private copy shared with other handlers. */
+  clone = true,
+) {
+  const rows = clone ? structuredClone(seed) : seed;
   return [
     ...(IMPORT_ENTITY_BY_PATH[path]
       ? [
@@ -317,9 +331,12 @@ function crud<
           },
           { status: 422 },
         );
+      const extra = onCreate?.(body.data as Record<string, unknown>, request, rows) ?? {};
+      if (extra instanceof Response) return extra;
       const ts = serverTime();
       const row = {
         ...(body.data as object),
+        ...extra,
         id: crypto.randomUUID(),
         companyId: fx.COMPANY_ID,
         createdAt: ts,
@@ -357,6 +374,8 @@ function crud<
  * `authorization: Bearer` or the `better-auth.session_token` cookie, else the default persona (director)
  * unless `x-mock-user: none` (behaves as signed out -> 401).
  */
+import { doctorHandlers } from './doctors';
+
 export function mockPrincipal(request: Request): Me | undefined {
   const h = request.headers.get('x-mock-user');
   if (h) return h === 'none' ? undefined : fx.findMockUser(h);
@@ -463,7 +482,9 @@ export function createHandlers(baseUrl = '') {
     http.get(`${baseUrl}/v1/doctor-categories`, ({ request }) =>
       list(DoctorCategory, fx.doctorCategories, new URL(request.url)),
     ),
-    ...crud(baseUrl, '/v1/doctors', Doctor, DoctorCreate, fx.doctors),
+    ...doctorHandlers(baseUrl, (b, rows) =>
+      crud(baseUrl, '/v1/doctors', Doctor, DoctorCreate, rows, b, false),
+    ),
     ...crud(baseUrl, '/v1/chemists', Chemist, ChemistCreate, fx.chemists),
     ...crud(baseUrl, '/v1/stockists', Stockist, StockistCreate, fx.stockists),
     ...crud(baseUrl, '/v1/products', Product, ProductCreate, fx.products),

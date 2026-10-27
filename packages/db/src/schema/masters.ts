@@ -122,6 +122,9 @@ export const doctors = pgTable(
   (t) => [
     index('doctors_territory_idx').on(t.companyId, t.territoryId),
     index('doctors_updated_idx').on(t.companyId, t.updatedAt),
+    // Duplicate detection on field-added doctors (#26).
+    index('doctors_regno_idx').on(t.companyId, sql`upper(${t.registrationNo})`),
+    index('doctors_pincode_idx').on(t.companyId, t.pincode),
     index('doctors_location_gix').using('gist', t.location),
     check(
       'doctors_geofence_ck',

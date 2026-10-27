@@ -87,8 +87,11 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     }
     const wt = (await http().get('/v1/work-types?limit=50').set(as('bm2'))).body.items;
     field = wt.find((w: { kind: string }) => w.kind === 'field').id;
-    doctor = (await http().get(`/v1/doctors?territoryId=${T.otherArea}&limit=1`).set(as('bm2')))
-      .body.items[0].id;
+    doctor = (
+      await http()
+        .get(`/v1/doctors?territoryId=${T.otherArea}&approvalStatus=approved&limit=1`)
+        .set(as('bm2'))
+    ).body.items[0].id;
     hqChemist = (await http().get(`/v1/chemists?territoryId=${T.hq}&limit=1`).set(as('bm'))).body
       .items[0].id;
     chemist = await outlet('chemists', T.otherArea);
