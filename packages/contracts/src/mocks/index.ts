@@ -26,6 +26,7 @@ import { kpiReport, productKpiReport } from './kpis';
 import { teamHandlers } from './team';
 import { signupHandlers } from './signup';
 import { expenseHandlers } from './expenses';
+import { leaveHandlers, mockLeaveOn } from './leave';
 import { mastersGuardHandlers } from './masters-guard';
 import {
   Approval,
@@ -370,6 +371,7 @@ export function createHandlers(baseUrl = '') {
     ...mastersGuardHandlers(baseUrl, mockPrincipal),
     ...signupHandlers(baseUrl, mockPrincipal),
     ...expenseHandlers(baseUrl, mockPrincipal),
+    ...leaveHandlers(baseUrl, mockPrincipal),
     http.get(`${baseUrl}/v1/health`, () => HttpResponse.json({ status: 'ok' })),
     http.post(`${baseUrl}/v1/files/upload-url`, () =>
       HttpResponse.json({
@@ -640,6 +642,7 @@ function fieldHandlers(baseUrl: string) {
           punchOut: null,
           visits: 0,
           workTypeId: null,
+          leave: mockLeaveOn(c.userId, c.date),
         };
         if (c.kind === 'punch_in') d.punchIn = c;
         else if (c.kind === 'punch_out') d.punchOut = c;
@@ -665,11 +668,17 @@ function fieldHandlers(baseUrl: string) {
             userId: u.id,
             userName: u.name,
             date: d,
-            status: kind === 'leave' ? 'leave' : kind === 'holiday' ? 'holiday' : 'absent',
+            status:
+              mockLeaveOn(u.id, d) || kind === 'leave'
+                ? 'leave'
+                : kind === 'holiday'
+                  ? 'holiday'
+                  : 'absent',
             punchIn: null,
             punchOut: null,
             visits: 0,
             workTypeId: dcr?.workTypeId ?? null,
+            leave: mockLeaveOn(u.id, d),
           });
         }
       return list(

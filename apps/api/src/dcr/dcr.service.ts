@@ -32,6 +32,7 @@ import { CheckInsService, err } from '../field/checkins.service';
 import { companySettings, localDate, type CompanySettings } from '../field/field.util';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { ApprovalsService } from '../plans/approvals.service';
+import { approvedLeaveDays, assertNotOnLeave } from '../leave/leave.util';
 
 type Upsert = z.infer<typeof DcrUpsert>;
 type DcrRow = typeof dcrs.$inferSelect;
@@ -369,6 +370,10 @@ export class DcrService {
           ),
         );
       if (!wt) throw err(422, 'VALIDATION', 'Unknown work type', { workTypeId: b.workTypeId });
+      if (wt.kind === 'field' || wt.kind === 'non_field')
+        assertNotOnLeave(await approvedLeaveDays(tx, [p.userId], b.date, b.date), [
+          { date: b.date, session: 'full', kind: wt.kind },
+        ]);
       const field = wt.kind === 'field';
       if (!field && b.calls.length) throw err(422, 'VALIDATION', 'Calls need a field work type');
       if (field && b.submit && !b.calls.length)

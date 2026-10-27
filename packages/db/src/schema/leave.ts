@@ -29,7 +29,10 @@ export const leaveSettings = pgTable(
     /** How many days back a leave may start (0 = today or later). */
     backdateDays: integer('backdate_days').notNull().default(7),
     /** Days not counted as leave (0 = Sunday .. 6 = Saturday). */
-    weeklyOffDays: integer('weekly_off_days').array().notNull().default(sql`'{0}'::int[]`),
+    weeklyOffDays: integer('weekly_off_days')
+      .array()
+      .notNull()
+      .default(sql`'{0}'::int[]`),
     /** Latest start relative to today; null = up to 31 Dec of the current year. */
     maxFutureDays: integer('max_future_days'),
     ...syncCols(),

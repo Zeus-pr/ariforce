@@ -214,10 +214,23 @@ export class KpisService {
                  coalesce(sum(doctor_calls) filter (where field_day), 0) as doctor_calls,
                  coalesce(sum(chemist_calls) filter (where field_day), 0) as chemist_calls,
                  count(*) filter (where dcr_submitted) as submitted,
-                 count(*) filter (where dcr_on_time) as on_time,
-                 count(*) filter (where work_type_kind in ('leave','holiday') and extract(dow from date) <> 0) as off_days
+                 count(*) filter (where dcr_on_time) as on_time
           from kpi_user_day where user_id = any(${u}) and date between ${from}::date and ${upto}::date`,
     );
+    // Off days: DCR leave/holiday kinds plus approved leave (#51), max fraction per user-day, no Sundays.
+    const [off] = await rows<{ off_days: string | null }>(
+      tx,
+      sql`select coalesce(sum(f), 0) as off_days from (
+            select user_id, date, max(f) as f from (
+              select user_id, date, 1::numeric as f from kpi_user_day
+               where work_type_kind in ('leave','holiday') and user_id = any(${u})
+                 and date between ${from}::date and ${upto}::date
+              union all
+              select user_id, date, fraction from kpi_user_leave_day
+               where user_id = any(${u}) and date between ${from}::date and ${upto}::date
+            ) x where extract(dow from date) <> 0 group by user_id, date) y`,
+    );
+    if (d) d.off_days = off?.off_days ?? '0';
     const [m] = await rows<Record<string, string | null>>(
       tx,
       sql`select coalesce(sum(msl_size),0) as msl, coalesce(sum(unique_doctors_seen),0) as seen,

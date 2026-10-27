@@ -89,6 +89,12 @@ export const PERMISSIONS = [
   'expenses:approve',
   /** Mark approved expense claims as paid (accountant). */
   'finance:write',
+  /** Own leave: balances, requests, calendar; managers also their reporting line's (#51). */
+  'leave:read',
+  /** Apply for and cancel your own leave (#51). */
+  'leave:write',
+  /** Decide, cancel and grant leave for the reporting line (manager chain, never your own). */
+  'leave:approve',
 ] as const;
 export const Permission = z.enum(PERMISSIONS).meta({ id: 'Permission' });
 export type Permission = z.infer<typeof Permission>;
@@ -119,6 +125,8 @@ export const MASTERS_WRITE_MIN_RANK = 3;
 /** ABM: manager, read-only on masters. */
 /** Own expense claims (everyone in the sales hierarchy). */
 const EXPENSES_OWN: Permission[] = ['expenses:read', 'expenses:write'];
+/** Own leave (everyone in the sales hierarchy). */
+const LEAVE_OWN: Permission[] = ['leave:read', 'leave:write'];
 const MANAGER: Permission[] = [
   ...BASE,
   'users:read',
@@ -127,12 +135,21 @@ const MANAGER: Permission[] = [
   'reports:read',
   ...EXPENSES_OWN,
   'expenses:approve',
+  ...LEAVE_OWN,
+  'leave:approve',
 ];
 /** RBM and above. */
 const SENIOR: Permission[] = [...MANAGER, ...MASTERS_WRITE];
 /** Default permissions per role (seeded into roles.permissions; editable per company). */
 export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
-  business_manager: [...BASE, 'field:read', 'field:write', 'reports:read', ...EXPENSES_OWN],
+  business_manager: [
+    ...BASE,
+    'field:read',
+    'field:write',
+    'reports:read',
+    ...EXPENSES_OWN,
+    ...LEAVE_OWN,
+  ],
   area_business_manager: MANAGER,
   regional_business_manager: SENIOR,
   zonal_business_manager: SENIOR,

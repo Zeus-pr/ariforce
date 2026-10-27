@@ -27,6 +27,10 @@ import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { ApprovalsService } from './approvals.service';
+import { approvedLeaveDays, assertNotOnLeave } from '../leave/leave.util';
+
+const monthEnd = (m: string) =>
+  new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).toISOString().slice(0, 10);
 
 type Day = TourPlan['days'][number];
 type Entry = Day['entries'][number];
@@ -156,6 +160,27 @@ export class TourPlansService {
       p,
       days.flatMap((d) => d.entries),
     );
+    // Approved leave (#51): only leave/holiday work types on leave days (same half for half days).
+    const leave = await approvedLeaveDays(tx, [p.userId], `${month}-01`, monthEnd(month));
+    if (leave.length) {
+      const ids = [...new Set(days.flatMap((d) => d.entries.map((e) => e.workTypeId)))];
+      const kinds = ids.length
+        ? await tx
+            .select({ id: workTypes.id, kind: workTypes.kind })
+            .from(workTypes)
+            .where(inArray(workTypes.id, ids))
+        : [];
+      assertNotOnLeave(
+        leave,
+        days.flatMap((d) =>
+          d.entries.map((e) => ({
+            date: d.date,
+            session: e.session,
+            kind: kinds.find((k) => k.id === e.workTypeId)?.kind ?? 'field',
+          })),
+        ),
+      );
+    }
   }
 
   /** Rebuild the derived rows (plan_sessions for attendance/DCR prefill; tour_plan_visits for adherence KPIs). */
@@ -339,7 +364,13 @@ export class TourPlansService {
       const cur = await this.find(tx, p.userId, month);
       if (!cur) throw new NotFoundException('No plan for this month');
       if (cur.status !== 'draft') throw err(409, 'CONFLICT', 'Not in draft');
-      const missing = missingDates(month, cur.days as Day[]);
+      // Dates fully on approved leave need no plan entry (#51).
+      const off = new Set(
+        (await approvedLeaveDays(tx, [p.userId], `${month}-01`, monthEnd(month)))
+          .filter((l) => !l.half)
+          .map((l) => l.date),
+      );
+      const missing = missingDates(month, cur.days as Day[]).filter((d) => !off.has(d));
       if (missing.length)
         throw err(422, 'VALIDATION', `${missing.length} date(s) have no plan entry`, {
           missingDates: missing,

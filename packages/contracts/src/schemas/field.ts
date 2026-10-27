@@ -103,6 +103,13 @@ export const AttendanceDay = z
     punchOut: CheckIn.nullable(),
     visits: z.int().min(0),
     workTypeId: Id.nullable(),
+    leave: z
+      .object({ requestId: Id, typeCode: z.string(), half: z.enum(['am', 'pm']).nullable() })
+      .nullable()
+      .meta({
+        description:
+          'Approved leave on this day (#51); with no punch-in the status is leave, not absent',
+      }),
   })
   .meta({ id: 'AttendanceDay' });
 export type AttendanceDay = z.infer<typeof AttendanceDay>;
