@@ -54,20 +54,32 @@ async function run(view, emptyMasters) {
     if (m === 'GET' && u.pathname === '/v1/work-types') return json(page_(emptyMasters ? [] : WT));
     if (m === 'GET' && u.pathname === '/v1/territories') return json(page_(emptyMasters ? [] : TERR));
     if (m === 'GET' && u.pathname === `/v1/tour-plans/${month}/calendar`)
-      return json({ month, todayIST: today, weeklyOffDays: [0], requiredDates: [today] });
+      return json({ month, todayIST: today, weeklyOffDays: [0], requiredDates: [today], days: (plan?.days ?? []).map((d) => ({ date: d.date, status: d.status ?? 'draft', submissionId: d.submissionId ?? null })) });
     if (m === 'GET' && u.pathname === `/v1/tour-plans/${month}`)
       return plan ? json(plan) : json({ error: { code: 'NOT_FOUND', message: 'Not found' } }, 404);
     if (m === 'POST' && u.pathname === `/v1/tour-plans/${month}/copy`) return json({ error: { code: 'NOT_FOUND', message: 'No standard plan' } }, 404);
     if (m === 'PUT' && u.pathname === `/v1/tour-plans/${month}`) {
       const b = r.request().postDataJSON();
       bodies.tp = b;
-      plan = { ...base(id(31)), userId: id(99), month, kind: 'mtp', status: 'draft', days: b.days, submittedAt: null, decidedAt: null, decidedBy: null, decisionComment: null };
+      // #86: days carry their own status; a fresh PUT leaves every day a draft.
+      plan = { ...base(id(31)), userId: id(99), month, kind: 'mtp', status: 'draft', days: b.days.map((d) => ({ ...d, status: 'draft', submissionId: null })), submissions: [], submittedAt: null, decidedAt: null, decidedBy: null, decisionComment: null };
       return json(plan);
     }
     if (m === 'POST' && u.pathname === `/v1/tour-plans/${month}/submit`) {
       // Server rule since 0bb7b40: at least one planned day, no full coverage.
       if (!plan?.days?.some((d) => d.entries.length)) return json({ error: { code: 'EMPTY_PLAN', message: 'Add at least one day to the plan before submitting' } }, 422);
-      plan = { ...plan, status: 'submitted', submittedAt: T };
+      // #86: one submission per call; body is { submitterNote?, dates? }.
+      const sb = r.request().postDataJSON() ?? {};
+      bodies.submitBody = sb;
+      const sid = id(41);
+      const dates = plan.days.filter((d) => d.entries.length && (!sb.dates || sb.dates.includes(d.date))).map((d) => d.date);
+      plan = {
+        ...plan,
+        status: 'submitted',
+        submittedAt: T,
+        days: plan.days.map((d) => (dates.includes(d.date) ? { ...d, status: 'submitted', submissionId: sid } : d)),
+        submissions: [{ id: sid, tourPlanId: plan.id, dates, status: 'submitted', approvalId: id(42), submitterNote: sb.submitterNote ?? null, submittedAt: T, decidedAt: null, decidedBy: null, decisionComment: null, rejectionReason: null, rejectedBy: null, rejectedAt: null }],
+      };
       bodies.submitted = true;
       return json(plan);
     }

@@ -119,6 +119,11 @@ for (const view of ['desktop', 'mobile']) {
   await s.page.goto(`${BASE}/exceptions`, { waitUntil: 'load' });
   await s.page.waitForTimeout(1500);
   check(!s.page.url().endsWith('/exceptions'), `${view}: System Admin redirected from /exceptions`);
+  check((await s.page.locator('a[href="/settings/exception-rules"]').count()) === 0, `${view}: System Admin has no Exception rules nav`);
+  await s.page.goto(`${BASE}/settings/exception-rules`, { waitUntil: 'load' });
+  await s.page.waitForTimeout(1500);
+  check(!s.page.url().includes('/settings/exception-rules'), `${view}: System Admin redirected from /settings/exception-rules`);
+  check((await s.page.getByText('Missing permission').count()) === 0, `${view}: no "Missing permission" page for System Admin`);
   await s.ctx.close();
 }
 await finish();

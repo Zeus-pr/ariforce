@@ -52,7 +52,27 @@ const STATUS: Record<TourPlan['status'], { label: string; tone: string }> = {
   rejected: { label: 'Sent back', tone: 'bg-destructive/10 text-destructive' },
   recalled: { label: 'Recalled', tone: 'bg-muted text-foreground' },
 };
-const EDITABLE: TourPlan['status'][] = ['draft', 'rejected', 'recalled'];
+type DayStatus = NonNullable<Day['status']>;
+type Submission = NonNullable<TourPlan['submissions']>[number];
+const DAY_STATUS: Record<DayStatus, { label: string; tone: string }> = {
+  draft: { label: 'Draft', tone: 'bg-muted text-foreground' },
+  submitted: { label: 'Submitted', tone: 'bg-accent/10 text-teal-700' },
+  approved: { label: 'Approved', tone: 'bg-success/10 text-success' },
+  rejected: { label: 'Rejected', tone: 'bg-destructive/10 text-destructive' },
+};
+const LOCKED: DayStatus[] = ['submitted', 'approved'];
+const shortDate = (d: string) =>
+  new Date(`${d}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+// 409 DAY_LOCKED lists the dates that are already submitted or approved.
+function lockedMessage(e: { code: string; message: string; details?: unknown }) {
+  if (e.code === 'EMPTY_PLAN')
+    return 'Nothing to submit. Plan at least one day that is not already submitted or approved.';
+  if (e.code !== 'DAY_LOCKED') return null;
+  const dates = (e.details as { dates?: string[] } | undefined)?.dates ?? [];
+  return dates.length
+    ? `These days are already submitted or approved and can’t be changed: ${dates.map(shortDate).join(', ')}.`
+    : e.message;
+}
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const noop = () => () => {};
 const UNPLANNED = 'unplanned';
@@ -138,7 +158,24 @@ function Planner({ initialMonth }: { initialMonth: string }) {
   const missing = dates.filter((d) => required.has(d) && !byDate.get(d)?.entries.length);
   // Submit needs at least one planned day; full coverage is not required.
   const plannedCount = dates.filter((d) => byDate.get(d)?.entries.length).length;
-  const canSubmit = !!plan && hasPlannedDay(plan.days);
+  const dayStatus = (d: string): DayStatus => byDate.get(d)?.status ?? 'draft';
+  const isLocked = (d: string) => LOCKED.includes(dayStatus(d));
+  // Days that can go for approval now: planned and draft or rejected.
+  const submittable = dates.filter((d) => byDate.get(d)?.entries.length && !isLocked(d));
+  const [picked, setPicked] = useState<Set<string> | null>(null);
+  const [note, setNote] = useState('');
+  useEffect(() => setPicked(null), [month, plan?.version, plan?.status]);
+  const selected = picked ?? new Set(submittable);
+  const chosen = submittable.filter((d) => selected.has(d));
+  const canSubmit = !!plan && hasPlannedDay(plan.days) && chosen.length > 0;
+  const subById = useMemo(
+    () => new Map((plan?.submissions ?? []).map((x) => [x.id, x])),
+    [plan],
+  );
+  const rejectionOf = (d: string) => {
+    const day = byDate.get(d);
+    return day?.status === 'rejected' && day.submissionId ? subById.get(day.submissionId) : undefined;
+  };
   const notRequired = (d: string) =>
     required.has(d)
       ? null
@@ -147,7 +184,8 @@ function Planner({ initialMonth }: { initialMonth: string }) {
         : d < today
           ? 'Past'
           : 'Not required';
-  const editable = !!plan && EDITABLE.includes(plan.status);
+  // #86: days lock one by one (submitted/approved); the rest of the month stays editable.
+  const editable = !!plan;
 
   async function start(fromMonth?: string) {
     setBusy(true);
@@ -184,7 +222,9 @@ function Planner({ initialMonth }: { initialMonth: string }) {
       body: { days, version: plan.version },
     });
     if (r.error) {
-      toast.error(saveMessage(toApiError(r)), { duration: 10000 });
+      const e = toApiError(r);
+      toast.error(lockedMessage(e) ?? saveMessage(e), { duration: 10000 });
+      if (e.code === 'DAY_LOCKED') void load();
       return false;
     }
     setPlan(r.data);
@@ -193,15 +233,28 @@ function Planner({ initialMonth }: { initialMonth: string }) {
 
   async function submit() {
     setBusy(true);
-    const r = await api.POST('/v1/tour-plans/{month}/submit', { params: { path: { month } } });
+    const all = chosen.length === submittable.length;
+    const body: { submitterNote?: string; dates?: string[] } = {};
+    if (note.trim()) body.submitterNote = note.trim();
+    // Default path: no dates = every planned draft or rejected day.
+    if (!all) body.dates = chosen;
+    const r = await api.POST('/v1/tour-plans/{month}/submit', {
+      params: { path: { month } },
+      body,
+    });
     setBusy(false);
     if (r.error) {
-      // Only failure is 422 EMPTY_PLAN (no day has an entry); show the server's message.
-      return toast.error(toApiError(r).message, { duration: 10000 });
+      const e = toApiError(r);
+      toast.error(lockedMessage(e) ?? e.message, { duration: 10000 });
+      if (e.code === 'DAY_LOCKED') void load();
+      return;
     }
     setPlan(r.data);
+    setNote('');
     setApprovalsKey((k) => k + 1);
-    toast.success(`${monthLabel(month)} sent for approval`);
+    toast.success(
+      `${chosen.length} ${chosen.length === 1 ? 'day' : 'days'} of ${monthLabel(month)} sent for approval`,
+    );
   }
 
   const wtName = useMemo(() => new Map(workTypes.map((w) => [w.id, w])), [workTypes]);
@@ -265,14 +318,6 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                       Fill unplanned days
                     </Button>
                   )}
-                  <Button
-                    onClick={submit}
-                    disabled={busy || !canSubmit}
-                    title={!canSubmit ? 'Plan at least one day first' : undefined}
-                    data-testid="tp-submit"
-                  >
-                    Submit for approval
-                  </Button>
                 </>
               )}
             </div>
@@ -333,6 +378,8 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                 const wt = e[0] ? wtName.get(e[0].workTypeId) : undefined;
                 const empty = e.length === 0;
                 const nr = notRequired(date);
+                const ds = dayStatus(date);
+                const locked = !empty && isLocked(date);
                 return (
                   <li key={date}>
                     <button
@@ -341,7 +388,9 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                       data-date={date}
                       data-empty={empty}
                       data-optional={nr ? nr.toLowerCase().replaceAll(' ', '-') : undefined}
-                      disabled={!editable}
+                      data-status={empty ? undefined : ds}
+                      disabled={!editable || locked}
+                      title={locked ? `Locked: ${ds}` : undefined}
                       onClick={() => setEditing(date)}
                       aria-label={`${dayLabel(date)}: ${empty ? (nr ? `${nr.toLowerCase()}, not required` : 'not planned') : (wt?.name ?? 'planned')}`}
                       className={cn(
@@ -369,6 +418,17 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                         <>
                           <span className="font-medium leading-tight">{wt?.name ?? 'Planned'}</span>
                           <TerritoryNames ids={e[0]?.territoryIds ?? []} />
+                          <span
+                            className={cn('mt-0.5 rounded px-1.5 text-[11px] font-medium', DAY_STATUS[ds].tone)}
+                            data-testid="tp-day-status"
+                          >
+                            {DAY_STATUS[ds].label}
+                          </span>
+                          {locked && (
+                            <span className="text-[11px] text-muted-foreground" data-testid="tp-locked">
+                              Locked: {ds}
+                            </span>
+                          )}
                         </>
                       )}
                     </button>
@@ -378,12 +438,35 @@ function Planner({ initialMonth }: { initialMonth: string }) {
             </ol>
           </div>
         )}
+
+        {plan && (
+          <SubmitPanel
+            days={submittable}
+            selected={selected}
+            onToggle={(d, on) => {
+              const n = new Set(selected);
+              if (on) n.add(d);
+              else n.delete(d);
+              setPicked(n);
+            }}
+            note={note}
+            onNote={setNote}
+            busy={busy}
+            canSubmit={canSubmit}
+            all={chosen.length === submittable.length}
+            count={chosen.length}
+            onSubmit={submit}
+            rejectionOf={rejectionOf}
+          />
+        )}
+        {plan && !!plan.submissions?.length && <SubmissionsList items={plan.submissions} />}
       </section>
 
       <DayEditor
         date={editing}
         title={editing === UNPLANNED ? `Fill ${missing.length} unplanned days` : undefined}
         entry={editing && editing !== UNPLANNED ? byDate.get(editing)?.entries[0] : undefined}
+        rejection={editing && editing !== UNPLANNED ? rejectionOf(editing) : undefined}
         workTypes={workTypes}
         onClose={() => setEditing(null)}
         onSave={async (date, entries) => {
@@ -408,6 +491,7 @@ function DayEditor({
   date,
   title,
   entry,
+  rejection,
   workTypes,
   onClose,
   onSave,
@@ -415,6 +499,7 @@ function DayEditor({
   date: string | null;
   title?: string;
   entry?: Entry;
+  rejection?: Submission;
   workTypes: WorkType[];
   onClose: () => void;
   onSave: (date: string, entries: Entry[]) => Promise<void>;
@@ -449,6 +534,14 @@ function DayEditor({
           <DialogTitle>{title ?? (date ? dayLabel(date) : '')}</DialogTitle>
           <DialogDescription>What you plan to do, and where.</DialogDescription>
         </DialogHeader>
+        {rejection && (
+          <RejectionNote
+            reason={rejection.rejectionReason ?? rejection.decisionComment ?? 'No reason given'}
+            byName={rejection.rejectedBy?.name ?? rejection.decidedBy?.name}
+            at={rejection.rejectedAt ?? rejection.decidedAt}
+            hint="Change this day and submit it again."
+          />
+        )}
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="tp-wt">Work type</Label>
@@ -616,6 +709,126 @@ function ApprovalsPanel({ onDecided }: { onDecided: () => void }) {
         description={`${rejecting?.requestedByName ?? ''} will see this reason.`}
         onConfirm={(reason) => rejecting && decide(rejecting, 'reject', reason)}
       />
+    </section>
+  );
+}
+
+function SubmitPanel(p: {
+  days: string[];
+  selected: Set<string>;
+  onToggle: (d: string, on: boolean) => void;
+  note: string;
+  onNote: (v: string) => void;
+  busy: boolean;
+  canSubmit: boolean;
+  all: boolean;
+  count: number;
+  onSubmit: () => void;
+  rejectionOf: (d: string) => Submission | undefined;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border p-4" data-testid="tp-submit-panel">
+      <div>
+        <h3 className="text-sm font-semibold">Send for approval</h3>
+        <p className="text-sm text-muted-foreground">
+          {p.days.length === 0
+            ? 'Every planned day is already submitted or approved. Plan more days to submit them.'
+            : 'Choose the days to send. Submitted and approved days are locked.'}
+        </p>
+      </div>
+      {p.days.length > 0 && (
+        <ul className="flex flex-wrap gap-2" data-testid="tp-select-list">
+          {p.days.map((d) => {
+            const rej = p.rejectionOf(d);
+            return (
+              <li key={d}>
+                <label className="flex items-center gap-2 rounded-md border px-2 py-1 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4"
+                    checked={p.selected.has(d)}
+                    onChange={(e) => p.onToggle(d, e.target.checked)}
+                    data-testid="tp-select-day"
+                    data-date={d}
+                  />
+                  {dayLabel(d)}
+                  {rej && <span className="text-xs text-destructive">Rejected</span>}
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {p.days.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="tp-note">Note for your approver (optional)</Label>
+          <textarea
+            id="tp-note"
+            data-testid="tp-note"
+            maxLength={1000}
+            rows={2}
+            value={p.note}
+            onChange={(e) => p.onNote(e.target.value)}
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          />
+        </div>
+      )}
+      <div>
+        <Button
+          onClick={p.onSubmit}
+          disabled={p.busy || !p.canSubmit}
+          title={!p.canSubmit ? 'Choose at least one planned day' : undefined}
+          data-testid="tp-submit"
+        >
+          {p.all ? 'Submit for approval' : `Submit selected days (${p.count})`}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+const SUB_STATUS: Record<Submission['status'], string> = {
+  submitted: 'Submitted',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
+
+function SubmissionsList({ items }: { items: Submission[] }) {
+  return (
+    <section className="flex flex-col gap-2" aria-labelledby="tp-subs" data-testid="tp-submissions">
+      <h3 id="tp-subs" className="text-sm font-semibold">
+        Submissions this month
+      </h3>
+      <ul className="divide-y rounded-lg border">
+        {[...items].reverse().map((x) => (
+          <li key={x.id} className="flex flex-col gap-1 px-3 py-2.5 text-sm" data-testid="tp-submission" data-status={x.status}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={cn('rounded px-2 py-0.5 text-xs font-medium', DAY_STATUS[x.status].tone)}>
+                {SUB_STATUS[x.status]}
+              </span>
+              <span className="tabular-nums">{x.dates.map(shortDate).join(', ')}</span>
+            </div>
+            {x.submitterNote && (
+              <p className="text-muted-foreground" data-testid="tp-submission-note">
+                Your note: {x.submitterNote}
+              </p>
+            )}
+            {x.status === 'rejected' ? (
+              <p className="text-destructive" data-testid="tp-submission-reason">
+                Rejected: {x.rejectionReason ?? x.decisionComment ?? 'No reason given'}
+                {x.rejectedBy?.name ? `, by ${x.rejectedBy.name}` : ''}
+                {x.rejectedAt ? `, ${shortDate(x.rejectedAt.slice(0, 10))}` : ''}
+              </p>
+            ) : (
+              x.decisionComment && (
+                <p className="text-muted-foreground" data-testid="tp-submission-comment">
+                  Comment: {x.decisionComment}
+                </p>
+              )
+            )}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

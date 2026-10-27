@@ -193,7 +193,10 @@ export const NAV: NavItem[] = [
     title: 'Exception rules',
     href: '/settings/exception-rules',
     icon: CircleAlert,
-    roles: ROLES.filter((r) => (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('settings:write')),
+    // The rules API needs field:read too (sysadmin gets 403), so hide it from roles without it.
+    roles: ROLES.filter((r) =>
+      ['settings:write', 'field:read'].every((p) => (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes(p as never)),
+    ),
     section: 'admin',
   },
   {

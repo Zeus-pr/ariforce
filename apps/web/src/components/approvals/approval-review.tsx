@@ -167,7 +167,15 @@ function TourPlanDetail({ a, s }: { a: Approval; s: Extract<ApprovalSubject, { t
       <dl className="grid gap-1">
         <Row k="Submitted by" v={a.requestedByName} />
         <Row k="Month" v={<span data-testid="review-month">{monthLabel(s.plan.month)}</span>} />
-        <Row k="Days in request" v={days.length} />
+        <Row k="Days in request" v={<span data-testid="review-days-count">{days.length}</span>} />
+        <Row
+          k="Whole plan"
+          v={
+            <span data-testid="review-plan-context">
+              {s.plan.days.filter((d) => d.entries.length > 0).length} planned days, {(s.plan as { submissions?: unknown[] }).submissions?.length ?? 1} {((s.plan as { submissions?: unknown[] }).submissions?.length ?? 1) === 1 ? 'submission' : 'submissions'}
+            </span>
+          }
+        />
         {note && <Row k="Note" v={<span data-testid="review-note" className="whitespace-pre-wrap">{note}</span>} />}
       </dl>
       <ul className="max-h-80 divide-y overflow-y-auto overscroll-contain rounded-md border bg-background">

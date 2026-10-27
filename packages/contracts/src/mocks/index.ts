@@ -512,7 +512,8 @@ function fieldHandlers(baseUrl: string) {
       updatedAt: seedTs,
       deletedAt: null,
       version: 1,
-      id: fx.approvals[0]!.subjectId,
+      // #86: the seeded approval decides a submission (days 1-2); day 3 is still a draft.
+      id: '7a1c0de0-0086-4000-8000-000000000086',
       userId: fx.approvals[0]!.requestedBy,
       month: '2026-12',
       kind: 'mtp',
@@ -530,7 +531,26 @@ function fieldHandlers(baseUrl: string) {
             notes: d === 1 ? 'Cover the new hospital wing' : null,
           },
         ],
+        status: d < 3 ? ('submitted' as const) : ('draft' as const),
+        submissionId: d < 3 ? fx.approvals[0]!.subjectId : null,
       })),
+      submissions: [
+        {
+          id: fx.approvals[0]!.subjectId,
+          tourPlanId: '7a1c0de0-0086-4000-8000-000000000086',
+          dates: ['2026-12-01', '2026-12-02'],
+          status: 'submitted',
+          approvalId: fx.approvals[0]!.id,
+          submitterNote: 'Hospital wing opens on the 1st',
+          submittedAt: seedTs,
+          decidedAt: null,
+          decidedBy: null,
+          decisionComment: null,
+          rejectionReason: null,
+          rejectedBy: null,
+          rejectedAt: null,
+        },
+      ],
       submittedAt: seedTs,
       decidedAt: null,
       decidedBy: null,
@@ -540,6 +560,62 @@ function fieldHandlers(baseUrl: string) {
       rejectedBy: null,
       rejectedAt: null,
     } as TourPlan,
+    // #86 e2e seed: my own Feb 2027 plan. Day 1 was rejected (editable, resubmittable), day 2 approved (locked).
+    ((): TourPlan => {
+      const pid = '7a1c0de0-0086-4000-8000-000000000201';
+      const rej = '7a1c0de0-0086-4000-8000-000000000202';
+      const ok = '7a1c0de0-0086-4000-8000-000000000203';
+      const approver = { id: fx.approvals[0]!.requestedBy, name: 'Demo Vice President' };
+      const entry = (notes: string | null) => ({
+        session: 'full' as const,
+        workTypeId: fx.workTypes[0]!.id,
+        territoryIds: [fx.doctors[0]!.territoryId],
+        jointWorkUserIds: [],
+        plannedDoctorIds: [fx.doctors[0]!.id],
+        plannedChemistIds: [],
+        notes,
+      });
+      const sub = (id: string, date: string, status: 'approved' | 'rejected') => ({
+        id,
+        tourPlanId: pid,
+        dates: [date],
+        status,
+        approvalId: null,
+        submitterNote: null,
+        submittedAt: seedTs,
+        decidedAt: seedTs,
+        decidedBy: approver,
+        decisionComment: status === 'rejected' ? 'Wrong territory for the 1st' : 'Looks good',
+        rejectionReason: status === 'rejected' ? 'Wrong territory for the 1st' : null,
+        rejectedBy: status === 'rejected' ? approver : null,
+        rejectedAt: status === 'rejected' ? seedTs : null,
+      });
+      return {
+        companyId: fx.COMPANY_ID,
+        createdAt: seedTs,
+        updatedAt: seedTs,
+        deletedAt: null,
+        version: 1,
+        id: pid,
+        userId: fx.me.id,
+        month: '2027-02',
+        kind: 'mtp',
+        status: 'rejected',
+        days: [
+          { date: '2027-02-01', entries: [entry(null)], status: 'rejected', submissionId: rej },
+          { date: '2027-02-02', entries: [entry(null)], status: 'approved', submissionId: ok },
+        ],
+        submissions: [sub(rej, '2027-02-01', 'rejected'), sub(ok, '2027-02-02', 'approved')],
+        submittedAt: seedTs,
+        decidedAt: seedTs,
+        decidedBy: approver.id,
+        decisionComment: null,
+        submitterNote: null,
+        rejectionReason: null,
+        rejectedBy: null,
+        rejectedAt: null,
+      } as TourPlan;
+    })(),
   ];
   let stp: StandardTourPlan | null = null;
   const dcrs: Dcr[] = [];
