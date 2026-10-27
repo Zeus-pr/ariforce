@@ -17,40 +17,43 @@ export class WorkTypesCheck implements OnApplicationBootstrap {
 
   constructor(@Inject(POOL) private readonly pool: Pool) {}
 
-  /** Never blocks or fails boot. */
+  /** Never blocks or fails boot. Per-company detail is logged here only, never on /health. */
   onApplicationBootstrap() {
-    void this.warnings(true).then((ws) => {
-      for (const w of ws)
-        if (w.code === 'NO_WORK_TYPES')
+    void this.companies().then(
+      (cs) => {
+        for (const c of cs)
           this.log.warn(
-            `Company '${w.companySlug}' (${w.companyId}) has no work types; DCR/Tour Plan dropdowns will be empty. Apply migration 0026_work_types_defaults.`,
+            `Company '${c.slug}' (${c.company_id}) has no work types; DCR/Tour Plan dropdowns will be empty. Apply migration 0026_work_types_defaults.`,
           );
-        else this.log.warn(`Work types check failed: ${w.message}`);
-    });
+      },
+      (e: Error) => this.log.warn(`Work types check failed: ${e.message.slice(0, 200)}`),
+    );
   }
 
+  private async companies() {
+    const r = await this.pool.query<{ company_id: string; slug: string }>(
+      'select company_id, slug from companies_without_work_types()',
+    );
+    return r.rows;
+  }
+
+  /** Aggregate warnings for the public health endpoint. */
   async warnings(fresh = false): Promise<HealthWarning[]> {
     if (!fresh && this.cache && Date.now() - this.cache.at < TTL_MS) return this.cache.value;
     let value: HealthWarning[];
     try {
-      const r = await this.pool.query<{ company_id: string; slug: string }>(
-        'select company_id, slug from companies_without_work_types()',
-      );
-      value = r.rows.map((x) => ({
-        code: 'NO_WORK_TYPES' as const,
-        companyId: x.company_id,
-        companySlug: x.slug,
-        message: 'Company has no active work types',
-      }));
-    } catch (e) {
-      value = [
-        {
-          code: 'WORK_TYPES_CHECK_FAILED' as const,
-          companyId: null,
-          companySlug: null,
-          message: (e as Error).message.slice(0, 200),
-        },
-      ];
+      const n = (await this.companies()).length;
+      value = n
+        ? [
+            {
+              code: 'NO_WORK_TYPES',
+              count: n,
+              message: `${n} compan${n === 1 ? 'y has' : 'ies have'} no active work types`,
+            },
+          ]
+        : [];
+    } catch {
+      value = [{ code: 'WORK_TYPES_CHECK_FAILED', message: 'Work types check could not run' }];
     }
     this.cache = { at: Date.now(), value };
     return value;

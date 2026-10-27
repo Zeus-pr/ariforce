@@ -51,18 +51,18 @@ describe.skipIf(!process.env.DIRECT_URL || !process.env.DATABASE_URL)(
       const app = configureApp(mod.createNestApplication({ bodyParser: false }));
       await app.init();
       try {
+        const count = (ws: { code: string; count?: number }[]) =>
+          ws.find((w) => w.code === 'NO_WORK_TYPES')?.count ?? 0;
         const a = await request(app.getHttpServer()).get('/v1/health');
         expect(a.status).toBe(200);
         expect(a.body.status).toBe('ok');
-        expect(a.body.warnings).toContainEqual({
-          code: 'NO_WORK_TYPES',
-          companyId: id,
-          companySlug: slug,
-          message: 'Company has no active work types',
-        });
-        expect(a.body.warnings.map((w: { companySlug: string }) => w.companySlug)).not.toContain(
-          'demo',
-        );
+        const before = count(a.body.warnings);
+        expect(before).toBeGreaterThanOrEqual(1);
+        // Public endpoint: aggregate only, no company ids or slugs.
+        expect(JSON.stringify(a.body)).not.toContain(id);
+        expect(JSON.stringify(a.body)).not.toContain(slug);
+        for (const w of a.body.warnings)
+          expect(Object.keys(w).sort()).toEqual(['code', 'count', 'message']);
         for (const w of DEFAULT_WORK_TYPES)
           await owner.query(
             `insert into work_types (id, company_id, code, name, kind, counts_as_field_day, allowance_band, requires_location)
@@ -81,7 +81,7 @@ describe.skipIf(!process.env.DIRECT_URL || !process.env.DATABASE_URL)(
         await app.get(WorkTypesCheck).warnings(true); // skip the 60 s cache
         const b = await request(app.getHttpServer()).get('/v1/health');
         expect(b.body.status).toBe('ok');
-        expect(b.body.warnings.map((w: { companyId: string }) => w.companyId)).not.toContain(id);
+        expect(count(b.body.warnings)).toBe(before - 1);
       } finally {
         await app.close();
         await owner.query(`update companies set deleted_at = now() where id = $1`, [id]);

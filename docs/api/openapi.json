@@ -13728,47 +13728,52 @@
         "additionalProperties": false
       },
       "HealthWarning": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string",
-            "enum": [
-              "NO_WORK_TYPES",
-              "WORK_TYPES_CHECK_FAILED"
-            ],
-            "description": "NO_WORK_TYPES: a company has no active work types (DCR/Tour Plan dropdowns empty); WORK_TYPES_CHECK_FAILED: the check could not run (DB unreachable or migration 0026 missing)"
-          },
-          "companyId": {
-            "anyOf": [
-              {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "code": {
                 "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                "description": "UUIDv7 identifier",
-                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                "const": "NO_WORK_TYPES",
+                "description": "Some companies have no active work types (DCR/Tour Plan dropdowns empty)"
               },
-              {
-                "type": "null"
+              "count": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991,
+                "description": "Number of such companies"
+              },
+              "message": {
+                "type": "string"
               }
-            ]
+            },
+            "required": [
+              "code",
+              "count",
+              "message"
+            ],
+            "additionalProperties": false
           },
-          "companySlug": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "message": {
-            "type": "string"
+          {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "const": "WORK_TYPES_CHECK_FAILED",
+                "description": "The check could not run (DB unreachable or migration 0026 missing)"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "additionalProperties": false
           }
-        },
-        "required": [
-          "code",
-          "companyId",
-          "companySlug",
-          "message"
         ],
-        "additionalProperties": false
+        "type": "object"
       },
       "Error": {
         "type": "object",

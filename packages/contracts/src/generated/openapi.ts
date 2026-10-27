@@ -2425,16 +2425,25 @@ export interface components {
       /** @description Empty when all is well; cached ~60 s */
       warnings: components['schemas']['HealthWarning'][];
     };
-    HealthWarning: {
-      /**
-       * @description NO_WORK_TYPES: a company has no active work types (DCR/Tour Plan dropdowns empty); WORK_TYPES_CHECK_FAILED: the check could not run (DB unreachable or migration 0026 missing)
-       * @enum {string}
-       */
-      code: 'NO_WORK_TYPES' | 'WORK_TYPES_CHECK_FAILED';
-      companyId: string | null;
-      companySlug: string | null;
-      message: string;
-    };
+    HealthWarning:
+      | {
+          /**
+           * @description Some companies have no active work types (DCR/Tour Plan dropdowns empty)
+           * @constant
+           */
+          code: 'NO_WORK_TYPES';
+          /** @description Number of such companies */
+          count: number;
+          message: string;
+        }
+      | {
+          /**
+           * @description The check could not run (DB unreachable or migration 0026 missing)
+           * @constant
+           */
+          code: 'WORK_TYPES_CHECK_FAILED';
+          message: string;
+        };
     Error: {
       error: {
         /** @example FORBIDDEN */
