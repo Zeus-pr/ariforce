@@ -3,7 +3,8 @@ import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { monthDates } from '@ariforce/contracts';
+import { istDate, monthDates } from '@ariforce/contracts';
+import { Pool } from 'pg';
 import { T } from '@ariforce/db';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
@@ -103,7 +104,14 @@ describe.skipIf(!OWNER || !APP)('tour plans + approvals (real API)', () => {
     expect(wrongMonth.status).toBe(422);
     const early = await http().post(`/v1/tour-plans/${M}/submit`).set(as('bm'));
     expect(early.status).toBe(422);
-    expect(early.body.error.details.missingDates).toHaveLength(26);
+    // 2027-02 is a future month: every non-Sunday date (24) minus the 2 already planned by the copy test.
+    expect(early.body.error.details.missingDates).toHaveLength(22);
+    expect(early.body.error.details.weeklyOffDays).toEqual([0]);
+    expect(
+      (early.body.error.details.missingDates as string[]).some(
+        (d) => new Date(d).getUTCDay() === 0,
+      ),
+    ).toBe(false);
     const saved = await http().put(`/v1/tour-plans/${M}`).set(as('bm')).send({ days: full() });
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
     const sub = await http().post(`/v1/tour-plans/${M}/submit`).set(as('bm'));
@@ -112,6 +120,50 @@ describe.skipIf(!OWNER || !APP)('tour plans + approvals (real API)', () => {
     expect(
       (await http().put(`/v1/tour-plans/${M}`).set(as('bm')).send({ days: full() })).status,
     ).toBe(409);
+  });
+
+  it('submit rule: current month ignores past days (today counts); weekly off from leave_settings', async () => {
+    const cur = istDate().slice(0, 7);
+    const today = istDate();
+    const cal = await http().get(`/v1/tour-plans/${cur}/calendar`).set(as('director'));
+    expect(cal.status).toBe(200);
+    expect(cal.body).toMatchObject({ month: cur, todayIST: today, weeklyOffDays: [0] });
+    const req = cal.body.requiredDates as string[];
+    expect(req.every((d) => d >= today && new Date(d).getUTCDay() !== 0)).toBe(true);
+    if (new Date(today).getUTCDay() !== 0) expect(req).toContain(today);
+    // Empty plan: only today-and-later non-off dates are reported missing.
+    expect(
+      (await http().put(`/v1/tour-plans/${cur}`).set(as('director')).send({ days: [] })).status,
+    ).toBe(200);
+    const early = await http().post(`/v1/tour-plans/${cur}/submit`).set(as('director'));
+    if (req.length) {
+      expect(early.status).toBe(422);
+      expect(early.body.error.details.missingDates).toEqual(req);
+      expect(early.body.error.details.todayIST).toBe(today);
+      // Plan only today onward (past days left empty) → submit succeeds.
+      const days = req.map((date) => ({ date, entries: [entry] }));
+      expect(
+        (await http().put(`/v1/tour-plans/${cur}`).set(as('director')).send({ days })).status,
+      ).toBe(200);
+      const sub = await http().post(`/v1/tour-plans/${cur}/submit`).set(as('director'));
+      expect(sub.status, JSON.stringify(sub.body)).toBe(200);
+    } else expect(early.status).toBe(200);
+
+    // Weekly off is the company's leave_settings.weekly_off_days.
+    const owner = new Pool({ connectionString: OWNER });
+    try {
+      await owner.query(
+        `update leave_settings set weekly_off_days = '{0,6}' where company_id = (select id from companies where slug = 'demo')`,
+      );
+      const c2 = await http().get('/v1/tour-plans/2027-05/calendar').set(as('director'));
+      expect(c2.body.weeklyOffDays).toEqual([0, 6]);
+      expect(c2.body.requiredDates).toHaveLength(21); // May 2027: 31 - 5 Sat - 5 Sun
+    } finally {
+      await owner.query(
+        `update leave_settings set weekly_off_days = '{0}' where company_id = (select id from companies where slug = 'demo')`,
+      );
+      await owner.end();
+    }
   });
 
   it('approvals: scoped, mine=to_decide, no self-approval', async () => {

@@ -37,6 +37,7 @@ import {
   FieldListQuery,
   GeofenceSettings,
   TourPlan,
+  TourPlanCalendar,
   StandardTourPlan,
   StandardTourPlanUpsert,
   TourPlanCopy,
@@ -725,8 +726,20 @@ function buildDocument(): OpenApiDocument {
             '200': { description: 'Submitted; approval created', ...json(TourPlan) },
             '404': err('No plan for the month'),
             '409': err('Not in draft'),
-            '422': err('Dates without an entry (details.missingDates)'),
+            '422': err(
+              'Required dates without an entry: details { missingDates, todayIST, weeklyOffDays }. Required = non-weekly-off dates; in the current month (IST) only today and later; full-day approved leave exempt.',
+            ),
           },
+        }),
+      },
+      '/v1/tour-plans/{month}/calendar': {
+        get: op({
+          tags: ['TourPlans'],
+          operationId: 'getTourPlanCalendar',
+          description:
+            'Submit rule inputs for a month (no plan needed): today in IST, company weekly-off days, required dates.',
+          requestParams: { path: z.object({ month: Month }) },
+          responses: { '200': { description: 'OK', ...json(TourPlanCalendar) } },
         }),
       },
       '/v1/dcrs': {

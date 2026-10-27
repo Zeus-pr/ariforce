@@ -6273,7 +6273,67 @@
             }
           },
           "422": {
-            "description": "Dates without an entry (details.missingDates)",
+            "description": "Required dates without an entry: details { missingDates, todayIST, weeklyOffDays }. Required = non-weekly-off dates; in the current month (IST) only today and later; full-day approved leave exempt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tour-plans/{month}/calendar": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "TourPlans"
+        ],
+        "operationId": "getTourPlanCalendar",
+        "description": "Submit rule inputs for a month (no plan needed): today in IST, company weekly-off days, required dates.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "month",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "description": "Month (YYYY-MM)",
+              "example": "2026-11"
+            },
+            "required": true,
+            "description": "Month (YYYY-MM)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TourPlanCalendar"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
             "content": {
               "application/json": {
                 "schema": {
@@ -17251,6 +17311,49 @@
           "version",
           "userId",
           "days"
+        ],
+        "additionalProperties": false
+      },
+      "TourPlanCalendar": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "description": "Month (YYYY-MM)",
+            "example": "2026-11"
+          },
+          "todayIST": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Today in Asia/Kolkata"
+          },
+          "weeklyOffDays": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 6
+            },
+            "description": "From leave settings (0 = Sunday .. 6 = Saturday); default [0]"
+          },
+          "requiredDates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+              "description": "Calendar date (YYYY-MM-DD, IST)"
+            },
+            "description": "Dates submit needs an entry on: non-off dates; current month only from todayIST on. Full-day approved leave is also exempt at submit."
+          }
+        },
+        "required": [
+          "month",
+          "todayIST",
+          "weeklyOffDays",
+          "requiredDates"
         ],
         "additionalProperties": false
       },

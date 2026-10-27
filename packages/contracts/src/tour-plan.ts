@@ -56,6 +56,42 @@ export function copyFromStandard<E>(month: string, stp: StandardDay<E>[]): PlanD
     .filter((d) => d.entries.length > 0);
 }
 
+/** Default weekly off (0 = Sunday .. 6 = Saturday), as leave_settings.weekly_off_days. */
+export const DEFAULT_WEEKLY_OFF_DAYS = [0];
+/** Time zone for "today" in the tour-plan submit rule. */
+export const TP_TIME_ZONE = 'Asia/Kolkata';
+/** Calendar date (YYYY-MM-DD) of an instant in IST. */
+export function istDate(at: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: TP_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(at);
+}
+
+/**
+ * Dates that need a plan entry before submit (approved full-day leave is excluded separately).
+ * Weekly-off days never count. Current month (IST): only dates on or after today. Future and
+ * past months: every non-off date (a past month is not reduced to nothing).
+ */
+export function requiredDates(month: string, today: string, weeklyOffDays: number[]): string[] {
+  const off = new Set(weeklyOffDays);
+  const dates = monthDates(month).filter((d) => !off.has(new Date(`${d}T00:00:00Z`).getUTCDay()));
+  return month === today.slice(0, 7) ? dates.filter((d) => d >= today) : dates;
+}
+
+/** Required dates with no entry. */
+export function missingRequiredDates(
+  month: string,
+  days: PlanDay[],
+  today: string,
+  weeklyOffDays: number[],
+): string[] {
+  const have = new Set(days.filter((d) => d.entries.length > 0).map((d) => d.date));
+  return requiredDates(month, today, weeklyOffDays).filter((d) => !have.has(d));
+}
+
 /** Previous month 'YYYY-MM'. */
 export function prevMonth(month: string): string {
   const [y, m] = month.split('-').map(Number) as [number, number];

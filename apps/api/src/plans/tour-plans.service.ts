@@ -3,13 +3,17 @@ import {
   badDates,
   copyFromMonth,
   copyFromStandard,
-  missingDates,
+  DEFAULT_WEEKLY_OFF_DAYS,
+  istDate,
+  missingRequiredDates,
+  requiredDates,
   prevMonth,
   type StandardTourPlan,
   type TourPlan,
 } from '@ariforce/contracts';
 import {
   chemists,
+  leaveSettings,
   doctors,
   planSessions,
   standardTourPlans,
@@ -359,7 +363,29 @@ export class TourPlansService {
     });
   }
 
-  submit(p: Principal, month: string) {
+  /** Company weekly off from leave_settings (same source as leave counting); default Sunday. */
+  private async weeklyOff(tx: Tx): Promise<number[]> {
+    const [s] = await tx
+      .select({ w: leaveSettings.weeklyOffDays })
+      .from(leaveSettings)
+      .where(isNull(leaveSettings.deletedAt));
+    return s?.w ?? DEFAULT_WEEKLY_OFF_DAYS;
+  }
+
+  calendar(p: Principal, month: string, now = new Date()) {
+    return this.tenant.run(p, async (tx) => {
+      const weeklyOffDays = await this.weeklyOff(tx);
+      const todayIST = istDate(now);
+      return {
+        month,
+        todayIST,
+        weeklyOffDays,
+        requiredDates: requiredDates(month, todayIST, weeklyOffDays),
+      };
+    });
+  }
+
+  submit(p: Principal, month: string, now = new Date()) {
     return this.tenant.run(p, async (tx) => {
       const cur = await this.find(tx, p.userId, month);
       if (!cur) throw new NotFoundException('No plan for this month');
@@ -370,11 +396,22 @@ export class TourPlansService {
           .filter((l) => !l.half)
           .map((l) => l.date),
       );
-      const missing = missingDates(month, cur.days as Day[]).filter((d) => !off.has(d));
+      // Weekly offs never count; in the current month (IST) past days do not count either.
+      const weeklyOffDays = await this.weeklyOff(tx);
+      const todayIST = istDate(now);
+      const missing = missingRequiredDates(
+        month,
+        cur.days as Day[],
+        todayIST,
+        weeklyOffDays,
+      ).filter((d) => !off.has(d));
       if (missing.length)
-        throw err(422, 'VALIDATION', `${missing.length} date(s) have no plan entry`, {
-          missingDates: missing,
-        });
+        throw err(
+          422,
+          'VALIDATION',
+          `${missing.length} required date(s) have no plan entry (weekly offs and, this month, past days are not required)`,
+          { missingDates: missing, todayIST, weeklyOffDays },
+        );
       const [row] = await tx
         .update(tourPlans)
         .set({ status: 'submitted', submittedAt: new Date() })

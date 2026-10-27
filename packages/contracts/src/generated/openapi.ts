@@ -865,6 +865,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/tour-plans/{month}/calendar': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Submit rule inputs for a month (no plan needed): today in IST, company weekly-off days, required dates. */
+    get: operations['getTourPlanCalendar'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/dcrs': {
     parameters: {
       query?: never;
@@ -3538,6 +3555,22 @@ export interface components {
        */
       userId: string;
       days: components['schemas']['StandardTourPlanDayOutput'][];
+    };
+    TourPlanCalendar: {
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      /**
+       * Format: date
+       * @description Today in Asia/Kolkata
+       */
+      todayIST: string;
+      /** @description From leave settings (0 = Sunday .. 6 = Saturday); default [0] */
+      weeklyOffDays: number[];
+      /** @description Dates submit needs an entry on: non-off dates; current month only from todayIST on. Full-day approved leave is also exempt at submit. */
+      requiredDates: string[];
     };
     DcrPage: {
       items: components['schemas']['Dcr'][];
@@ -8287,8 +8320,49 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Dates without an entry (details.missingDates) */
+      /** @description Required dates without an entry: details { missingDates, todayIST, weeklyOffDays }. Required = non-weekly-off dates; in the current month (IST) only today and later; full-day approved leave exempt. */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getTourPlanCalendar: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Month (YYYY-MM) */
+        month: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlanCalendar'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
         headers: {
           [name: string]: unknown;
         };

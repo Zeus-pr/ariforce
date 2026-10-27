@@ -16,8 +16,13 @@
   work types, territories (in your scope), planned doctors/chemists must exist → else 422 with details.
 - `POST /v1/tour-plans/{month}/copy` `{ fromMonth?, fromStp = true }`: `fromMonth` wins; else `fromStp=true` copies the
   STP, `fromStp=false` copies the previous month. Dates map by week of month + weekday. Missing source → 404.
-- `POST /v1/tour-plans/{month}/submit`: every date needs an entry (use leave/holiday work types) → else
-  `422` with `details.missingDates`. Creates an approval request (step 1 approver = reporting manager).
+- `POST /v1/tour-plans/{month}/submit`: every **required** date needs an entry → else `422` with
+  `details { missingDates, todayIST, weeklyOffDays }`. Required = dates of the month that are not a weekly off
+  (`leave_settings.weekly_off_days`, default `[0]` = Sunday) and not fully on approved leave; in the **current month
+  (IST, Asia/Kolkata)** only dates `>= todayIST` (today counts). Future and past months: every non-off date. Shared
+  helper: `requiredDates` / `missingRequiredDates` in `@ariforce/contracts`.
+- `GET /v1/tour-plans/{month}/calendar` → `{ month, todayIST, weeklyOffDays: number[], requiredDates: string[] }`
+  (no plan needed) so the web shows the same rule. Creates an approval request (step 1 approver = reporting manager).
 
 ## Approvals (gaps #5-#7)
 

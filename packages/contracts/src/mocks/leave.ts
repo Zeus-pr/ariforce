@@ -65,6 +65,9 @@ const counted = (from: string, to: string) => {
   return out;
 };
 
+/** Weekly off from the mock leave settings (tour-plan submit rule). */
+export const mockWeeklyOffDays = () => [...settings.weeklyOffDays];
+
 /** Approved mock leave for attendance mocks. */
 export function mockLeaveOn(userId: string, date: string) {
   const r = requests.find(

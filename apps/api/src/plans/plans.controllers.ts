@@ -62,6 +62,12 @@ export class TourPlansController {
     return this.svc.putStandard(p, b.days, b.version);
   }
 
+  @Get(':month/calendar')
+  @RequirePermissions('me:read')
+  calendar(@CurrentPrincipal() p: Principal, @Param('month') m: string) {
+    return this.svc.calendar(p, month(m));
+  }
+
   @Get(':month')
   @RequirePermissions('me:read')
   get(

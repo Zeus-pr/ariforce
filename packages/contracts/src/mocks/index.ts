@@ -26,7 +26,7 @@ import { kpiReport, productKpiReport } from './kpis';
 import { teamHandlers, teamProfileHandlers } from './team';
 import { signupHandlers } from './signup';
 import { expenseHandlers } from './expenses';
-import { leaveHandlers, mockLeaveOn } from './leave';
+import { leaveHandlers, mockLeaveOn, mockWeeklyOffDays } from './leave';
 import { mastersGuardHandlers } from './masters-guard';
 import {
   Approval,
@@ -52,11 +52,14 @@ import {
   StandardTourPlan,
   StandardTourPlanUpsert,
   TourPlan,
+  TourPlanCalendar,
   TourPlanCopy,
   TourPlanUpsert,
   copyFromMonth,
   copyFromStandard,
-  missingDates,
+  istDate,
+  missingRequiredDates,
+  requiredDates,
   prevMonth,
   WorkType,
   WorkTypeCreate,
@@ -705,6 +708,19 @@ function fieldHandlers(baseUrl: string) {
         : { ...stamp(), id: crypto.randomUUID(), userId: fx.me.id, days: b.data.days };
       return HttpResponse.json(StandardTourPlan.parse(stp));
     }),
+    http.get(`${baseUrl}/v1/tour-plans/:month/calendar`, ({ params }) => {
+      const month = String(params.month);
+      const todayIST = istDate();
+      const weeklyOffDays = mockWeeklyOffDays();
+      return HttpResponse.json(
+        TourPlanCalendar.parse({
+          month,
+          todayIST,
+          weeklyOffDays,
+          requiredDates: requiredDates(month, todayIST, weeklyOffDays),
+        }),
+      );
+    }),
     http.get(`${baseUrl}/v1/tour-plans/:month`, ({ params }) => {
       const p = tourPlans.find((t) => t.month === params.month && t.userId === fx.me.id);
       return p ? HttpResponse.json(p) : notFound();
@@ -748,11 +764,16 @@ function fieldHandlers(baseUrl: string) {
       const p = tourPlans.find((t) => t.month === params.month && t.userId === fx.me.id);
       if (!p) return notFound();
       if (p.status !== 'draft') return conflict('Not in draft');
-      const missing = missingDates(p.month, p.days);
+      const todayIST = istDate();
+      const weeklyOffDays = mockWeeklyOffDays();
+      const missing = missingRequiredDates(p.month, p.days, todayIST, weeklyOffDays).filter(
+        (d) => !mockLeaveOn(fx.me.id, d),
+      );
       if (missing.length)
-        return validation(`${missing.length} date(s) have no plan entry`, {
-          missingDates: missing,
-        });
+        return validation(
+          `${missing.length} required date(s) have no plan entry (weekly offs and, this month, past days are not required)`,
+          { missingDates: missing, todayIST, weeklyOffDays },
+        );
       Object.assign(p, { status: 'submitted', submittedAt: serverTime(), version: p.version + 1 });
       approvals.push({
         id: crypto.randomUUID(),
