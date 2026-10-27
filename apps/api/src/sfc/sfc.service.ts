@@ -79,7 +79,7 @@ export class SfcService {
         join territories t on t.id = ut.territory_id and t.deleted_at is null
         join user_territories mine on mine.user_id = ${p.userId}::uuid
         join territories mt on mt.id = mine.territory_id and mt.deleted_at is null
-        where ut.user_id = ${col} and (t.path = mt.path or t.path like mt.path || '.%'))
+        where ut.user_id = ${col} and (t.path = mt.path or starts_with(t.path, mt.path || '.')))
       and (select coalesce(max(r.rank), 0) from user_roles ur join roles r on r.id = ur.role_id
         where ur.user_id = ${col} and r.deleted_at is null) < ${myRank}))`;
   }
@@ -180,7 +180,7 @@ export class SfcService {
         ? sql`and exists (select 1 from user_territories ut2
              join territories t2 on t2.id = ut2.territory_id
              join territories root on root.id = ${territoryId}::uuid
-             where ut2.user_id = su.id and (t2.path = root.path or t2.path like root.path || '.%'))`
+             where ut2.user_id = su.id and (t2.path = root.path or starts_with(t2.path, root.path || '.')))`
         : sql``;
       const rows = await tx.execute<{
         id: string;

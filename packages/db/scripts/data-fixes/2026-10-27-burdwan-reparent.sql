@@ -8,6 +8,10 @@
 -- Keeps: both HQs stay headquarter level; their BMs (Sohom Mukherjee on BMCH, Surojit Shikari on
 --   Anamoy) keep their user_territories rows; all doctors/chemists/stockists/allowance places/SFC
 --   routes keep their territory ids (only paths move). Nothing is deleted.
+-- Paths: whatever convention the data uses is kept. Each territory keeps its OWN last path segment
+--   (real data: code-based, e.g. WB.HQ_BURDWAN; seed/importer: uuid); only the prefix changes:
+--   new path = new parent path || '.' || own existing last segment. E.g. WB.HQ_BURDWAN_BMCH ->
+--   WB.HQ_BURDWAN.HQ_BURDWAN_BMCH. Descendants are rebuilt the same way (prefix replacement).
 -- Keyed by territory codes; single transaction; idempotent (a second run changes 0 rows).
 -- Run:  psql "$URL" -v slug=arighna -v company_id=83584199-7043-46c0-b5cd-8ea938e8dce5 -v ON_ERROR_STOP=1 -f 2026-10-27-burdwan-reparent.sql
 -- Afterwards: run 2026-10-27-territory-level-violations-report.sql (a BM left on HQ-BURDWAN itself
@@ -65,17 +69,17 @@ CREATE TEMP TABLE _counts (phase text, code text, doctors int, chemists int, sto
 CREATE TEMP VIEW _subtree_counts AS
 SELECT x.code,
   (SELECT count(*) FROM doctors d JOIN territories s ON s.id = d.territory_id
-     WHERE d.deleted_at IS NULL AND (s.id = t.id OR s.path LIKE t.path || '.%'))::int AS doctors,
+     WHERE d.deleted_at IS NULL AND (s.id = t.id OR starts_with(s.path, t.path || '.')))::int AS doctors,
   (SELECT count(*) FROM chemists d JOIN territories s ON s.id = d.territory_id
-     WHERE d.deleted_at IS NULL AND (s.id = t.id OR s.path LIKE t.path || '.%'))::int AS chemists,
+     WHERE d.deleted_at IS NULL AND (s.id = t.id OR starts_with(s.path, t.path || '.')))::int AS chemists,
   (SELECT count(*) FROM stockists d JOIN territories s ON s.id = d.territory_id
-     WHERE d.deleted_at IS NULL AND (s.id = t.id OR s.path LIKE t.path || '.%'))::int AS stockists,
+     WHERE d.deleted_at IS NULL AND (s.id = t.id OR starts_with(s.path, t.path || '.')))::int AS stockists,
   (SELECT count(DISTINCT ut.user_id) FROM user_territories ut JOIN territories s ON s.id = ut.territory_id
-     WHERE (s.id = t.id OR s.path LIKE t.path || '.%'))::int AS users,
+     WHERE (s.id = t.id OR starts_with(s.path, t.path || '.')))::int AS users,
   (SELECT count(*) FROM allowance_places a JOIN territories s ON s.id = a.hq_territory_id
-     WHERE a.deleted_at IS NULL AND (s.id = t.id OR s.path LIKE t.path || '.%'))::int AS allowance_places,
+     WHERE a.deleted_at IS NULL AND (s.id = t.id OR starts_with(s.path, t.path || '.')))::int AS allowance_places,
   (SELECT count(*) FROM sfc_routes a JOIN territories s ON s.id = a.hq_territory_id
-     WHERE a.deleted_at IS NULL AND (s.id = t.id OR s.path LIKE t.path || '.%'))::int AS sfc_routes
+     WHERE a.deleted_at IS NULL AND (s.id = t.id OR starts_with(s.path, t.path || '.')))::int AS sfc_routes
 FROM _t x JOIN territories t ON t.id = x.id;
 INSERT INTO _counts SELECT 'before', * FROM _subtree_counts;
 
@@ -112,10 +116,11 @@ SELECT :'company_id', NULL, 'territory.reparented', 'territory', ch.id::text,
 FROM ch;
 
 -- 3. Rebuild materialised paths below Burdwan from parent_id (moves any descendants along).
+--    Each node keeps its own last segment (code- or uuid-based, whatever is stored).
 WITH RECURSIVE tree AS (
   SELECT t.id, t.path AS p FROM territories t JOIN _t x ON x.id = t.id AND x.code = :'parent_code'
   UNION ALL
-  SELECT c.id, tree.p || '.' || c.id::text
+  SELECT c.id, tree.p || '.' || regexp_replace(c.path, '^.*\.', '')
   FROM territories c JOIN tree ON c.parent_id = tree.id
   WHERE c.deleted_at IS NULL AND c.company_id = :'company_id')
 UPDATE territories t SET path = tree.p FROM tree WHERE t.id = tree.id AND t.path <> tree.p;
@@ -157,8 +162,12 @@ BEGIN
   THEN RAISE EXCEPTION 'post-check: orphan territory (parent missing or deleted)'; END IF;
   IF EXISTS (SELECT 1 FROM territories c JOIN territories p ON p.id = c.parent_id
              JOIN _t x ON x.id IN (c.id, c.parent_id)
-             WHERE c.path <> p.path || '.' || c.id::text)
+             WHERE c.path <> p.path || '.' || regexp_replace(c.path, '^.*\.', ''))
   THEN RAISE EXCEPTION 'post-check: path does not match parent'; END IF;
+  -- Segments may repeat across the tree, but two live territories may never share a path.
+  IF EXISTS (SELECT path FROM territories WHERE company_id = current_setting('app.current_company_id')::uuid
+               AND deleted_at IS NULL GROUP BY path HAVING count(*) > 1)
+  THEN RAISE EXCEPTION 'post-check: two territories share a path'; END IF;
   -- Levels: Burdwan area under a region; both children headquarter.
   IF EXISTS (SELECT 1 FROM territories t JOIN _t x ON x.id = t.id
              WHERE x.kind = 'child' AND t.level <> 'headquarter')
@@ -186,10 +195,13 @@ COMMIT;
 -- UPDATE territories t SET level = (a.before->>'level')::territory_level
 -- FROM audit_log a WHERE a.action = 'territory.level_changed' AND a.entity_id = t.id::text
 --   AND a.after->>'fix' = '2026-10-27-burdwan-reparent';
--- WITH RECURSIVE tree AS (
---   SELECT id, id::text AS p FROM territories WHERE parent_id IS NULL AND company_id = :'company_id'
+-- WITH RECURSIVE tree AS (   -- roots keep their path; every node keeps its own last segment
+--   SELECT id, path AS p FROM territories WHERE parent_id IS NULL AND company_id = :'company_id'
+--     AND deleted_at IS NULL
 --   UNION ALL
---   SELECT c.id, tree.p || '.' || c.id::text FROM territories c JOIN tree ON c.parent_id = tree.id)
+--   SELECT c.id, tree.p || '.' || regexp_replace(c.path, '^.*\.', '')
+--   FROM territories c JOIN tree ON c.parent_id = tree.id
+--   WHERE c.company_id = :'company_id' AND c.deleted_at IS NULL)
 -- UPDATE territories t SET path = tree.p FROM tree WHERE t.id = tree.id AND t.path <> tree.p;
 -- INSERT INTO audit_log (company_id, actor_user_id, action, entity_type, entity_id)
 -- SELECT company_id, NULL, action || '_rollback', 'territory', entity_id FROM audit_log

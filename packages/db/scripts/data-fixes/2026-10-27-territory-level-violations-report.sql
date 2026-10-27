@@ -43,13 +43,30 @@ WHERE u.company_id = :'company_id' AND u.deleted_at IS NULL AND u.status <> 'sus
                   WHERE ut.user_id = u.id AND t.deleted_at IS NULL)
 ORDER BY r.key, u.name;
 
--- 3. Tree shape: a child must sit at a lower level than its parent, and path = parent.path || '.' || id.
-SELECT c.code, c.level, p.code AS parent, p.level AS parent_level,
-       (c.path = p.path || '.' || c.id::text) AS path_ok
-FROM territories c JOIN territories p ON p.id = c.parent_id
-WHERE c.company_id = :'company_id' AND c.deleted_at IS NULL
-  AND (array_position(enum_range(NULL::territory_level), c.level)
-         <= array_position(enum_range(NULL::territory_level), p.level)
-       OR c.path <> p.path || '.' || c.id::text)
-ORDER BY c.code;
+-- 3. Tree shape. Any segment style is accepted: real paths are code-based (e.g. WB.HQ_MALDA), seed
+--    and older imports use ids. Rule: root path = one segment (no '.'); child path = parent path ||
+--    '.' || its own last segment; child level below the parent's. seg_ok (informational) = the last
+--    segment equals the code, the code with non-alphanumerics as '_' (HQ-MALDA -> HQ_MALDA), or the id.
+WITH x AS (
+  SELECT c.id, c.code, c.level, c.parent_id, p.code AS parent, p.level AS parent_level, c.path,
+         regexp_replace(c.path, '^.*\.', '') AS seg,
+         CASE WHEN c.parent_id IS NULL THEN position('.' IN c.path) = 0
+              ELSE p.path IS NOT NULL AND c.path = p.path || '.' || regexp_replace(c.path, '^.*\.', '')
+         END AS path_ok,
+         (c.parent_id IS NULL OR array_position(enum_range(NULL::territory_level), c.level)
+            > array_position(enum_range(NULL::territory_level), p.level)) AS level_ok
+  FROM territories c LEFT JOIN territories p ON p.id = c.parent_id AND p.deleted_at IS NULL
+  WHERE c.company_id = :'company_id' AND c.deleted_at IS NULL),
+y AS (
+  SELECT x.*, (upper(seg) IN (upper(code), upper(regexp_replace(code, '[^A-Za-z0-9]', '_', 'g')))
+               OR seg = id::text) AS seg_ok
+  FROM x)
+SELECT code, level, parent, parent_level, path, path_ok, level_ok, seg_ok
+FROM y WHERE NOT (path_ok AND level_ok AND seg_ok)
+ORDER BY code;
+
+-- 4. Duplicate paths (two live territories must never share one; expected 0 rows).
+SELECT path, count(*) AS n, string_agg(code, ', ' ORDER BY code) AS codes
+FROM territories WHERE company_id = :'company_id' AND deleted_at IS NULL
+GROUP BY path HAVING count(*) > 1;
 ROLLBACK;

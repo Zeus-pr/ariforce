@@ -68,7 +68,7 @@ function isoWeek(d: string) {
 const pathCond = (col: SQL, paths: string[]) =>
   paths.length
     ? sql`(${sql.join(
-        paths.map((s) => sql`(${col} = ${s} or ${col} like ${s} || '.%')`),
+        paths.map((s) => sql`(${col} = ${s} or starts_with(${col}, ${s}::text || '.'))`),
         sql` or `,
       )})`
     : sql`false`;
@@ -320,7 +320,7 @@ export class TeamProfileService {
       ${q.q ? sql`and o.name ilike ${'%' + q.q.replace(/[%_\\]/g, (c) => '\\' + c) + '%'}` : sql``}
       ${
         q.territoryId
-          ? sql`and exists (select 1 from territories x where x.id = ${q.territoryId} and (t.path = x.path or t.path like x.path || '.%'))`
+          ? sql`and exists (select 1 from territories x where x.id = ${q.territoryId} and (t.path = x.path or starts_with(t.path, x.path || '.')))`
           : sql``
       }`;
   }
@@ -336,7 +336,7 @@ export class TeamProfileService {
         ${q.q ? sql`and o.name ilike ${'%' + q.q.replace(/[%_\\]/g, (c) => '\\' + c) + '%'}` : sql``}
         ${
           q.territoryId
-            ? sql`and exists (select 1 from territories x where x.id = ${q.territoryId} and (t.path = x.path or t.path like x.path || '.%'))`
+            ? sql`and exists (select 1 from territories x where x.id = ${q.territoryId} and (t.path = x.path or starts_with(t.path, x.path || '.')))`
             : sql``
         }`;
       const r = await rows<Record<string, string | null>>(

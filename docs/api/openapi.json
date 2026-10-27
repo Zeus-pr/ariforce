@@ -18025,7 +18025,7 @@
           },
           "path": {
             "type": "string",
-            "description": "Materialised path of ids, root first, dot-separated"
+            "description": "Materialised path, root first, dot-separated; segments are codes (production) or ids (seed)"
           },
           "centroid": {
             "anyOf": [
