@@ -5,6 +5,7 @@
  * only the profile in localStorage (the session itself is the HTTP-only cookie).
  */
 import { useSyncExternalStore } from 'react';
+import { rateLimitMessage, SUSPENDED_MESSAGE } from '@/lib/auth-errors';
 import { ROLES, ROLE_LABEL, roleLevel, type Role } from './roles';
 import { API_URL, REAL, api, setAccountStateHandler, setUnauthenticatedHandler } from './api';
 
@@ -116,7 +117,7 @@ export type SignInError = {
   field: 'email' | 'password';
   message: string;
   /** Set when the identity exists but an admin has not approved it (CONTRACT-GAPS #23). */
-  account?: 'pending' | 'rejected';
+  account?: 'pending' | 'rejected' | 'suspended';
 };
 
 export const PENDING_MESSAGE =
@@ -172,6 +173,8 @@ export async function signInReal(email: string, password: string): Promise<MockU
       body: JSON.stringify({ email: e, password }),
       signal: AbortSignal.timeout(8000),
     });
+    if (res.status === 429)
+      return { field: 'password', message: rateLimitMessage({ response: res, error: await res.json().catch(() => null) }) };
     if (res.status === 403) {
       // better-auth shape { code, message } (no error wrapper); accept the wrapped shape too.
       const b = (await res.json().catch(() => null)) as {
@@ -179,6 +182,8 @@ export async function signInReal(email: string, password: string): Promise<MockU
         code?: string;
       } | null;
       const code = b?.code ?? b?.error?.code;
+      if (code === 'ACCOUNT_SUSPENDED')
+        return { field: 'password', message: SUSPENDED_MESSAGE, account: 'suspended' };
       if (code === 'ACCOUNT_PENDING_APPROVAL')
         return { field: 'password', message: PENDING_MESSAGE, account: 'pending' };
       if (code === 'ACCOUNT_REJECTED')

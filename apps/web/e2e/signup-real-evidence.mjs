@@ -70,7 +70,7 @@ for (const [status, code, re] of [
   check(re.test(t), `${status} ${code} -> "${t.slice(0, 60)}"`);
 }
 
-for (const [code, re] of [['ACCOUNT_PENDING_APPROVAL', /Awaiting approval/], ['ACCOUNT_REJECTED', /not approved/]]) {
+for (const [code, re] of [['ACCOUNT_PENDING_APPROVAL', /Awaiting approval/], ['ACCOUNT_REJECTED', /not approved/], ['ACCOUNT_SUSPENDED', /Account suspended[\s\S]*This account is suspended\. Contact your administrator\./]]) {
   await page.route('**/v1/auth/sign-in/email', (r) =>
     r.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ code, message: 'x' }) }),
   );
@@ -84,5 +84,50 @@ for (const [code, re] of [['ACCOUNT_PENDING_APPROVAL', /Awaiting approval/], ['A
 }
 await page.goto(`${BASE}/sign-in?account=pending`);
 check(/Awaiting approval/.test(await page.getByTestId('signin-account-status').innerText()), '?account=pending banner (from wrapped 403 on data calls)');
+await page.goto(`${BASE}/sign-in?account=suspended`);
+check(/This account is suspended\. Contact your administrator\./.test(await page.getByTestId('signin-account-status').innerText()), '?account=suspended banner (from ACCOUNT_SUSPENDED on data calls)');
+
+// 429 RATE_LIMITED: wait time from Retry-After, else details.retryAfterSeconds; 403 ACCOUNT_SUSPENDED on sign-up.
+const limited = (r, header, details) =>
+  r.fulfill({
+    status: 429,
+    contentType: 'application/json',
+    headers: header ? { 'Retry-After': header, 'Access-Control-Expose-Headers': 'Retry-After' } : {},
+    body: JSON.stringify({ error: { code: 'RATE_LIMITED', message: 'x', details } }),
+  });
+const signUp = async () => {
+  await page.goto(`${BASE}/sign-up`);
+  await page.getByLabel('Full name').fill('Shape Check');
+  await page.getByLabel('Work email').fill('shape.check@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('Fake!Throwaway99');
+  await page.getByLabel('Your role').selectOption('business_manager');
+  await page.getByTestId('signup-form').getByRole('button', { name: 'Send request' }).click();
+  return page.getByTestId('signup-error').innerText();
+};
+for (const [label, handler, re] of [
+  ['429 Retry-After: 30', (r) => limited(r, '30'), /Too many attempts, try again in 30 seconds\./],
+  ['429 details.retryAfterSeconds 17', (r) => limited(r, null, { retryAfterSeconds: 17 }), /try again in 17 seconds/],
+  ['429 no hint', (r) => limited(r, null), /Too many attempts, try again in a minute/],
+  ['403 ACCOUNT_SUSPENDED', (r) => r.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: { code: 'ACCOUNT_SUSPENDED', message: 'x' } }) }), /This account is suspended\. Contact your administrator\./],
+]) {
+  await page.unroute('**/v1/auth/sign-up-request');
+  await page.route('**/v1/auth/sign-up-request', handler);
+  const t = await signUp();
+  check(re.test(t), `sign-up ${label} -> "${t.slice(0, 70)}"`);
+}
+for (const [label, handler, re] of [
+  ['429 Retry-After: 45', (r) => limited(r, '45'), /Too many attempts, try again in 45 seconds\./],
+  ['429 bare details 9', (r) => r.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ code: 'RATE_LIMITED', message: 'x', details: { retryAfterSeconds: 9 } }) }), /try again in 9 seconds/],
+]) {
+  await page.route('**/v1/auth/sign-in/email', handler);
+  await page.goto(`${BASE}/sign-in`);
+  await page.getByLabel('Work email').fill('shape.check@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('Fake!Throwaway99');
+  await page.getByRole('button', { name: /sign in/i }).click();
+  await page.getByText(/Too many attempts/).first().waitFor({ timeout: 10000 }).catch(() => {});
+  const t = await page.locator('body').innerText();
+  check(re.test(t), `sign-in ${label} -> message shown`);
+  await page.unroute('**/v1/auth/sign-in/email');
+}
 await ctx.close();
 await finish();

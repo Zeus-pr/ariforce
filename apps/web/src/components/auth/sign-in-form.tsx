@@ -11,6 +11,7 @@ import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
 import Link from 'next/link';
+import { SUSPENDED_MESSAGE } from '@/lib/auth-errors';
 import {
   MOCK_PASSWORD,
   MOCK_USERS,
@@ -37,7 +38,9 @@ export function SignInForm() {
       ? { field: 'password', message: PENDING_MESSAGE, account: 'pending' }
       : a === 'rejected'
         ? { field: 'password', message: REJECTED_MESSAGE, account: 'rejected' }
-        : null;
+        : a === 'suspended'
+          ? { field: 'password', message: SUSPENDED_MESSAGE, account: 'suspended' }
+          : null;
   });
   const [pending, setPending] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -118,7 +121,7 @@ export function SignInForm() {
             className="af-fade mb-4 rounded-md border border-warning/40 bg-warning-soft px-3 py-2.5 text-[13px] leading-snug text-warning-text"
           >
             <p className="font-medium">
-              {error.account === 'pending' ? 'Awaiting approval' : 'Request not approved'}
+              {error.account === 'pending' ? 'Awaiting approval' : error.account === 'suspended' ? 'Account suspended' : 'Request not approved'}
             </p>
             <p className="mt-0.5">{error.message}</p>
           </div>

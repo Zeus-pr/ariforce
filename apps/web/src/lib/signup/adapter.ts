@@ -9,6 +9,7 @@
  * same zod schemas and returns the same codes as the contract's MSW handlers. Passwords are never
  * stored in plaintext: the mock keeps a SHA-256 hash only.
  */
+import { authLimitMessage, SUSPENDED_MESSAGE } from '@/lib/auth-errors';
 import {
   AUTH_STATE_CODES,
   ROLE_RANK,
@@ -86,7 +87,7 @@ export function messageFor(status: number, code?: string, serverMessage?: string
         'We could not create an account with these details. If you already have an account, sign in or contact your administrator.'
       );
     case AUTH_STATE_CODES.rateLimited:
-      return 'Too many requests from here. Wait a while and try again.';
+      return 'Too many attempts, try again in a minute.';
     case AUTH_STATE_CODES.captcha:
       return 'The security check failed. Reload the page and try again.';
     case 'SIGNUP_DISABLED':
@@ -95,12 +96,14 @@ export function messageFor(status: number, code?: string, serverMessage?: string
       return 'This account is still awaiting approval.';
     case AUTH_STATE_CODES.rejected:
       return 'This sign-up request was not approved.';
+    case AUTH_STATE_CODES.suspended:
+      return SUSPENDED_MESSAGE;
   }
   if (status === 422) return 'Some details are not valid. Check the fields and try again.';
   if (status === 403) return 'That is outside what you can approve, or it is your own request.';
   if (status === 404) return 'This request is no longer visible to you. Refresh the list.';
   if (status === 409) return 'This request was already decided. Refresh the list.';
-  if (status === 429) return 'Too many requests from here. Wait a while and try again.';
+  if (status === 429) return 'Too many attempts, try again in a minute.';
   if (status === 503) return 'Account requests are switched off right now.';
   return serverMessage ?? 'Something went wrong. Try again.';
 }
@@ -333,7 +336,7 @@ function fail(error: unknown, response: Response): never {
   const e = (error ?? {}) as { error?: { code?: string; message?: string } };
   const code = e.error?.code;
   throw new SignupError(
-    messageFor(response.status, code, e.error?.message),
+    authLimitMessage({ response, error }) ?? messageFor(response.status, code, e.error?.message),
     code,
     undefined,
     response.status,

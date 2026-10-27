@@ -24,8 +24,9 @@ export const api = createApiClient(API_URL);
 /** Called on any 401 in real mode (set by lib/mock-auth so this module has no auth dependency). */
 let onUnauthenticated: (() => void) | null = null;
 /** Called when a data call says the account is pending approval or rejected (docs/SIGNUP.md §2). */
-let onAccountState: ((state: 'pending' | 'rejected') => void) | null = null;
-export const setAccountStateHandler = (fn: (state: 'pending' | 'rejected') => void) => {
+export type AccountState = 'pending' | 'rejected' | 'suspended';
+let onAccountState: ((state: AccountState) => void) | null = null;
+export const setAccountStateHandler = (fn: (state: AccountState) => void) => {
   onAccountState = fn;
 };
 export const setUnauthenticatedHandler = (fn: () => void) => {
@@ -76,6 +77,7 @@ api.use({
           const c = b?.error?.code;
           if (c === 'ACCOUNT_PENDING_APPROVAL') onAccountState?.('pending');
           else if (c === 'ACCOUNT_REJECTED') onAccountState?.('rejected');
+          else if (c === 'ACCOUNT_SUSPENDED') onAccountState?.('suspended');
         })
         .catch(() => {});
     return response;
