@@ -70,7 +70,13 @@ export function istDate(at: Date = new Date()): string {
   }).format(at);
 }
 
+/** Submit rule: a plan can be submitted when at least one day has an entry. */
+export function hasPlannedDay(days: PlanDay[]): boolean {
+  return days.some((d) => d.entries.length > 0);
+}
+
 /**
+ * @deprecated Informational only; submit no longer requires these dates (see hasPlannedDay).
  * Dates that need a plan entry before submit (approved full-day leave is excluded separately).
  * Weekly-off days never count. Current month (IST): only dates on or after today. Future and
  * past months: every non-off date (a past month is not reduced to nothing).
@@ -81,7 +87,7 @@ export function requiredDates(month: string, today: string, weeklyOffDays: numbe
   return month === today.slice(0, 7) ? dates.filter((d) => d >= today) : dates;
 }
 
-/** Required dates with no entry. */
+/** @deprecated Informational only; does not gate submit. Required dates with no entry. */
 export function missingRequiredDates(
   month: string,
   days: PlanDay[],

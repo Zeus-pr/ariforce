@@ -186,7 +186,7 @@ export const TourPlanCalendar = z
       .meta({ description: 'From leave settings (0 = Sunday .. 6 = Saturday); default [0]' }),
     requiredDates: z.array(DateOnly).meta({
       description:
-        'Dates submit needs an entry on: non-off dates; current month only from todayIST on. Full-day approved leave is also exempt at submit.',
+        'Informational only (kept for compatibility): non-off dates; current month only from todayIST on. Submit does not require them; it only needs one planned day.',
     }),
   })
   .meta({ id: 'TourPlanCalendar' });
