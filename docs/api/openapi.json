@@ -4761,6 +4761,17 @@
                 "rejected"
               ]
             }
+          },
+          {
+            "in": "query",
+            "name": "hasLogin",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
           }
         ],
         "responses": {
@@ -15804,6 +15815,25 @@
             "minLength": 1,
             "maxLength": 200
           },
+          "email": {
+            "description": "System admin only. 409 EMAIL_LOCKED_HAS_LOGIN once the person has a login; 409 EMAIL_TAKEN if used. A pending invite is re-sent to the new address",
+            "type": "string",
+            "format": "email",
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          },
+          "employeeCode": {
+            "description": "System admin only. 409 EMPLOYEE_CODE_TAKEN if used",
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "phone": {
             "anyOf": [
               {
@@ -15843,7 +15873,7 @@
             "$ref": "#/components/schemas/RoleKey"
           },
           "territoryIds": {
-            "minItems": 1,
+            "description": "Replaces all territories (first = primary). Hierarchy roles need at least one; functional roles may send []",
             "type": "array",
             "items": {
               "type": "string",
@@ -15854,11 +15884,19 @@
             }
           },
           "managerId": {
-            "description": "Move within the subtree",
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            "description": "Move within the subtree. null (system admin only) clears it; directors and functional roles never have one",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "description": "suspended = deactivate (sign-in blocked); active = reactivate",
@@ -19686,6 +19724,23 @@
               "$ref": "#/components/schemas/RoleKey"
             }
           },
+          "primaryRole": {
+            "description": "Highest-ranked role (the one the UI shows)",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rank": {
+            "description": "ROLE_RANK of primaryRole: BM 1 … director 8; functional roles 0",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
           "managerId": {
             "anyOf": [
               {
@@ -19700,6 +19755,12 @@
               }
             ]
           },
+          "managerName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "territoryIds": {
             "type": "array",
             "items": {
@@ -19710,6 +19771,41 @@
               "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
             }
           },
+          "territories": {
+            "description": "Same as territoryIds, primary first",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUIDv7 identifier",
+                  "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "level": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "code",
+                "level"
+              ],
+              "additionalProperties": false
+            }
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -19718,6 +19814,26 @@
               "suspended",
               "pending",
               "rejected"
+            ]
+          },
+          "version": {
+            "description": "Send back on PATCH /v1/employees/{id}",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "lastActiveAt": {
+            "description": "Last activity of a live session (null when signed out everywhere or never signed in)",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "hasLogin": {

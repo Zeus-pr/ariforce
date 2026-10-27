@@ -173,6 +173,11 @@ The server enforces every rule in `apps/api/src/team/team.service.ts`, and the m
 
 ### System admin creates directors and other employees (2026-10-27)
 
+- People page: `GET /v1/users` (company-wide for system admin and director) + `PATCH /v1/employees/{id}`. A system admin can edit every field: name, email, employee code, phone, designation, joined date, role (any, both ways), territories (replace; `[]` only for functional roles), manager (`null` allowed; directors and functional roles never have one), status (`active`/`suspended`).
+- Email can change only while the person has no login (409 `EMAIL_LOCKED_HAS_LOGIN`); a pending invite is revoked and re-sent to the new address. Email and employee code are unique per company (409 `EMAIL_TAKEN` / `EMPLOYEE_CODE_TAKEN`).
+- Guards: no self-edit (403); the company always keeps one active system admin (422 `LAST_SYSTEM_ADMIN`); a role change must keep the manager above and direct reports below (422 `MANAGER_RANK` / `REPORTS_OUTRANK`); reporting cycles 409.
+- Side effects: role change or suspension deletes the person's sessions (#79). Roles, territories and reporting line are re-read on every request, so territory and manager changes apply on the next call without sign-out. Pending approval steps are re-pointed (see CHANGELOG-CONTRACTS). Tour plans, submissions, DCRs, doctors and sent notifications are not changed.
+
 - A `system_admin` holding `users:write` may create (`POST /v1/employees`, `/invite-bulk`), edit and re-invite **any role**: every hierarchy role including `director`, plus `distribution_head`, `accountant` and another `system_admin`, on any territory in the company. Functional roles need no territory and never have a manager (422). Every action is audit-logged (`employee.created`, `employee.invited`).
 - The system admin is outside the reporting line, so no manager is set by default. A `director` never has a manager: passing `managerId` for a director returns 422.
 - Other managers keep the strict rule: they can only create roles below their own, inside their own subtree.

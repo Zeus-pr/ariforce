@@ -2728,17 +2728,21 @@ export interface components {
     EmployeeUpdate: {
       version: number;
       name?: string;
+      /**
+       * Format: email
+       * @description System admin only. 409 EMAIL_LOCKED_HAS_LOGIN once the person has a login; 409 EMAIL_TAKEN if used. A pending invite is re-sent to the new address
+       */
+      email?: string;
+      /** @description System admin only. 409 EMPLOYEE_CODE_TAKEN if used */
+      employeeCode?: string | null;
       phone?: string | null;
       designation?: string | null;
       joinedOn?: string | null;
       role?: components['schemas']['RoleKey'];
+      /** @description Replaces all territories (first = primary). Hierarchy roles need at least one; functional roles may send [] */
       territoryIds?: string[];
-      /**
-       * Format: uuid
-       * @description Move within the subtree
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      managerId?: string;
+      /** @description Move within the subtree. null (system admin only) clears it; directors and functional roles never have one */
+      managerId?: string | null;
       /**
        * @description suspended = deactivate (sign-in blocked); active = reactivate
        * @enum {string}
@@ -3971,10 +3975,31 @@ export interface components {
       designation?: string | null;
       joinedOn?: string | null;
       roles: components['schemas']['RoleKey'][];
+      /** @description Highest-ranked role (the one the UI shows) */
+      primaryRole?: components['schemas']['RoleKey'] | null;
+      /** @description ROLE_RANK of primaryRole: BM 1 … director 8; functional roles 0 */
+      rank?: number;
       managerId: string | null;
+      managerName?: string | null;
       territoryIds: string[];
+      /** @description Same as territoryIds, primary first */
+      territories?: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+        code: string | null;
+        level: string;
+      }[];
       /** @enum {string} */
       status: 'invited' | 'active' | 'suspended' | 'pending' | 'rejected';
+      /** @description Send back on PATCH /v1/employees/{id} */
+      version?: number;
+      /** @description Last activity of a live session (null when signed out everywhere or never signed in) */
+      lastActiveAt?: string | null;
       /** @description True once the person has a sign-in (invite accepted or linked) */
       hasLogin?: boolean;
       /**
@@ -9005,6 +9030,7 @@ export interface operations {
         /** @description Users assigned in this territory subtree */
         territoryId?: string;
         status?: 'invited' | 'active' | 'suspended' | 'pending' | 'rejected';
+        hasLogin?: 'true' | 'false';
       };
       header?: never;
       path?: never;
