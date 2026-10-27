@@ -16,6 +16,7 @@ import {
   MapPin,
   ReceiptText,
   CalendarOff,
+  Tags,
 } from 'lucide-react';
 
 import { seesExpenses } from './expenses/model';
@@ -175,6 +176,14 @@ export const NAV: NavItem[] = [
     href: '/sign-up-requests',
     icon: UserPlus,
     roles: ROLES.filter(canReviewSignups),
+    section: 'admin',
+  },
+  {
+    slug: 'product-prices',
+    title: 'Product prices',
+    href: '/admin/product-prices',
+    icon: Tags,
+    roles: ['system_admin'],
     section: 'admin',
   },
 ];
