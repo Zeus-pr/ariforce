@@ -4232,7 +4232,7 @@ export interface components {
       todayIST: string;
       /** @description From leave settings (0 = Sunday .. 6 = Saturday); default [0] */
       weeklyOffDays: number[];
-      /** @description Dates submit needs an entry on: non-off dates; current month only from todayIST on. Full-day approved leave is also exempt at submit. */
+      /** @description Informational only (kept for compatibility): non-off dates; current month only from todayIST on. Submit does not require them; it only needs one planned day. */
       requiredDates: string[];
     };
     DcrPage: {
@@ -9512,7 +9512,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Required dates without an entry: details { missingDates, todayIST, weeklyOffDays }. Required = non-weekly-off dates; in the current month (IST) only today and later; full-day approved leave exempt. */
+      /** @description EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty. */
       422: {
         headers: {
           [name: string]: unknown;

@@ -795,7 +795,7 @@ function buildDocument(): OpenApiDocument {
             '404': err('No plan for the month'),
             '409': err('Not in draft'),
             '422': err(
-              'Required dates without an entry: details { missingDates, todayIST, weeklyOffDays }. Required = non-weekly-off dates; in the current month (IST) only today and later; full-day approved leave exempt.',
+              'EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty.',
             ),
           },
         }),

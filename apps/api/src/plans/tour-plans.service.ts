@@ -5,7 +5,7 @@ import {
   copyFromStandard,
   DEFAULT_WEEKLY_OFF_DAYS,
   istDate,
-  missingRequiredDates,
+  hasPlannedDay,
   requiredDates,
   prevMonth,
   type StandardTourPlan,
@@ -385,33 +385,15 @@ export class TourPlansService {
     });
   }
 
-  submit(p: Principal, month: string, now = new Date()) {
+  submit(p: Principal, month: string) {
     return this.tenant.run(p, async (tx) => {
       const cur = await this.find(tx, p.userId, month);
       if (!cur) throw new NotFoundException('No plan for this month');
       if (cur.status !== 'draft') throw err(409, 'CONFLICT', 'Not in draft');
-      // Dates fully on approved leave need no plan entry (#51).
-      const off = new Set(
-        (await approvedLeaveDays(tx, [p.userId], `${month}-01`, monthEnd(month)))
-          .filter((l) => !l.half)
-          .map((l) => l.date),
-      );
-      // Weekly offs never count; in the current month (IST) past days do not count either.
-      const weeklyOffDays = await this.weeklyOff(tx);
-      const todayIST = istDate(now);
-      const missing = missingRequiredDates(
-        month,
-        cur.days as Day[],
-        todayIST,
-        weeklyOffDays,
-      ).filter((d) => !off.has(d));
-      if (missing.length)
-        throw err(
-          422,
-          'VALIDATION',
-          `${missing.length} required date(s) have no plan entry (weekly offs and, this month, past days are not required)`,
-          { missingDates: missing, todayIST, weeklyOffDays },
-        );
+      // Any day may be left empty (past days, weekly offs, leave, unplanned days); only a plan
+      // with no day entry at all is refused (user decision superseding #19).
+      if (!hasPlannedDay(cur.days as Day[]))
+        throw err(422, 'EMPTY_PLAN', 'Add at least one day to the plan before submitting');
       const [row] = await tx
         .update(tourPlans)
         .set({ status: 'submitted', submittedAt: new Date() })

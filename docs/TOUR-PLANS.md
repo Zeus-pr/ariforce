@@ -16,13 +16,14 @@
   work types, territories (in your scope), planned doctors/chemists must exist → else 422 with details.
 - `POST /v1/tour-plans/{month}/copy` `{ fromMonth?, fromStp = true }`: `fromMonth` wins; else `fromStp=true` copies the
   STP, `fromStp=false` copies the previous month. Dates map by week of month + weekday. Missing source → 404.
-- `POST /v1/tour-plans/{month}/submit`: every **required** date needs an entry → else `422` with
-  `details { missingDates, todayIST, weeklyOffDays }`. Required = dates of the month that are not a weekly off
-  (`leave_settings.weekly_off_days`, default `[0]` = Sunday) and not fully on approved leave; in the **current month
-  (IST, Asia/Kolkata)** only dates `>= todayIST` (today counts). Future and past months: every non-off date. Shared
-  helper: `requiredDates` / `missingRequiredDates` in `@ariforce/contracts`.
+- `POST /v1/tour-plans/{month}/submit`: succeeds when the plan has **at least one day with an entry**. Any other date
+  (past, weekly off, approved leave, or simply unplanned) may stay empty. A plan with no entries → `422`
+  `{ error: { code: 'EMPTY_PLAN', message } }`. This supersedes the #19 "every date" rule. Shared helper:
+  `hasPlannedDay` in `@ariforce/contracts`. Creates an approval request (step 1 approver = reporting manager).
+- Past dates stay editable while the plan is a draft (no past-date lock).
 - `GET /v1/tour-plans/{month}/calendar` → `{ month, todayIST, weeklyOffDays: number[], requiredDates: string[] }`
-  (no plan needed) so the web shows the same rule. Creates an approval request (step 1 approver = reporting manager).
+  (no plan needed). `requiredDates` is **informational only** (kept for compatibility); it does not gate submit.
+  `requiredDates`/`missingRequiredDates` helpers are deprecated.
 
 ## Approvals (gaps #5-#7)
 

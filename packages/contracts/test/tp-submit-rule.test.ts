@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { istDate, missingRequiredDates, monthDates, requiredDates } from '../src';
+import { hasPlannedDay, istDate, missingRequiredDates, monthDates, requiredDates } from '../src';
 
 // 2026-10: Oct 1 is a Thursday; Sundays are 4, 11, 18, 25.
 const SUN = ['2026-10-04', '2026-10-11', '2026-10-18', '2026-10-25'];
 const entry = (date: string) => ({ date, entries: [{}] });
 
-describe('tour-plan submit rule', () => {
+describe('tour-plan submit rule: at least one planned day', () => {
+  it('empty plan or days without entries cannot be submitted; one day is enough', () => {
+    expect(hasPlannedDay([])).toBe(false);
+    expect(hasPlannedDay([{ date: '2026-11-03', entries: [] }])).toBe(false);
+    expect(hasPlannedDay([entry('2026-11-03')])).toBe(true);
+  });
+});
+
+describe('requiredDates (deprecated, informational only)', () => {
   it('weekly offs never count', () => {
     expect(
       requiredDates('2026-12', '2026-10-27', [0]).some((d) => new Date(d).getUTCDay() === 0),
