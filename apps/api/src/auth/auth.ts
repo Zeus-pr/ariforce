@@ -6,6 +6,7 @@ import { sql } from 'drizzle-orm';
 import { AUTH_STATE_CODES } from '@ariforce/contracts';
 import { authAccount, authSession, authUser, authVerification, type Db } from '@ariforce/db';
 import type { AuditService } from '../common/audit.service';
+import { CLIENT_IP_HEADER } from '../common/client-ip';
 
 export const AUTH_BASE_PATH = '/v1/auth';
 /** Browser origins allowed for CORS (with credentials) and better-auth: WEB_ORIGIN, comma-separated. */
@@ -49,6 +50,8 @@ export function createAuth(db: Db, audit: AuditService) {
     session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24 },
     plugins: [bearer()],
     telemetry: { enabled: false },
+    // Only our own header (set in bootstrap from the trusted client IP; client values overwritten).
+    advanced: { ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] } },
     databaseHooks: {
       session: {
         create: {

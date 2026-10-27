@@ -26,25 +26,10 @@ import { randomUUID } from 'node:crypto';
 import type * as z from 'zod';
 import { DB } from '../db/db.module';
 import { err } from '../field/checkins.service';
+import { enforce, LIMITS, rateLimitStore } from '../common/rate-limit';
 
-const HOUR = 3600_000;
-/** Fixed-window in-memory limiter (single API instance; swap for KV/Redis when scaled out). */
-export class RateLimiter {
-  private hits = new Map<string, { n: number; reset: number }>();
-  hit(key: string, limit: number, windowMs = HOUR) {
-    const now = Date.now();
-    const h = this.hits.get(key);
-    if (!h || h.reset <= now) {
-      this.hits.set(key, { n: 1, reset: now + windowMs });
-      return true;
-    }
-    h.n += 1;
-    return h.n <= limit;
-  }
-  reset() {
-    this.hits.clear();
-  }
-}
+/** Shared limiter (#77); tests call limiter.reset(). */
+const sharedLimiter = { reset: () => rateLimitStore().reset() };
 
 /** Generic on purpose: never reveals whether the email already has a login. */
 const UNAVAILABLE = () =>
@@ -74,7 +59,7 @@ export async function verifyTurnstile(token: string | undefined, ip: string | nu
 
 @Injectable()
 export class SignupService {
-  readonly limiter = new RateLimiter();
+  readonly limiter = sharedLimiter;
   constructor(@Inject(DB) private readonly db: Db) {}
 
   private async companyId() {
@@ -92,9 +77,7 @@ export class SignupService {
    * possible managers. Only id/name/code/role: no email, phone or other PII.
    */
   async options(ip: string | null): Promise<SignupOptions> {
-    const perIp = Number(process.env.SIGNUP_RATE_PER_IP ?? 10);
-    if (!this.limiter.hit(`options-ip:${ip ?? '?'}`, perIp * 6))
-      throw err(429, AUTH_STATE_CODES.rateLimited, 'Too many requests; try again later');
+    await enforce([{ key: `signup-options:ip:${ip ?? '?'}`, ...LIMITS.signupOptions() }]);
     const companyId = await this.companyId();
     return withTenant(this.db, { companyId, userId: null }, async (tx) => {
       const ts = await tx
@@ -122,13 +105,13 @@ export class SignupService {
 
   async submit(b: z.infer<typeof SignupRequestCreate>, ip: string | null) {
     const email = b.email.trim().toLowerCase();
-    const perIp = Number(process.env.SIGNUP_RATE_PER_IP ?? 10);
-    const perEmail = Number(process.env.SIGNUP_RATE_PER_EMAIL ?? 3);
-    if (
-      !this.limiter.hit(`ip:${ip ?? '?'}`, perIp) ||
-      !this.limiter.hit(`email:${email}`, perEmail)
-    )
-      throw err(429, AUTH_STATE_CODES.rateLimited, 'Too many sign-up attempts; try again later');
+    await enforce(
+      [
+        { key: `signup:ip:${ip ?? '?'}`, ...LIMITS.signupSubmitIp() },
+        { key: `signup:email:${email}`, ...LIMITS.signupSubmitEmail() },
+      ],
+      'Too many sign-up attempts; try again later',
+    );
     if (!(await verifyTurnstile(b.turnstileToken, ip)))
       throw err(403, AUTH_STATE_CODES.captcha, 'Verification failed; please retry');
 

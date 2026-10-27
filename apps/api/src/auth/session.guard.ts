@@ -15,6 +15,7 @@ import { err } from '../field/checkins.service';
 import { roles, territories, userRoles, userTerritories, withTenant, type Db } from '@ariforce/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { DB } from '../db/db.module';
+import { clientIp } from '../common/client-ip';
 import { AuthService } from './auth.service';
 import { IS_PUBLIC, PERMISSIONS_KEY } from './decorators';
 import { COMPANY_WIDE_ROLES, MASTERS_WIDE_ROLES, type Principal } from './principal';
@@ -96,7 +97,7 @@ export class SessionGuard implements CanActivate {
       scopePaths: mastersWide ? null : teamPaths,
       teamUserIds: companyWide ? null : [...new Set(p.team.map((t) => t.user_id))],
       requestId: (req.headers['x-request-id'] as string | undefined) ?? randomUUID(),
-      ip: req.ip ?? null,
+      ip: clientIp(req),
       userAgent: req.headers['user-agent'] ?? null,
     };
 

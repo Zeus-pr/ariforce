@@ -34,3 +34,41 @@ Hardening from the Cutly audit (`docs/CUTLY-LESSONS-CHECKLIST.md`). One section 
   `INVITE_RETURN_LINK=true` is refused in production.
 - Dev/test: unchanged defaults (dev auth secret, localhost origins, R2 optional → 503 on upload).
 - Test: `apps/api/test/env.test.ts`.
+
+## Client IP and rate limits (#77)
+
+- `apps/api/src/common/client-ip.ts` `clientIp(req)`: with `CLIENT_IP_MODE=cloudflare` the
+  `CF-Connecting-IP` header (if a valid IP), else the TCP peer address. `X-Forwarded-For` is never
+  read. A middleware writes the result to the internal header `x-ariforce-client-ip` (client
+  values overwritten), which is the only header better-auth reads for its IP (sessions, its own
+  limiter). Audit rows and sign-up use the same IP.
+- `apps/api/src/common/rate-limit.ts`: `RateLimitStore` interface (fixed window,
+  `hit(key, limit, windowMs) → { allowed, retryAfter }`), `MemoryRateLimitStore` (default) and
+  `setRateLimitStore()` to plug in Redis/Upstash/Postgres later. **The in-memory store is
+  single-instance only**: with several API instances each has its own counters, so rely on the
+  Cloudflare rules below until a shared store is wired.
+- Limits per client IP (env overrides):
+
+  | Endpoint                              | Default                                                           |
+  | ------------------------------------- | ----------------------------------------------------------------- |
+  | `POST /v1/auth/sign-in/*`             | `AUTH_RATE_PER_IP` = 20 / 15 min                                  |
+  | other `POST /v1/auth/*` (better-auth) | 3 × `AUTH_RATE_PER_IP` / 15 min                                   |
+  | `POST /v1/auth/sign-up-request`       | `SIGNUP_RATE_PER_IP` = 10 / h and `SIGNUP_RATE_PER_EMAIL` = 3 / h |
+  | `GET /v1/auth/sign-up-options`        | 6 × `SIGNUP_RATE_PER_IP` / h                                      |
+  | `POST /v1/invites/accept`             | `INVITE_RATE_PER_IP` = 10 / h                                     |
+
+- Over the limit: **429** `{ error: { code: "RATE_LIMITED", message, details: { retryAfterSeconds } } }`
+  plus a `Retry-After` header (seconds). better-auth's own built-in limiter stays on as well.
+- Tests: `apps/api/test/client-ip-ratelimit.test.ts` (XFF spoofing, CF mode, 429 shape).
+
+### Cloudflare rules to add at deploy (lead)
+
+1. DNS for the API hostname **proxied** (orange cloud) or a Cloudflare Tunnel; firewall the origin so
+   only Cloudflare (IP ranges or the tunnel) can reach it; then set `CLIENT_IP_MODE=cloudflare`.
+2. Rate limiting rules: `/v1/auth/sign-in*` e.g. 10 req / 1 min per IP → block 10 min;
+   `/v1/auth/*` 30 / 1 min per IP; `/v1/auth/sign-up-request` and `/v1/invites/accept` 5 / 10 min.
+3. WAF managed rules: Cloudflare Managed Ruleset + OWASP Core Ruleset on (log first, then block).
+4. Bot Fight Mode (or Super Bot Fight Mode: block definitely automated on `/v1/auth/*`).
+5. Cache rule: **bypass cache** for `api.<domain>/v1/*` (authenticated JSON must never be cached).
+6. SSL/TLS Full (strict), minimum TLS 1.2, Always Use HTTPS, HSTS.
+7. Optional: Turnstile on sign-up (`TURNSTILE_SECRET`), Cloudflare Access in front of any admin tools.

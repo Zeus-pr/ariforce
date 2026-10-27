@@ -11,6 +11,7 @@ import type * as z from 'zod';
 import { CurrentPrincipal, Public } from '../auth/decorators';
 import type { Principal } from '../auth/principal';
 import { ZodPipe } from '../common/zod.pipe';
+import { clientIp } from '../common/client-ip';
 import { SignupService } from './signup.service';
 import { TeamService } from './team.service';
 
@@ -29,13 +30,13 @@ export class SignupController {
     @Body(new ZodPipe(SignupRequestCreate)) b: z.infer<typeof SignupRequestCreate>,
     @Req() req: Request,
   ) {
-    return this.signup.submit(b, req.ip ?? null);
+    return this.signup.submit(b, clientIp(req));
   }
 
   @Public()
   @Get('auth/sign-up-options')
   options(@Req() req: Request) {
-    return this.signup.options(req.ip ?? null);
+    return this.signup.options(clientIp(req));
   }
 
   @Get('signup-requests')

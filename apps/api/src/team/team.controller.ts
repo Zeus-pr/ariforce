@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import {
   EmployeeCreate,
   EmployeeUpdate,
@@ -10,6 +11,8 @@ import type * as z from 'zod';
 import { CurrentPrincipal, Public } from '../auth/decorators';
 import type { Principal } from '../auth/principal';
 import { ZodPipe } from '../common/zod.pipe';
+import { clientIp } from '../common/client-ip';
+import { enforce, LIMITS } from '../common/rate-limit';
 import { TeamService } from './team.service';
 
 /** Rank/scope rules are enforced in TeamService (docs/RBAC.md "Team and employees"). */
@@ -59,7 +62,11 @@ export class TeamController {
   @Public()
   @Post('invites/accept')
   @HttpCode(200)
-  accept(@Body(new ZodPipe(InviteAccept)) b: z.infer<typeof InviteAccept>) {
+  async accept(
+    @Body(new ZodPipe(InviteAccept)) b: z.infer<typeof InviteAccept>,
+    @Req() req: Request,
+  ) {
+    await enforce([{ key: `invite-accept:ip:${clientIp(req) ?? '?'}`, ...LIMITS.inviteAccept() }]);
     return this.svc.accept(b.token, b.password);
   }
 }

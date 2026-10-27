@@ -10,6 +10,8 @@ const NEST_AUTH_PATHS = new Set([
   `${AUTH_BASE_PATH}/sign-up-options`,
 ]);
 import { AuthService } from './auth/auth.service';
+import { CLIENT_IP_HEADER, clientIp } from './common/client-ip';
+import { LIMITS, rateLimitStore } from './common/rate-limit';
 
 /**
  * Shared app configuration used by main.ts and tests. The app must be created with
@@ -22,9 +24,39 @@ export function configureApp(app: INestApplication) {
   app.enableCors({ origin: webOrigins(), credentials: true });
   const authHandler = toNodeHandler(app.get(AuthService).auth);
   // Our own public sign-up request route lives under /v1/auth but is handled by Nest.
-  server.all(`${AUTH_BASE_PATH}/*splat`, (req, res, next) =>
-    NEST_AUTH_PATHS.has(req.path) ? next() : authHandler(req, res),
-  );
+  // Trusted client IP for every request (never X-Forwarded-For), exposed to better-auth (#77).
+  server.use((req, _res, next) => {
+    const ip = clientIp(req);
+    if (ip) req.headers[CLIENT_IP_HEADER] = ip;
+    else delete req.headers[CLIENT_IP_HEADER];
+    next();
+  });
+  server.all(`${AUTH_BASE_PATH}/*splat`, async (req, res, next) => {
+    if (NEST_AUTH_PATHS.has(req.path)) return next();
+    // Shared per-IP limits in front of better-auth: stricter on sign-in.
+    if (req.method === 'POST') {
+      const ip = clientIp(req) ?? '?';
+      const signIn = req.path.startsWith(`${AUTH_BASE_PATH}/sign-in`);
+      const rule = signIn ? LIMITS.signIn() : LIMITS.authOther();
+      const r = await rateLimitStore().hit(
+        `auth:${signIn ? 'sign-in' : 'other'}:ip:${ip}`,
+        rule.limit,
+        rule.windowMs,
+      );
+      if (!r.allowed) {
+        res.setHeader('Retry-After', String(r.retryAfter));
+        res.status(429).json({
+          error: {
+            code: 'RATE_LIMITED',
+            message: 'Too many requests; try again later',
+            details: { retryAfterSeconds: r.retryAfter },
+          },
+        });
+        return;
+      }
+    }
+    return authHandler(req, res);
+  });
   app.use(express.json({ limit: '1mb' }));
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
   app.use('/docs', apiReference({ url: '/openapi.json', theme: 'default' }));

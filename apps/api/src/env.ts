@@ -53,6 +53,9 @@ export const ProdEnv = z.object({
   DB_POOL_MAX: intStr.optional(),
   SIGNUP_RATE_PER_IP: intStr.optional(),
   SIGNUP_RATE_PER_EMAIL: intStr.optional(),
+  AUTH_RATE_PER_IP: intStr.optional(),
+  INVITE_RATE_PER_IP: intStr.optional(),
+  CLIENT_IP_MODE: z.enum(['cloudflare', 'socket'], 'must be cloudflare or socket').optional(),
   EXPENSE_APPROVAL_LEVELS: z.enum(['1', '2'], 'must be 1 or 2').optional(),
   INVITE_RETURN_LINK: z
     .string()
