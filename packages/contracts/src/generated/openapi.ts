@@ -1050,6 +1050,91 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/team/members/{userId}/profile': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Profile of yourself or someone below you (ABM+; Director: everyone) */
+    get: operations['getTeamMemberProfile'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/team/members/{userId}/performance': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Weekly or monthly KPI series for one person */
+    get: operations['getTeamMemberPerformance'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/team/members/{userId}/doctors': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Approved doctors in the person’s territories, with their visits */
+    get: operations['listTeamMemberDoctors'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/team/members/{userId}/chemists': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Chemists in the person’s territories */
+    get: operations['listTeamMemberChemists'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/team/members/{userId}/export': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Profile + performance as Excel (Profile, Performance sheets) or PDF */
+    get: operations['exportTeamMemberProfile'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/leave/types': {
     parameters: {
       query?: never;
@@ -2121,6 +2206,8 @@ export interface components {
       token: string;
       password: string;
     };
+    /** @enum {string} */
+    PerformanceGranularity: 'week' | 'month';
     /** @description PUT creates the type when the code is new */
     LeaveTypeUpdate: {
       name?: string;
@@ -3700,6 +3787,206 @@ export interface components {
         /** @description Highest hierarchy role (ABM and above) */
         role: components['schemas']['RoleKey'];
       }[];
+    };
+    TeamProfile: {
+      member: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+        /** @description Highest role; null if none assigned */
+        role: components['schemas']['RoleKey'] | null;
+        roles: components['schemas']['RoleKey'][];
+        /** @description Free-text HR title, not a role */
+        designation: string | null;
+        employeeCode: string | null;
+        /** @description Date of joining */
+        joinedOn: string | null;
+        phone: string | null;
+        email: string;
+        status: components['schemas']['UserStatus'];
+        managerId: string | null;
+        territories: components['schemas']['TeamTerritory'][];
+        directReportCount: number;
+        version: number;
+      };
+      /** @description Direct manager (users.manager_id) */
+      manager: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+        role: components['schemas']['RoleKey'] | null;
+      } | null;
+      /** @description Headquarters: the most specific (deepest) assigned territory */
+      hq: components['schemas']['TeamTerritory'] | null;
+      counts: {
+        /** @description Approved doctors in the person’s territories (incl. sub-territories) */
+        doctors: number;
+        chemists: number;
+        directReports: number;
+        /** @description Everyone below the person (excl. themself) */
+        subtreeSize: number;
+      };
+      today: {
+        /**
+         * Format: date
+         * @description Company-local (IST) date
+         */
+        date: string;
+        status: components['schemas']['ProfileAttendanceStatus'];
+        punchInAt: string | null;
+        punchOutAt: string | null;
+        leave: {
+          /**
+           * Format: uuid
+           * @description UUIDv7 identifier
+           * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+           */
+          requestId: string;
+          typeCode: string;
+          half: ('am' | 'pm') | null;
+        } | null;
+      };
+      /** @description Latest punch-in on any day */
+      lastPunchInAt: string | null;
+      /** @description Viewer has expenses:approve or finance:read; performance.expenses is null otherwise */
+      canSeeExpenses: boolean;
+    };
+    /** @enum {string} */
+    ProfileAttendanceStatus:
+      'present' | 'absent' | 'leave' | 'holiday' | 'incomplete' | 'weekly_off';
+    TeamPerformance: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      granularity: components['schemas']['PerformanceGranularity'];
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      generatedAt: string;
+      buckets: components['schemas']['PerformanceBucket'][];
+      /** @description Whole range; label "total" */
+      total: components['schemas']['PerformanceBucket'];
+    };
+    PerformanceBucket: {
+      /** @example 2026-10 / 2026-W43 */
+      label: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+      workingDays: number;
+      /** @description Same keys/maths as GET /v1/kpis (self). Week buckets carry day-grain KPIs only (call averages, DCR compliance/on-time, POB); month buckets carry all KPIs incl. coverage, TP adherence and sales vs target */
+      metrics: components['schemas']['KpiValue'][];
+      attendance: {
+        /** @description Days with a punch-in */
+        presentDays: number;
+        /** @description Approved leave + leave DCRs, half = 0.5 */
+        leaveDays: number;
+        holidayDays: number;
+        /** @description Working days up to today − present − leave */
+        absentDays: number;
+      };
+      expenses: {
+        /** @description INR, lines dated in the bucket on submitted/approved/paid claims */
+        claimed: number;
+        /** @description INR, of which on approved/paid claims */
+        approved: number;
+      } | null;
+    };
+    TeamMemberDoctorPage: {
+      items: components['schemas']['TeamMemberDoctor'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    /** @description No phone/address/DOB (PII kept to the masters API) */
+    TeamMemberDoctor: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      qualification: string | null;
+      specialty: string | null;
+      category: string | null;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      territoryName: string;
+      city: string | null;
+      /** @description Visits per cycle (category or override) */
+      requiredVisits: number;
+      /** @description Doctor calls by this person this month */
+      visitsThisMonth: number;
+      /** @description Last call by this person */
+      lastVisitDate: string | null;
+    };
+    TeamMemberChemistPage: {
+      items: components['schemas']['TeamMemberChemist'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    TeamMemberChemist: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      territoryName: string;
+      city: string | null;
+      lastVisitDate: string | null;
     };
     LeaveTypeList: {
       items: components['schemas']['LeaveType'][];
@@ -8611,6 +8898,308 @@ export interface operations {
       };
       /** @description SIGNUP_DISABLED: company not configured */
       503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getTeamMemberProfile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Profile */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamProfile'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not in your subtree (or not a hierarchy user) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getTeamMemberPerformance: {
+    parameters: {
+      query?: {
+        granularity?: components['schemas']['PerformanceGranularity'];
+        /** @description Default: start of the 6th month back (month) / 8th ISO week back (week). Snapped to bucket start */
+        from?: string;
+        /** @description Default today (IST). Snapped to bucket end */
+        to?: string;
+      };
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Series */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamPerformance'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not in your subtree (or not a hierarchy user) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description RANGE_TOO_LONG (max 26 weeks / 24 months), VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listTeamMemberDoctors: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        /** @description Narrow to one of the person’s territories (incl. children) */
+        territoryId?: string;
+      };
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamMemberDoctorPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not in your subtree (or not a hierarchy user) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listTeamMemberChemists: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        /** @description Narrow to one of the person’s territories (incl. children) */
+        territoryId?: string;
+      };
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamMemberChemistPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not in your subtree (or not a hierarchy user) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  exportTeamMemberProfile: {
+    parameters: {
+      query: {
+        granularity?: components['schemas']['PerformanceGranularity'];
+        /** @description Default: start of the 6th month back (month) / 8th ISO week back (week). Snapped to bucket start */
+        from?: string;
+        /** @description Default today (IST). Snapped to bucket end */
+        to?: string;
+        format: 'xlsx' | 'pdf';
+      };
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description File (content-disposition: attachment) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': string;
+          'application/pdf': string;
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not in your subtree (or not a hierarchy user) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description RANGE_TOO_LONG, VALIDATION */
+      422: {
         headers: {
           [name: string]: unknown;
         };

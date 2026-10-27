@@ -5,7 +5,7 @@ import {
   type ZodOpenApiOperationObject,
   type ZodOpenApiPathsObject,
 } from 'zod-openapi';
-import { ErrorBody, IdParam, IdempotencyKeyHeader, Month, page } from './schemas/common';
+import { ErrorBody, Id, IdParam, IdempotencyKeyHeader, Month, page } from './schemas/common';
 import { ImportJob, ImportRequest } from './schemas/imports';
 import {
   Division,
@@ -132,6 +132,15 @@ import {
   LeaveTypeList,
   LeaveTypeUpdate,
 } from './schemas/leave';
+import {
+  TeamMemberChemistPage,
+  TeamMemberDoctorPage,
+  TeamOutletQuery,
+  TeamPerformance,
+  TeamPerformanceQuery,
+  TeamProfile,
+  TeamProfileExportQuery,
+} from './schemas/team-profile';
 import { ConsentGrant, ConsentRecord, Device, DeviceEnrol } from './schemas/devices';
 
 const json = <T extends z.ZodType>(schema: T) => ({ content: { 'application/json': { schema } } });
@@ -864,6 +873,91 @@ function buildDocument(): OpenApiDocument {
             '503': err('SIGNUP_DISABLED: company not configured'),
           },
         },
+      },
+      '/v1/team/members/{userId}/profile': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'getTeamMemberProfile',
+          summary: 'Profile of yourself or someone below you (ABM+; Director: everyone)',
+          requestParams: { path: z.object({ userId: Id }) },
+          responses: {
+            '200': { description: 'Profile', ...json(TeamProfile) },
+            '403': err(
+              'FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant)',
+            ),
+            '404': err('Not in your subtree (or not a hierarchy user)'),
+          },
+        }),
+      },
+      '/v1/team/members/{userId}/performance': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'getTeamMemberPerformance',
+          summary: 'Weekly or monthly KPI series for one person',
+          requestParams: { path: z.object({ userId: Id }), query: TeamPerformanceQuery },
+          responses: {
+            '200': { description: 'Series', ...json(TeamPerformance) },
+            '403': err(
+              'FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant)',
+            ),
+            '404': err('Not in your subtree (or not a hierarchy user)'),
+            '422': err('RANGE_TOO_LONG (max 26 weeks / 24 months), VALIDATION'),
+          },
+        }),
+      },
+      '/v1/team/members/{userId}/doctors': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'listTeamMemberDoctors',
+          summary: 'Approved doctors in the person’s territories, with their visits',
+          requestParams: { path: z.object({ userId: Id }), query: TeamOutletQuery },
+          responses: {
+            '200': { description: 'Page', ...json(TeamMemberDoctorPage) },
+            '403': err(
+              'FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant)',
+            ),
+            '404': err('Not in your subtree (or not a hierarchy user)'),
+          },
+        }),
+      },
+      '/v1/team/members/{userId}/chemists': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'listTeamMemberChemists',
+          summary: 'Chemists in the person’s territories',
+          requestParams: { path: z.object({ userId: Id }), query: TeamOutletQuery },
+          responses: {
+            '200': { description: 'Page', ...json(TeamMemberChemistPage) },
+            '403': err(
+              'FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant)',
+            ),
+            '404': err('Not in your subtree (or not a hierarchy user)'),
+          },
+        }),
+      },
+      '/v1/team/members/{userId}/export': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'exportTeamMemberProfile',
+          summary: 'Profile + performance as Excel (Profile, Performance sheets) or PDF',
+          requestParams: { path: z.object({ userId: Id }), query: TeamProfileExportQuery },
+          responses: {
+            '200': {
+              description: 'File (content-disposition: attachment)',
+              content: {
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
+                  schema: z.string().meta({ format: 'binary' }),
+                },
+                'application/pdf': { schema: z.string().meta({ format: 'binary' }) },
+              },
+            },
+            '403': err(
+              'FORBIDDEN: below ABM, or missing reports:read (System Admin, Distribution Head, Accountant)',
+            ),
+            '404': err('Not in your subtree (or not a hierarchy user)'),
+            '422': err('RANGE_TOO_LONG, VALIDATION'),
+          },
+        }),
       },
       '/v1/leave/types': {
         get: op({

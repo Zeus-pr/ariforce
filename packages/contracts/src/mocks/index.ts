@@ -23,7 +23,7 @@ import { duplicateKeys, mapImportRow, type ImportLookup } from '../import/templa
 import type { ImportEntity } from '../schemas/imports';
 import { SignInEmailBody } from '../schemas/auth';
 import { kpiReport, productKpiReport } from './kpis';
-import { teamHandlers } from './team';
+import { teamHandlers, teamProfileHandlers } from './team';
 import { signupHandlers } from './signup';
 import { expenseHandlers } from './expenses';
 import { leaveHandlers, mockLeaveOn } from './leave';
@@ -459,6 +459,7 @@ export function createHandlers(baseUrl = '') {
     ...crud(baseUrl, '/v1/products', Product, ProductCreate, fx.products),
     ...crud(baseUrl, '/v1/work-types', WorkType, WorkTypeCreate, fx.workTypes),
     ...fieldHandlers(baseUrl),
+    ...teamProfileHandlers(baseUrl, mockPrincipal),
     ...teamHandlers(baseUrl, mockPrincipal),
   ];
 }
