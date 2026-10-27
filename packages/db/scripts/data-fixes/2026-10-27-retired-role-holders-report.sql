@@ -1,11 +1,25 @@
 -- READ-ONLY report: holders of the retired roles (distribution_head, accountant).
--- Run by lead:  psql "$URL" -v slug=arighna -f 2026-10-27-retired-role-holders-report.sql
+-- Run by lead:  psql "$URL" -v slug=arighna -v company_id=83584199-7043-46c0-b5cd-8ea938e8dce5 -f 2026-10-27-retired-role-holders-report.sql
 -- (arighna = company 83584199-7043-46c0-b5cd-8ea938e8dce5). Changes nothing.
 \if :{?slug}
 \else
   \set slug arighna
 \endif
+\if :{?company_id}
+\else
+  \set company_id 83584199-7043-46c0-b5cd-8ea938e8dce5
+\endif
 BEGIN READ ONLY;
+-- Tenant context: every table has FORCED row-level security keyed on app.current_company_id, so a
+-- non-superuser owner sees nothing without it. Then refuse to continue unless id and slug match.
+SELECT set_config('app.current_company_id', :'company_id', true);
+SELECT (count(*) = 1) AS company_ok FROM companies WHERE id = :'company_id' AND slug = :'slug' \gset
+\if :company_ok
+\else
+  \echo 'ABORT: company_id and slug do not match one company'
+  ROLLBACK;
+  \quit
+\endif
 SELECT u.name,
        u.employee_code,
        r.key                                   AS role,

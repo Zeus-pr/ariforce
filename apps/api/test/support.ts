@@ -127,3 +127,51 @@ export async function insertRetiredHolder(
     await pool.end();
   }
 }
+
+/**
+ * A fresh active staff member with a login, written as the DB owner in the demo company (role,
+ * manager and territories as given) plus a ready session. For reporting-line shapes the seed lacks.
+ */
+export async function insertStaff(
+  email: string,
+  role: string,
+  managerId: string | null,
+  territoryIds: string[] = [],
+): Promise<{ id: string; bearer: string }> {
+  const { Pool } = await import('pg');
+  const { randomBytes, randomUUID } = await import('node:crypto');
+  const pool = new Pool({ connectionString: process.env.DIRECT_URL, max: 1 });
+  try {
+    const authId = randomUUID();
+    const name = `Staff ${email.split('@')[0]}`;
+    await pool.query(
+      `insert into auth_user (id, name, email, email_verified) values ($1, $2, $3, true)`,
+      [authId, name, email],
+    );
+    const u = await pool.query(
+      `insert into users (id, company_id, email, name, status, manager_id, auth_user_id)
+       select gen_random_uuid(), c.id, $1, $2, 'active', $3, $4 from companies c where c.slug = 'demo'
+       returning id, company_id`,
+      [email, name, managerId, authId],
+    );
+    const { id, company_id: c } = u.rows[0];
+    await pool.query(
+      `insert into user_roles (company_id, user_id, role_id)
+       select $1, $2, r.id from roles r where r.company_id = $1 and r.key = $3`,
+      [c, id, role],
+    );
+    for (const t of territoryIds)
+      await pool.query(
+        `insert into user_territories (company_id, user_id, territory_id) values ($1, $2, $3)`,
+        [c, id, t],
+      );
+    const token = randomBytes(24).toString('hex');
+    await pool.query(
+      `insert into auth_session (id, token, user_id, expires_at) values ($1, $2, $3, now() + interval '1 day')`,
+      [randomUUID(), token, authId],
+    );
+    return { id, bearer: `Bearer ${token}` };
+  } finally {
+    await pool.end();
+  }
+}

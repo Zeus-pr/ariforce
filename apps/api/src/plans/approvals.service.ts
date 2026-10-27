@@ -123,6 +123,9 @@ export interface ApprovalQuery {
 /**
  * Approvals (#11, #26). One step: the requester's reporting manager (approver_user_id), but any manager
  * above the requester with approvals:decide may decide. Nobody decides their own request.
+ * Multi-level (leave, expense): each approval moves to the current approver's manager until
+ * `levels` is reached; it finishes early when there is no next manager (skipped ranks, e.g. a ZBM
+ * reporting straight to the director) or when the decider already sits at or above the next approver.
  */
 @Injectable()
 export class ApprovalsService {
@@ -614,7 +617,14 @@ export class ApprovalsService {
           .select({ managerId: users.managerId })
           .from(users)
           .where(eq(users.id, cur.approverUserId));
-        if (up?.managerId && up.managerId !== req.requestedBy) {
+        // A decider above the current approver (their manager or higher, e.g. the director) who
+        // approves early covers the next level too: finish here instead of queueing a step for
+        // someone at or below the decider (no duplicate or stuck step with skipped ranks).
+        const deciderCoversNext =
+          !!up?.managerId &&
+          p.userId !== cur.approverUserId &&
+          (p.teamUserIds === null || p.teamUserIds.includes(up.managerId));
+        if (up?.managerId && up.managerId !== req.requestedBy && !deciderCoversNext) {
           const next = req.currentStep + 1;
           await tx
             .update(approvalSteps)
