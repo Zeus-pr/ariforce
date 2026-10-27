@@ -31,6 +31,7 @@ import {
 } from '@ariforce/ui/components/select';
 import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
+import { OutletPicker } from '@/components/pickers/pickers';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
 import { useRole } from '@/components/shell/role-context';
 import { api, apiReady, toApiError } from '@/lib/api';
@@ -405,10 +406,14 @@ function DayEditor({
   const { territories } = useLookups();
   const [wt, setWt] = useState('');
   const [terr, setTerr] = useState('');
+  const [docs, setDocs] = useState<string[]>([]);
+  const [chems, setChems] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     setWt(entry?.workTypeId ?? '');
     setTerr(entry?.territoryIds[0] ?? '');
+    setDocs(entry?.plannedDoctorIds ?? []);
+    setChems(entry?.plannedChemistIds ?? []);
   }, [entry, date]);
   const kind = workTypes.find((w) => w.id === wt)?.kind;
   const needsTerritory = kind === 'field';
@@ -423,7 +428,7 @@ function DayEditor({
 
   return (
     <Dialog open={!!date} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent data-testid="tp-editor">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto" data-testid="tp-editor">
         <DialogHeader>
           <DialogTitle>{title ?? (date ? dayLabel(date) : '')}</DialogTitle>
           <DialogDescription>What you plan to do, and where.</DialogDescription>
@@ -469,6 +474,18 @@ function DayEditor({
               </Select>
             </div>
           )}
+          {needsTerritory && terr && (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium">Doctors to visit <span className="font-normal text-muted-foreground">({docs.length} chosen)</span></span>
+                <OutletPicker kind="doctor" territoryId={terr} value={docs} onChange={(ids) => setDocs(ids)} multiple testId="tp-doctors" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium">Chemists to visit <span className="font-normal text-muted-foreground">({chems.length} chosen)</span></span>
+                <OutletPicker kind="chemist" territoryId={terr} value={chems} onChange={(ids) => setChems(ids)} multiple testId="tp-chemists" />
+              </div>
+            </>
+          )}
         </div>
         <DialogFooter className="gap-2">
           {entry && (
@@ -491,8 +508,8 @@ function DayEditor({
                   workTypeId: wt,
                   territoryIds: needsTerritory && terr ? [terr] : [],
                   jointWorkUserIds: entry?.jointWorkUserIds ?? [],
-                  plannedDoctorIds: entry?.plannedDoctorIds ?? [],
-                  plannedChemistIds: entry?.plannedChemistIds ?? [],
+                  plannedDoctorIds: needsTerritory ? docs : [],
+                  plannedChemistIds: needsTerritory ? chems : [],
                   notes: entry?.notes ?? null,
                 },
               ])

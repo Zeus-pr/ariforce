@@ -8,6 +8,13 @@ const pick = async (page, trigger, idx = 0, name) => {
   await page.getByTestId(trigger).last().click();
   await (name ? page.getByRole('option', { name }) : page.getByRole('option').nth(idx)).click();
 };
+const pickOutlet = async (page) => {
+  const o = page.locator('[data-testid=call-doctor-option]:not([aria-disabled=true])').first();
+  await o.waitFor({ timeout: 15000 });
+  const name = (await o.locator('span span').first().textContent()).trim();
+  await o.click();
+  return name;
+};
 for (const view of ['desktop', 'mobile']) {
   const { ctx, page } = await open('director', '/', view);
   await page.goto(`${BASE}/dcr`, { waitUntil: 'load' });
@@ -16,7 +23,7 @@ for (const view of ['desktop', 'mobile']) {
   await pick(page, 'dcr-terr');
   // Doctor call with an order line (POB allowed on doctor calls), no RCPA section.
   await page.getByTestId('dcr-add-call').click();
-  await pick(page, 'call-doctor');
+  await pickOutlet(page);
   check((await page.getByTestId('rcpa').count()) === 0, `${view}: no RCPA on a doctor call`);
   await page.getByTestId('pob-add').click();
   await pick(page, 'pob-product', 0);
@@ -27,7 +34,7 @@ for (const view of ['desktop', 'mobile']) {
   // Chemist call with POB + RCPA (competitor brand).
   await page.getByTestId('dcr-add-call').click();
   await pick(page, 'call-kind', 0, 'Chemist');
-  await pick(page, 'call-doctor');
+  await pickOutlet(page);
   await page.getByTestId('rcpa').waitFor();
   await page.getByTestId('pob-add').click();
   await pick(page, 'pob-product', 1);
@@ -53,7 +60,7 @@ for (const view of ['desktop', 'mobile']) {
   await shot(page, `saved-${view}.png`);
   // Duplicate product in one order → plain 422 message.
   await page.getByTestId('dcr-add-call').click();
-  await pick(page, 'call-doctor');
+  await pickOutlet(page);
   for (let i = 0; i < 2; i++) {
     await page.getByTestId('pob-add').click();
     await pick(page, 'pob-product', 0);

@@ -75,7 +75,10 @@ for (const view of ['desktop', 'mobile']) {
   await dropdown(page, view, 'dcr-wt', 'Field work');
   const dTerr = await dropdown(page, view, 'dcr-terr');
   await page.getByTestId('dcr-add-call').click();
-  const doc = await dropdown(page, view, 'call-doctor');
+  const docOpt = page.locator('[data-testid=call-doctor-option]:not([aria-disabled=true])').first();
+  await docOpt.waitFor({ timeout: 15000 });
+  const doc = (await docOpt.locator('span span').first().textContent()).trim();
+  await docOpt.click();
   await page.getByTestId('call-product').first().click();
   await page.getByTestId('call-add').click();
   await page.getByTestId('dcr-call').first().waitFor();

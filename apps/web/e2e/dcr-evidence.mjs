@@ -29,6 +29,13 @@ const pick = async (page, trigger, name) => {
   await (name ? page.getByRole('option', { name }) : page.getByRole('option').first()).click();
 };
 
+const pickOutlet = async (page) => {
+  const o = page.locator('[data-testid=call-doctor-option]:not([aria-disabled=true])').first();
+  await o.waitFor({ timeout: 15000 });
+  const name = (await o.locator('span span').first().textContent()).trim();
+  await o.click();
+  return name;
+};
 for (const view of ['desktop', 'mobile']) {
   const ctx = await browser.newContext(VIEWS[view]);
   await ctx.addInitScript((s) => {
@@ -80,7 +87,7 @@ for (const view of ['desktop', 'mobile']) {
   check(/Field work needs at least one call/.test(await page.getByTestId('dcr-problems').textContent()), `${view}: field day without calls is flagged`);
   check(await page.getByTestId('dcr-submit').isDisabled(), `${view}: submit blocked without calls`);
   await page.getByTestId('dcr-add-call').click();
-  await pick(page, 'call-doctor');
+  await pickOutlet(page);
   await page.getByTestId('call-product').first().click();
   const sample = page.locator('[data-testid=dcr-call-dialog] input[inputmode=numeric]').first();
   if (await sample.count()) await sample.fill('2');

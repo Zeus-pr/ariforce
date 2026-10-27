@@ -23,6 +23,7 @@ import { LookupsProvider, useLookups } from '@/components/masters/lookups';
 import { api, apiReady, MOCKING, toApiError } from '@/lib/api';
 import { saveMessage } from '@/lib/leave/model';
 import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
+import { OutletPicker, TerritoryFilter } from '@/components/pickers/pickers';
 import { PobEditor, RcpaEditor, pobPayload, pobRcpaMessage, pobSummary, rcpaPayload, stripPobValue, type Opt, type PobDraft, type RcpaDraft } from './pob-rcpa';
 
 /** What the call form needs from a product. */
@@ -114,9 +115,10 @@ function DcrDay({ today }: { today: string }) {
   const deviates = !!planned && (planned.workTypeId !== wt || (field && (planned.territoryIds[0] ?? '') !== terr));
   const locked = dcr?.status === 'submitted' || dcr?.status === 'locked';
   const productName = useMemo(() => new Map([...orderProducts, ...products].map((p) => [p.id, p.name])), [products, orderProducts]);
+  const [pickedNames, setPickedNames] = useState<Map<string, string>>(new Map());
   const outletName = useMemo(
-    () => new Map([...doctors, ...chemists, ...stockists].map((o) => [o.id, o.name])),
-    [doctors, chemists, stockists],
+    () => new Map([...[...doctors, ...chemists, ...stockists].map((o) => [o.id, o.name] as [string, string]), ...pickedNames]),
+    [doctors, chemists, stockists, pickedNames],
   );
   const leaves = territories.filter((t) => !territories.some((c) => c.parentId === t.id));
 
@@ -144,7 +146,7 @@ function DcrDay({ today }: { today: string }) {
     setSaving(false);
     if (r.error) {
       const e = toApiError(r);
-      const pr = pobRcpaMessage(e.details, (id) => productName.get(id) ?? 'a product');
+      const pr = [rejectedDoctorsMessage(e.details, (id) => outletName.get(id) ?? 'a doctor'), pobRcpaMessage(e.details, (id) => productName.get(id) ?? 'a product')].filter(Boolean).join(' ') || null;
       return toast.error(pr ?? saveMessage(e), { duration: 10000 });
     }
     setDcr(r.data);
@@ -254,13 +256,13 @@ function DcrDay({ today }: { today: string }) {
 
       <CallDialog
         open={adding}
-        doctors={doctors}
-        chemists={chemists}
+        territoryId={field ? terr : ''}
         stockists={stockists}
         products={products}
         orderProducts={orderProducts}
         onClose={() => setAdding(false)}
-        onAdd={(c) => {
+        onAdd={(c, name) => {
+          setPickedNames((m) => new Map(m).set(c.outletId, name));
           setCalls((cs) => [...cs, c]);
           setAdding(false);
         }}
@@ -271,8 +273,7 @@ function DcrDay({ today }: { today: string }) {
 
 function CallDialog({
   open,
-  doctors,
-  chemists,
+  territoryId,
   stockists,
   products,
   orderProducts,
@@ -280,19 +281,22 @@ function CallDialog({
   onAdd,
 }: {
   open: boolean;
-  doctors: Doctor[];
-  chemists: Opt[];
+  territoryId: string;
   stockists: Opt[];
   products: PickProduct[];
   orderProducts: Opt[];
   onClose: () => void;
-  onAdd: (c: Call) => void;
+  onAdd: (c: Call, name: string) => void;
 }) {
   const [kind, setKind] = useState<Kind>('doctor');
   const [doctorId, setDoctorId] = useState('');
+  const [pickedName, setPickedName] = useState('');
+  const [area, setArea] = useState(territoryId);
+  useEffect(() => {
+    if (open) setArea(territoryId);
+  }, [open, territoryId]);
   const [pob, setPob] = useState<PobDraft[]>([]);
   const [rcpa, setRcpa] = useState<RcpaDraft[]>([]);
-  const outlets: Opt[] = kind === 'doctor' ? doctors : kind === 'chemist' ? chemists : stockists;
   const [detailed, setDetailed] = useState<string[]>([]);
   const [samples, setSamples] = useState<Record<string, string>>({});
   const [remarks, setRemarks] = useState('');
@@ -325,7 +329,7 @@ function CallDialog({
           <DialogDescription>Who you met, what you detailed, samples, orders and prescription audit.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
-          <div className="grid gap-3 sm:grid-cols-[9rem_1fr]">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="call-kind">Call on</Label>
               <Select
@@ -341,11 +345,21 @@ function CallDialog({
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="call-doctor">{KIND_LABEL[kind]}</Label>
-              <Select value={doctorId} onValueChange={setDoctorId}>
-                <SelectTrigger id="call-doctor" className="w-full" data-testid="call-doctor"><SelectValue placeholder="Choose" /></SelectTrigger>
-                <SelectContent>{outlets.length === 0 && <EmptyOptions>No {KIND_LABEL[kind].toLowerCase()}s in your territory yet. Ask your manager to add them.</EmptyOptions>}{outlets.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
-              </Select>
+              <TerritoryFilter value={area} onChange={setArea} testId="call-area" />
+            </div>
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <Label>{KIND_LABEL[kind]}</Label>
+              <OutletPicker
+                kind={kind}
+                territoryId={area}
+                value={doctorId ? [doctorId] : []}
+                onChange={(ids, picked) => {
+                  setDoctorId(ids[0] ?? '');
+                  setPickedName(picked[0]?.name ?? '');
+                }}
+                testId="call-doctor"
+                forReporting
+              />
             </div>
           </div>
           <fieldset className="flex flex-col gap-2">
@@ -425,7 +439,7 @@ function CallDialog({
                 rcpa: kind === 'chemist' ? rcpaPayload(rcpa) : [],
                 remarks: remarks.trim() || null,
                 calledAt: new Date().toISOString(),
-              })
+              }, pickedName)
             }
           >
             Add call
@@ -434,4 +448,11 @@ function CallDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** 422 VALIDATION details.doctorIds: rejected doctors can't be reported on a DCR. */
+export function rejectedDoctorsMessage(details: unknown, name: (id: string) => string): string | null {
+  const ids = (details as { doctorIds?: unknown } | null)?.doctorIds;
+  if (!Array.isArray(ids) || ids.length === 0) return null;
+  return `These doctors were rejected by a manager and can't be reported: ${ids.map((id) => name(String(id))).join(', ')}. Remove those calls and save again.`;
 }

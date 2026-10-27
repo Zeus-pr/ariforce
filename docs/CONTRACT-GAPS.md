@@ -116,3 +116,10 @@ Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the 
 - `DELETE /v1/allowance-places/{id}` is a soft delete in the API (docs/TADA.md) but a hard delete in the MSW mock, so "Show removed places" is only meaningful against the real API.
 - The mock draft treats every past non-Sunday as an HQ day and never returns `place_required`, so the place picker in "Add allowances" is covered by code path only, not mock e2e.
 - Mock rates start empty per page load; e2e adds a rate and navigates in-app to keep MSW state.
+
+## #26 doctor approval — pickers (web)
+
+- DCR and Tour Plan pickers search `/v1/doctors|chemists|stockists` server-side (`q`, `territoryId` incl. descendants, cursor paging); scope comes from the API.
+- The mock has no doctor rejection flow (all fixtures `approved`, POST gives `pending`), so "rejected = disabled in the DCR picker" and the 422 `details.doctorIds` message are verified by code path only.
+- The web mock-permission guard blocks master writes by role, so e2e seeds pending doctors from a Director session with an RBM `x-mock-user` header.
+- Territory choice for the day stays a dropdown of the user's own HQs (already scoped and short; type-ahead works); the outlet picker has a Region / HQ filter over all territories in scope.
