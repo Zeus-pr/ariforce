@@ -184,3 +184,19 @@ Adopted in web `/admin/people`. Open items:
 - Territory level is not checked server-side; the web limits Business Managers to HQ-level territories.
 - The web edits one territory per person (the primary); a territory change replaces the list with that one.
 - Mock: added `MANAGER_RANK` and `REPORTS_OUTRANK` (with `details.userIds`) to the PATCH mock, and `primaryRole`, `rank`, `managerName`, `territories[]`, `version` and a subtree `territoryId` filter to the `/v1/users` mock, to match the API. The mock caps `limit` at 200 instead of returning 422.
+
+## SFC (web, assumed contract; Architect branch not pushed yet)
+
+The web runs on `apps/web/src/lib/sfc/adapter.ts` (MSW mock in `lib/sfc/mock-handler.ts`). Assumed:
+- `GET /v1/sfc/settings` -> `{ ratePerKm }` (web default 2.95 if missing).
+- `GET /v1/sfc/hqs` -> `{ items: [{ id, name, code, areaId, areaName }] }`, already scoped to the viewer.
+- `GET /v1/sfc/employees?hqId=` -> `{ items: [{ id, name, employeeCode, role, hqId }] }` (people under the viewer at that HQ).
+- `GET /v1/sfc/{userId}` -> `{ userId, hqId, version, rows, updatedAt }`; row = `{ id, fromPlace, toPlace, distanceKm|null, actualFare, travelMode, category, da }`.
+- `PUT /v1/sfc/{userId}` with `{ version, rows }` -> sheet; 409 `VERSION_CONFLICT` on a stale version; 422 `VALIDATION` with `details.rows`; 403/404/429.
+- Amounts are computed (km x rate, both way = 2x); the web does not send amounts. `actualFare` rows show "ACTUAL FARE".
+- Open questions: is DA free text or a number; is the rate per HQ or global; who may edit (the web lets every viewer of the page edit).
+
+## Retired roles (Distribution Head, Accountant)
+
+- Removed from every web picker, filter, nav and mock persona. The contracts fixtures still contain "Demo Distribution Head" and "Demo Accountant" users (the contract's RoleKey is the Architect's), which the web shows as "Other role".
+- Gap: only `accountant` had `finance:write`, so no portal role can mark an expense claim paid now. The pay step was removed from the expenses e2e. Needs an API decision (e.g. give pay to Director or System Admin).

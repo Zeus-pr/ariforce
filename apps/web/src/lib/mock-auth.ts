@@ -26,7 +26,6 @@ const NAMES: Partial<Record<Role, [string, string]>> = {
   vice_president: ['Sanjay Mehta', 'India'],
   director: ['Kavita Bose', 'India'],
   system_admin: ['System Admin', 'Head office'],
-  accountant: ['Ritu Dey', 'Head office'],
 };
 
 const EMAIL: Partial<Record<Role, string>> = {
@@ -39,10 +38,9 @@ const EMAIL: Partial<Record<Role, string>> = {
   vice_president: 'vp',
   director: 'director',
   system_admin: 'admin',
-  accountant: 'accounts',
 };
 
-/** Demo users for the web's roles (the functional roles have no web pages yet). */
+/** Demo users for the web's roles (Distribution Head and Accountant have no portal access). */
 export const MOCK_USERS: MockUser[] = ROLES.filter((r) => NAMES[r] && EMAIL[r]).map((role) => ({
   id: `mock-${EMAIL[role]}`,
   name: NAMES[role]![0],
@@ -120,6 +118,8 @@ export type SignInError = {
   account?: 'pending' | 'rejected' | 'suspended';
 };
 
+export const NO_PORTAL_MESSAGE = 'Your role does not have access to this portal.';
+
 export const PENDING_MESSAGE =
   'Your account is awaiting approval. You can sign in once an administrator approves it.';
 export const REJECTED_MESSAGE =
@@ -151,9 +151,10 @@ export function signOut() {
   write(null);
 }
 
-/** Highest sales role wins; system admin only when nothing else; unknown functional roles fall back to BM. */
-function primaryRole(roles: string[]): Role {
+/** Highest sales role wins; system admin only when nothing else; null when no role has portal access. */
+function primaryRole(roles: string[]): Role | null {
   const known = roles.filter((r): r is Role => (ROLES as readonly string[]).includes(r));
+  if (!known.length) return null;
   const sales = known
     .filter((r) => r !== 'system_admin')
     .sort((a, b) => roleLevel(b) - roleLevel(a));
@@ -196,6 +197,11 @@ export async function signInReal(email: string, password: string): Promise<MockU
     if (!me)
       return { field: 'password', message: 'Signed in, but your profile could not be loaded.' };
     const role = primaryRole(me.roles);
+    if (!role) {
+      // Signed in, but no role with portal access (e.g. Distribution Head, Accountant): sign out again.
+      void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(() => {});
+      return { field: 'password', message: NO_PORTAL_MESSAGE };
+    }
     const user: MockUser = {
       id: me.id,
       name: me.name,

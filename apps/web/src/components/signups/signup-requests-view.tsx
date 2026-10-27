@@ -307,7 +307,7 @@ function ApproveDialog({
                 signupAdapter.approve(req.id, {
                   role: role as never,
                   ...(withTerritory ? { territoryIds: chosen } : {}),
-                  // Director, Distribution Head and Accountant take no manager.
+                  // A director takes no manager.
                   ...(withManager && managerId ? { managerId } : {}),
                 }),
               'approved',

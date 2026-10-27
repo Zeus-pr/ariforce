@@ -22,7 +22,7 @@ import {
 } from '@ariforce/contracts';
 import type * as z from 'zod';
 import { REAL, api, apiReady } from '@/lib/api';
-import { isSystemAdmin, type Role } from '@/lib/roles';
+import { isPortalRole, isSystemAdmin, type Role } from '@/lib/roles';
 
 export type SignupInput = z.input<typeof SignupRequestCreate>;
 export type SignupStatus = 'pending' | 'approved' | 'rejected';
@@ -64,7 +64,7 @@ export async function signupOptions(signal?: AbortSignal): Promise<SignupOptions
 type Field = 'name' | 'email' | 'phone' | 'password' | 'requestedRole';
 
 export { SIGNUP_PASSWORD_MIN };
-export const SIGNUP_ROLES = SIGNUP_ROLE_KEYS as readonly Role[];
+export const SIGNUP_ROLES = (SIGNUP_ROLE_KEYS as readonly Role[]).filter(isPortalRole);
 
 export class SignupError extends Error {
   constructor(
@@ -149,7 +149,7 @@ export function canDecide(viewer: Role, r: Pick<SignupRequest, 'requestedRole'>)
   const rr = rank(r.requestedRole);
   return isHierarchyRole(r.requestedRole) && rr > 0 && rr < rank(viewer);
 }
-/** Director and functional roles take no manager; hierarchy roles need at least one territory. */
+/** Director takes no manager; hierarchy roles need at least one territory. */
 export const takesManager = (role: Role) => isHierarchyRole(role) && role !== 'director';
 export const needsTerritory = (role: Role) => isHierarchyRole(role);
 
@@ -174,14 +174,14 @@ const SEED: Stored[] = (
       'Rakesh Mondal',
       'rakesh.mondal@example.test',
       null,
-      'distribution_head',
+      'regional_business_manager',
       '2026-10-25T06:10:00Z',
     ],
     [
       'Sumana Paul',
       'sumana.paul@example.test',
       '+91 90000 00013',
-      'accountant',
+      'business_manager',
       '2026-10-26T04:45:00Z',
     ],
     [

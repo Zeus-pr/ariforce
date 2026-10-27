@@ -31,7 +31,7 @@ check((await page.getByTestId('pw-strength').innerText()) === 'Strong', 'strengt
 await page.getByRole('button', { name: 'Show password' }).click();
 check((await pw.getAttribute('type')) === 'text', 'show/hide toggle reveals password');
 const roles = await page.getByLabel('Your role').locator('option').allInnerTexts();
-check(roles.includes('Distribution Head') && roles.includes('Accountant'), 'role list has DH and Accountant');
+check(!roles.some((r) => /Distribution Head|Accountant/.test(r)) && roles.includes('Business Manager'), 'role list has no Distribution Head or Accountant');
 await page.getByLabel('Your role').selectOption('director');
 check((await page.getByTestId('signup-manager').count()) === 0, 'director: no manager picker on sign-up');
 await page.getByLabel('Your role').selectOption('business_manager');

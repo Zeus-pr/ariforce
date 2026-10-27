@@ -97,16 +97,7 @@ for (const view of ['desktop', 'mobile']) {
   await page.getByText('Approved').first().waitFor({ timeout: 10000 });
   check(true, `${view}: ABM approved`);
 
-  // Accounts pays.
-  await as(page, 'accountant');
-  await page.getByTestId('exp-pay').waitFor({ timeout: 10000 });
-  await page.getByTestId('exp-pay').click();
-  check(await page.getByTestId('exp-pay-confirm').isDisabled(), `${view}: pay needs a reference`);
-  await page.getByTestId('exp-payref').fill('NEFT-TEST-001');
-  await page.getByTestId('exp-pay-confirm').click();
-  await page.getByTestId('exp-paid').waitFor({ timeout: 10000 });
-  check((await page.getByTestId('exp-paid').textContent()).includes('NEFT-TEST-001'), `${view}: paid with reference`);
-  await shot(page, `paid-${view}.png`);
+  // Paying a claim was the Accountant's job; that role has no portal access now (API gap: who pays).
 
   // Reports + export (as ABM).
   await as(page, 'area_business_manager');

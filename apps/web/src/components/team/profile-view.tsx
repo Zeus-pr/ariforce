@@ -17,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsList, TabsTrigger } from '@ariforce/ui/components/tabs';
 import { formatKpi, KPI_META } from '@/components/dashboard/kpi-meta';
 import { API_URL, api, apiReady, toApiError } from '@/lib/api';
-import { ROLE_LABEL, type Role } from '@/lib/roles';
+import { roleLabel } from '@/lib/roles';
 
 const dt = (iso: string | null) =>
   iso ? new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' }).format(new Date(iso)) : '—';
@@ -73,7 +73,7 @@ export function ProfileView({ userId }: { userId: string }) {
         <div className="grid gap-1">
           <h1 className="text-2xl font-semibold tracking-tight" data-testid="profile-name">{m.name}</h1>
           <p className="text-sm text-muted-foreground">
-            {m.role ? ROLE_LABEL[m.role as Role] ?? m.role : 'No role'}
+            {m.role ? roleLabel(m.role) : 'No role'}
             {m.employeeCode ? ` · ${m.employeeCode}` : ''}
             {m.designation ? ` · ${m.designation}` : ''}
           </p>

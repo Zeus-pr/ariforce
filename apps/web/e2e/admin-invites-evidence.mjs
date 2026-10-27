@@ -6,7 +6,7 @@ import { setup } from './lib.mjs';
 const { check, open, shot, noOverflow, noBannedWords, finish } = await setup('admin-invites');
 const navLink = (page) => page.locator('a[href="/admin/invites"]');
 
-for (const role of ['director', 'business_manager', 'accountant']) {
+for (const role of ['director', 'business_manager', 'area_business_manager']) {
   const { ctx, page } = await open(role, '/admin/invites', 'desktop');
   await page.waitForTimeout(2500);
   check((await navLink(page).count()) === 0, `${role}: no Invite people nav entry`);
@@ -46,7 +46,8 @@ for (const view of ['desktop', 'mobile']) {
   await page.getByTestId('manual-phone').fill('9800000000');
   await page.getByTestId('manual-role').click();
   check((await page.getByRole('option', { name: /System Admin/ }).getAttribute('aria-disabled')) !== 'true', `${view}: every role offered incl. System Admin`);
-  await page.getByRole('option', { name: /Accounts|Accountant/ }).first().click();
+  check((await page.getByRole('option', { name: /Distribution Head|Accountant/ }).count()) === 0, `${view}: no Distribution Head or Accountant`);
+  await page.getByRole('option', { name: /System Admin/ }).first().click();
   await page.getByTestId('manual-functional').waitFor();
   check((await page.getByTestId('manual-hq').count()) === 0, `${view}: functional role → no HQ/manager`);
   await page.getByTestId('manual-role').click();

@@ -26,7 +26,7 @@ const clearSearch = async (page) => {
 };
 
 // Gating: other roles get no entry and are sent home.
-for (const role of ['director', 'business_manager', 'accountant']) {
+for (const role of ['director', 'business_manager', 'area_business_manager']) {
   const { ctx, page } = await open(role, '/admin/people', 'desktop');
   await page.waitForTimeout(2500);
   check((await page.locator('a[href="/admin/people"]').count()) === 0, `${role}: no People nav entry`);
@@ -48,13 +48,16 @@ for (const view of ['desktop', 'mobile']) {
 
   // Search + filters (server-side).
   await page.getByTestId('people-q').fill('ACC001');
-  check(await waitRows(page, `(() => { const r = [...document.querySelectorAll('[data-testid=people-row]')]; return r.length === 1 && /Demo Accountant/.test(r[0].textContent); })()`, 'q'), `${view}: search by employee code`);
+  check(await waitRows(page, `(() => { const r = [...document.querySelectorAll('[data-testid=people-row]')]; return r.length === 1 && /Demo Accountant/.test(r[0].textContent) && /Other role/.test(r[0].textContent); })()`, 'q'), `${view}: search by employee code; retired role shows a neutral label`);
   await page.getByTestId('people-q').fill('');
   await pick(page, 'people-f-status', 'Invited');
   check(await waitRows(page, `(() => { const r = [...document.querySelectorAll('[data-testid=people-status]')]; return r.length >= 2 && r.every((x) => x.textContent === 'Invited'); })()`, 'status'), `${view}: status filter`);
   await pick(page, 'people-f-status', 'Any status');
-  await pick(page, 'people-f-role', 'Accountant');
-  check(await waitRows(page, `(() => { const r = [...document.querySelectorAll('[data-testid=people-role]')]; return r.length === 2 && r.every((x) => x.textContent === 'Accountant'); })()`, 'role'), `${view}: role filter`);
+  await page.getByTestId('people-f-role').click();
+  check((await page.getByRole('option', { name: /Distribution Head|Accountant/ }).count()) === 0, `${view}: role filter has no Distribution Head or Accountant`);
+  await page.keyboard.press('Escape');
+  await pick(page, 'people-f-role', 'Director');
+  check(await waitRows(page, `(() => { const r = [...document.querySelectorAll('[data-testid=people-role]')]; return r.length >= 1 && r.every((x) => x.textContent === 'Director'); })()`, 'role'), `${view}: role filter`);
   await pick(page, 'people-f-role', 'All roles');
   await pick(page, 'people-f-hq', 'Kolkata North HQ');
   check(await waitRows(page, `(() => { const r = [...document.querySelectorAll('[data-testid=people-row]')]; return r.length === 1 && /Nisha/.test(r[0].textContent); })()`, 'hq'), `${view}: HQ filter`);
@@ -99,23 +102,20 @@ for (const view of ['desktop', 'mobile']) {
   // Role change: confirm, go back, then confirm for real.
   await clearSearch(page);
   await openPerson(page, 'Demo Distribution Head');
-  await pick(page, 'edit-role', 'Accountant');
+  await page.getByTestId('edit-role').click();
+  check((await page.getByRole('option', { name: /Distribution Head|Accountant/ }).count()) === 0, `${view}: role picker has no Distribution Head or Accountant`);
+  await page.keyboard.press('Escape');
+  await pick(page, 'edit-role', 'System Admin');
   await page.getByTestId('edit-save').click();
   await page.getByTestId('edit-confirm').waitFor();
-  check(/Change role from Distribution Head to Accountant/.test(await page.getByTestId('edit-confirm-list').textContent()) && /every device/.test(await page.getByTestId('edit-confirm-list').textContent()), `${view}: role change asks to confirm and warns about sign-out`);
+  check(/Change role from Other role to System Admin/.test(await page.getByTestId('edit-confirm-list').textContent()) && /every device/.test(await page.getByTestId('edit-confirm-list').textContent()), `${view}: role change asks to confirm and warns about sign-out`);
   await shot(page, `confirm-role-${view}.png`);
   await page.getByTestId('edit-confirm-cancel').click();
   check((await page.getByTestId('person-sheet').count()) === 1, `${view}: Go back keeps the sheet open, nothing saved`);
   await page.getByTestId('edit-save').click();
   await page.getByTestId('edit-confirm-ok').click();
   await page.getByTestId('person-sheet').waitFor({ state: 'detached', timeout: 10000 });
-  check(await waitRows(page, `[...document.querySelectorAll('[data-testid=people-role]')].some((x) => x.textContent === 'Accountant') && [...document.querySelectorAll('[data-testid=people-row]')].length === 1`, 'role row'), `${view}: role saved`);
-  // Put it back for the next viewport (in-page mock state).
-  await openPerson(page, 'Demo Distribution Head');
-  await pick(page, 'edit-role', 'Distribution Head');
-  await page.getByTestId('edit-save').click();
-  await page.getByTestId('edit-confirm-ok').click();
-  await page.getByTestId('person-sheet').waitFor({ state: 'detached', timeout: 10000 });
+  check(await waitRows(page, `[...document.querySelectorAll('[data-testid=people-role]')].some((x) => x.textContent === 'System Admin') && [...document.querySelectorAll('[data-testid=people-row]')].length === 1`, 'role row'), `${view}: role saved`);
 
   // Suspend: confirm.
   await openPerson(page, 'Demo Distribution Head');

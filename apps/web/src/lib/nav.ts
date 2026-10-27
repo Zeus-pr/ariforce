@@ -26,7 +26,7 @@ import { seesExpenses } from './expenses/model';
 import { seesLeave } from './leave/model';
 
 import { WRITE_ROUTES, canReviewSignups } from './permissions';
-import { ROLES, isApprover, isSystemAdmin, type Role } from './roles';
+import { ROLES, isApprover, isSystemAdmin, roleLevel, type Role } from './roles';
 
 export { ROLE_LABEL, type Role } from './roles';
 
@@ -91,6 +91,15 @@ export const NAV: NavItem[] = [
     href: '/expenses',
     icon: ReceiptText,
     roles: ROLES.filter(seesExpenses),
+    section: 'field',
+  },
+  {
+    slug: 'sfc',
+    title: 'SFC',
+    href: '/sfc',
+    icon: Route,
+    // ABM and above, Director and System Admin (TA/DA fare chart of the team).
+    roles: ROLES.filter((r) => roleLevel(r) >= 2 || isSystemAdmin(r)),
     section: 'field',
   },
   {
@@ -216,14 +225,6 @@ export const NAV: NavItem[] = [
     roles: ROLES.filter((r) =>
       ['settings:write', 'field:read'].every((p) => (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes(p as never)),
     ),
-    section: 'admin',
-  },
-  {
-    slug: 'allowances',
-    title: 'TA/DA rates',
-    href: '/settings/allowances',
-    icon: Route,
-    roles: ROLES.filter((r) => (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('settings:write')),
     section: 'admin',
   },
 ];

@@ -6,7 +6,7 @@ One helper drives everything: `canWriteMasters(role)` in `apps/web/src/lib/permi
 |---|---|
 | Regional Business Manager, Zonal Business Manager, Sales Manager, General Manager, Vice President, Director, System Admin | Read and write: add, edit, import, remove |
 | Area Business Manager, Business Manager | Read only |
-| Distribution Head, Accountant (non-ladder, rank 0) | No masters write |
+| Distribution Head, Accountant | Retired from the web: not offered anywhere, no portal access; an API user with only these roles is signed out with "Your role does not have access to this portal." Elsewhere they show as "Other role". |
 
 Rule: `isSystemAdmin(role) || roleLevel(role) >= roleLevel('regional_business_manager')`. This matches the API rule the Architect is shipping (403 for ABM/BM on masters writes).
 
@@ -28,7 +28,7 @@ Rule: `isSystemAdmin(role) || roleLevel(role) >= roleLevel('regional_business_ma
 
 ## Sign-up requests
 
-`canReviewSignups(role)` in `lib/permissions.ts`: System Admin, or Area Business Manager and above. The `/sign-up-requests` nav item and route guard use it. `grantableRoles(viewer)` (lib/signup) uses contracts `assignableRoles(rank)`: managers grant hierarchy roles below their own; only System Admin grants Distribution Head and Accountant. Approve needs at least one territory for hierarchy roles; Director, Distribution Head and Accountant get no manager picker. The API remains the authority (403 outside authority or own request, 409 already decided). `/sign-up` is public (no redirect when signed out).
+`canReviewSignups(role)` in `lib/permissions.ts`: System Admin, or Area Business Manager and above. The `/sign-up-requests` nav item and route guard use it. `grantableRoles(viewer)` (lib/signup) uses contracts `assignableRoles(rank)`: managers grant hierarchy roles below their own; Distribution Head and Accountant are not offered. Approve needs at least one territory for hierarchy roles; Director gets no manager picker. The API remains the authority (403 outside authority or own request, 409 already decided). `/sign-up` is public (no redirect when signed out).
 
 ## Routes (Oct 27)
 
@@ -39,7 +39,7 @@ Doctors, Chemists and Stockists are standalone pages at `/doctors`, `/chemists`,
 `/admin/invites`, nav entry "Invite people" in the Administration section. Shown only to `system_admin` with `users:write` (the API's `isAdmin`); every other role gets no nav entry and the route guard sends them home.
 
 - Existing employee: server-side search over `GET /v1/users?q=` (company-wide for System Admin). Shows name, code, email, role, HQ, manager and status. The link goes to the saved email via `POST /v1/employees/{id}/invite`. People who already signed in (`hasLogin`, or a 409 from the API) get a plain "already joined" note instead of a link.
-- New person: name, email, phone, any role (including System Admin, Distribution Head, Accountant), HQ (Business Manager: HQ-level territories only, including empty HQs) or territory (other sales roles), optional manager who outranks the role. Directors and functional roles have no manager; functional roles have no territory. "Add several" sends rows through `POST /v1/employees/invite-bulk` with per-row results.
+- New person: name, email, phone, any portal role (including System Admin; Distribution Head and Accountant are not offered), HQ (Business Manager: HQ-level territories only, including empty HQs) or territory (other sales roles), optional manager who outranks the role. Directors and functional roles have no manager; functional roles have no territory. "Add several" sends rows through `POST /v1/employees/invite-bulk` with per-row results.
 - After sending: a copyable link (when the API returns one), and a "Waiting to join" list from `GET /v1/users?status=invited` with "Send new link" per person and "Invite all pending". A new link cancels the old one; there is no separate cancel.
 - Director's My Team invite flow is unchanged.
 
@@ -57,3 +57,7 @@ Evidence: `apps/web/e2e/admin-invites-evidence.mjs` (Chromium and WebKit, 36 che
 - My Team's edit (`PATCH /v1/employees/{id}` for non-admins) sends only name, phone, role, territory, manager and status, never email or employee code.
 
 Evidence: `apps/web/e2e/admin-people-evidence.mjs` (Chromium and WebKit, 76 checks each).
+
+## SFC (/sfc)
+
+Replaces the old TA/DA rates page (`/settings/allowances`, removed). Nav entry and route guard: Area Business Manager and above, Director, System Admin (`roleLevel >= 2 || isSystemAdmin`). Business Managers get no entry and are redirected home. HQ list is scoped by the API (`GET /v1/sfc/hqs`); in the mock a Burdwan ABM sees only Burdwan Area (Anamoy and Bmch HQs), RBM and above see all. Everyone who can open the page can edit rows and save (API is the authority: 403/404/409/422/429 are shown as plain messages).

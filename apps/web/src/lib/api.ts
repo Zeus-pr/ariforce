@@ -95,16 +95,19 @@ export function apiReady(): Promise<void> {
         { mastersWriteGuard },
         { mockInviteAccept },
         { mockLeaveDayBlock },
+        { mockSfc },
       ] = await Promise.all([
         import('msw/browser'),
         import('@ariforce/contracts/mocks'),
         import('./mock-permissions'),
         import('./invites/mock-handler'),
         import('./leave/mock-handler'),
+        import('./sfc/mock-handler'),
       ]);
       await setupWorker(
         ...mockInviteAccept(API_URL),
         ...mockLeaveDayBlock(API_URL),
+        ...mockSfc(API_URL),
         ...mastersWriteGuard(API_URL),
         ...createHandlers(API_URL),
       ).start({
