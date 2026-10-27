@@ -21,4 +21,12 @@ export const WRITE_ROUTES: { href: string; roles: Role[] }[] = MASTER_KINDS.map(
 }));
 
 /** Who reviews sign-up requests: System Admin, and managers (ABM and above) for roles below them. */
-export const canReviewSignups = (role: Role) => isSystemAdmin(role) || roleLevel(role) >= roleLevel('area_business_manager');
+export const canReviewSignups = (role: Role) =>
+  isSystemAdmin(role) || roleLevel(role) >= roleLevel('area_business_manager');
+
+/**
+ * Who may mark an approved expense claim paid: Director and System Admin only (owner decision).
+ * The API still ties pay to finance:write (Accountant only), see docs/CONTRACT-GAPS.md.
+ */
+export const EXPENSE_PAYERS: Role[] = ['director', 'system_admin'];
+export const canPayExpenses = (role: Role) => EXPENSE_PAYERS.includes(role);

@@ -11,6 +11,7 @@ import {
   type Permission,
 } from '@ariforce/contracts';
 import type { Role } from '@/lib/roles';
+import { canPayExpenses } from '@/lib/permissions';
 
 export const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   travel: 'Travel',
@@ -37,7 +38,8 @@ export const STATUS_TONE: Record<ExpenseStatus, string> = {
 
 export const can = (role: Role, p: Permission) => (DEFAULT_ROLE_PERMISSIONS[role] ?? []).includes(p);
 /** Who gets the Expenses page at all. */
-export const seesExpenses = (role: Role) => can(role, 'expenses:read') || can(role, 'finance:read');
+export const seesExpenses = (role: Role) =>
+  can(role, 'expenses:read') || can(role, 'finance:read') || canPayExpenses(role);
 export const isEditable = (s: ExpenseStatus) => s === 'draft' || s === 'rejected';
 
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });

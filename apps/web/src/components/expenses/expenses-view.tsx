@@ -11,6 +11,7 @@ import { Label } from '@ariforce/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ariforce/ui/components/select';
 import { toast } from '@ariforce/ui/components/sonner';
 import { api, apiReady, toApiError } from '@/lib/api';
+import { canPayExpenses } from '@/lib/permissions';
 import { can, messageFor, quietAbort, money, monthLabel, selfId, STATUS_LABEL, thisMonth } from '@/lib/expenses/model';
 import { useRole } from '@/components/shell/role-context';
 import { StatusBadge } from './status-badge';
@@ -31,7 +32,7 @@ export function ExpensesView() {
   const router = useRouter();
   const mayWrite = can(role, 'expenses:write');
   const mayApprove = can(role, 'expenses:approve');
-  const mayPay = can(role, 'finance:write');
+  const mayPay = canPayExpenses(role);
   const scopes: { id: Scope; label: string }[] = [
     ...(mayWrite ? [{ id: 'mine' as const, label: 'My claims' }] : []),
     ...(mayApprove ? [{ id: 'team' as const, label: 'Team' }] : []),

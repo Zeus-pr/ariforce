@@ -67,6 +67,7 @@ const bm = (id: string, name: string, code: string, hqId: string): SfcEmployee =
   employeeCode: code,
   role: 'business_manager',
   hqId,
+  canEdit: true,
 });
 export const SFC_EMPLOYEES: SfcEmployee[] = [
   bm('sfc-u-anm', 'Demo BM Anamoy', 'SFC-BM-01', 'sfc-hq-anamoy'),
@@ -152,7 +153,7 @@ export function seedRows(userId: string): SfcRow[] {
       actualFare: !!af,
       travelMode,
       category,
-      da: '',
+      da: null,
     }),
   );
 }

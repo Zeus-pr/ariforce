@@ -231,7 +231,9 @@ export const NAV: NavItem[] = [
 
 /** Where a role lands after sign-in: the first nav item it can see (SFC is a tool, never a landing page). */
 export function homeFor(role: Role): string {
-  return NAV.find((n) => n.slug !== 'sfc' && n.roles.includes(role))?.href ?? '/';
+  // SFC is never a landing page; System Admin pays claims but lands on the masters, not Expenses.
+  const skip = (slug: string) => slug === 'sfc' || (slug === 'expenses' && isSystemAdmin(role));
+  return NAV.find((n) => !skip(n.slug) && n.roles.includes(role))?.href ?? '/';
 }
 
 /**

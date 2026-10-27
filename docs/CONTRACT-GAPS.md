@@ -185,21 +185,29 @@ Adopted in web `/admin/people`. Open items:
 - The web edits one territory per person (the primary); a territory change replaces the list with that one.
 - Mock: added `MANAGER_RANK` and `REPORTS_OUTRANK` (with `details.userIds`) to the PATCH mock, and `primaryRole`, `rank`, `managerName`, `territories[]`, `version` and a subtree `territoryId` filter to the `/v1/users` mock, to match the API. The mock caps `limit` at 200 instead of returning 422.
 
-## SFC (web, assumed contract; Architect branch not pushed yet)
+## SFC (adopted origin/feat/sfc-routes, merged 2fcb049)
 
-The web runs on `apps/web/src/lib/sfc/adapter.ts` (MSW mock in `lib/sfc/mock-handler.ts`). Assumed:
-- `GET /v1/sfc/settings` -> `{ ratePerKm }` (web default 2.95 if missing).
-- `GET /v1/sfc/hqs` -> `{ items: [{ id, name, code, areaId, areaName }] }`, already scoped to the viewer.
-- `GET /v1/sfc/employees?hqId=` -> `{ items: [{ id, name, employeeCode, role, hqId }] }` (people under the viewer at that HQ).
-- `GET /v1/sfc/{userId}` -> `{ userId, hqId, version, rows, updatedAt }`; row = `{ id, fromPlace, toPlace, distanceKm|null, actualFare, travelMode, category, da }`.
-- `PUT /v1/sfc/{userId}` with `{ version, rows }` -> sheet; 409 `VERSION_CONFLICT` on a stale version; 422 `VALIDATION` with `details.rows`; 403/404/429.
-- Amounts are computed (km x rate, both way = 2x); the web does not send amounts. `actualFare` rows show "ACTUAL FARE".
-- Open questions: is DA free text or a number; is the rate per HQ or global; who may edit (the web lets every viewer of the page edit).
+The web now uses the Architect contract (docs/SFC.md, `packages/contracts/src/schemas/sfc.ts`) through `apps/web/src/lib/sfc/adapter.ts`. The web-local MSW mock (`lib/sfc/mock-handler.ts`) uses the same paths and shapes with the Burdwan fixtures. What changed from the earlier web assumptions:
+- Paths: the sheet is `GET/PUT /v1/sfc/employees/{userId}/routes` (was `/v1/sfc/{userId}`); employees are listed with `?territoryId=` (was `hqId`).
+- Concurrency: an opaque `etag` (409 `VERSION_CONFLICT` returns `details.etag`), not a numeric `version`. The PUT also sends `hqTerritoryId`.
+- HQs: `{ id, name, code, level, parentId, parentName, employeeCount, routeCount }`; `code` and the parent area can be null (the web groups those under "Other HQs").
+- Rows: `oneWayKm` (0 to 2500, 2 decimals; was `distanceKm`), `travelMode` enum `bike|bus|train|bus_train|car|other|null` (AUTO dropped), `category` up to 40 chars or null, `da` money or null.
+- DA is a NUMBER (owner decision): 0 to 1,00,000 in the web (contract allows up to 10,00,000), 2 decimals, blank = null. Numeric input, inline error, 422 errors point at the row.
+- Rate: one company setting `GET/PUT /v1/sfc/settings { ratePerKm, version }` (2.95), not per HQ. The server computes amounts.
+- Whole-table PUT, max 200 rows; omitted rows are soft-deleted. New rows are sent without an id. 422 `SFC_HQ_NOT_ASSIGNED` and `SFC_ROUTE_NOT_FOUND` have their own messages (the latter reloads the sheet).
+- Who edits: the API returns `canEdit`. ABM to VP edit people below them but not their own sheet; Director edits everyone but self; System Admin edits everyone; BM reads only their own sheet. The web honours `canEdit` (read-only notice, inputs disabled). Gap vs the owner's "everyone who can see a sheet can edit": an ABM/RBM/Director viewing their OWN sheet gets it read-only from the API. The mock always returns `canEdit: true`.
+- `/v1/allowance-*` is deprecated; the web no longer calls it.
+
+## Paying expense claims (web gate; no Architect branch on origin)
+
+- Owner decision: Director and System Admin mark approved claims paid; no other role sees the pay button. One helper: `canPayExpenses` / `EXPENSE_PAYERS` in `apps/web/src/lib/permissions.ts`, used by the expenses list ("To pay"), the claim view and the Expenses nav entry.
+- Gap: the API (docs/RBAC.md) still ties `POST /v1/expense-claims/{id}/pay` and the approved-claims list to `finance:write` / `finance:read`, which only `accountant` has. Real mode will return 403 for Director/System Admin until the API grants those permissions (or a new `expenses:pay`) to them. System Admin also needs read access to approved claims company-wide.
+- Mock: `lib/expenses/mock-pay.ts` adds `finance:read` + `finance:write` to the Director and System Admin mock personas at start-up.
 
 ## Retired roles (Distribution Head, Accountant)
 
 - Removed from every web picker, filter, nav and mock persona. The contracts fixtures still contain "Demo Distribution Head" and "Demo Accountant" users (the contract's RoleKey is the Architect's), which the web shows as "Other role".
-- Gap: only `accountant` had `finance:write`, so no portal role can mark an expense claim paid now. The pay step was removed from the expenses e2e. Needs an API decision (e.g. give pay to Director or System Admin).
+- Pay moved to Director and System Admin, see "Paying expense claims".
 
 ## Forgot password by email code (web, assumed contract; no Architect branch on origin yet)
 

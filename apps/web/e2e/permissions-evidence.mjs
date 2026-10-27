@@ -84,4 +84,14 @@ for (const role of ['business_manager', 'area_business_manager']) {
     await d.ctx.close();
   }
 }
+// Paying expense claims: Director and System Admin can open the To pay list; ABM and BM have no To pay tab.
+for (const [role, pays] of [['director', true], ['system_admin', true], ['area_business_manager', false], ['business_manager', false]]) {
+  const { ctx, page } = await open(role, '/expenses');
+  await page.waitForTimeout(2000);
+  const tab = await page.getByRole('tab', { name: 'To pay' }).count();
+  // System Admin has only the To pay list, so no tab strip; it must still open /expenses.
+  const ok = role === 'system_admin' ? new URL(page.url()).pathname === '/expenses' : (tab > 0) === pays;
+  check(ok, `${role}: ${pays ? 'can open the To pay list' : 'no To pay tab'}`);
+  await ctx.close();
+}
 await finish();

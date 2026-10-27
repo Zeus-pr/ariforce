@@ -1,5 +1,5 @@
 // Expense claims (#52), MSW mock: BM drafts a claim, adds lines, uploads receipts (hotel needs one),
-// submits; an ABM sends it back, BM resubmits, ABM approves; Accounts pays; reconciliation + reports export.
+// submits; an ABM sends it back, BM resubmits, ABM approves; Director / System Admin pays; reconciliation + reports export.
 // The mock keeps claims in page memory, so roles are switched in-page (preview role), never by reload.
 // Usage: BROWSER=chromium|webkit BASE_URL=http://localhost:3000 node e2e/expenses-evidence.mjs
 import { setup } from './lib.mjs';
@@ -97,7 +97,21 @@ for (const view of ['desktop', 'mobile']) {
   await page.getByText('Approved').first().waitFor({ timeout: 10000 });
   check(true, `${view}: ABM approved`);
 
-  // Paying a claim was the Accountant's job; that role has no portal access now (API gap: who pays).
+  // Only Director and System Admin pay. ABM (approver) and BM (owner) get no pay button.
+  await page.waitForTimeout(500);
+  check((await page.getByTestId('exp-pay').count()) === 0, `${view}: ABM has no pay button`);
+  await as(page, 'business_manager');
+  await page.getByText('Approved').first().waitFor({ timeout: 10000 });
+  check((await page.getByTestId('exp-pay').count()) === 0, `${view}: BM has no pay button`);
+  await as(page, view === 'desktop' ? 'director' : 'system_admin');
+  await page.getByTestId('exp-pay').waitFor({ timeout: 10000 });
+  await page.getByTestId('exp-pay').click();
+  check(await page.getByTestId('exp-pay-confirm').isDisabled(), `${view}: pay needs a payment reference`);
+  await page.getByTestId('exp-payref').fill('NEFT-TEST-001');
+  await page.getByTestId('exp-pay-confirm').click();
+  await page.getByTestId('exp-paid').waitFor({ timeout: 10000 });
+  check(/NEFT-TEST-001/.test(await page.getByTestId('exp-paid').innerText()), `${view}: ${view === 'desktop' ? 'Director' : 'System Admin'} marked the claim paid`);
+  await shot(page, `paid-${view}.png`);
 
   // Reports + export (as ABM).
   await as(page, 'area_business_manager');
@@ -120,7 +134,7 @@ for (const view of ['desktop', 'mobile']) {
 {
   const { ctx, page } = await open('system_admin', '/');
   await page.waitForTimeout(1500);
-  check((await page.locator('a[href="/expenses"]').count()) === 0, 'system admin: no Expenses in sidebar');
+  check((await page.locator('a[href="/expenses"]').count()) > 0, 'system admin: Expenses in sidebar (pays claims)');
   await ctx.close();
 }
 await finish();

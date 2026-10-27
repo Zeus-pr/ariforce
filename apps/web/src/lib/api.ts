@@ -91,12 +91,13 @@ export function apiReady(): Promise<void> {
     try {
       const [
         { setupWorker },
-        { createHandlers },
+        { createHandlers, fixtures },
         { mastersWriteGuard },
         { mockInviteAccept },
         { mockLeaveDayBlock },
         { mockSfc },
         { mockPasswordReset },
+        { grantMockPay },
       ] = await Promise.all([
         import('msw/browser'),
         import('@ariforce/contracts/mocks'),
@@ -105,7 +106,9 @@ export function apiReady(): Promise<void> {
         import('./leave/mock-handler'),
         import('./sfc/mock-handler'),
         import('./password-reset/mock-handler'),
+        import('./expenses/mock-pay'),
       ]);
+      grantMockPay([fixtures.me, ...fixtures.mockUsers]);
       await setupWorker(
         ...mockInviteAccept(API_URL),
         ...mockLeaveDayBlock(API_URL),

@@ -60,7 +60,11 @@ Evidence: `apps/web/e2e/admin-people-evidence.mjs` (Chromium and WebKit, 76 chec
 
 ## SFC (/sfc)
 
-Replaces the old TA/DA rates page (`/settings/allowances`, removed). Nav entry and route guard: Area Business Manager and above, Director, System Admin (`roleLevel >= 2 || isSystemAdmin`). Business Managers get no entry and are redirected home. HQ list is scoped by the API (`GET /v1/sfc/hqs`); in the mock a Burdwan ABM sees only Burdwan Area (Anamoy and Bmch HQs), RBM and above see all. Everyone who can open the page can edit rows and save (API is the authority: 403/404/409/422/429 are shown as plain messages).
+Replaces the old TA/DA rates page (`/settings/allowances`, removed). Nav entry and route guard: Area Business Manager and above, Director, System Admin (`roleLevel >= 2 || isSystemAdmin`). Business Managers get no entry and are redirected home. HQ list is scoped by the API (`GET /v1/sfc/hqs`); in the mock a Burdwan ABM sees only Burdwan Area (Anamoy and Bmch HQs), RBM and above see all. Editing follows the API's `canEdit` per sheet: ABM to VP edit people below them, Director everyone except self, System Admin everyone; a sheet with `canEdit: false` opens read-only with a notice. DA is a money amount (0 to 1,00,000, 2 decimals, or blank). The rate per km is one company setting. The API is the authority: 403/404/409/422/429 are shown as plain messages.
+
+## Paying expense claims
+
+`canPayExpenses(role)` in `lib/permissions.ts`: Director and System Admin only. They get the "To pay" list and the "Mark paid" step on approved claims (payment reference required). Everyone else, including the approving ABM and the claim owner, sees no pay button. System Admin gets the Expenses nav entry for this. The API still needs to grant pay to these roles (docs/CONTRACT-GAPS.md, "Paying expense claims"). Evidence: `e2e/expenses-evidence.mjs` (Director pays on desktop, System Admin on mobile, ABM/BM have no button) and `e2e/permissions-evidence.mjs`.
 
 ## Public pages
 

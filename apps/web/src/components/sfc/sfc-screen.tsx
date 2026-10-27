@@ -85,10 +85,10 @@ export function SfcScreen() {
     const q = hqQ.trim().toLowerCase();
     const m = new Map<string, { area: string; items: SfcHq[] }>();
     for (const h of hqs ?? []) {
-      if (q && !`${h.name} ${h.code} ${h.areaName}`.toLowerCase().includes(q)) continue;
-      const g = m.get(h.areaId) ?? { area: h.areaName, items: [] };
+      if (q && !`${h.name} ${h.code ?? ''} ${h.areaName ?? ''}`.toLowerCase().includes(q)) continue;
+      const g = m.get(h.areaId ?? '') ?? { area: h.areaName ?? 'Other HQs', items: [] };
       g.items.push(h);
-      m.set(h.areaId, g);
+      m.set(h.areaId ?? '', g);
     }
     return [...m.values()];
   }, [hqs, hqQ]);
@@ -204,6 +204,7 @@ export function SfcScreen() {
               <SfcTable
                 key={emp.id}
                 userId={emp.id}
+                hqId={hq.id}
                 name={emp.name}
                 rate={rate}
                 onDirty={onDirty}

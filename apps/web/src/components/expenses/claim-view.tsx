@@ -11,6 +11,7 @@ import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
 import { toast } from '@ariforce/ui/components/sonner';
 import { api, apiReady, toApiError } from '@/lib/api';
+import { canPayExpenses } from '@/lib/permissions';
 import { can, CATEGORY_LABEL, isEditable, messageFor, money, monthLabel, selfId } from '@/lib/expenses/model';
 import { useRole } from '@/components/shell/role-context';
 import { LineDialog, type LineDraft } from './line-dialog';
@@ -56,7 +57,7 @@ export function ClaimView({ id }: { id: string }) {
   const mine = !!claim && claim.userId === me;
   const editable = !!claim && mine && isEditable(claim.status) && can(role, 'expenses:write');
   const mayDecide = !!claim && !mine && claim.status === 'submitted' && can(role, 'expenses:approve');
-  const mayPay = !!claim && claim.status === 'approved' && can(role, 'finance:write');
+  const mayPay = !!claim && claim.status === 'approved' && canPayExpenses(role);
   const seeRecon = !!claim && claim.status !== 'draft' && (!mine || can(role, 'expenses:approve') || can(role, 'finance:read'));
 
   useEffect(() => {
