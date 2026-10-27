@@ -160,6 +160,7 @@ export function SignupRequestsView() {
                       r.approvedRole &&
                       ` · Approved as ${ROLE_LABEL[r.approvedRole]}`}
                     {r.status === 'rejected' && r.reason && ` · ${r.reason}`}
+                    {r.status === 'pending' && !r.requestedManagerId && ' · No manager chosen'}
                   </p>
                 </div>
                 {r.status === 'pending' && (
@@ -282,6 +283,8 @@ function ApproveDialog({
   const managers = people.filter((p) => p.active && roleLevel(p.role as Role) > lvl);
   const withManager = takesManager(role);
   const withTerritory = needsTerritory(role);
+  // The requested HQ is pre-ticked only if it is one this approver can assign (and so can see and untick).
+  const chosen = territoryIds.filter((id) => territories?.some((t) => t.id === id));
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
@@ -296,14 +299,14 @@ function ApproveDialog({
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (withTerritory && territoryIds.length === 0)
+            if (withTerritory && chosen.length === 0)
               return setLocalError('Pick at least one territory for this role.');
             setLocalError(null);
             void run(
               () =>
                 signupAdapter.approve(req.id, {
                   role: role as never,
-                  ...(withTerritory ? { territoryIds } : {}),
+                  ...(withTerritory ? { territoryIds: chosen } : {}),
                   // Director, Distribution Head and Accountant take no manager.
                   ...(withManager && managerId ? { managerId } : {}),
                 }),
@@ -366,7 +369,9 @@ function ApproveDialog({
                 onChange={(e) => setManager(e.target.value)}
                 className={SELECT}
               >
-                <option value="">Me (default)</option>
+                <option value="">
+                  {req.requestedManagerId ? 'Keep requested manager' : 'Me (default)'}
+                </option>
                 {managers.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name}, {ROLE_LABEL[m.role as Role]}

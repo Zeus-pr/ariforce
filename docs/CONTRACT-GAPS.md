@@ -57,7 +57,7 @@ No payroll fields (PAN, bank, CTC, salary) in any of these, by owner decision.
 The web uses `POST /v1/auth/sign-up-request`, `GET /v1/signup-requests?status=`, `POST /v1/signup-requests/{id}/approve|reject` and the sign-in 403 codes exactly as in docs/SIGNUP.md. Remaining gaps:
 
 - **List has no `q`, cursor or total.** The approvals page shows Pending / Approved / Rejected tabs with the full list; add `q`, `cursor`, `limit` if lists grow.
-- **No public territory list for the sign-up form.** The optional HQ (`territoryId`) picker shows only in mock mode; real mode sends `territoryId: null`. A public `GET /v1/auth/sign-up-options` (territories by name, no ids of people) would fix it. `managerId` is always null from the form for the same reason.
+- **Resolved (feat/signup-visibility 787e450): sign-up pickers.** The form now loads `GET /v1/auth/sign-up-options` (mock and real) for the optional HQ and manager pickers; managers show only for roles that take one and only above the requested level. If the call fails (429/503/network) the pickers hide and the form still sends `territoryId`/`managerId` as null. The approve dialog pre-ticks the requested HQ only when it is in the approver's `GET /v1/territories` scope.
 - **Turnstile site key not exposed.** The web sends no `turnstileToken`; if `TURNSTILE_SECRET` is set on the API, real sign-ups get 403 CAPTCHA_FAILED until a `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is agreed.
 - **Approve dialog territory list** uses `GET /v1/territories` (the reviewer's scope); manager candidates come from the team tree. The API stays the authority (403/422).
 

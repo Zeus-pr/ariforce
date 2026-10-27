@@ -42,6 +42,24 @@ export type SignupRequest = {
   createdAt: string;
 };
 export type Decision = z.input<typeof SignupApprove>;
+export type SignupOptions = {
+  territories: { id: string; name: string; code: string }[];
+  managers: { id: string; name: string; role: Role }[];
+};
+
+/**
+ * Public GET /v1/auth/sign-up-options (both modes; MSW answers in mock). Any failure (429, 503,
+ * network) returns null so the form hides the optional pickers instead of blocking.
+ */
+export async function signupOptions(signal?: AbortSignal): Promise<SignupOptions | null> {
+  try {
+    await apiReady();
+    const r = await api.GET('/v1/auth/sign-up-options', { signal });
+    return (r.data as SignupOptions | undefined) ?? null;
+  } catch {
+    return null;
+  }
+}
 type Field = 'name' | 'email' | 'phone' | 'password' | 'requestedRole';
 
 export { SIGNUP_PASSWORD_MIN };
@@ -267,7 +285,13 @@ const mockAdapter = {
     await delay();
     const me = viewer();
     return load()
-      .filter((r) => r.status === status && canDecide(role, r) && r.userId !== me?.id)
+      .filter(
+        (r) =>
+          r.status === status &&
+          canDecide(role, r) &&
+          r.userId !== me?.id &&
+          (isSystemAdmin(role) || !r.requestedManagerId || r.requestedManagerId === me?.id),
+      )
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map(strip);
   },

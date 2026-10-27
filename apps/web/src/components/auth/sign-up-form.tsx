@@ -7,7 +7,8 @@ import { CircleCheck, Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
-import { REAL, api, apiReady } from '@/lib/api';
+import { REAL } from '@/lib/api';
+import { ROLE_RANK } from '@ariforce/contracts';
 import { ROLE_LABEL } from '@/lib/roles';
 import {
   SIGNUP_PASSWORD_MIN,
@@ -15,12 +16,14 @@ import {
   SignupError,
   signupAdapter,
   strength,
+  signupOptions,
+  takesManager,
   validate,
   type SignupInput,
+  type SignupOptions,
 } from '@/lib/signup/adapter';
 
 type Field = 'name' | 'email' | 'phone' | 'password' | 'requestedRole';
-type Territory = { id: string; name: string };
 const SELECT =
   'h-10 w-full rounded-md border border-input bg-transparent px-3 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-[invalid=true]:border-destructive';
 const ROLE_OPTIONS = SIGNUP_ROLES;
@@ -34,26 +37,29 @@ export function SignUpForm() {
     password: '',
     requestedRole: '',
     territoryId: '',
+    managerId: '',
   });
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ field?: Field; message: string } | null>(null);
   const [sent, setSent] = useState<{ email: string; message: string } | null>(null);
-  const [hqs, setHqs] = useState<Territory[]>([]);
+  const [opts, setOpts] = useState<SignupOptions | null>(null);
   const refs = useRef<Partial<Record<Field, HTMLInputElement | HTMLSelectElement | null>>>({});
 
   useEffect(() => {
-    let live = true;
-    // No public territory list in the contract: the optional HQ picker shows only in mock mode.
-    if (!REAL)
-      void apiReady()
-        .then(() => api.GET('/v1/territories', { params: { query: { limit: 200 } } }))
-        .then((r) => live && setHqs((r.data?.items ?? []).map((t) => ({ id: t.id, name: t.name }))))
-        .catch(() => {});
-    return () => {
-      live = false;
-    };
+    // Optional pickers from the public sign-up options; on any failure they stay hidden.
+    const ctrl = new AbortController();
+    void signupOptions(ctrl.signal).then((o) => !ctrl.signal.aborted && setOpts(o));
+    return () => ctrl.abort();
   }, []);
+
+  const hqs = opts?.territories ?? [];
+  const role = (v.requestedRole || null) as SignupInput['requestedRole'] | null;
+  // Managers only for hierarchy roles below director, and only people ranked above the requested role.
+  const managers =
+    role && takesManager(role)
+      ? (opts?.managers ?? []).filter((m) => ROLE_RANK[m.role] > ROLE_RANK[role])
+      : [];
 
   const set = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setV((s) => ({ ...s, [k]: e.target.value }));
@@ -80,7 +86,7 @@ export function SignUpForm() {
       password: v.password,
       requestedRole: v.requestedRole as SignupInput['requestedRole'],
       territoryId: v.territoryId || null,
-      managerId: null,
+      managerId: (role && takesManager(role) && v.managerId) || null,
     };
     const bad = validate(input);
     if (bad) {
@@ -271,6 +277,28 @@ export function SignUpForm() {
               {hqs.map((h) => (
                 <option key={h.id} value={h.id}>
                   {h.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {managers.length > 0 && (
+          <div className="grid gap-1.5">
+            <Label htmlFor={`${id}-mgr`}>
+              Reports to <span className="font-normal text-muted-foreground">(optional)</span>
+            </Label>
+            <select
+              id={`${id}-mgr`}
+              name="managerId"
+              value={v.managerId}
+              onChange={set('managerId')}
+              className={SELECT}
+              data-testid="signup-manager"
+            >
+              <option value="">Not sure</option>
+              {managers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}, {ROLE_LABEL[m.role]}
                 </option>
               ))}
             </select>

@@ -8,6 +8,13 @@ const ctx = await browser.newContext(VIEWS.mobile);
 await ctx.addInitScript(() => sessionStorage.setItem('af:splash-seen', '1'));
 const page = await ctx.newPage();
 let body = null;
+const OPTS = {
+  territories: [{ id: '00000000-0000-4000-8000-0000000000a1', name: 'Fake HQ', code: 'FHQ' }],
+  managers: [{ id: '00000000-0000-4000-8000-0000000000b1', name: 'Fake Manager', role: 'area_business_manager' }],
+};
+await page.route('**/v1/auth/sign-up-options', (r) =>
+  r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(OPTS) }),
+);
 await page.route('**/v1/auth/sign-up-request', async (r) => {
   body = r.request().postDataJSON();
   await r.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ status: 'pending', message: 'Request received.' }) });
@@ -17,6 +24,25 @@ await page.getByLabel('Full name').fill('Shape Check');
 await page.getByLabel('Work email').fill('shape.check@example.test');
 await page.getByLabel('Password', { exact: true }).fill('Fake!Throwaway99');
 await page.getByLabel('Your role').selectOption('business_manager');
+await page.getByLabel(/^HQ/).selectOption(OPTS.territories[0].id);
+await page.getByTestId('signup-manager').selectOption(OPTS.managers[0].id);
+await page.getByTestId('signup-form').getByRole('button', { name: 'Send request' }).click();
+await page.getByTestId('signup-sent').waitFor();
+check(body?.territoryId === OPTS.territories[0].id && body?.managerId === OPTS.managers[0].id, 'sends picked territoryId and managerId');
+check(body && body.phone === null, 'empty phone sent as null');
+
+// Options endpoint down (503): pickers hidden, form still submits with nulls.
+await page.unroute('**/v1/auth/sign-up-options');
+await page.route('**/v1/auth/sign-up-options', (r) =>
+  r.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { code: 'SIGNUP_DISABLED', message: 'x' } }) }),
+);
+await page.goto(`${BASE}/sign-up`);
+await page.getByLabel('Full name').fill('Shape Check');
+await page.getByLabel('Work email').fill('shape.check@example.test');
+await page.getByLabel('Password', { exact: true }).fill('Fake!Throwaway99');
+await page.getByLabel('Your role').selectOption('business_manager');
+await page.waitForTimeout(300);
+check((await page.getByLabel(/^HQ/).count()) === 0 && (await page.getByTestId('signup-manager').count()) === 0, 'options 503: pickers hidden quietly');
 await page.getByTestId('signup-form').getByRole('button', { name: 'Send request' }).click();
 await page.getByTestId('signup-sent').waitFor();
 check(body && body.phone === null && body.territoryId === null && body.managerId === null, 'nulls, not empty strings');
