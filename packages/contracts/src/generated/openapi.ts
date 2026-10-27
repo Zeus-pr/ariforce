@@ -1492,7 +1492,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Your claims; with expenses:approve also non-draft claims of your reporting line; with finance:read approved/paid claims company-wide */
+    /** Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide */
     get: operations['listExpenseClaims'];
     put?: never;
     /** Create your claim for a month (one per user per month); returns the existing one with 200 */
@@ -1626,10 +1626,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** expenses:read, finance:read or settings:write */
+    /**
+     * expenses:read, expenses:pay or settings:write
+     * @deprecated
+     */
     get: operations['listAllowanceRates'];
     put?: never;
-    /** settings:write */
+    /**
+     * settings:write
+     * @deprecated
+     */
     post: operations['createAllowanceRate'];
     delete?: never;
     options?: never;
@@ -1645,10 +1651,16 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** settings:write; optimistic version */
+    /**
+     * settings:write; optimistic version
+     * @deprecated
+     */
     put: operations['updateAllowanceRate'];
     post?: never;
-    /** settings:write; soft delete (existing claim lines keep their amounts) */
+    /**
+     * settings:write; soft delete (existing claim lines keep their amounts)
+     * @deprecated
+     */
     delete: operations['deleteAllowanceRate'];
     options?: never;
     head?: never;
@@ -1662,10 +1674,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** expenses:read, finance:read or settings:write */
+    /**
+     * expenses:read, expenses:pay or settings:write
+     * @deprecated
+     */
     get: operations['listAllowancePlaces'];
     put?: never;
-    /** settings:write */
+    /**
+     * settings:write
+     * @deprecated
+     */
     post: operations['createAllowancePlace'];
     delete?: never;
     options?: never;
@@ -1681,11 +1699,87 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** settings:write; optimistic version */
+    /**
+     * settings:write; optimistic version
+     * @deprecated
+     */
     put: operations['updateAllowancePlace'];
     post?: never;
-    /** settings:write; soft delete (existing claim lines keep their amounts) */
+    /**
+     * settings:write; soft delete (existing claim lines keep their amounts)
+     * @deprecated
+     */
     delete: operations['deleteAllowancePlace'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/sfc/settings': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** sfc:read. Company TA rate per km used for SFC amounts (default 2.95) */
+    get: operations['getSfcSettings'];
+    /** settings:write; optimistic version. Existing routes keep their stored amounts until next save */
+    put: operations['putSfcSettings'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/sfc/hqs': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** sfc:read. Headquarter-level territories in the caller scope (subtree included) */
+    get: operations['listSfcHqs'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/sfc/employees': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** sfc:read. Visible sales-hierarchy employees, optionally under a territory (subtree) */
+    get: operations['listSfcEmployees'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/sfc/employees/{userId}/routes': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** sfc:read. One employee SFC table with its etag */
+    get: operations['getSfcTable'];
+    /** sfc:write over this employee (never your own unless system_admin). Replaces the whole table; amounts computed by the server; audited (sfc.routes_saved) */
+    put: operations['putSfcTable'];
+    post?: never;
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -1751,7 +1845,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Accountant (finance:write): approved -> paid */
+    /** Director / system admin (expenses:pay): approved -> paid */
     post: operations['payExpenseClaim'];
     delete?: never;
     options?: never;
@@ -2155,6 +2249,19 @@ export interface components {
     };
     /** @enum {string} */
     TerritoryLevel: 'national' | 'zone' | 'region' | 'area' | 'headquarter';
+    /** @enum {string} */
+    RoleKey:
+      | 'business_manager'
+      | 'area_business_manager'
+      | 'regional_business_manager'
+      | 'zonal_business_manager'
+      | 'sales_manager'
+      | 'general_manager'
+      | 'vice_president'
+      | 'director'
+      | 'system_admin'
+      | 'distribution_head'
+      | 'accountant';
     UploadUrlRequest: {
       purpose: components['schemas']['FilePurpose'];
       /** @enum {string} */
@@ -2425,19 +2532,6 @@ export interface components {
       /** @description Null = whole division */
       productId: string | null;
     };
-    /** @enum {string} */
-    RoleKey:
-      | 'business_manager'
-      | 'area_business_manager'
-      | 'regional_business_manager'
-      | 'zonal_business_manager'
-      | 'sales_manager'
-      | 'general_manager'
-      | 'vice_president'
-      | 'director'
-      | 'system_admin'
-      | 'distribution_head'
-      | 'accountant';
     /** @enum {string} */
     CheckInKind: 'punch_in' | 'visit' | 'punch_out';
     /** @enum {string} */
@@ -2981,6 +3075,45 @@ export interface components {
       active: boolean;
       version: number;
     };
+    SfcSettings: {
+      /** @description TA per km (INR) used to compute SFC amounts on write */
+      ratePerKm: number;
+      /** @description Company row version (optimistic lock) */
+      version: number;
+    };
+    SfcTablePut: {
+      /** @description From the last GET ("" for a table that never had rows) */
+      etag: string;
+      /**
+       * Format: uuid
+       * @description One of the employee’s assigned territories
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      /** @description Full table in display order; rows left out are deleted (soft) */
+      routes: components['schemas']['SfcRouteInput'][];
+    };
+    SfcRouteInput: {
+      /**
+       * Format: uuid
+       * @description Existing route id (kept); omit for a new row
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id?: string;
+      fromPlace: string;
+      toPlace: string;
+      oneWayKm: number;
+      /** @default false */
+      actualFare: boolean;
+      /** @default null */
+      travelMode: components['schemas']['SfcTravelMode'] | null;
+      /** @default null */
+      category: string | null;
+      /** @default null */
+      da: number | null;
+    };
+    /** @enum {string} */
+    SfcTravelMode: 'bike' | 'bus' | 'train' | 'bus_train' | 'car' | 'other';
     AllowanceDraftRequest: {
       /** @default false */
       dryRun: boolean;
@@ -3212,10 +3345,13 @@ export interface components {
       | 'expenses:read'
       | 'expenses:approve'
       | 'finance:write'
+      | 'expenses:pay'
       | 'leave:read'
       | 'leave:write'
       | 'leave:approve'
-      | 'products:prices';
+      | 'products:prices'
+      | 'sfc:read'
+      | 'sfc:write';
     RoleList: {
       items: components['schemas']['Role'][];
     };
@@ -5416,6 +5552,89 @@ export interface components {
       updatedAt: string;
       version: number;
     };
+    SfcHqList: {
+      items: components['schemas']['SfcHq'][];
+    };
+    SfcHq: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      code: string | null;
+      level: components['schemas']['TerritoryLevel'];
+      parentId: string | null;
+      parentName: string | null;
+      /** @description Visible sales-hierarchy employees on this HQ */
+      employeeCount: number;
+      /** @description Live SFC routes with this HQ */
+      routeCount: number;
+    };
+    SfcEmployeeList: {
+      items: components['schemas']['SfcEmployee'][];
+    };
+    SfcEmployee: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      employeeCode: string | null;
+      role: components['schemas']['RoleKey'] | null;
+      rank: number;
+      hqTerritoryIds: string[];
+      routeCount: number;
+      hasSfc: boolean;
+      /** @description Caller may PUT this table */
+      canEdit: boolean;
+    };
+    SfcTable: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      userName: string;
+      /** @description HQ of the stored routes, else the user’s HQ */
+      hqTerritoryId: string | null;
+      ratePerKm: number;
+      /** @description Table version: send it back on PUT; any change by anyone changes it (409 VERSION_CONFLICT) */
+      etag: string;
+      canEdit: boolean;
+      routes: components['schemas']['SfcRoute'][];
+    };
+    SfcRoute: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      sortOrder: number;
+      fromPlace: string;
+      toPlace: string;
+      oneWayKm: number;
+      bothWayKm: number;
+      /** @description null = actual fare */
+      oneWayAmount: number | null;
+      /** @description null = actual fare */
+      bothWayAmount: number | null;
+      actualFare: boolean;
+      travelMode: components['schemas']['SfcTravelMode'] | null;
+      category: string | null;
+      da: number | null;
+      version: number;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+    };
     AllowanceDraftResult: {
       dryRun: boolean;
       days: components['schemas']['AllowanceDay'][];
@@ -6151,6 +6370,12 @@ export interface components {
       /** @description Prescribing doctor, in your scope */
       doctorId?: string | null;
     };
+    SfcSettingsOutput: {
+      /** @description TA per km (INR) used to compute SFC amounts on write */
+      ratePerKm: number;
+      /** @description Company row version (optimistic lock) */
+      version: number;
+    };
   };
   responses: never;
   parameters: never;
@@ -6392,6 +6617,8 @@ export interface operations {
         ancestorId?: string;
         /** @description Exact code match (import lookup) */
         code?: string;
+        /** @description Only territories this role may hold (business_manager: headquarter only; others: any level). Combine with level. */
+        assignableForRole?: components['schemas']['RoleKey'];
       };
       header?: never;
       path?: never;
@@ -13040,6 +13267,305 @@ export interface operations {
       };
       /** @description Not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getSfcSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SfcSettingsOutput'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  putSfcSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['SfcSettings'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SfcSettingsOutput'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listSfcHqs: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SfcHqList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listSfcEmployees: {
+    parameters: {
+      query?: {
+        /** @description HQ (or any territory): employees assigned to it or anywhere below it */
+        territoryId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SfcEmployeeList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getSfcTable: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SfcTable'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description NOT_FOUND (not visible or not in the sales hierarchy) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  putSfcTable: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['SfcTablePut'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SfcTable'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT (etag changed; details.etag is current) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION, SFC_HQ_NOT_ASSIGNED or SFC_ROUTE_NOT_FOUND */
+      422: {
         headers: {
           [name: string]: unknown;
         };

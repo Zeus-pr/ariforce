@@ -122,3 +122,11 @@ Every company needs work types or the DCR and Tour Plan dropdowns are empty. `pa
 | HOLIDAY    | Holiday                 | holiday   | false               | none           | false             |
 
 Source of truth: `DEFAULT_WORK_TYPES` (`packages/db/src/work-types.ts`), used by the dev seed and `admin:create-first`; a test keeps the SQL in sync. New companies created after 0026 get them from `admin:create-first` (or need the same insert). The migration also adds `companies_without_work_types()` (SECURITY DEFINER, id + slug only, app role only); the API logs a warning per such company (slug and id) at boot; the public `GET /v1/health` only reports `{ code: "NO_WORK_TYPES", count, message }` (or `WORK_TYPES_CHECK_FAILED`), never ids or slugs. The demo seed still has its older codes (FW-HQ, FW-EXHQ, FW-OS, MEET, TRANSIT) in addition.
+
+## Territory levels (Part 3, 2026-10-27)
+
+`territories.level` is one of `national > zone > region > area > headquarter`; a child must be a lower level than its parent and `path` = parent path + `.` + id. BMs hold headquarters only (API rule, `TERRITORY_LEVEL_INVALID`). Burdwan: the one-off script `packages/db/scripts/data-fixes/2026-10-27-burdwan-reparent.sql` sets HQ-BURDWAN to `area` (WB is already the region) and makes it the parent of HQ-BURDWAN-BMCH and HQ-BURDWAN-ANAMOY; BMs stay on their HQs; doctors/chemists/stockists keep their `territory_id` (subtree counts are checked before/after). No migration: data only, run by the lead.
+
+## SFC routes (migrations 0038–0039)
+
+`sfc_routes` holds one employee's Standard Fare Chart rows: the HQ territory, the from/to places, one-way and both-way km, amounts (null for an actual fare), `actual_fare`, `travel_mode` (checked: `bike`, `bus`, `train`, `bus_train`, `car`, `other`, or null), `category`, `da`, `created_by`/`updated_by`, `version` and `deleted_at`. It has RLS and FORCE RLS with the `tenant_isolation` policy and the `row_meta` trigger. `companies.sfc_rate_per_km` (default 2.95) is the rate the API uses to compute amounts. 0039 adds the `sfc:read` and `sfc:write` permissions. Details: docs/SFC.md.

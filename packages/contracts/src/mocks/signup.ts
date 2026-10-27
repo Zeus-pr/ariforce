@@ -1,7 +1,7 @@
 import type * as z from 'zod';
 import { http, HttpResponse } from 'msw';
 import type { Me } from '../schemas/auth';
-import { ROLE_RANK } from '../schemas/roles';
+import { isRetiredRole, ROLE_RANK } from '../schemas/roles';
 import {
   AUTH_STATE_CODES,
   SignupApprove,
@@ -138,6 +138,8 @@ export function signupHandlers(baseUrl: string, who: (r: Request) => Me | undefi
       const b = SignupApprove.safeParse(await request.json().catch(() => null));
       if (!b.success) return e(422, 'VALIDATION', 'Invalid');
       const role = b.data.role;
+      if (isRetiredRole(role))
+        return e(422, 'ROLE_RETIRED', 'This role is retired and can no longer be assigned');
       if (!admin(g.p)) {
         if (!isHierarchyRole(role) || ROLE_RANK[role] >= hierarchyRank(g.p.roles))
           return e(403, 'FORBIDDEN', 'Role must be a hierarchy role below your own');

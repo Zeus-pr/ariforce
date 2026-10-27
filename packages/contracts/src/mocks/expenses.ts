@@ -46,7 +46,7 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
   const visible = (p: Me, c: Claim) =>
     c.userId === p.id ||
     (can(p, 'expenses:approve') && c.status !== 'draft') ||
-    (can(p, 'finance:read') && ['approved', 'paid'].includes(c.status));
+    (can(p, 'expenses:pay') && ['approved', 'paid'].includes(c.status));
   const get = (p: Me, id: string) => {
     const c = claims.find((x) => x.id === id);
     return c && visible(p, c) ? c : undefined;
@@ -400,7 +400,7 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
     http.post(`${B}/expense-claims/:id/pay`, async ({ request, params }) => {
       const g = auth(request);
       if (g.res) return g.res;
-      if (!can(g.p, 'finance:write')) return e(403, 'FORBIDDEN', 'Missing finance:write');
+      if (!can(g.p, 'expenses:pay')) return e(403, 'FORBIDDEN', 'Missing expenses:pay');
       const c = get(g.p, String(params.id));
       if (!c) return e(404, 'NOT_FOUND', 'Expense claim not found');
       if (c.status !== 'approved') return e(409, 'CONFLICT', `Claim is ${c.status}`);

@@ -141,7 +141,7 @@ export class ExpenseClaimsController {
 
   @Post(':id/pay')
   @HttpCode(200)
-  @RequirePermissions('finance:write')
+  @RequirePermissions('expenses:pay')
   pay(
     @CurrentPrincipal() p: Principal,
     @Param('id') i: string,

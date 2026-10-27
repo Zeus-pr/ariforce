@@ -14,7 +14,7 @@ import {
 } from '@ariforce/contracts';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
-import { createProduct } from './support';
+import { createProduct, bearerFor } from './support';
 
 const OWNER = process.env.DIRECT_URL;
 const APP = process.env.DATABASE_URL;
@@ -46,10 +46,7 @@ describe.skipIf(!OWNER || !APP)('product prices admin (real API)', () => {
     await app.init();
     owner = new Pool({ connectionString: OWNER });
     for (const who of ['sysadmin', 'director', 'rbm', 'bm', 'accountant', 'dh']) {
-      const res = await http()
-        .post('/v1/auth/sign-in/email')
-        .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
-      tok[who] = `Bearer ${res.headers['set-auth-token']}`;
+      tok[who] = await bearerFor(http, who, PASSWORD);
     }
     p1 = await createProduct(http, tok.bm!, tok.director!);
     p2 = await createProduct(http, tok.bm!, tok.director!);

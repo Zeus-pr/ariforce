@@ -7,6 +7,7 @@ import { sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { U } from '@ariforce/db';
+import { bearerFor } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 import { backoffSeconds, JobsRunner, runnerEnabled } from '../src/jobs/jobs.runner';
@@ -80,10 +81,7 @@ describe.skipIf(!OWNER || !APP)('notifications (real API)', () => {
     runner = app.get(JobsRunner);
     owner = new Pool({ connectionString: OWNER });
     for (const who of ['bm', 'bm2', 'abm', 'rbm', 'accountant', 'sysadmin', 'director']) {
-      const res = await http()
-        .post('/v1/auth/sign-in/email')
-        .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
-      tok[who] = `Bearer ${res.headers['set-auth-token']}`;
+      tok[who] = await bearerFor(http, who, PASSWORD);
     }
     const s = await http()
       .put('/v1/leave/settings')
@@ -194,7 +192,7 @@ describe.skipIf(!OWNER || !APP)('notifications (real API)', () => {
     expect((await dec('rbm', 'approve')).body.status).toBe('approved');
     r = await http()
       .post(`/v1/expense-claims/${id}/pay`)
-      .set(as('accountant'))
+      .set(as('director'))
       .send({ paymentRef: 'NEFT-9' });
     expect(r.body.status).toBe('paid');
     await drain();

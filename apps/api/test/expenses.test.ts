@@ -6,6 +6,7 @@ import { Pool } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { U } from '@ariforce/db';
+import { bearerFor } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 import { StorageService } from '../src/files/storage.service';
@@ -110,11 +111,19 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
         [company],
       )
     ).rows[0].id;
-    for (const who of ['bm', 'bm2', 'abm', 'rbm', 'accountant', 'sysadmin', 'director']) {
-      const res = await http()
-        .post('/v1/auth/sign-in/email')
-        .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
-      tok[who] = `Bearer ${res.headers['set-auth-token']}`;
+    for (const who of [
+      'bm',
+      'bm2',
+      'abm',
+      'rbm',
+      'zbm',
+      'sm',
+      'gm',
+      'vp',
+      'sysadmin',
+      'director',
+    ]) {
+      tok[who] = await bearerFor(http, who, PASSWORD);
     }
   });
   afterAll(async () => {
@@ -155,7 +164,7 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
       (await http().post('/v1/expense-claims').set(as('bm')).send({ month: '2999-01' })).status,
     ).toBe(422);
     expect(
-      (await http().post('/v1/expense-claims').set(as('accountant')).send({ month: M })).status,
+      (await http().post('/v1/expense-claims').set(as('sysadmin')).send({ month: M })).status,
     ).toBe(403);
 
     const add = (b: object, who = 'bm') =>
@@ -252,7 +261,8 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
     expect(r.body).toMatchObject({ status: 'submitted', approvalStep: 1 });
     expect((await add(line())).body.error.code).toBe('EXPENSE_NOT_EDITABLE');
     expect((await http().get(`/v1/expense-claims/${id}`).set(as('bm2'))).status).toBe(404);
-    expect((await http().get(`/v1/expense-claims/${id}`).set(as('accountant'))).status).toBe(404);
+    // Submitted (not yet approved): hidden from expenses:pay holders outside the chain.
+    expect((await http().get(`/v1/expense-claims/${id}`).set(as('sysadmin'))).status).toBe(404);
     const decide = (who: string, b: object) =>
       http().post(`/v1/expense-claims/${id}/decision`).set(as(who)).send(b);
     expect((await decide('bm', { decision: 'approve' })).status).toBe(403);
@@ -272,24 +282,20 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
     expect(r.body.status).toBe('approved');
     expect((await decide('rbm', { decision: 'approve' })).status).toBe(409);
 
-    // Downloads: owner, approver, accountant; not a peer. Audited.
-    for (const who of ['bm', 'abm', 'accountant'])
+    // Downloads: owner, approver, expenses:pay (system admin, claim approved); not a peer. Audited.
+    for (const who of ['bm', 'abm', 'sysadmin'])
       expect(
         (await http().post(`/v1/expense-attachments/${good}/download-url`).set(as(who))).status,
       ).toBe(200);
     expect(
       (await http().post(`/v1/expense-attachments/${good}/download-url`).set(as('bm2'))).status,
     ).toBe(404);
-    expect(
-      (await http().post(`/v1/expense-attachments/${good}/download-url`).set(as('sysadmin')))
-        .status,
-    ).toBe(404);
     expect((await audit(good)).filter((a) => a === 'expense.attachment_downloaded')).toHaveLength(
       3,
     );
 
     // Reconciliation against DCR days.
-    r = await http().get(`/v1/expense-claims/${id}/reconciliation`).set(as('accountant'));
+    r = await http().get(`/v1/expense-claims/${id}/reconciliation`).set(as('sysadmin'));
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ claimedDays: 3, dcrDays: 1, matchedDays: 1, total: 2620.5 });
     expect(r.body.unmatchedAmount).toBe(2120.5);
@@ -301,14 +307,11 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
     expect(flags[d(5)]).toEqual(['dcr_not_submitted', 'non_field_day']);
 
     // Reports + exports, scoped.
-    r = await http().get(`/v1/expense-reports?month=${M}`).set(as('accountant'));
+    r = await http().get(`/v1/expense-reports?month=${M}`).set(as('sysadmin'));
     expect(r.body.rows.map((x: { claimId: string }) => x.claimId)).toContain(id);
     expect(r.body.byCategory.hotel).toBeGreaterThanOrEqual(2000);
     r = await http().get(`/v1/expense-reports?month=${M}`).set(as('bm2'));
     expect(r.body.rows.map((x: { claimId: string }) => x.claimId)).not.toContain(id);
-    expect((await http().get(`/v1/expense-reports?month=${M}`).set(as('sysadmin'))).status).toBe(
-      403,
-    );
     const buf = (res: request.Response, cb: (e: Error | null, b: Buffer) => void) => {
       const chunks: Buffer[] = [];
       res.on('data', (c: Buffer) => chunks.push(c));
@@ -316,7 +319,7 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
     };
     r = await http()
       .get(`/v1/expense-reports/export?month=${M}&format=xlsx`)
-      .set(as('accountant'))
+      .set(as('sysadmin'))
       .buffer(true)
       .parse(buf as never);
     expect(r.status).toBe(200);
@@ -330,21 +333,23 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
     expect(r.status).toBe(200);
     expect((r.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
 
-    // Pay.
-    expect(
-      (await http().post(`/v1/expense-claims/${id}/pay`).set(as('bm')).send({ paymentRef: 'x' }))
-        .status,
-    ).toBe(403);
+    // Pay: only expenses:pay (director, system admin). Every other rank, approver or not: 403.
+    for (const who of ['bm', 'abm', 'rbm', 'zbm', 'sm', 'gm', 'vp'])
+      expect(
+        (await http().post(`/v1/expense-claims/${id}/pay`).set(as(who)).send({ paymentRef: 'x' }))
+          .status,
+        who,
+      ).toBe(403);
     r = await http()
       .post(`/v1/expense-claims/${id}/pay`)
-      .set(as('accountant'))
+      .set(as('director'))
       .send({ paymentRef: 'NEFT-1' });
     expect(r.body).toMatchObject({ status: 'paid', paymentRef: 'NEFT-1' });
     expect(
       (
         await http()
           .post(`/v1/expense-claims/${id}/pay`)
-          .set(as('accountant'))
+          .set(as('sysadmin'))
           .send({ paymentRef: 'NEFT-1' })
       ).status,
     ).toBe(409);
@@ -404,17 +409,17 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
       .send({ decision: 'approve' });
     expect(r.status).toBe(403);
   });
-  it('Accountant (finance:* only, no expenses:*): approved/paid company-wide, read-only + pay', async () => {
+  it('System admin (expenses:pay only, no other expenses:*): approved/paid company-wide, read-only + pay', async () => {
     const A = `${YEAR}-03`;
     const day = (n: number) => `${A}-${String(n).padStart(2, '0')}`;
     const perms = (
       await owner.query(
         `select r.permissions from roles r join user_roles ur on ur.role_id = r.id where ur.user_id = $1`,
-        [U.accountant],
+        [U.sysadmin],
       )
     ).rows.flatMap((r) => r.permissions as string[]);
-    expect(perms).toEqual(expect.arrayContaining(['finance:read', 'finance:write']));
-    expect(perms.filter((x) => x.startsWith('expenses:'))).toEqual([]);
+    expect(perms.filter((x) => x.startsWith('expenses:'))).toEqual(['expenses:pay']);
+    expect(perms.filter((x) => x.startsWith('finance:'))).toEqual([]);
 
     const mk = async (who: string, amount: number) => {
       const c = await http().post('/v1/expense-claims').set(as(who)).send({ month: A });
@@ -456,7 +461,7 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
     );
     const dr = await mk('rbm', 150);
 
-    const acc = as('accountant');
+    const acc = as('sysadmin');
     const listIds = async () =>
       (await http().get(`/v1/expense-claims?month=${A}`).set(acc)).body.items.map(
         (x: { id: string }) => x.id,
@@ -479,7 +484,7 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
       `select actor_user_id from audit_log where entity_id = $1 and action = 'expense.attachment_downloaded'`,
       [att],
     );
-    expect(dl.rows.map((r) => r.actor_user_id)).toContain(U.accountant);
+    expect(dl.rows.map((r) => r.actor_user_id)).toContain(U.sysadmin);
     const rep = await http().get(`/v1/expense-reports?month=${A}`).set(acc);
     expect(rep.status).toBe(200);
     expect(rep.body.rows.map((x: { claimId: string }) => x.claimId)).toEqual([ap.id]);
@@ -517,7 +522,7 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
       ).status,
     ).toBe(403);
     expect((await http().post(`/v1/expense-claims/${dr.id}/submit`).set(acc)).status).toBe(403);
-    expect((await decide('accountant', sb.id, { decision: 'approve' })).status).toBe(403);
+    expect((await decide('sysadmin', sb.id, { decision: 'approve' })).status).toBe(403);
     expect(
       (await http().post(`/v1/expense-claims/${sb.id}/pay`).set(acc).send({ paymentRef: 'X' }))
         .status,
@@ -526,7 +531,7 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
     const pay = await http()
       .post(`/v1/expense-claims/${ap.id}/pay`)
       .set(acc)
-      .send({ paymentRef: 'NEFT-ACC-1' });
+      .send({ paymentRef: 'NEFT-SA-1' });
     expect(pay.status, JSON.stringify(pay.body)).toBe(200);
     expect(pay.body.status).toBe('paid');
     expect(await listIds()).toEqual([ap.id]);

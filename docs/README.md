@@ -42,6 +42,7 @@ document is committed at `docs/api/openapi.json` (`pnpm -F @ariforce/contracts o
 | [PRODUCTS.md](PRODUCTS.md)               | System Admin product prices (MRP/PTR/PTS) with append-only history               |
 | [EXPENSES.md](EXPENSES.md)               | Expense claims, lines, receipts, approvals, payment, reports (#52)               |
 | [TADA.md](TADA.md)                       | TA/DA rate card, fare chart and allowance drafting (#39)                         |
+| [SFC.md](SFC.md)                         | SFC (Standard Fare Chart) routes per employee; replaces the TA/DA rates page     |
 | [LEAVE.md](LEAVE.md)                     | Leave types, requests, approvals, balances, grants, backdating window (#51)      |
 | [TEAM-PROFILE.md](TEAM-PROFILE.md)       | Team member profile, performance and export (#75)                                |
 | [NOTIFICATIONS.md](NOTIFICATIONS.md)     | DB job runner and in-app notifications (#35)                                     |
@@ -61,11 +62,12 @@ document is committed at `docs/api/openapi.json` (`pnpm -F @ariforce/contracts o
 
 ## Run and ops
 
-| File                                             | What it covers                                                                      |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| [SETUP.md](SETUP.md)                             | Toolchain and first-time setup on the SSD                                           |
-| [RUN-LOCAL.md](RUN-LOCAL.md)                     | Migrations 0000–0035, env vars, running the API and web, health, jobs runner, tests |
-| [CHANGELOG-CONTRACTS.md](CHANGELOG-CONTRACTS.md) | API contract changes by feature, breaking changes first                             |
+| File                                                                | What it covers                                                                      |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| [SETUP.md](SETUP.md)                                                | Toolchain and first-time setup on the SSD                                           |
+| [RUN-LOCAL.md](RUN-LOCAL.md)                                        | Migrations 0000–0035, env vars, running the API and web, health, jobs runner, tests |
+| [data-fixes/README.md](../packages/db/scripts/data-fixes/README.md) | One-off data-fix SQL scripts (lead runs as DB owner) with run order                 |
+| [CHANGELOG-CONTRACTS.md](CHANGELOG-CONTRACTS.md)                    | API contract changes by feature, breaking changes first                             |
 
 ## Cutly checklist
 

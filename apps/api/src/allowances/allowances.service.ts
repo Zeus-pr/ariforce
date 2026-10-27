@@ -28,12 +28,12 @@ export class AllowancesService {
   /** Reps and managers read with expenses:read; admins with settings:write. */
   private canRead(p: Principal) {
     if (
-      !(['expenses:read', 'finance:read', 'settings:write'] as const).some((k) =>
+      !(['expenses:read', 'expenses:pay', 'settings:write'] as const).some((k) =>
         p.permissions.includes(k),
       )
     )
       throw new ForbiddenException(
-        'Missing permission: expenses:read, finance:read or settings:write',
+        'Missing permission: expenses:read, expenses:pay or settings:write',
       );
   }
 

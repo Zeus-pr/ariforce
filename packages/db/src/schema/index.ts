@@ -10,3 +10,4 @@ export * from './leave';
 export * from './notifications';
 export * from './exceptions';
 export * from './allowances';
+export * from './sfc';

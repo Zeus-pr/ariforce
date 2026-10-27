@@ -1,12 +1,12 @@
 /**
- * Builds the latest role-permissions migration (0019 baseline, 0022 expenses, 0025 leave, now 0033 with product prices) from DEFAULT_ROLE_PERMISSIONS in
+ * Builds the latest role-permissions migration (0019 baseline, 0022 expenses, 0025 leave, 0033 product prices, 0039 SFC, now 0040 expenses:pay) from DEFAULT_ROLE_PERMISSIONS in
  * @ariforce/contracts, the same constant the seed uses, so the SQL and the code cannot drift.
  * Regenerate: pnpm -F @ariforce/db db:role-perms   Check: pnpm -F @ariforce/db db:role-perms:check
  */
 import { DEFAULT_ROLE_PERMISSIONS, ROLE_KEYS } from '../../contracts/src/schemas/roles';
 
 /** Applied 0019 stays frozen; each permission change gets a NEW generated migration (set, not append). */
-export const ROLE_PERMISSIONS_MIGRATION = '0033_role_permissions_prices';
+export const ROLE_PERMISSIONS_MIGRATION = '0040_role_permissions_expenses_pay';
 
 /** Sorted, de-duplicated permission list per role (the exact array written to roles.permissions). */
 export function rolePermissionMatrix(): Record<string, string[]> {
@@ -25,11 +25,13 @@ export function rolePermissionsSql(): string {
 -- Baseline permissions for EVERY role in EVERY company. SETs (does not append) the full array,
 -- so re-running converges. Only roles.permissions is changed; no other column is touched.
 -- Expenses (#52): expenses:read/write for the sales hierarchy, expenses:approve for ABM and up,
--- finance:write (mark paid) for the accountant.
+-- expenses:pay (mark paid; approved/paid claims and reports company-wide) for director and
+-- system_admin (0040). finance:read/write stay on the retired accountant row only, unchecked.
 -- Leave (#51): leave:read/write for the sales hierarchy, leave:approve for ABM and up.
 -- Product prices admin: products:prices for system_admin only.
+-- SFC: sfc:read for the sales hierarchy and system_admin; sfc:write for ABM and up + system_admin.
 -- Masters: BM/ABM read-only; RBM and above + system_admin write. distribution_head / accountant
--- read-only sets as accepted by the lead (docs/RBAC.md).`;
+-- are retired (no assignment, no sign-in); their rows keep their old sets (docs/RBAC.md).`;
   const stmts = ROLE_KEYS.map(
     (k) => `UPDATE roles SET permissions = ${lit(m[k]!)}
 WHERE key::text = '${k}' AND permissions IS DISTINCT FROM ${lit(m[k]!)};`,

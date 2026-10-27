@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  isRetiredRole,
   AUTH_STATE_CODES,
   MIN_MANAGER_RANK,
   ROLE_RANK,
@@ -105,6 +106,10 @@ export class SignupService {
 
   async submit(b: z.infer<typeof SignupRequestCreate>, ip: string | null) {
     const email = b.email.trim().toLowerCase();
+    if (isRetiredRole(b.requestedRole))
+      throw err(422, AUTH_STATE_CODES.retired, 'This role is no longer available', {
+        role: b.requestedRole,
+      });
     await enforce(
       [
         { key: `signup:ip:${ip ?? '?'}`, ...LIMITS.signupSubmitIp() },

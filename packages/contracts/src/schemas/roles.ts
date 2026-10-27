@@ -28,6 +28,19 @@ export const ROLE_KEYS = [...HIERARCHY_ROLE_KEYS, ...NON_HIERARCHY_ROLE_KEYS] as
 export const RoleKey = z.enum(ROLE_KEYS).meta({ id: 'RoleKey' });
 export type RoleKey = z.infer<typeof RoleKey>;
 
+/**
+ * Retired roles (2026-10-27): no path may assign them any more (422 ROLE_RETIRED), they are hidden
+ * from role lists, and holders cannot sign in or accept an invite. Rows, role rows and permission
+ * seeds are kept so existing records still read. See docs/RBAC.md.
+ */
+export const RETIRED_ROLE_KEYS = [
+  'distribution_head',
+  'accountant',
+] as const satisfies readonly RoleKey[];
+export const isRetiredRole = (r: string) => (RETIRED_ROLE_KEYS as readonly string[]).includes(r);
+/** Roles that can still be assigned (everything except RETIRED_ROLE_KEYS). */
+export const ASSIGNABLE_ROLE_KEYS = ROLE_KEYS.filter((r) => !isRetiredRole(r)) as RoleKey[];
+
 export const ROLE_NAMES: Record<RoleKey, string> = {
   business_manager: 'Business Manager',
   area_business_manager: 'Area Business Manager',
@@ -79,7 +92,7 @@ export const PERMISSIONS = [
   'audit:read',
   /** Stockists, primary/secondary sales and distribution views, company-wide (distribution_head). */
   'sales:read',
-  /** Expenses and finance reports, company-wide (accountant). */
+  /** Legacy (retired accountant role); no endpoint checks it since 0040. Use expenses:pay. */
   'finance:read',
   /** Own expense claims: create, edit while draft/rejected, submit, attach receipts (#52). */
   'expenses:write',
@@ -87,8 +100,13 @@ export const PERMISSIONS = [
   'expenses:read',
   /** Decide expense claims of the reporting line (manager chain, never your own). */
   'expenses:approve',
-  /** Mark approved expense claims as paid (accountant). */
+  /** Legacy (retired accountant role); no endpoint checks it since 0040. Use expenses:pay. */
   'finance:write',
+  /**
+   * Mark approved expense claims as paid and read approved/paid claims and expense reports
+   * company-wide (director, system_admin). Replaces finance:write / finance:read (0040).
+   */
+  'expenses:pay',
   /** Own leave: balances, requests, calendar; managers also their reporting line's (#51). */
   'leave:read',
   /** Apply for and cancel your own leave (#51). */
@@ -97,6 +115,10 @@ export const PERMISSIONS = [
   'leave:approve',
   /** Edit product MRP/PTR/PTS (single and bulk) and read price history: system_admin only. */
   'products:prices',
+  /** Read SFC (Standard Fare Chart) routes: own table (BM), reporting line (managers), company (director, system_admin). */
+  'sfc:read',
+  /** Edit SFC routes of the reporting line (ABM and above), company-wide for director and system_admin. */
+  'sfc:write',
 ] as const;
 export const Permission = z.enum(PERMISSIONS).meta({ id: 'Permission' });
 export type Permission = z.infer<typeof Permission>;
@@ -139,6 +161,8 @@ const MANAGER: Permission[] = [
   'expenses:approve',
   ...LEAVE_OWN,
   'leave:approve',
+  'sfc:read',
+  'sfc:write',
 ];
 /** RBM and above. */
 const SENIOR: Permission[] = [...MANAGER, ...MASTERS_WRITE];
@@ -151,6 +175,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'reports:read',
     ...EXPENSES_OWN,
     ...LEAVE_OWN,
+    'sfc:read',
   ],
   area_business_manager: MANAGER,
   regional_business_manager: SENIOR,
@@ -158,7 +183,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
   sales_manager: SENIOR,
   general_manager: SENIOR,
   vice_president: SENIOR,
-  director: [...SENIOR, 'settings:write', 'audit:read'],
+  director: [...SENIOR, 'settings:write', 'audit:read', 'expenses:pay'],
   system_admin: [
     ...BASE,
     ...MASTERS_WRITE,
@@ -167,6 +192,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'settings:write',
     'audit:read',
     'products:prices',
+    'sfc:read',
+    'sfc:write',
+    'expenses:pay',
   ],
   // Accepted by lead: read-only, company-wide; no doctors/chemists; never masters write.
   distribution_head: [

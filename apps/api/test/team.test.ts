@@ -5,6 +5,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { T, U } from '@ariforce/db';
 import { Pool } from 'pg';
+import { bearerFor } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 
@@ -33,10 +34,7 @@ describe.skipIf(!OWNER || !APP)('Team + employees (real API)', () => {
     app = configureApp(mod.createNestApplication({ bodyParser: false }));
     await app.init();
     for (const who of ['director', 'bm', 'abm', 'dh', 'sysadmin']) {
-      const res = await http()
-        .post('/v1/auth/sign-in/email')
-        .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
-      tok[who] = `Bearer ${res.headers['set-auth-token']}`;
+      tok[who] = await bearerFor(http, who, PASSWORD);
     }
   });
   afterAll(async () => {
@@ -66,7 +64,7 @@ describe.skipIf(!OWNER || !APP)('Team + employees (real API)', () => {
     expect((await post('abm', emp({ role: 'area_business_manager' }))).status).toBe(403);
     expect((await post('abm', emp({ role: 'director' }))).status).toBe(403);
     expect((await post('abm', emp({ role: 'system_admin' }))).status).toBe(403);
-    expect((await post('abm', emp({ role: 'accountant' }))).status).toBe(403);
+    expect((await post('abm', emp({ role: 'accountant' }))).status).toBe(422);
     expect((await post('abm', emp({ territoryIds: [T.otherArea] }))).status).toBe(403);
     expect((await post('abm', emp({ managerId: U.director }))).status).toBe(403);
     const self = await http().get('/v1/team').set(as('abm'));
