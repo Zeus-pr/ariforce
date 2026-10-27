@@ -250,7 +250,11 @@ export async function evaluateExceptions(
   if (on('tp_not_submitted') && tpMonths.length) {
     const plans = await rows<{ user_id: string; m: string; status: string }>(
       tx,
-      sql`select user_id, to_char(month, 'YYYY-MM-DD') as m, status::text as status from tour_plans
+      // #86: a month with any pending or approved submission counts as submitted.
+      sql`select user_id, to_char(month, 'YYYY-MM-DD') as m,
+            case when exists (select 1 from tour_plan_submissions ts where ts.tour_plan_id = tour_plans.id
+              and ts.deleted_at is null and ts.status in ('submitted', 'approved')) then 'submitted'
+            else status::text end as status from tour_plans
           where deleted_at is null and user_id in (${idList})
             and month in (${sql.join(
               tpMonths.map((m) => sql`${m}::date`),

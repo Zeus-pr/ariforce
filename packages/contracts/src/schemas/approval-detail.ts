@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { DateOnly, Id, Timestamp } from './common';
 import { ExpenseClaim } from './expenses';
-import { Approval, TourPlan } from './field';
+import { Approval, TourPlan, TourPlanSubmission } from './field';
 import { LeaveBalanceItem, LeaveRequest } from './leave';
 
 /** Id + display name of a referenced master or user. */
@@ -25,8 +25,12 @@ export const ApprovalSubjectTourPlan = z
   .object({
     type: z.literal('tour_plan'),
     plan: TourPlan,
+    submission: TourPlanSubmission.nullable().optional().meta({
+      description: 'The submission being decided (#86); null for requests made before #86',
+    }),
     days: z.array(z.object({ date: DateOnly, entries: z.array(ApprovalTourPlanEntry) })).meta({
-      description: 'plan.days with every id resolved to a name (deleted masters keep their id)',
+      description:
+        "The submission's days (all plan days for pre-#86 requests) with every id resolved to a name",
     }),
   })
   .meta({ id: 'ApprovalSubjectTourPlan' });

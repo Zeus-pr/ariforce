@@ -140,7 +140,11 @@ export class AttendanceController {
         const res = (await tx.execute(sql`
           select s.user_id as "userId", s.date, s.work_type_id as "workTypeId", wt.kind::text as kind
           from plan_sessions s
-          join tour_plans tp on tp.user_id = s.user_id and tp.status = 'approved' and tp.deleted_at is null
+          join tour_plans tp on tp.user_id = s.user_id and tp.deleted_at is null
+            and (exists (select 1 from tour_plan_submissions ts where ts.tour_plan_id = tp.id
+                   and ts.deleted_at is null and ts.status = 'approved' and s.date::date = any(ts.dates))
+                 or (tp.status = 'approved' and not exists (select 1 from tour_plan_submissions ts2
+                   where ts2.tour_plan_id = tp.id and ts2.deleted_at is null)))
             and tp.month = date_trunc('month', s.date::date)::date
           join work_types wt on wt.id = s.work_type_id
           where s.deleted_at is null and s.user_id in (${sql.join(

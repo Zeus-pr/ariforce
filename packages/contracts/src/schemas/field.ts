@@ -161,16 +161,57 @@ export const TourPlanEntry = z
     notes: z.string().max(500).nullable().optional(),
   })
   .meta({ id: 'TourPlanEntry' });
+export const TourPlanDayStatus = z.enum(['draft', 'submitted', 'approved', 'rejected']).meta({
+  id: 'TourPlanDayStatus',
+  description:
+    'Status of the latest submission holding the day (#86); draft when none, or when a rejected day has no entries left',
+});
 export const TourPlanDay = z
-  .object({ date: DateOnly, entries: z.array(TourPlanEntry).max(3) })
+  .object({
+    date: DateOnly,
+    entries: z.array(TourPlanEntry).max(3),
+    status: TourPlanDayStatus.optional().meta({
+      description: 'Response only (ignored on input). submitted/approved days are locked',
+    }),
+    submissionId: Id.nullable().optional().meta({
+      description: 'Response only: the submission that set `status` (null for draft)',
+    }),
+  })
   .meta({ id: 'TourPlanDay' });
+
+export const TourPlanSubmission = z
+  .object({
+    id: Id,
+    tourPlanId: Id,
+    dates: z.array(DateOnly).min(1),
+    status: z.enum(['submitted', 'approved', 'rejected']),
+    approvalId: Id.nullable().meta({
+      description: 'Its approval request (GET /v1/approvals/{id})',
+    }),
+    submitterNote: z.string().nullable(),
+    submittedAt: Timestamp,
+    decidedAt: Timestamp.nullable(),
+    decidedBy: UserRef.nullable(),
+    decisionComment: z.string().nullable(),
+    rejectionReason: z.string().nullable(),
+    rejectedBy: UserRef.nullable(),
+    rejectedAt: Timestamp.nullable(),
+  })
+  .meta({ id: 'TourPlanSubmission' });
+export type TourPlanSubmission = z.infer<typeof TourPlanSubmission>;
 
 export const TourPlan = Syncable.extend({
   userId: Id,
   month: Month,
   kind: z.enum(['stp', 'mtp']).meta({ description: 'Standard (template) or monthly plan' }),
-  status: ApprovalStatus,
+  status: ApprovalStatus.meta({
+    description:
+      'Aggregate of the day statuses (#86): submitted if any submission is pending, else rejected if any day is rejected, else draft if any planned day is unsubmitted, else approved if any day is approved, else draft',
+  }),
   days: z.array(TourPlanDay),
+  submissions: z.array(TourPlanSubmission).optional().meta({
+    description: 'All submissions of this plan, oldest first (#86)',
+  }),
   submittedAt: Timestamp.nullable(),
   decidedAt: Timestamp.nullable(),
   decidedBy: Id.nullable(),
@@ -197,6 +238,10 @@ export const TourPlanCalendar = z
     weeklyOffDays: z
       .array(z.int().min(0).max(6))
       .meta({ description: 'From leave settings (0 = Sunday .. 6 = Saturday); default [0]' }),
+    days: z
+      .array(z.object({ date: DateOnly, status: TourPlanDayStatus, submissionId: Id.nullable() }))
+      .optional()
+      .meta({ description: 'Days present in the plan with their own status (#86)' }),
     requiredDates: z.array(DateOnly).meta({
       description:
         'Informational only (kept for compatibility): non-off dates; current month only from todayIST on. Submit does not require them; it only needs one planned day.',
@@ -204,7 +249,13 @@ export const TourPlanCalendar = z
   })
   .meta({ id: 'TourPlanCalendar' });
 export const TourPlanSubmit = z
-  .object({ submitterNote: z.string().trim().max(1000).nullable().optional() })
+  .object({
+    submitterNote: z.string().trim().max(1000).nullable().optional(),
+    dates: z.array(DateOnly).min(1).max(31).optional().meta({
+      description:
+        'Days to submit together (#86). Default: every planned day that is draft or rejected. Days without entries are skipped; none left = 422 EMPTY_PLAN; a submitted/approved day = 409 DAY_LOCKED',
+    }),
+  })
   .meta({ id: 'TourPlanSubmit' });
 export const TourPlanUpsert = z
   .object({ days: z.array(TourPlanDay), version: z.int().min(1).optional() })

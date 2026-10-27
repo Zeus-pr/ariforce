@@ -2555,7 +2555,16 @@ export interface components {
        */
       date: string;
       entries: components['schemas']['TourPlanEntry'][];
+      /** @description Response only (ignored on input). submitted/approved days are locked */
+      status?: components['schemas']['TourPlanDayStatus'];
+      /** @description Response only: the submission that set `status` (null for draft) */
+      submissionId?: string | null;
     };
+    /**
+     * @description Status of the latest submission holding the day (#86); draft when none, or when a rejected day has no entries left
+     * @enum {string}
+     */
+    TourPlanDayStatus: 'draft' | 'submitted' | 'approved' | 'rejected';
     /** @description Fills a draft (new, draft or rejected plan) from the STP or another month (#20). Dates map by week of month + weekday. */
     TourPlanCopy: {
       /**
@@ -2571,6 +2580,8 @@ export interface components {
     };
     TourPlanSubmit: {
       submitterNote?: string | null;
+      /** @description Days to submit together (#86). Default: every planned day that is draft or rejected. Days without entries are skipped; none left = 422 EMPTY_PLAN; a submitted/approved day = 409 DAY_LOCKED */
+      dates?: string[];
     };
     DcrUpsert: {
       /**
@@ -4220,8 +4231,11 @@ export interface components {
        * @enum {string}
        */
       kind: 'stp' | 'mtp';
+      /** @description Aggregate of the day statuses (#86): submitted if any submission is pending, else rejected if any day is rejected, else draft if any planned day is unsubmitted, else approved if any day is approved, else draft */
       status: components['schemas']['ApprovalStatus'];
       days: components['schemas']['TourPlanDayOutput'][];
+      /** @description All submissions of this plan, oldest first (#86) */
+      submissions?: components['schemas']['TourPlanSubmission'][];
       submittedAt: string | null;
       decidedAt: string | null;
       decidedBy: string | null;
@@ -4233,6 +4247,37 @@ export interface components {
       /** @description Who rejected it ({id, name}); null unless rejected */
       rejectedBy: components['schemas']['UserRef'] | null;
       /** @description When it was rejected; null unless rejected */
+      rejectedAt: string | null;
+    };
+    TourPlanSubmission: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      tourPlanId: string;
+      dates: string[];
+      /** @enum {string} */
+      status: 'submitted' | 'approved' | 'rejected';
+      /** @description Its approval request (GET /v1/approvals/{id}) */
+      approvalId: string | null;
+      submitterNote: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      submittedAt: string;
+      decidedAt: string | null;
+      decidedBy: components['schemas']['UserRef'] | null;
+      decisionComment: string | null;
+      rejectionReason: string | null;
+      rejectedBy: components['schemas']['UserRef'] | null;
       rejectedAt: string | null;
     };
     StandardTourPlan: {
@@ -4283,6 +4328,16 @@ export interface components {
       todayIST: string;
       /** @description From leave settings (0 = Sunday .. 6 = Saturday); default [0] */
       weeklyOffDays: number[];
+      /** @description Days present in the plan with their own status (#86) */
+      days?: {
+        /**
+         * Format: date
+         * @description Calendar date (YYYY-MM-DD, IST)
+         */
+        date: string;
+        status: components['schemas']['TourPlanDayStatus'];
+        submissionId: string | null;
+      }[];
       /** @description Informational only (kept for compatibility): non-off dates; current month only from todayIST on. Submit does not require them; it only needs one planned day. */
       requiredDates: string[];
     };
@@ -5552,7 +5607,9 @@ export interface components {
        */
       type: 'tour_plan';
       plan: components['schemas']['TourPlan'];
-      /** @description plan.days with every id resolved to a name (deleted masters keep their id) */
+      /** @description The submission being decided (#86); null for requests made before #86 */
+      submission?: components['schemas']['TourPlanSubmission'] | null;
+      /** @description The submission's days (all plan days for pre-#86 requests) with every id resolved to a name */
       days: {
         /**
          * Format: date
@@ -5974,6 +6031,10 @@ export interface components {
        */
       date: string;
       entries: components['schemas']['TourPlanEntryOutput'][];
+      /** @description Response only (ignored on input). submitted/approved days are locked */
+      status?: components['schemas']['TourPlanDayStatus'];
+      /** @description Response only: the submission that set `status` (null for draft) */
+      submissionId?: string | null;
     };
     TourPlanEntryOutput: {
       /**
@@ -9646,7 +9707,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Saved draft */
+      /** @description Saved */
       200: {
         headers: {
           [name: string]: unknown;
@@ -9673,7 +9734,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Not editable (submitted/approved) or version conflict */
+      /** @description DAY_LOCKED (details.dates): a submitted/approved day was changed or removed (#86); or VERSION_CONFLICT. Other days are always editable */
       409: {
         headers: {
           [name: string]: unknown;
@@ -9745,7 +9806,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Target plan is submitted or approved */
+      /** @description VERSION_CONFLICT. Submitted/approved days are kept as they are (#86) */
       409: {
         headers: {
           [name: string]: unknown;
@@ -9772,7 +9833,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Submitted; approval created */
+      /** @description New submission (its own approval request) holding the chosen days; see `submissions` (#86) */
       200: {
         headers: {
           [name: string]: unknown;
@@ -9808,7 +9869,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Not in draft */
+      /** @description DAY_LOCKED (details.dates): a chosen day is already submitted or approved */
       409: {
         headers: {
           [name: string]: unknown;

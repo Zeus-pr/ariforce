@@ -564,6 +564,35 @@ function fieldHandlers(baseUrl: string) {
   };
   const conflict = (message: string, status = 409) =>
     HttpResponse.json({ error: { code: 'CONFLICT', message } }, { status });
+  // #86: per-day status. Submitted/approved days are locked; the month status is an aggregate.
+  const LOCKED = ['submitted', 'approved'];
+  const dayLock = (p: TourPlan) =>
+    new Map(
+      p.days
+        .filter((d) => d.status && LOCKED.includes(d.status))
+        .map((d) => [d.date, JSON.stringify(d.entries)]),
+    );
+  const lockedConflict = (dates: string[]) =>
+    HttpResponse.json(
+      {
+        error: {
+          code: 'DAY_LOCKED',
+          message: 'Submitted or approved days cannot be changed',
+          details: { dates },
+        },
+      },
+      { status: 409 },
+    );
+  const reaggregate = (p: TourPlan) => {
+    const st = p.days.filter((d) => d.entries.length).map((d) => d.status ?? 'draft');
+    p.status = st.includes('submitted')
+      ? 'submitted'
+      : st.includes('rejected')
+        ? 'rejected'
+        : st.length && st.every((x) => x === 'approved')
+          ? 'approved'
+          : 'draft';
+  };
   const emptyPlan = (month: string): TourPlan => ({
     ...stamp(),
     id: crypto.randomUUID(),
@@ -580,6 +609,7 @@ function fieldHandlers(baseUrl: string) {
     rejectionReason: null,
     rejectedBy: null,
     rejectedAt: null,
+    submissions: [],
   });
 
   /** Day lock (#23): end of the IST day + dcrLockAfterHours; unlocked 48 h after an approved correction. */
@@ -793,6 +823,13 @@ function fieldHandlers(baseUrl: string) {
           todayIST,
           weeklyOffDays,
           requiredDates: requiredDates(month, todayIST, weeklyOffDays),
+          days: (tourPlans.find((t) => t.month === month && t.userId === fx.me.id)?.days ?? []).map(
+            (d) => ({
+              date: d.date,
+              status: d.status ?? 'draft',
+              submissionId: d.submissionId ?? null,
+            }),
+          ),
         }),
       );
     }),
@@ -809,11 +846,23 @@ function fieldHandlers(baseUrl: string) {
       const month = String(params.month);
       let p = tourPlans.find((t) => t.month === month && t.userId === fx.me.id);
       if (!p) tourPlans.push((p = emptyPlan(month)));
-      else if (!['draft', 'rejected', 'recalled'].includes(p.status))
-        return conflict('Plan not editable');
       else if (b.data.version && b.data.version !== p.version) return conflict('Stale version');
-      else p.version += 1;
-      Object.assign(p, { days: b.data.days, status: 'draft', updatedAt: serverTime() });
+      const lock = dayLock(p);
+      const next = new Map(b.data.days.map((d) => [d.date, d]));
+      const bad = [...lock].filter(
+        ([dt, e]) => JSON.stringify(next.get(dt)?.entries ?? null) !== e,
+      );
+      if (bad.length) return lockedConflict(bad.map(([dt]) => dt));
+      const prev = new Map(p.days.map((d) => [d.date, d]));
+      p.version += 1;
+      Object.assign(p, {
+        days: b.data.days.map((d) => {
+          const o = prev.get(d.date);
+          return { ...d, status: o?.status ?? 'draft', submissionId: o?.submissionId ?? null };
+        }),
+        updatedAt: serverTime(),
+      });
+      reaggregate(p);
       return HttpResponse.json(TourPlan.parse(p));
     }),
     http.post(`${baseUrl}/v1/tour-plans/:month/copy`, async ({ params, request }) => {
@@ -821,8 +870,6 @@ function fieldHandlers(baseUrl: string) {
       if (!b.success) return validation('Invalid copy', z.treeifyError(b.error));
       const month = String(params.month);
       let p = tourPlans.find((t) => t.month === month && t.userId === fx.me.id);
-      if (p && !['draft', 'rejected', 'recalled'].includes(p.status))
-        return conflict('Plan not editable');
       let days: TourPlan['days'];
       if (b.data.fromMonth || !b.data.fromStp) {
         const from = b.data.fromMonth ?? prevMonth(month);
@@ -835,7 +882,18 @@ function fieldHandlers(baseUrl: string) {
       }
       if (!p) tourPlans.push((p = emptyPlan(month)));
       else p.version += 1;
-      Object.assign(p, { days, status: 'draft', updatedAt: serverTime() });
+      const kept = p.days.filter((d) => d.status && LOCKED.includes(d.status));
+      const keep = new Set(kept.map((d) => d.date));
+      Object.assign(p, {
+        days: [
+          ...kept,
+          ...days
+            .filter((d) => !keep.has(d.date))
+            .map((d) => ({ ...d, status: 'draft' as const, submissionId: null })),
+        ].sort((a, b) => a.date.localeCompare(b.date)),
+        updatedAt: serverTime(),
+      });
+      reaggregate(p);
       return HttpResponse.json(TourPlan.parse(p));
     }),
     http.post(`${baseUrl}/v1/tour-plans/:month/submit`, async ({ params, request }) => {
@@ -843,8 +901,18 @@ function fieldHandlers(baseUrl: string) {
       if (!sb.success) return validation('Invalid submit', z.treeifyError(sb.error));
       const p = tourPlans.find((t) => t.month === params.month && t.userId === fx.me.id);
       if (!p) return notFound();
-      if (p.status !== 'draft') return conflict('Not in draft');
-      if (!hasPlannedDay(p.days))
+      const want = sb.data.dates;
+      if (want?.some((d) => !d.startsWith(p.month.slice(0, 7))))
+        return validation('Date outside the month');
+      const locked = (want ?? []).filter((d) => dayLock(p).has(d));
+      if (locked.length) return lockedConflict(locked);
+      const pick = p.days.filter(
+        (d) =>
+          d.entries.length > 0 &&
+          !LOCKED.includes(d.status ?? 'draft') &&
+          (!want || want.includes(d.date)),
+      );
+      if (!hasPlannedDay(pick))
         return HttpResponse.json(
           {
             error: {
@@ -854,6 +922,27 @@ function fieldHandlers(baseUrl: string) {
           },
           { status: 422 },
         );
+      const subId = crypto.randomUUID();
+      const apId = crypto.randomUUID();
+      for (const d of pick) Object.assign(d, { status: 'submitted', submissionId: subId });
+      p.submissions = [
+        ...(p.submissions ?? []),
+        {
+          id: subId,
+          tourPlanId: p.id,
+          dates: pick.map((d) => d.date),
+          status: 'submitted',
+          approvalId: apId,
+          submitterNote: sb.data.submitterNote?.trim() || null,
+          submittedAt: serverTime(),
+          decidedAt: null,
+          decidedBy: null,
+          decisionComment: null,
+          rejectionReason: null,
+          rejectedBy: null,
+          rejectedAt: null,
+        },
+      ];
       Object.assign(p, {
         status: 'submitted',
         submittedAt: serverTime(),
@@ -864,10 +953,10 @@ function fieldHandlers(baseUrl: string) {
         version: p.version + 1,
       });
       approvals.push({
-        id: crypto.randomUUID(),
+        id: apId,
         companyId: fx.COMPANY_ID,
         subjectType: 'tour_plan',
-        subjectId: p.id,
+        subjectId: subId,
         requestedBy: fx.me.id,
         requestedByName: fx.me.name,
         approverId: fx.me.managerId,
@@ -1057,7 +1146,25 @@ function fieldHandlers(baseUrl: string) {
       const day = corrections.get(a.id);
       if (day && b.data.decision === 'approve')
         unlocked.set(day, Date.now() + DCR_UNLOCK_HOURS * 36e5);
-      const tp = tourPlans.find((t) => t.id === a.subjectId);
+      // #86: tour-plan approvals point at a submission (legacy: the plan id).
+      const sub = tourPlans
+        .flatMap((t) => (t.submissions ?? []).map((x) => ({ t, x })))
+        .find((r) => r.x.id === a.subjectId);
+      const tp = sub?.t ?? tourPlans.find((t) => t.id === a.subjectId);
+      const rej = b.data.decision === 'reject';
+      if (sub) {
+        Object.assign(sub.x, {
+          status: a.status,
+          decidedAt: a.decidedAt,
+          decidedBy: { id: fx.me.id, name: fx.me.name },
+          decisionComment: a.comment,
+          rejectionReason: rej ? a.comment : null,
+          rejectedBy: rej ? { id: fx.me.id, name: fx.me.name } : null,
+          rejectedAt: rej ? a.decidedAt : null,
+        });
+        for (const d of sub.t.days)
+          if (d.submissionId === sub.x.id) d.status = a.status as 'approved' | 'rejected';
+      }
       if (tp)
         Object.assign(tp, {
           status: a.status,
@@ -1071,12 +1178,16 @@ function fieldHandlers(baseUrl: string) {
               : null,
           rejectedAt: b.data.decision === 'reject' ? a.decidedAt : null,
         });
+      if (sub) reaggregate(sub.t);
       return HttpResponse.json(Approval.parse(a));
     }),
     http.get(`${baseUrl}/v1/approvals/:id`, ({ params }) => {
       const a = approvals.find((x) => x.id === params.id);
       if (!a) return notFound();
-      const tp = tourPlans.find((t) => t.id === a.subjectId);
+      const sub = tourPlans
+        .flatMap((t) => (t.submissions ?? []).map((x) => ({ t, x })))
+        .find((r) => r.x.id === a.subjectId);
+      const tp = sub?.t ?? tourPlans.find((t) => t.id === a.subjectId);
       const ref = (rows: { id: string; name: string }[], id: string) => ({
         id,
         name: rows.find((r) => r.id === id)?.name ?? '',
@@ -1085,22 +1196,25 @@ function fieldHandlers(baseUrl: string) {
         ? {
             type: 'tour_plan',
             plan: tp,
-            days: tp.days.map((d) => ({
-              date: d.date,
-              entries: d.entries.map((e) => ({
-                session: e.session,
-                workType: { id: e.workTypeId, name: '' },
-                territories: e.territoryIds.map((i) => ref(fx.territories, i)),
-                jointWorkUsers: (e.jointWorkUserIds ?? []).map((i) => ref(fx.mockUsers, i)),
-                doctors: (e.plannedDoctorIds ?? []).map((i) => ({
-                  ...ref(fx.doctors, i),
-                  specialtyName: null,
-                  categoryName: null,
+            submission: sub?.x ?? null,
+            days: tp.days
+              .filter((d) => !sub || sub.x.dates.includes(d.date))
+              .map((d) => ({
+                date: d.date,
+                entries: d.entries.map((e) => ({
+                  session: e.session,
+                  workType: { id: e.workTypeId, name: '' },
+                  territories: e.territoryIds.map((i) => ref(fx.territories, i)),
+                  jointWorkUsers: (e.jointWorkUserIds ?? []).map((i) => ref(fx.mockUsers, i)),
+                  doctors: (e.plannedDoctorIds ?? []).map((i) => ({
+                    ...ref(fx.doctors, i),
+                    specialtyName: null,
+                    categoryName: null,
+                  })),
+                  chemists: (e.plannedChemistIds ?? []).map((i) => ref(fx.chemists, i)),
+                  notes: e.notes ?? null,
                 })),
-                chemists: (e.plannedChemistIds ?? []).map((i) => ref(fx.chemists, i)),
-                notes: e.notes ?? null,
               })),
-            })),
           }
         : corrections.has(a.id)
           ? { type: 'dcr_unlock', date: corrections.get(a.id) ?? null, reason: null }

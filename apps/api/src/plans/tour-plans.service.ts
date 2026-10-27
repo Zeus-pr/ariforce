@@ -5,11 +5,11 @@ import {
   copyFromStandard,
   DEFAULT_WEEKLY_OFF_DAYS,
   istDate,
-  hasPlannedDay,
   requiredDates,
   prevMonth,
   type StandardTourPlan,
   type TourPlan,
+  TourPlanDay,
 } from '@ariforce/contracts';
 import {
   chemists,
@@ -18,6 +18,7 @@ import {
   planSessions,
   standardTourPlans,
   territories,
+  tourPlanSubmissions,
   tourPlans,
   tourPlanVisits,
   workTypes,
@@ -27,12 +28,12 @@ import { and, asc, desc, eq, gte, inArray, isNull, lte, sql, type SQL } from 'dr
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
-import { nameRejecters } from '../common/rejection';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { ApprovalsService } from './approvals.service';
 import { toPlan } from './tour-plan.dto';
+import { dayStates, loadSubs, LOCKED, plansOut, storedDays, syncStatus } from './tp-submissions';
 export { toPlan } from './tour-plan.dto';
 import { approvedLeaveDays, assertNotOnLeave } from '../leave/leave.util';
 
@@ -42,7 +43,6 @@ const monthEnd = (m: string) =>
 type Day = TourPlan['days'][number];
 type Entry = Day['entries'][number];
 type Row = typeof tourPlans.$inferSelect;
-const EDITABLE = ['draft', 'rejected'];
 const monthStart = (m: string) => `${m}-01`;
 
 export interface TourPlanQuery {
@@ -220,10 +220,46 @@ export class TourPlansService {
     if (visits.length) await tx.insert(tourPlanVisits).values(visits);
   }
 
-  private async save(tx: Tx, p: Principal, month: string, days: Day[], version?: number) {
+  /**
+   * Saves the month's days. Submitted/approved days are locked (#86): they must come back unchanged
+   * (409 DAY_LOCKED otherwise). With `keepLocked` (copy) locked days are kept and the rest replaced.
+   */
+  private async save(
+    tx: Tx,
+    p: Principal,
+    month: string,
+    days: Day[],
+    version?: number,
+    keepLocked = false,
+  ) {
+    days = storedDays(days);
+    const cur = await this.find(tx, p.userId, month);
+    if (cur) {
+      const st = dayStates(cur, await loadSubs(tx, [cur.id]));
+      const old = new Map(((cur.days as Day[]) ?? []).map((d) => [d.date, d] as const));
+      const locked = [...st].filter(([, v]) => LOCKED.includes(v.status)).map(([d]) => d);
+      if (keepLocked)
+        days = [
+          ...days.filter((d) => !locked.includes(d.date)),
+          ...locked.map((d) => old.get(d)!).filter(Boolean),
+        ];
+      const same = (a?: Day, b?: Day) =>
+        JSON.stringify(a ? TourPlanDay.parse(storedDays([a])[0]).entries : null) ===
+        JSON.stringify(b ? TourPlanDay.parse(storedDays([b])[0]).entries : null);
+      const changed = locked.filter(
+        (d) =>
+          !same(
+            old.get(d),
+            days.find((x) => x.date === d),
+          ),
+      );
+      if (changed.length)
+        throw err(409, 'DAY_LOCKED', 'Submitted or approved days cannot be changed', {
+          dates: changed,
+        });
+    }
     days = [...days].sort((a, b) => a.date.localeCompare(b.date));
     await this.validateDays(tx, p, month, days);
-    const cur = await this.find(tx, p.userId, month);
     let row: Row;
     if (!cur) {
       [row] = (await tx
@@ -237,18 +273,18 @@ export class TourPlansService {
         })
         .returning()) as [Row];
     } else {
-      if (!EDITABLE.includes(cur.status))
-        throw err(409, 'CONFLICT', `Plan is ${cur.status}; not editable`);
       if (version && version !== cur.version)
         throw err(409, 'VERSION_CONFLICT', 'Stale version', toPlan(cur));
       [row] = (await tx
         .update(tourPlans)
-        // Editing a rejected plan keeps the rejection (reason, by, at) visible until it is resubmitted.
-        .set({ days, status: 'draft' })
+        // Rejected days keep their status (and reason) until resubmitted; status is re-derived below.
+        .set({ days })
         .where(eq(tourPlans.id, cur.id))
         .returning()) as [Row];
     }
     await this.materialise(tx, p, row, days);
+    await syncStatus(tx, row.id);
+    [row] = (await tx.select().from(tourPlans).where(eq(tourPlans.id, row.id))) as [Row];
     return row;
   }
 
@@ -290,7 +326,7 @@ export class TourPlansService {
         .limit(limit + 1)
         .offset(offset);
       const out: Record<string, unknown> = {
-        items: await nameRejecters(tx, rows.slice(0, limit).map(toPlan)),
+        items: await plansOut(tx, rows.slice(0, limit)),
         nextCursor: rows.length > limit ? encodeCursor(offset + limit) : null,
         serverTime: new Date().toISOString(),
       };
@@ -309,7 +345,7 @@ export class TourPlansService {
     return this.tenant.run(p, async (tx) => {
       const r = await this.find(tx, this.team(p, userId), month);
       if (!r) throw new NotFoundException('No plan for this month');
-      return (await nameRejecters(tx, [toPlan(r)]))[0]!;
+      return (await plansOut(tx, [r]))[0]!;
     });
   }
 
@@ -328,9 +364,12 @@ export class TourPlansService {
         r.userId === p.userId ||
         (p.permissions.includes('field:read') &&
           (!p.teamUserIds || p.teamUserIds.includes(r.userId)));
-      if (!inLine && !(await this.approvals.isAssigned(tx, p, 'tour_plan', id)))
-        throw new NotFoundException('Tour plan not found');
-      return (await nameRejecters(tx, [toPlan(r)]))[0]!;
+      const subIds = (await loadSubs(tx, [id])).map((x) => x.id);
+      let assigned = false;
+      for (const e of [id, ...subIds])
+        if (!assigned) assigned = await this.approvals.isAssigned(tx, p, 'tour_plan', e);
+      if (!inLine && !assigned) throw new NotFoundException('Tour plan not found');
+      return (await plansOut(tx, [r]))[0]!;
     });
   }
 
@@ -338,7 +377,7 @@ export class TourPlansService {
     return this.tenant.run(p, async (tx) => {
       const r = await this.save(tx, p, month, days, version);
       await this.audit.record(tx, p, 'tour_plan.save', { entityType: 'tour_plan', entityId: r.id });
-      return (await nameRejecters(tx, [toPlan(r)]))[0]!;
+      return (await plansOut(tx, [r]))[0]!;
     });
   }
 
@@ -358,13 +397,13 @@ export class TourPlansService {
         if (!stp) throw new NotFoundException('No standard plan');
         days = copyFromStandard(month, stp.days as StandardTourPlan['days']);
       }
-      const r = await this.save(tx, p, month, days);
+      const r = await this.save(tx, p, month, days, undefined, true);
       await this.audit.record(tx, p, 'tour_plan.copy', {
         entityType: 'tour_plan',
         entityId: r.id,
         after: { fromMonth: b.fromMonth ?? null, fromStp: b.fromStp },
       });
-      return (await nameRejecters(tx, [toPlan(r)]))[0]!;
+      return (await plansOut(tx, [r]))[0]!;
     });
   }
 
@@ -381,44 +420,77 @@ export class TourPlansService {
     return this.tenant.run(p, async (tx) => {
       const weeklyOffDays = await this.weeklyOff(tx);
       const todayIST = istDate(now);
+      const cur = await this.find(tx, p.userId, month);
+      const st = cur ? dayStates(cur, await loadSubs(tx, [cur.id])) : new Map();
       return {
         month,
         todayIST,
         weeklyOffDays,
+        days: [...st]
+          .map(([date, v]) => ({ date, status: v.status, submissionId: v.submissionId }))
+          .sort((a, b) => a.date.localeCompare(b.date)),
         requiredDates: requiredDates(month, todayIST, weeklyOffDays),
       };
     });
   }
 
-  submit(p: Principal, month: string, submitterNote?: string | null) {
+  /**
+   * Submits a set of days as one submission with its own approval request (#86). Default set: every
+   * planned day that is draft or rejected. Locked days -> 409 DAY_LOCKED; nothing planned -> 422.
+   */
+  submit(p: Principal, month: string, submitterNote?: string | null, dates?: string[]) {
     return this.tenant.run(p, async (tx) => {
       const cur = await this.find(tx, p.userId, month);
       if (!cur) throw new NotFoundException('No plan for this month');
-      if (cur.status !== 'draft') throw err(409, 'CONFLICT', 'Not in draft');
-      // Any day may be left empty (past days, weekly offs, leave, unplanned days); only a plan
-      // with no day entry at all is refused (user decision superseding #19).
-      if (!hasPlannedDay(cur.days as Day[]))
+      const st = dayStates(cur, await loadSubs(tx, [cur.id]));
+      const days = (cur.days as Day[]) ?? [];
+      if (dates) {
+        const out = dates.filter((d) => d.slice(0, 7) !== month);
+        if (out.length) throw err(422, 'VALIDATION', 'Dates outside the month', { dates: out });
+        const locked = dates.filter((d) => LOCKED.includes(st.get(d)?.status ?? 'draft'));
+        if (locked.length)
+          throw err(409, 'DAY_LOCKED', 'Already submitted or approved', { dates: locked });
+      }
+      const pick = [
+        ...new Set(
+          (dates ?? days.map((d) => d.date)).filter((d) => {
+            const day = days.find((x) => x.date === d);
+            return !!day?.entries.length && !LOCKED.includes(st.get(d)?.status ?? 'draft');
+          }),
+        ),
+      ].sort();
+      // Any day may be left empty (past days, weekly offs, leave, unplanned days); a submission
+      // only needs one planned day (user decision superseding #19).
+      if (!pick.length)
         throw err(422, 'EMPTY_PLAN', 'Add at least one day to the plan before submitting');
-      const [row] = await tx
+      const note = submitterNote?.trim() || null;
+      const subId = uuidv7();
+      await tx.insert(tourPlanSubmissions).values({
+        id: subId,
+        companyId: p.companyId,
+        tourPlanId: cur.id,
+        userId: p.userId,
+        dates: pick,
+        submitterNote: note,
+      });
+      await tx
         .update(tourPlans)
-        .set({
-          status: 'submitted',
-          submittedAt: new Date(),
-          decidedAt: null,
-          decidedBy: null,
-          decisionComment: null,
-          submitterNote: submitterNote?.trim() || null,
-        })
-        .where(eq(tourPlans.id, cur.id))
-        .returning();
-      await this.approvals.request(tx, p, 'tour_plan', cur.id, submitterNote?.trim() || null, {
+        .set({ submittedAt: new Date(), submitterNote: note })
+        .where(eq(tourPlans.id, cur.id));
+      await syncStatus(tx, cur.id);
+      await this.approvals.request(tx, p, 'tour_plan', subId, note, {
         month,
+        planId: cur.id,
+        submissionId: subId,
+        dates: pick,
       });
       await this.audit.record(tx, p, 'tour_plan.submit', {
         entityType: 'tour_plan',
         entityId: cur.id,
+        after: { submissionId: subId, dates: pick },
       });
-      return toPlan(row!);
+      const [row] = await tx.select().from(tourPlans).where(eq(tourPlans.id, cur.id));
+      return (await plansOut(tx, [row!]))[0]!;
     });
   }
 

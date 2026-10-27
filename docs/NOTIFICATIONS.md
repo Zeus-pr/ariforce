@@ -150,3 +150,6 @@ Nobody is notified about their own action (recipient = actor is skipped).
 - No email / SMS / push channels yet; `notification_deliveries` exists for them.
 - No realtime push to the web app; clients poll `GET /v1/notifications/unread-count`.
 - Job health is a count endpoint only; dead jobs are logged, not alerted.
+
+Tour plans (#86): `tour_plan.approved` / `tour_plan.rejected` are sent once per submission;
+`entityId` stays the plan id.

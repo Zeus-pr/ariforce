@@ -169,6 +169,10 @@ describe.skipIf(!OWNER || !APP)('exceptions (real API)', () => {
       `delete from dcrs where user_id = any($1::uuid[]) and date between $2 and $3`,
       [users, `${Y}-01-01`, `${Y}-12-31`],
     );
+    await owner.query(
+      `delete from tour_plan_submissions where tour_plan_id in (select id from tour_plans where user_id = any($1::uuid[]) and month = $2)`,
+      [users, `${Y}-05-01`],
+    );
     await owner.query(`delete from tour_plans where user_id = any($1::uuid[]) and month = $2`, [
       users,
       `${Y}-05-01`,

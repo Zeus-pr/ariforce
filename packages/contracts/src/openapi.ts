@@ -770,8 +770,10 @@ function buildDocument(): OpenApiDocument {
           requestParams: { path: z.object({ month: Month }) },
           requestBody: json(TourPlanUpsert),
           responses: {
-            '200': { description: 'Saved draft', ...json(TourPlan) },
-            '409': err('Not editable (submitted/approved) or version conflict'),
+            '200': { description: 'Saved', ...json(TourPlan) },
+            '409': err(
+              'DAY_LOCKED (details.dates): a submitted/approved day was changed or removed (#86); or VERSION_CONFLICT. Other days are always editable',
+            ),
             '422': err(
               'Validation failed (date outside month, duplicate date, unknown work type/territory)',
             ),
@@ -787,7 +789,7 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '200': { description: 'Draft filled from the STP or another month', ...json(TourPlan) },
             '404': err('Source plan not found'),
-            '409': err('Target plan is submitted or approved'),
+            '409': err('VERSION_CONFLICT. Submitted/approved days are kept as they are (#86)'),
           },
         }),
       },
@@ -798,9 +800,13 @@ function buildDocument(): OpenApiDocument {
           requestParams: { path: z.object({ month: Month }) },
           requestBody: { required: false, ...json(TourPlanSubmit) },
           responses: {
-            '200': { description: 'Submitted; approval created', ...json(TourPlan) },
+            '200': {
+              description:
+                'New submission (its own approval request) holding the chosen days; see `submissions` (#86)',
+              ...json(TourPlan),
+            },
             '404': err('No plan for the month'),
-            '409': err('Not in draft'),
+            '409': err('DAY_LOCKED (details.dates): a chosen day is already submitted or approved'),
             '422': err(
               'EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty.',
             ),

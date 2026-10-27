@@ -92,6 +92,7 @@ Context: single tenant in production (Arighna Pharmaceutical), 200-1,000 field r
 
 - `expense_claims`: one per (company, user, month); `status` draft/submitted/approved/rejected/paid; `approval_id` points at the current `approval_requests` row (entity `expense`); decision and payment fields; `version`.
 - `expense_lines`: claim, `date`, `category` (travel/hotel/food/mileage/other), `amount numeric(12,2) > 0`, `notes`, `mileage_km` (required for mileage only, check), optional `dcr_id` and `tour_plan_id`; `version`.
+- `tour_plan_submissions` (#86): plan, user, `dates date[]` (≥1), `status` (submitted/approved/rejected), `submitter_note`, `submitted_at`, decision fields; one approval request each (`entity_id` = submission id). Day status and `tour_plans.status` are derived from it (see TOUR-PLANS.md).
 - `expense_attachments`: line, `file_key` (must start with `{company_id}/expense_receipt/`), `content_type`, `size_bytes <= 10485760`, `status` pending/confirmed, `confirmed_at`. No file names stored.
 - All three: RLS `tenant_isolation` (forced), row-meta triggers, soft delete, grants to `ariforce_app` only.
 - Permissions for the module are seeded by `0022_role_permissions_expenses.sql`. See docs/EXPENSES.md.

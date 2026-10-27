@@ -69,3 +69,6 @@ tenant-only; no SECURITY DEFINER function and no migration were needed.
   `doctor.approved`); rejections notify with the reason.
 - Tour plan submit takes an optional `submitterNote` (migration
   `packages/db/migrations/0036_tour_plan_submitter_note.sql`).
+- #86: tour plans are approved per submission. The request's `subjectId` is the submission id
+  (plan id in `payload.planId` / `subject.plan.id`); the detail adds `subject.submission` and
+  scopes `subject.days` to it. See `docs/TOUR-PLANS.md`.
