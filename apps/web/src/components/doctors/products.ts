@@ -15,7 +15,7 @@ export function useProductNames() {
       await apiReady();
       const r = await api.GET('/v1/products', { params: { query: { limit: 200 } } });
       setNames(new Map((r.data?.items ?? []).map((p) => [p.id, p.name])));
-    })();
+    })().catch(() => {});
   }, []);
   return names;
 }

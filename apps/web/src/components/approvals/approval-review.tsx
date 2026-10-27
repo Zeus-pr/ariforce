@@ -97,7 +97,7 @@ function TourPlanReview({ a }: { a: Approval }) {
         got.forEach((r, j) => r.data && m.set(ids[i + j]!, r.data.name));
       }
       if (live) setNames(m);
-    })();
+    })().catch(() => {});
     return () => {
       live = false;
     };
@@ -158,7 +158,7 @@ function LeaveReview({ a }: { a: Approval }) {
       const b = await api.GET('/v1/leave/balances', { params: { query: { userId: a.requestedBy, year: l.year } } });
       const it = b.data?.items.find((x) => x.typeCode === l.typeCode);
       if (live && it) setBal(it.unlimited || it.available === null ? 'Unlimited' : `${it.available} available, ${it.pending} pending`);
-    })();
+    })().catch(() => {});
     return () => {
       live = false;
     };
@@ -190,7 +190,7 @@ function ExpenseReview({ a }: { a: Approval }) {
       await apiReady();
       const r = await api.GET('/v1/expense-claims/{id}', { params: { path: { id: a.subjectId } } });
       if (live) setC((r.data as unknown as Claim | undefined) ?? null);
-    })();
+    })().catch(() => {});
     return () => {
       live = false;
     };
@@ -249,7 +249,7 @@ function DoctorReview({ a }: { a: Approval }) {
       if (!live) return;
       setTerr(((t.data?.items ?? []) as { id: string; name: string }[]).find((x) => x.id === doc.territoryId)?.name ?? '');
       setDups(((m.data?.matches ?? []) as Dup[]).filter((x) => x.id !== a.subjectId));
-    })();
+    })().catch(() => {});
     return () => {
       live = false;
     };

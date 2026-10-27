@@ -51,7 +51,7 @@ export function ProfileView({ userId }: { userId: string }) {
       if (!live) return;
       if (r?.data) setP(r.data as TeamProfile);
       else setErr(errorText(r?.response.status, r ? toApiError(r).message || 'Could not load this profile.' : 'Could not reach the server.'));
-    })();
+    })().catch(() => {});
     return () => {
       live = false;
     };
@@ -152,7 +152,7 @@ function Performance({ userId, canSeeExpenses }: { userId: string; canSeeExpense
       if (!live) return;
       if (r?.data) setData(r.data as TeamPerformance);
       else setErr(r ? toApiError(r).message || 'Could not load performance.' : 'Could not reach the server.');
-    })();
+    })().catch(() => {});
     return () => {
       live = false;
     };

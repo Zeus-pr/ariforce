@@ -32,7 +32,7 @@ export function LeaveCalendar({ weeklyOff, team }: { weeklyOff: number[]; team: 
       if (r.error) return setError(leaveMessage(toApiError(r)));
       setError(null);
       setItems(r.data?.items ?? []);
-    })();
+    })().catch(() => {});
     return () => ac.abort();
   }, [month]);
 

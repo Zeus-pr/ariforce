@@ -9,6 +9,8 @@ for (const [role, view] of [
   ['business_manager', 'mobile'],
 ]) {
   const { ctx, page } = await open(role, '/reports', view);
+  // The tabs render after the client sets the month (placeholder first); wait instead of counting at once.
+  await page.getByTestId('report-pick').first().waitFor({ timeout: 15000 });
   check((await page.getByTestId('report-pick').count()) === 4, `${role}: four reports offered`);
   for (const [i, name] of ['activity', 'coverage', 'sales', 'products'].entries()) {
     await page.getByTestId('report-pick').nth(i).click();

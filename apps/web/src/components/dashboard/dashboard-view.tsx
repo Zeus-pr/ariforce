@@ -81,7 +81,7 @@ export function useKpis(month: string, rollup: Rollup, kpis?: readonly string[])
       if (!live) return;
       if (r.error) setError(toApiError(r).message);
       else setData(r.data);
-    })();
+    })().catch(() => {});
     return () => {
       live = false;
     };
@@ -451,7 +451,7 @@ function ProductKpis({ month }: { month: string }) {
       await apiReady();
       const r = await api.GET('/v1/kpis/products', { params: { query: { month } as never } });
       if (r.data) setData(r.data);
-    })();
+    })().catch(() => {});
   }, [month]);
   const max = useMemo(() => Math.max(1, ...(data?.rows ?? []).map((r) => r.detailedCalls)), [data]);
   const inr = (v: number) => formatKpi(v, 'inr');

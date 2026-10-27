@@ -32,7 +32,7 @@ export function LeaveApprovals({ levels, onDecided }: { levels: number; onDecide
       if (r.error) return setError(leaveMessage(toApiError(r)));
       setError(null);
       setRows((r.data?.items ?? []).filter((x) => x.userId !== me).sort((a, z) => a.fromDate.localeCompare(z.fromDate)));
-    })();
+    })().catch(() => {});
     return () => ac.abort();
   }, [role, user, tick]);
 

@@ -199,7 +199,7 @@ function ProductReport({ role, month }: { role: Role; month: string }) {
         params: { query: { month, rollup: rollupFor(role) } as never },
       });
       if (live) setData({ month, rows: r.data?.rows ?? [] });
-    })();
+    })().catch(() => {});
     return () => {
       live = false;
     };

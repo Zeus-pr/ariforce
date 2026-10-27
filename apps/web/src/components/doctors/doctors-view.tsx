@@ -166,7 +166,7 @@ function Doctor360({ id }: { id: string }) {
       if (!live) return;
       setDoc(docs.data?.items.find((d) => d.id === id) ?? null);
       setReal(visitsFrom(id, dcrs.data?.items ?? [], ci.data?.items ?? []));
-    })();
+    })().catch(() => {});
     return () => {
       live = false;
     };
@@ -182,7 +182,7 @@ function Doctor360({ id }: { id: string }) {
       });
       const a = r.data?.items.find((x) => x.subjectId === doc.id);
       if (live) setRejection(a?.comment ? { comment: a.comment, at: a.decidedAt } : null);
-    })();
+    })().catch(() => {});
     return () => {
       live = false;
     };

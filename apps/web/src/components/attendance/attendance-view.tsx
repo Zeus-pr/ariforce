@@ -92,7 +92,7 @@ function AttendanceDayView({ today }: { today: string }) {
       ]);
       if (cs.data) setConsent(cs.data);
       if (d.data) setDoctors(d.data.items);
-    })();
+    })().catch(() => {});
   }, []);
 
   const doctorName = useMemo(() => new Map(doctors.map((d) => [d.id, d.name])), [doctors]);

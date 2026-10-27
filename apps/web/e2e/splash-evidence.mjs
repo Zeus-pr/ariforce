@@ -23,7 +23,8 @@ const probe = () => {
       const r = el.getBoundingClientRect();
       window.__lastSplashRect = { x: r.x, y: r.y, w: r.width, h: r.height };
     }
-    for (const a of document.getAnimations())
+    // Only the splash's own WAAPI motion; CSS animations (the 4s no-JS failsafe, row enters) are not the splash.
+    for (const a of document.getAnimations().filter((x) => !(x instanceof CSSAnimation)))
       for (const k of a.effect?.getKeyframes?.() ?? [])
         for (const p of Object.keys(k)) if (!["offset", "easing", "composite", "computedOffset"].includes(p)) window.__props.add(p);
     requestAnimationFrame(tick);
@@ -52,14 +53,18 @@ async function run(name, ctxOpts) {
     veil: getComputedStyle(document.querySelector("[data-testid=splash] > div")).backgroundColor,
     dark: document.documentElement.classList.contains("dark"),
   }));
-  await page.waitForFunction(() => document.getAnimations().length > 0, null, { timeout: 5000 });
-  await page.evaluate(() => document.getAnimations().forEach((a) => a.pause()));
+  // WebKit lists the CSS failsafe animations (0s, 4s delay) from first paint, so waiting for "any animation"
+  // returned before the splash started and then finished the failsafe instead. Drive only WAAPI animations.
+  const waapi = "document.getAnimations().filter((a) => !(a instanceof CSSAnimation))";
+  await page.waitForFunction(`${waapi}.length > 0`, null, { timeout: 5000 });
+  await page.evaluate(`${waapi}.forEach((a) => a.pause())`);
   for (const t of SEEK) {
-    await page.evaluate((ms) => document.getAnimations().forEach((a) => (a.currentTime = ms)), t);
+    await page.evaluate(`${waapi}.forEach((a) => { a.currentTime = ${t}; })`);
     await shot(`${String(t).padStart(4, "0")}ms`);
   }
-  await page.evaluate(() => document.getAnimations().forEach((a) => a.finish()));
-  await page.waitForTimeout(800);
+  await page.evaluate(`${waapi}.forEach((a) => a.finish())`);
+  await page.waitForFunction(() => sessionStorage.getItem("af:splash-seen") === "1", null, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(300);
   const r = await page.evaluate(() => {
     const h = document.querySelector("[data-af-header-logo]").getBoundingClientRect();
     return {

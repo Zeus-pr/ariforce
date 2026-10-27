@@ -26,7 +26,11 @@ async function open(view, theme, extra = {}) {
   await ctx.addInitScript(() => { sessionStorage.setItem('af:splash-seen', '1'); if (!localStorage.getItem('af:mock-session')) localStorage.setItem('af:mock-session', JSON.stringify({ userId: 'mock-admin', role: 'system_admin' })); });
   const page = await ctx.newPage();
   page.on('console', (m) => {
-    if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(`${view}/${theme}: ${m.text()}`);
+    // WebKit itself logs "Fetch API cannot load <url> due to access control checks." when page.goto cancels an
+    // in-flight same-origin/API fetch (Chromium stays silent). The app now catches the rejection; the browser's
+    // own console line can't be suppressed, so tolerate exactly that message on WebKit console (never pageerror).
+    const cancelled = BROWSER === 'webkit' && /^Fetch API cannot load http:\/\/localhost:\d+\/.* due to access control checks\.$/.test(m.text());
+    if (m.type() === 'error' && !cancelled && !/Failed to load resource/.test(m.text())) errors.push(`${view}/${theme}: ${m.text()}`);
   });
   page.on('pageerror', (e) => errors.push(`${view}/${theme}: ${e.message}`));
   return { ctx, page };

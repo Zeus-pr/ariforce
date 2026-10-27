@@ -75,7 +75,7 @@ export function usePerf(role: Role, month: string | null, kpis: readonly string[
             error: e instanceof Error ? e.message : 'Could not load.',
           });
       }
-    })();
+    })().catch(() => {});
     return () => {
       live = false;
     };

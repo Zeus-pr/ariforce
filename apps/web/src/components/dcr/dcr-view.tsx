@@ -85,7 +85,7 @@ function DcrDay({ today }: { today: string }) {
       if (d.data) setDoctors(d.data.items);
       if (MOCKING) setProducts(SEED_PRODUCTS);
       else if (p.data) setProducts(p.data.items.filter((x) => x.active).map((x) => ({ id: x.id, name: x.name, detail: x.composition, isSample: x.isSample })));
-    })();
+    })().catch(() => {});
   }, []);
 
   const load = useCallback(async () => {

@@ -51,7 +51,7 @@ export function LookupsProvider({ children }: { children: React.ReactNode }) {
           specialties: (s.data?.items ?? []).filter((x) => !x.deletedAt),
           categories: (c.data?.items ?? []).filter((x) => !x.deletedAt),
         });
-    })();
+    })().catch(() => {});
     return () => {
       live = false;
     };

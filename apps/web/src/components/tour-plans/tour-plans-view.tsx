@@ -97,7 +97,7 @@ function Planner({ initialMonth }: { initialMonth: string }) {
       await apiReady();
       const r = await api.GET('/v1/tour-plans/{month}/calendar', { params: { path: { month } } });
       if (live) setCal(Array.isArray(r.data?.requiredDates) ? { ...r.data, month } : null);
-    })();
+    })().catch(() => {});
     return () => {
       live = false;
     };
@@ -107,7 +107,7 @@ function Planner({ initialMonth }: { initialMonth: string }) {
       await apiReady();
       const r = await api.GET('/v1/work-types', { params: { query: { limit: 100 } } });
       if (r.data) setWorkTypes(r.data.items.filter((w) => w.active));
-    })();
+    })().catch(() => {});
   }, []);
 
   const dates = useMemo(() => datesOf(month), [month]);

@@ -74,7 +74,7 @@ export function TeamView() {
       const own = me.data?.territoryIds.find((id) => list.some((x) => x.id === id));
       const root = list.find((x) => x.parentId === null);
       setHome(me.data?.roles.includes('director') || !own ? (root?.id ?? null) : own);
-    })();
+    })().catch(() => {});
   }, []);
 
   const byId = useMemo(() => new Map((tree ?? []).map((x) => [x.id, x])), [tree]);
@@ -117,7 +117,7 @@ export function TeamView() {
             ? (list?.rows ?? [])
             : (list?.rows ?? []).filter((r) => r.territoryId !== t),
       });
-    })();
+    })().catch(() => {});
     return () => {
       live = false;
     };

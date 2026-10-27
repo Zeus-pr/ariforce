@@ -44,7 +44,7 @@ export function useLeave(year: number, who: string): LeaveData {
       setSettings(s.data ?? null);
       setBalances(b.data?.items ?? []);
       setMine([...(r.data?.items ?? [])].sort((a, z) => z.fromDate.localeCompare(a.fromDate)));
-    })();
+    })().catch(() => {});
     return () => ac.abort();
   }, [year, tick, who]);
 

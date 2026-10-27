@@ -55,7 +55,7 @@ function useCategorySample(coverage: number | null) {
           .filter((c) => !c.deletedAt)
           .map((c) => ({ name: c.name, norm: c.visitsPerMonth })),
       );
-    })();
+    })().catch(() => {});
   }, []);
   if (!cats || coverage === null) return null;
   return cats.map((c, i) => ({
