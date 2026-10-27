@@ -4,6 +4,7 @@ import {
   CheckInCreate,
   CheckInListQuery,
   FieldListQuery,
+  ROLE_RANK,
   UserListQuery,
   type AttendanceDay,
   type UserSummary,
@@ -14,6 +15,7 @@ import {
   roles,
   territories,
   userRoles,
+  authSession,
   userInvites,
   userTerritories,
   users,
@@ -235,6 +237,11 @@ export class UsersController {
         sql`${users.deletedAt} is null`,
         wide ? undefined : inArray(users.id, p.teamUserIds ?? []),
         q.status ? eq(users.status, q.status) : undefined,
+        q.hasLogin === 'true'
+          ? sql`${users.authUserId} is not null`
+          : q.hasLogin === 'false'
+            ? sql`${users.authUserId} is null`
+            : undefined,
         q.managerId ? eq(users.managerId, q.managerId) : undefined,
         q.q
           ? or(
@@ -293,10 +300,35 @@ export class UsersController {
         : [];
       const tt = ids.length
         ? await tx
-            .select({ userId: userTerritories.userId, id: userTerritories.territoryId })
+            .select({
+              userId: userTerritories.userId,
+              id: userTerritories.territoryId,
+              name: territories.name,
+              code: territories.code,
+              level: territories.level,
+            })
             .from(userTerritories)
             .innerJoin(territories, eq(territories.id, userTerritories.territoryId))
             .where(inArray(userTerritories.userId, ids))
+            .orderBy(desc(userTerritories.isPrimary), asc(territories.name))
+        : [];
+      const mgrIds = [...new Set(page.map((u) => u.managerId).filter((x): x is string => !!x))];
+      const mgrs = mgrIds.length
+        ? await tx
+            .select({ id: users.id, name: users.name })
+            .from(users)
+            .where(inArray(users.id, mgrIds))
+        : [];
+      const authIds = page.map((u) => u.authUserId).filter((x): x is string => !!x);
+      const seen = authIds.length
+        ? await tx
+            .select({
+              a: authSession.userId,
+              at: sql<string>`max(${authSession.updatedAt})::text`,
+            })
+            .from(authSession)
+            .where(inArray(authSession.userId, authIds))
+            .groupBy(authSession.userId)
         : [];
       const inv = ids.length
         ? await tx
@@ -317,6 +349,9 @@ export class UsersController {
       const items: UserSummary[] = page.map((u) => {
         const open = inv.find((i) => i.userId === u.id);
         const hasLogin = !!u.authUserId;
+        const ur = rr.filter((r) => r.userId === u.id).map((r) => r.key);
+        const top = [...ur].sort((a, b) => ROLE_RANK[b] - ROLE_RANK[a])[0] ?? null;
+        const at = seen.find((x) => x.a === u.authUserId)?.at;
         return {
           id: u.id,
           name: u.name,
@@ -325,10 +360,18 @@ export class UsersController {
           phone: u.phone,
           designation: u.designation,
           joinedOn: u.joinedOn,
-          roles: rr.filter((r) => r.userId === u.id).map((r) => r.key),
+          roles: ur,
+          primaryRole: top,
+          rank: top ? ROLE_RANK[top] : 0,
           managerId: u.managerId,
+          managerName: mgrs.find((m) => m.id === u.managerId)?.name ?? null,
           territoryIds: tt.filter((t) => t.userId === u.id).map((t) => t.id),
+          territories: tt
+            .filter((t) => t.userId === u.id)
+            .map(({ id, name, code, level }) => ({ id, name, code, level })),
           status: u.status,
+          version: u.version,
+          lastActiveAt: at ? new Date(at).toISOString() : null,
           hasLogin,
           inviteStatus: hasLogin
             ? 'accepted'

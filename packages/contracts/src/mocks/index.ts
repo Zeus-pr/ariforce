@@ -19,6 +19,7 @@ import {
   Territory,
 } from '../index';
 import * as fx from './fixtures';
+import { ROLE_RANK } from '../schemas/roles';
 import { duplicateKeys, mapImportRow, type ImportLookup } from '../import/templates';
 import type { ImportEntity } from '../schemas/imports';
 import { SignInEmailBody } from '../schemas/auth';
@@ -765,7 +766,17 @@ function fieldHandlers(baseUrl: string) {
       // Like the API: q matches name, employee code or email.
       const q = url.searchParams.get('q')?.toLowerCase();
       url.searchParams.delete('q');
+      // territoryId covers the whole subtree, like the API.
+      const allTerrs = [...fx.territories, ...fx.hqTerritories];
+      const terr = url.searchParams.get('territoryId');
+      url.searchParams.delete('territoryId');
+      const under = (id: string) => {
+        for (let t = allTerrs.find((x) => x.id === id); t; t = allTerrs.find((x) => x.id === t!.parentId))
+          if (t.id === terr) return true;
+        return false;
+      };
       const rows = mockEmployees()
+        .filter((u) => !terr || u.territoryIds.some(under))
         .filter((u) => (wide || team.has(u.id)) && (!role || u.roles.includes(role as never)))
         .filter((u) => !q || [u.name, u.employeeCode ?? '', u.email].some((x) => x.toLowerCase().includes(q)))
         .map((u) => ({
@@ -778,8 +789,19 @@ function fieldHandlers(baseUrl: string) {
           managerId: u.managerId,
           territoryIds: u.territoryIds,
           status: u.status,
+          primaryRole: [...u.roles].sort((a, b) => ROLE_RANK[b] - ROLE_RANK[a])[0] ?? null,
+          rank: Math.max(0, ...u.roles.map((r) => ROLE_RANK[r])),
+          managerName: mockEmployees().find((m) => m.id === u.managerId)?.name ?? null,
+          designation: u.designation,
+          joinedOn: u.joinedOn,
+          territories: u.territoryIds
+            .map((id) => allTerrs.find((t) => t.id === id))
+            .filter((t): t is (typeof allTerrs)[number] => !!t)
+            .map((t) => ({ id: t.id, name: t.name, code: t.code, level: t.level })),
+          version: u.version,
+          lastActiveAt: null,
           hasLogin: u.status === 'active' || u.status === 'suspended',
-          inviteStatus: (u.status === 'invited' ? 'pending' : u.status === 'active' ? 'accepted' : 'none') as 'pending' | 'accepted' | 'none',
+          inviteStatus: (u.status === 'invited' ? 'pending' : u.status === 'active' || u.status === 'suspended' ? 'accepted' : 'none') as 'pending' | 'accepted' | 'none',
           inviteExpiresAt: null,
         }));
       return list(UserSummary, rows, url);

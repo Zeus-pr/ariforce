@@ -329,21 +329,79 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
       if (!u) return e(404, 'NOT_FOUND', 'Not found');
       const b = EmployeeUpdate.safeParse(await request.json());
       if (!b.success) return e(422, 'VALIDATION', b.error.issues[0]?.message ?? 'Invalid');
-      if (!manageable(p, u)) return e(403, 'FORBIDDEN', 'Not below you in your subtree');
+      const admin = isAdmin(p);
+      if (admin ? u.id === p.id : !manageable(p, u))
+        return e(403, 'FORBIDDEN', 'Not below you in your subtree');
       if (b.data.version !== u.version) return e(409, 'VERSION_CONFLICT', 'Stale version');
+      const d = b.data;
+      if (!admin && (d.email !== undefined || d.employeeCode !== undefined))
+        return e(403, 'FORBIDDEN', 'Only a system admin can change email or employee code');
       const r = hierarchyRank(p.roles);
-      if (b.data.role && !(ROLE_RANK[b.data.role] > 0 && ROLE_RANK[b.data.role] < r))
+      if (d.role && !admin && !(ROLE_RANK[d.role] > 0 && ROLE_RANK[d.role] < r))
         return e(403, 'FORBIDDEN', 'Role must be below your own');
-      if (b.data.territoryIds?.some((t) => !scopeTerr(p).has(t)))
+      if (!admin && d.territoryIds?.some((t) => !scopeTerr(p).has(t)))
         return e(403, 'FORBIDDEN', 'Territory outside your subtree');
-      if (b.data.managerId) {
-        if (subtree(u.id).has(b.data.managerId)) return e(409, 'CONFLICT', 'Reporting cycle');
-        if (!(wide(p) || subtree(p.id).has(b.data.managerId)))
+      const nr = d.role ? ROLE_RANK[d.role] : rank(u);
+      if (nr > 0 && !(d.territoryIds ?? u.territoryIds).length)
+        return e(422, 'VALIDATION', 'Hierarchy roles need at least one territory');
+      if (d.managerId) {
+        if (nr === 0 || nr >= ROLE_RANK.director)
+          return e(422, 'VALIDATION', 'This role has no manager');
+        if (subtree(u.id).has(d.managerId)) return e(409, 'CONFLICT', 'Reporting cycle');
+        const m = emps.find((x) => x.id === d.managerId);
+        if (!m || rank(m) <= nr || m.status === 'suspended')
+          return e(403, 'FORBIDDEN', 'Manager must outrank the role');
+        if (!(admin || wide(p) || subtree(p.id).has(d.managerId)))
           return e(403, 'FORBIDDEN', 'Manager outside your subtree');
       }
+      if (admin && d.role) {
+        // Like the API: the kept manager must outrank the new role...
+        const keep = d.managerId === undefined && !(nr === 0 || nr >= ROLE_RANK.director);
+        const km = keep && u.managerId ? emps.find((x) => x.id === u.managerId) : undefined;
+        if (km && rank(km) <= nr)
+          return e(422, 'MANAGER_RANK', 'Current manager does not outrank the new role; set managerId');
+        // ...and the person must still outrank their direct reports.
+        const bad = nr < rank(u) ? emps.filter((x) => x.managerId === u.id && rank(x) >= nr) : [];
+        if (bad.length)
+          return HttpResponse.json(
+            {
+              error: {
+                code: 'REPORTS_OUTRANK',
+                message: `${bad.length} direct report(s) would outrank this role; reassign them first`,
+                details: { userIds: bad.map((x) => x.id) },
+              },
+            },
+            { status: 422 },
+          );
+      }
+      if (d.email && d.email !== u.email) {
+        if (u.status !== 'invited')
+          return e(
+            409,
+            'EMAIL_LOCKED_HAS_LOGIN',
+            'Email cannot change after the person has a login',
+          );
+        if (emps.some((x) => x.id !== u.id && x.email.toLowerCase() === d.email!.toLowerCase()))
+          return e(409, 'EMAIL_TAKEN', 'Email already exists');
+      }
+      if (d.employeeCode && emps.some((x) => x.id !== u.id && x.employeeCode === d.employeeCode))
+        return e(409, 'EMPLOYEE_CODE_TAKEN', 'Employee code already exists');
+      const sa = (x: Emp) => x.status === 'active' && x.roles.includes('system_admin');
+      if (
+        sa(u) &&
+        ((d.role && d.role !== 'system_admin') || (d.status && d.status !== 'active')) &&
+        !emps.some((x) => x.id !== u.id && sa(x))
+      )
+        return e(422, 'LAST_SYSTEM_ADMIN', 'The company needs at least one active system admin');
       Object.assign(u, {
-        ...b.data,
-        roles: b.data.role ? [b.data.role] : u.roles,
+        ...Object.fromEntries(Object.entries(d).filter(([, v]) => v !== undefined)),
+        managerId:
+          d.managerId !== undefined
+            ? d.managerId
+            : nr === 0 || nr >= ROLE_RANK.director
+              ? null
+              : u.managerId,
+        roles: d.role ? [d.role] : u.roles,
         version: u.version + 1,
       });
       return HttpResponse.json(node(u, 1));

@@ -80,9 +80,26 @@ export const UserSummary = z
     designation: z.string().nullable().optional(),
     joinedOn: z.iso.date().nullable().optional(),
     roles: z.array(RoleKey),
+    primaryRole: RoleKey.nullable()
+      .optional()
+      .meta({ description: 'Highest-ranked role (the one the UI shows)' }),
+    rank: z
+      .int()
+      .optional()
+      .meta({ description: 'ROLE_RANK of primaryRole: BM 1 … director 8; functional roles 0' }),
     managerId: Id.nullable(),
+    managerName: z.string().nullable().optional(),
     territoryIds: z.array(Id),
+    territories: z
+      .array(z.object({ id: Id, name: z.string(), code: z.string().nullable(), level: z.string() }))
+      .optional()
+      .meta({ description: 'Same as territoryIds, primary first' }),
     status: z.enum(['invited', 'active', 'suspended', 'pending', 'rejected']),
+    version: z.int().optional().meta({ description: 'Send back on PATCH /v1/employees/{id}' }),
+    lastActiveAt: Timestamp.nullable().optional().meta({
+      description:
+        'Last activity of a live session (null when signed out everywhere or never signed in)',
+    }),
     hasLogin: z
       .boolean()
       .optional()
@@ -104,6 +121,7 @@ export const UserListQuery = listQuery(['name', 'employeeCode'] as const, {
   managerId: Id.optional().meta({ description: 'Direct reports of this user' }),
   territoryId: Id.optional().meta({ description: 'Users assigned in this territory subtree' }),
   status: z.enum(['invited', 'active', 'suspended', 'pending', 'rejected']).optional(),
+  hasLogin: z.enum(['true', 'false']).optional(),
 }).meta({ description: 'Caller plus their reporting line; company-wide roles see everyone' });
 
 export const AttendanceDay = z

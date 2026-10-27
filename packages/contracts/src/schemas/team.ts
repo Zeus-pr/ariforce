@@ -100,12 +100,30 @@ export const EmployeeUpdate = z
   .object({
     version: z.int(),
     name: z.string().trim().min(1).max(200).optional(),
+    email: z.email().optional().meta({
+      description:
+        'System admin only. 409 EMAIL_LOCKED_HAS_LOGIN once the person has a login; 409 EMAIL_TAKEN if used. A pending invite is re-sent to the new address',
+    }),
+    employeeCode: z
+      .string()
+      .trim()
+      .min(1)
+      .max(50)
+      .nullable()
+      .optional()
+      .meta({ description: 'System admin only. 409 EMPLOYEE_CODE_TAKEN if used' }),
     phone: Phone.nullable().optional(),
     designation: z.string().trim().max(100).nullable().optional(),
     joinedOn: z.iso.date().nullable().optional(),
     role: RoleKey.optional(),
-    territoryIds: z.array(Id).min(1).optional(),
-    managerId: Id.optional().meta({ description: 'Move within the subtree' }),
+    territoryIds: z.array(Id).optional().meta({
+      description:
+        'Replaces all territories (first = primary). Hierarchy roles need at least one; functional roles may send []',
+    }),
+    managerId: Id.nullable().optional().meta({
+      description:
+        'Move within the subtree. null (system admin only) clears it; directors and functional roles never have one',
+    }),
     status: z.enum(['active', 'suspended']).optional().meta({
       description: 'suspended = deactivate (sign-in blocked); active = reactivate',
     }),
