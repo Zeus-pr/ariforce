@@ -3,8 +3,10 @@
 -- Purpose (Part 3): HQ-BURDWAN becomes the parent of HQ-BURDWAN-BMCH and HQ-BURDWAN-ANAMOY, so an ABM
 -- on HQ-BURDWAN sees both HQs' doctors, chemists, stockists, DCRs and plans through the territory
 -- subtree. HQ-BURDWAN changes level headquarter -> area.
---   Level decision: 'area', because WB is already the region and an area is exactly "a group of HQs
---   one ABM holds" (the API lets an ABM hold area level; a BM may hold headquarter level only).
+--   Level decision: 'area' (a group of HQs one ABM holds; the API lets an ABM hold area level, a BM
+--   headquarter only). Burdwan's parent may be ANY level above area (enum order national > zone >
+--   region > area > headquarter): the real tree is WB (national) -> HQ-* with no region level, so
+--   area directly under national is accepted; region (or zone) works the same.
 -- Keeps: both HQs stay headquarter level; their BMs (Sohom Mukherjee on BMCH, Surojit Shikari on
 --   Anamoy) keep their user_territories rows; all doctors/chemists/stockists/allowance places/SFC
 --   routes keep their territory ids (only paths move). Nothing is deleted.
@@ -53,11 +55,15 @@ SELECT (count(*) = 3 AND count(DISTINCT code) = 3) AS found_ok FROM _t \gset
   ROLLBACK;
   \quit
 \endif
--- Burdwan must sit under a region (WB) to become an area.
-SELECT (parent_level = 'region') AS parent_ok FROM _t WHERE code = :'parent_code' \gset
+-- Burdwan becomes an area, so its parent must be ABOVE area: national, zone or region
+-- (level_ok: parent > area > headquarter in enum order). Real data: WB is national.
+SELECT (parent_level IS NOT NULL
+        AND array_position(enum_range(NULL::territory_level), parent_level)
+          < array_position(enum_range(NULL::territory_level), 'area'::territory_level))
+       AS parent_ok FROM _t WHERE code = :'parent_code' \gset
 \if :parent_ok
 \else
-  \echo 'ABORT: HQ-BURDWAN is not directly under a region; see the optional block "re-home Burdwan under WB"'
+  \echo 'ABORT: HQ-BURDWAN parent is not above area level (needs national, zone or region); see the optional block "re-home Burdwan under WB"'
   ROLLBACK;
   \quit
 \endif
@@ -168,7 +174,14 @@ BEGIN
   IF EXISTS (SELECT path FROM territories WHERE company_id = current_setting('app.current_company_id')::uuid
                AND deleted_at IS NULL GROUP BY path HAVING count(*) > 1)
   THEN RAISE EXCEPTION 'post-check: two territories share a path'; END IF;
-  -- Levels: Burdwan area under a region; both children headquarter.
+  -- Levels: Burdwan is area, strictly below its parent (national/zone/region) and above both
+  -- children, which stay headquarter.
+  IF EXISTS (SELECT 1 FROM territories t JOIN _t x ON x.id = t.id AND x.kind = 'parent'
+             JOIN territories p ON p.id = t.parent_id
+             WHERE t.level <> 'area'
+                OR array_position(enum_range(NULL::territory_level), p.level)
+                   >= array_position(enum_range(NULL::territory_level), 'area'::territory_level))
+  THEN RAISE EXCEPTION 'post-check: Burdwan is not an area below a national/zone/region parent'; END IF;
   IF EXISTS (SELECT 1 FROM territories t JOIN _t x ON x.id = t.id
              WHERE x.kind = 'child' AND t.level <> 'headquarter')
   THEN RAISE EXCEPTION 'post-check: a child is no longer headquarter level'; END IF;
@@ -208,7 +221,7 @@ COMMIT;
 -- WHERE after->>'fix' = '2026-10-27-burdwan-reparent';
 -- COMMIT;
 --
--- OPTIONAL (commented): re-home Burdwan under WB first, if it is not directly under the region.
+-- OPTIONAL (commented): re-home Burdwan under WB first, if its parent is not above area level.
 -- UPDATE territories SET parent_id = (SELECT id FROM territories WHERE code = 'WB' AND company_id = :'company_id')
 -- WHERE code = 'HQ-BURDWAN' AND company_id = :'company_id';   -- then re-run this script
 --

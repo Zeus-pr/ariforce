@@ -125,7 +125,7 @@ Source of truth: `DEFAULT_WORK_TYPES` (`packages/db/src/work-types.ts`), used by
 
 ## Territory levels (Part 3, 2026-10-27)
 
-`territories.level` is one of `national > zone > region > area > headquarter`; a child must be a lower level than its parent and `path` = parent path + `.` + its own segment (a root's path is one segment; paths are unique). BMs hold headquarters only (API rule, `TERRITORY_LEVEL_INVALID`). Burdwan: the one-off script `packages/db/scripts/data-fixes/2026-10-27-burdwan-reparent.sql` sets HQ-BURDWAN to `area` (WB is already the region) and makes it the parent of HQ-BURDWAN-BMCH and HQ-BURDWAN-ANAMOY; BMs stay on their HQs; doctors/chemists/stockists keep their `territory_id` (subtree counts are checked before/after). No migration: data only, run by the lead.
+`territories.level` is one of `national > zone > region > area > headquarter`; a child must be a lower level than its parent and `path` = parent path + `.` + its own segment (a root's path is one segment; paths are unique). BMs hold headquarters only (API rule, `TERRITORY_LEVEL_INVALID`). Burdwan: the one-off script `packages/db/scripts/data-fixes/2026-10-27-burdwan-reparent.sql` sets HQ-BURDWAN to `area` (its parent may be any level above area: in production WB is `national` with HQs directly under it, which is accepted) and makes it the parent of HQ-BURDWAN-BMCH and HQ-BURDWAN-ANAMOY; BMs stay on their HQs; doctors/chemists/stockists keep their `territory_id` (subtree counts are checked before/after). No migration: data only, run by the lead.
 
 ## SFC routes (migrations 0038–0039)
 
