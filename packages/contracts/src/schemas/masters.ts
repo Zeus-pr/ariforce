@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { GeoPoint, Id, Syncable, listQuery } from './common';
+import { GeoPoint, Id, Syncable, Timestamp, UserRef, listQuery } from './common';
 
 export const Specialty = Syncable.extend({
   code: z.string().max(32),
@@ -39,6 +39,12 @@ export const Doctor = Syncable.extend({
   registrationNo: z.string().max(40).nullable(),
   ...Address,
   approvalStatus: DoctorApprovalStatus,
+  rejectionReason: z.string().nullable().optional().meta({
+    description:
+      'Latest rejection reason while approvalStatus is rejected; only for the adder, their reporting line, the approvers and company-wide roles (else null). Read-only.',
+  }),
+  rejectedBy: UserRef.nullable().optional().meta({ description: 'Who rejected it. Read-only.' }),
+  rejectedAt: Timestamp.nullable().optional().meta({ description: 'When. Read-only.' }),
 }).meta({ id: 'Doctor' });
 export type Doctor = z.infer<typeof Doctor>;
 
@@ -62,7 +68,13 @@ const writable = {
   deletedAt: true,
   version: true,
 } as const;
-const DoctorFields = Doctor.omit({ ...writable, approvalStatus: true });
+const DoctorFields = Doctor.omit({
+  ...writable,
+  approvalStatus: true,
+  rejectionReason: true,
+  rejectedBy: true,
+  rejectedAt: true,
+});
 export const DoctorCreate = DoctorFields.extend({
   allowPossibleDuplicate: z.boolean().optional().meta({
     description:
@@ -95,6 +107,17 @@ export const DoctorListQuery = listQuery(['name', 'city', 'updatedAt', 'createdA
   specialtyId: Id.optional(),
   categoryId: Id.optional(),
   approvalStatus: DoctorApprovalStatus.optional(),
+  ids: z
+    .string()
+    .regex(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
+      'ids: 1..100 comma-separated UUIDs',
+    )
+    .optional()
+    .meta({
+      description:
+        'Batch fetch: comma-separated doctor ids (max 100). Only doctors you can read are returned; others are silently absent. Pass limit=100 to get all in one page.',
+    }),
 });
 export const OutletListQuery = listQuery(['name', 'city', 'updatedAt', 'createdAt'] as const, {
   territoryId: territoryFilter,

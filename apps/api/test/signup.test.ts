@@ -219,7 +219,12 @@ describe.skipIf(!OWNER || !APP)('Sign-up requests (real API)', () => {
     expect(s.status).toBe(403);
     expect(s.body.code).toBe('ACCOUNT_REJECTED');
     expect(
-      (await http().post(`/v1/signup-requests/${id}/reject`).set(as('sysadmin')).send({})).status,
+      (
+        await http()
+          .post(`/v1/signup-requests/${id}/reject`)
+          .set(as('sysadmin'))
+          .send({ reason: 'again' })
+      ).status,
     ).toBe(409);
     const a = await owner.query(
       `select 1 from audit_log where entity_id = $1 and action = 'signup.rejected'`,

@@ -27,10 +27,13 @@ import { and, asc, desc, eq, gte, inArray, isNull, lte, sql, type SQL } from 'dr
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
+import { nameRejecters } from '../common/rejection';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { ApprovalsService } from './approvals.service';
+import { toPlan } from './tour-plan.dto';
+export { toPlan } from './tour-plan.dto';
 import { approvedLeaveDays, assertNotOnLeave } from '../leave/leave.util';
 
 const monthEnd = (m: string) =>
@@ -41,26 +44,6 @@ type Entry = Day['entries'][number];
 type Row = typeof tourPlans.$inferSelect;
 const EDITABLE = ['draft', 'rejected'];
 const monthStart = (m: string) => `${m}-01`;
-
-export function toPlan(r: Row): TourPlan {
-  return {
-    id: r.id,
-    companyId: r.companyId,
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-    deletedAt: r.deletedAt?.toISOString() ?? null,
-    version: r.version,
-    userId: r.userId,
-    month: r.month.slice(0, 7),
-    kind: 'mtp',
-    status: r.status,
-    days: (r.days as Day[]) ?? [],
-    submittedAt: r.submittedAt?.toISOString() ?? null,
-    decidedAt: r.decidedAt?.toISOString() ?? null,
-    decidedBy: r.decidedBy,
-    decisionComment: r.decisionComment,
-  };
-}
 
 export interface TourPlanQuery {
   limit?: number;
@@ -260,7 +243,8 @@ export class TourPlansService {
         throw err(409, 'VERSION_CONFLICT', 'Stale version', toPlan(cur));
       [row] = (await tx
         .update(tourPlans)
-        .set({ days, status: 'draft', decidedAt: null, decidedBy: null })
+        // Editing a rejected plan keeps the rejection (reason, by, at) visible until it is resubmitted.
+        .set({ days, status: 'draft' })
         .where(eq(tourPlans.id, cur.id))
         .returning()) as [Row];
     }
@@ -306,7 +290,7 @@ export class TourPlansService {
         .limit(limit + 1)
         .offset(offset);
       const out: Record<string, unknown> = {
-        items: rows.slice(0, limit).map(toPlan),
+        items: await nameRejecters(tx, rows.slice(0, limit).map(toPlan)),
         nextCursor: rows.length > limit ? encodeCursor(offset + limit) : null,
         serverTime: new Date().toISOString(),
       };
@@ -325,7 +309,28 @@ export class TourPlansService {
     return this.tenant.run(p, async (tx) => {
       const r = await this.find(tx, this.team(p, userId), month);
       if (!r) throw new NotFoundException('No plan for this month');
-      return toPlan(r);
+      return (await nameRejecters(tx, [toPlan(r)]))[0]!;
+    });
+  }
+
+  /**
+   * GET /v1/tour-plans/{id}: the owner, the reporting line above them (with field:read, as for the
+   * by-month read), or anyone assigned to approve it (current or past step). Otherwise 404.
+   */
+  getById(p: Principal, id: string) {
+    return this.tenant.run(p, async (tx) => {
+      const [r] = await tx
+        .select()
+        .from(tourPlans)
+        .where(and(eq(tourPlans.id, id), isNull(tourPlans.deletedAt)));
+      if (!r) throw new NotFoundException('Tour plan not found');
+      const inLine =
+        r.userId === p.userId ||
+        (p.permissions.includes('field:read') &&
+          (!p.teamUserIds || p.teamUserIds.includes(r.userId)));
+      if (!inLine && !(await this.approvals.isAssigned(tx, p, 'tour_plan', id)))
+        throw new NotFoundException('Tour plan not found');
+      return (await nameRejecters(tx, [toPlan(r)]))[0]!;
     });
   }
 
@@ -333,7 +338,7 @@ export class TourPlansService {
     return this.tenant.run(p, async (tx) => {
       const r = await this.save(tx, p, month, days, version);
       await this.audit.record(tx, p, 'tour_plan.save', { entityType: 'tour_plan', entityId: r.id });
-      return toPlan(r);
+      return (await nameRejecters(tx, [toPlan(r)]))[0]!;
     });
   }
 
@@ -359,7 +364,7 @@ export class TourPlansService {
         entityId: r.id,
         after: { fromMonth: b.fromMonth ?? null, fromStp: b.fromStp },
       });
-      return toPlan(r);
+      return (await nameRejecters(tx, [toPlan(r)]))[0]!;
     });
   }
 
@@ -385,7 +390,7 @@ export class TourPlansService {
     });
   }
 
-  submit(p: Principal, month: string) {
+  submit(p: Principal, month: string, submitterNote?: string | null) {
     return this.tenant.run(p, async (tx) => {
       const cur = await this.find(tx, p.userId, month);
       if (!cur) throw new NotFoundException('No plan for this month');
@@ -396,10 +401,19 @@ export class TourPlansService {
         throw err(422, 'EMPTY_PLAN', 'Add at least one day to the plan before submitting');
       const [row] = await tx
         .update(tourPlans)
-        .set({ status: 'submitted', submittedAt: new Date() })
+        .set({
+          status: 'submitted',
+          submittedAt: new Date(),
+          decidedAt: null,
+          decidedBy: null,
+          decisionComment: null,
+          submitterNote: submitterNote?.trim() || null,
+        })
         .where(eq(tourPlans.id, cur.id))
         .returning();
-      await this.approvals.request(tx, p, 'tour_plan', cur.id, null, { month });
+      await this.approvals.request(tx, p, 'tour_plan', cur.id, submitterNote?.trim() || null, {
+        month,
+      });
       await this.audit.record(tx, p, 'tour_plan.submit', {
         entityType: 'tour_plan',
         entityId: cur.id,

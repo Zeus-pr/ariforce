@@ -12,6 +12,11 @@ export const NOTIFICATION_TYPES = [
   'expense.rejected',
   'expense.paid',
   'exceptions.digest',
+  'tour_plan.approved',
+  'tour_plan.rejected',
+  'doctor.approved',
+  'doctor.rejected',
+  'dcr_unlock.rejected',
 ] as const;
 export const NotificationType = z.enum(NOTIFICATION_TYPES).meta({ id: 'NotificationType' });
 export type NotificationType = z.infer<typeof NotificationType>;
@@ -23,7 +28,7 @@ export const Notification = z
     title: z.string(),
     body: z.string(),
     entityType: z
-      .enum(['leave_request', 'expense_claim'])
+      .enum(['leave_request', 'expense_claim', 'tour_plan', 'doctor', 'approval_request'])
       .nullable()
       .meta({ description: 'Deep link target type' }),
     entityId: Id.nullable().meta({ description: 'Deep link target id' }),

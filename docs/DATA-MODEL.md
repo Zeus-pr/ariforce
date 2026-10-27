@@ -18,20 +18,21 @@ Source: `packages/db/src/schema/*.ts` (Drizzle). `drizzle-kit generate` writes `
 
 ## Research-driven additions (PR #16, issues #17+)
 
-| Need                               | Modelled now as                                                                                                                                                                    |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Generic approval engine (#17)      | `approval_requests` (entity_type/entity_id, state, current_step, reason, payload) + `approval_steps` (ordered; approver by role-in-hierarchy or explicit user; decision + comment) |
-| Configurable work types (#18)      | `work_types` (kind field/non_field/leave/holiday, counts_as_field_day, allowance_band hq/ex_hq/outstation for TA/DA #39, requires_location)                                        |
-| Cycle length (#18)                 | `companies.cycle_kind` (`month` or `days`) + `cycle_length_days` + `cycle_anchor_date`                                                                                             |
-| Multi-session days (#21)           | `plan_sessions` (user, date, session_no, work_type, territory)                                                                                                                     |
-| DCR lock (#23)                     | `companies.dcr_lock_after_hours`; corrections via `approval_requests(entity_type='dcr_correction')`                                                                                |
-| DCR prefill + deviation (#22)      | `approval_requests(entity_type='tp_deviation')`; DCR tables come with #10 and reference `plan_sessions`                                                                            |
-| Doctor grade + frequency (#25)     | `doctor_categories.visits_per_cycle` (A/B/C seeded 3/2/1) + `doctors.visits_per_cycle_override`                                                                                    |
-| Doctor geo-tag + geofence (#24)    | `doctors.location`, `geo_tagged_at/by`, `geofence_radius_m` (10-2000, null = `companies.default_geofence_m`)                                                                       |
-| Field-added doctor approval (#26)  | `doctors.approval_status` + approval request `entity_type='doctor'`                                                                                                                |
-| Registration verification (#27)    | `doctors.registration_no/council`, `verification_status`                                                                                                                           |
-| KPI views (#28), samples (#37/#38) | Later migrations (views over DCR/TP; sample ledger + per-doctor cap). Not in v1.                                                                                                   |
-| POB / RCPA (#40)                   | POB: `dcr_call_products(kind='pob')`, value = qty × `products.ptr`; RCPA: `dcr_call_rcpa` (0029). See [POB-RCPA.md](POB-RCPA.md)                                                   |
+| Need                                 | Modelled now as                                                                                                                                                                    |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Generic approval engine (#17)        | `approval_requests` (entity_type/entity_id, state, current_step, reason, payload) + `approval_steps` (ordered; approver by role-in-hierarchy or explicit user; decision + comment) |
+| Configurable work types (#18)        | `work_types` (kind field/non_field/leave/holiday, counts_as_field_day, allowance_band hq/ex_hq/outstation for TA/DA #39, requires_location)                                        |
+| Cycle length (#18)                   | `companies.cycle_kind` (`month` or `days`) + `cycle_length_days` + `cycle_anchor_date`                                                                                             |
+| Multi-session days (#21)             | `plan_sessions` (user, date, session_no, work_type, territory)                                                                                                                     |
+| DCR lock (#23)                       | `companies.dcr_lock_after_hours`; corrections via `approval_requests(entity_type='dcr_correction')`                                                                                |
+| DCR prefill + deviation (#22)        | `approval_requests(entity_type='tp_deviation')`; DCR tables come with #10 and reference `plan_sessions`                                                                            |
+| Doctor grade + frequency (#25)       | `doctor_categories.visits_per_cycle` (A/B/C seeded 3/2/1) + `doctors.visits_per_cycle_override`                                                                                    |
+| Doctor geo-tag + geofence (#24)      | `doctors.location`, `geo_tagged_at/by`, `geofence_radius_m` (10-2000, null = `companies.default_geofence_m`)                                                                       |
+| Field-added doctor approval (#26)    | `doctors.approval_status` + approval request `entity_type='doctor'`                                                                                                                |
+| Approval details + rejection reasons | No new columns: reasons live in `approval_steps.comment` and the subject's `decision_comment`; see [APPROVALS.md](APPROVALS.md)                                                    |
+| Registration verification (#27)      | `doctors.registration_no/council`, `verification_status`                                                                                                                           |
+| KPI views (#28), samples (#37/#38)   | Later migrations (views over DCR/TP; sample ledger + per-doctor cap). Not in v1.                                                                                                   |
+| POB / RCPA (#40)                     | POB: `dcr_call_products(kind='pob')`, value = qty × `products.ptr`; RCPA: `dcr_call_rcpa` (0029). See [POB-RCPA.md](POB-RCPA.md)                                                   |
 
 ## ER diagram
 

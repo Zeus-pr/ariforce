@@ -38,6 +38,7 @@ document is committed at `docs/api/openapi.json` (`pnpm -F @ariforce/contracts o
 | [DCR.md](DCR.md)                         | Daily Call Report endpoints and rules                                            |
 | [POB-RCPA.md](POB-RCPA.md)               | POB on doctor/chemist calls (server-computed value), RCPA on chemist calls (#40) |
 | [DOCTOR-APPROVAL.md](DOCTOR-APPROVAL.md) | Field-added doctor approval and duplicate detection (#26)                        |
+| [APPROVALS.md](APPROVALS.md)             | Approval request details (GET /v1/approvals/{id}) and required rejection reasons |
 | [PRODUCTS.md](PRODUCTS.md)               | System Admin product prices (MRP/PTR/PTS) with append-only history               |
 | [EXPENSES.md](EXPENSES.md)               | Expense claims, lines, receipts, approvals, payment, reports (#52)               |
 | [TADA.md](TADA.md)                       | TA/DA rate card, fare chart and allowance drafting (#39)                         |

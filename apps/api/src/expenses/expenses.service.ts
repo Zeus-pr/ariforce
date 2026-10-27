@@ -15,9 +15,11 @@ import {
   type ExpenseLineInput,
   type ExpenseReconciliation,
   type ExpenseStatus,
+  type ApprovalSubject,
 } from '@ariforce/contracts';
 import {
   dcrs,
+  allowancePlaces,
   expenseAttachments,
   expenseClaims,
   expenseLines,
@@ -35,6 +37,7 @@ import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { StorageService } from '../files/storage.service';
 import { ApprovalsService } from '../plans/approvals.service';
+import { nameRejecters, rejectionFields } from '../common/rejection';
 import { keyExt, sniffMatches } from './files.util';
 import { computeAllowances } from '../allowances/allowances.engine';
 
@@ -95,7 +98,7 @@ export class ExpensesService implements OnModuleInit {
           entityType: 'expense_claim',
           entityId: req.entityId,
           dedupeKey: `expense.decided:${req.id}`,
-          data: { ...(req.payload ?? {}), comment },
+          data: { ...(req.payload ?? {}), comment, ...(approved ? {} : { reason: comment }) },
         });
       },
       {
@@ -118,6 +121,67 @@ export class ExpensesService implements OnModuleInit {
         },
       },
     );
+    this.approvals.registerDetail(
+      'expense',
+      (tx, p, req) => this.approvalDetail(tx, p, req.entityId),
+      {
+        readPermissions: ['expenses:approve', 'finance:read'],
+      },
+    );
+  }
+
+  /** Approver view (GET /v1/approvals/{id}): the claim, allowance places and receipt read URLs. */
+  private async approvalDetail(tx: Tx, p: Principal, id: string): Promise<ApprovalSubject | null> {
+    const [c] = await tx.select().from(expenseClaims).where(eq(expenseClaims.id, id));
+    if (!c) return null;
+    const claim = await this.toDto(tx, c);
+    const placeIds = [
+      ...new Set(claim.lines.map((l) => l.allowancePlaceId).filter((x): x is string => !!x)),
+    ];
+    const places = placeIds.length
+      ? await tx
+          .select({
+            id: allowancePlaces.id,
+            name: allowancePlaces.name,
+            band: allowancePlaces.band,
+            oneWayKm: allowancePlaces.oneWayKm,
+          })
+          .from(allowancePlaces)
+          .where(inArray(allowancePlaces.id, placeIds))
+      : [];
+    const attIds = claim.lines
+      .flatMap((l) => l.attachments)
+      .filter((a) => a.status === 'confirmed')
+      .map((a) => a.id);
+    const atts = attIds.length
+      ? await tx.select().from(expenseAttachments).where(inArray(expenseAttachments.id, attIds))
+      : [];
+    const now = new Date();
+    const receipts = [];
+    for (const a of atts) {
+      try {
+        const u = await this.storage.downloadUrl(
+          p.companyId,
+          a.fileKey,
+          now,
+          `receipt-${a.id}.${a.fileKey.split('.').pop()}`,
+        );
+        receipts.push({ attachmentId: a.id, lineId: a.lineId, contentType: a.contentType, ...u });
+        await this.audit.record(tx, p, 'expense.attachment_downloaded', {
+          entityType: 'expense_attachment',
+          entityId: a.id,
+          after: { claimId: c.id, via: 'approval' },
+        });
+      } catch {
+        // storage not configured or key outside the tenant: the claim still shows, without that receipt
+      }
+    }
+    return {
+      type: 'expense',
+      claim,
+      allowancePlaces: places.map((x) => ({ ...x, oneWayKm: Number(x.oneWayKm) })),
+      receipts,
+    };
   }
 
   // ---- visibility ----
@@ -191,11 +255,14 @@ export class ExpensesService implements OnModuleInit {
           )
         ).rows[0]?.s ?? null)
       : null;
-    return {
-      ...this.summary(c, u?.name ?? ''),
-      approvalStep: c.status === 'submitted' ? step : null,
-      lines: lines.map((l) => this.lineDto(l, atts)),
-    };
+    const [dto] = await nameRejecters(tx, [
+      {
+        ...this.summary(c, u?.name ?? ''),
+        approvalStep: c.status === 'submitted' ? step : null,
+        lines: lines.map((l) => this.lineDto(l, atts)),
+      },
+    ]);
+    return dto!;
   }
 
   private summary(c: ClaimRow, userName: string) {
@@ -213,6 +280,7 @@ export class ExpensesService implements OnModuleInit {
       decidedAt: iso(c.decidedAt),
       decidedBy: c.decidedBy,
       decisionComment: c.decisionComment,
+      ...rejectionFields(c.status, c.decisionComment, c.decidedBy, iso(c.decidedAt)),
       paidAt: iso(c.paidAt),
       paymentRef: c.paymentRef,
       version: c.version,
@@ -289,10 +357,13 @@ export class ExpensesService implements OnModuleInit {
             .groupBy(expenseLines.claimId)
         : [];
       return {
-        items: rows.map((r) => ({
-          ...this.summary(r.c, r.name),
-          lineCount: counts.find((x) => x.id === r.c.id)?.n ?? 0,
-        })),
+        items: await nameRejecters(
+          tx,
+          rows.map((r) => ({
+            ...this.summary(r.c, r.name),
+            lineCount: counts.find((x) => x.id === r.c.id)?.n ?? 0,
+          })),
+        ),
       };
     });
   }

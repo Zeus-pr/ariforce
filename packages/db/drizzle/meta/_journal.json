@@ -253,6 +253,13 @@
       "when": 1793099980056,
       "tag": "0035_doctor_duplicate_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793104974570,
+      "tag": "0036_tour_plan_submitter_note",
+      "breakpoints": true
     }
   ]
 }

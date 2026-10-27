@@ -158,9 +158,16 @@ export function signupHandlers(baseUrl: string, who: (r: Request) => Me | undefi
       const f = find(g.p, String(params.id));
       if (f.res) return f.res;
       const b = SignupReject.safeParse(await request.json().catch(() => ({})));
+      if (!b.success || !b.data.reason)
+        return HttpResponse.json(
+          {
+            error: { code: 'REJECTION_REASON_REQUIRED', message: 'A reason is required to reject' },
+          },
+          { status: 422 },
+        );
       Object.assign(f.r, {
         status: 'rejected',
-        reason: b.success ? b.data.reason : null,
+        reason: b.data.reason,
         decidedBy: g.p.id,
         decidedAt: new Date().toISOString(),
       });
