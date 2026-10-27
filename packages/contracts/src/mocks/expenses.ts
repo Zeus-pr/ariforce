@@ -142,6 +142,9 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
         decidedAt: null,
         decidedBy: null,
         decisionComment: null,
+        rejectionReason: null,
+        rejectedBy: null,
+        rejectedAt: null,
         paidAt: null,
         paymentRef: null,
         version: 1,
@@ -361,6 +364,9 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
         submittedAt: now(),
         approvalId: uuid(),
         approvalStep: 1,
+        rejectionReason: null,
+        rejectedBy: null,
+        rejectedAt: null,
         version: f.c.version + 1,
       });
       return HttpResponse.json(out(f.c));
@@ -374,12 +380,19 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
       if (c.userId === g.p.id) return e(403, 'FORBIDDEN', 'You cannot decide your own claim');
       if (c.status !== 'submitted') return e(409, 'CONFLICT', `Claim is ${c.status}`);
       const b = ExpenseDecision.safeParse(await request.json().catch(() => null));
-      if (!b.success) return e(422, 'VALIDATION', 'comment required to reject');
+      if (!b.success) return e(422, 'VALIDATION', 'Invalid decision');
+      const rej = b.data.decision === 'reject';
+      if (rej && !b.data.comment)
+        return e(422, 'REJECTION_REASON_REQUIRED', 'A reason is required to reject');
+      const at = now();
       Object.assign(c, {
-        status: b.data.decision === 'approve' ? 'approved' : 'rejected',
-        decidedAt: now(),
+        status: rej ? 'rejected' : 'approved',
+        decidedAt: at,
         decidedBy: g.p.id,
-        decisionComment: b.data.comment ?? null,
+        decisionComment: b.data.comment || null,
+        rejectionReason: rej ? b.data.comment! : null,
+        rejectedBy: rej ? { id: g.p.id, name: g.p.name } : null,
+        rejectedAt: rej ? at : null,
         version: c.version + 1,
       });
       return HttpResponse.json(out(c));

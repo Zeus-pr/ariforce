@@ -110,7 +110,8 @@ export class MastersService {
         const [n] = await base.where(s.where);
         total = Number(n?.n ?? 0);
       }
-      const items = rows.slice(0, limit).map((r) => this.dto(def, r.r));
+      let items = rows.slice(0, limit).map((r) => this.dto(def, r.r));
+      if (def.entity === 'doctor') items = await this.doctorsSvc.withRejection(tx, p, items);
       return {
         items,
         nextCursor: rows.length > limit ? encodeCursor(offset + limit) : null,
@@ -129,7 +130,20 @@ export class MastersService {
   }
 
   get(def: MasterDef, p: Principal, id: string) {
-    return this.tenant.run(p, async (tx) => this.dto(def, await this.findRow(tx, def, p, id)));
+    return this.tenant.run(p, async (tx) => {
+      if (def.entity !== 'doctor') return this.dto(def, await this.findRow(tx, def, p, id));
+      // Doctors: an assigned approver may read the doctor by id even outside their territory scope.
+      let row: Row | null;
+      try {
+        row = await this.findRow(tx, def, p, id);
+      } catch (e) {
+        if (!(e instanceof NotFoundException)) throw e;
+        row = await this.doctorsSvc.assignedRow(tx, p, id);
+        if (!row) throw e;
+      }
+      const [d] = await this.doctorsSvc.withRejection(tx, p, [this.dto(def, row)]);
+      return d!;
+    });
   }
 
   assertCanWrite(def: MasterDef, p: Principal) {

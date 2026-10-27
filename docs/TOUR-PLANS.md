@@ -1,5 +1,7 @@
 # Tour plans and approvals
 
+Submit rule: `0bb7b40` (`fix/tp-submit-any-day`), merged into `docs/hygiene-and-changelog` at `74ab9a9`.
+
 ## Storage
 
 - `tour_plans.days` (jsonb, migration 0012) holds the canonical `TourPlanDay[]`. On every save the API rebuilds the derived
@@ -22,7 +24,8 @@
   `hasPlannedDay` in `@ariforce/contracts`. Creates an approval request (step 1 approver = reporting manager).
 - Past dates stay editable while the plan is a draft (no past-date lock).
 - `GET /v1/tour-plans/{month}/calendar` → `{ month, todayIST, weeklyOffDays: number[], requiredDates: string[] }`
-  (no plan needed). `requiredDates` is **informational only** (kept for compatibility); it does not gate submit.
+  (no plan needed). `weeklyOffDays` comes from `leave_settings.weekly_off_days` (default `[0]` = Sunday).
+  `requiredDates` is **informational only** (kept for compatibility); it does not gate submit.
   `requiredDates`/`missingRequiredDates` helpers are deprecated.
 
 ## Approvals (gaps #5-#7)

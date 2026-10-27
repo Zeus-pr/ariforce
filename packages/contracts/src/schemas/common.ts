@@ -99,3 +99,7 @@ export function listQuery<S extends readonly [string, ...string[]], F extends z.
     ...filters,
   });
 }
+
+/** A user's id and display name. */
+export const UserRef = z.object({ id: Id, name: z.string() }).meta({ id: 'UserRef' });
+export type UserRef = z.infer<typeof UserRef>;

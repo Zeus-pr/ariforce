@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { DateOnly, Id, Timestamp } from './common';
+import { UserRef, DateOnly, Id, Timestamp } from './common';
 
 /** Leave management (#51). Policy lives in data (leave_settings, leave_policies), see docs/LEAVE.md. */
 export const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
@@ -107,6 +107,16 @@ export const LeaveRequest = z
     decidedAt: Timestamp.nullable(),
     decidedBy: Id.nullable(),
     decisionComment: z.string().nullable(),
+    rejectionReason: z.string().nullable().meta({
+      description:
+        'Why it was rejected (trimmed, required on reject); null unless status is rejected',
+    }),
+    rejectedBy: UserRef.nullable().meta({
+      description: 'Who rejected it ({id, name}); null unless rejected',
+    }),
+    rejectedAt: Timestamp.nullable().meta({
+      description: 'When it was rejected; null unless rejected',
+    }),
     cancelledAt: Timestamp.nullable(),
     cancelledBy: Id.nullable(),
     cancelReason: z.string().nullable(),
@@ -129,10 +139,9 @@ export const LeaveCancel = z
   .object({ reason: z.string().max(1000).nullable().default(null) })
   .meta({ id: 'LeaveCancel' });
 export const LeaveDecision = z
-  .object({ decision: z.enum(['approve', 'reject']), comment: z.string().max(1000).optional() })
-  .refine((d) => d.decision === 'approve' || !!d.comment, {
-    message: 'comment required to reject',
-    path: ['comment'],
+  .object({
+    decision: z.enum(['approve', 'reject']),
+    comment: z.string().trim().max(1000).optional(),
   })
   .meta({ id: 'LeaveDecision' });
 

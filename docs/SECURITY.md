@@ -1,6 +1,6 @@
 # Security
 
-Hardening from the Cutly audit (`docs/CUTLY-LESSONS-CHECKLIST.md`). One section per issue.
+Hardening from the Cutly audit. One section per issue.
 
 ## Session revocation (#79)
 

@@ -83,7 +83,12 @@ export const SignupApprove = z
   })
   .meta({ id: 'SignupApprove' });
 export const SignupReject = z
-  .object({ reason: z.string().trim().max(500).nullable().default(null) })
+  .object({
+    reason: z.string().trim().max(500).nullable().default(null).meta({
+      description:
+        'Required (non-blank after trim); missing or blank gives 422 REJECTION_REASON_REQUIRED',
+    }),
+  })
   .meta({ id: 'SignupReject' });
 
 /** Public pick-lists for the sign-up form (GET /v1/auth/sign-up-options). No PII. */

@@ -2,6 +2,7 @@ import { ConflictException, Injectable, OnModuleInit } from '@nestjs/common';
 import { duplicateKeys, type DoctorDuplicate } from '@ariforce/contracts';
 import { doctors, territories, type Tx } from '@ariforce/db';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
+import { nameRejecters } from '../common/rejection';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
@@ -38,6 +39,38 @@ export class DoctorsService implements OnModuleInit {
         after: { comment, requestId: req.id },
       });
     });
+  }
+
+  /**
+   * rejectionReason/rejectedBy/rejectedAt from the latest approval decision, for rejected doctors.
+   * Shown only to the adder, the reporting line above them, the approvers and company-wide roles.
+   */
+  async withRejection(tx: Tx, p: Principal, items: Row[]): Promise<Row[]> {
+    const rej = items.filter((i) => i.approvalStatus === 'rejected').map((i) => String(i.id));
+    const dec = await this.approvals.latestDecisions(tx, 'doctor', rej);
+    const out = items.map((i) => {
+      const d = i.approvalStatus === 'rejected' ? dec.get(String(i.id)) : undefined;
+      const may =
+        d &&
+        (!p.teamUserIds || p.teamUserIds.includes(d.requestedBy) || d.approvers.includes(p.userId));
+      return {
+        ...i,
+        rejectionReason: may ? d.comment : null,
+        rejectedBy: may && d.by ? { id: d.by, name: '' } : null,
+        rejectedAt: may ? (d.at?.toISOString() ?? null) : null,
+      } as Row & { rejectedBy: { id: string; name: string } | null };
+    });
+    return nameRejecters(tx, out);
+  }
+
+  /** A doctor outside the caller's territory scope, readable because they are an assigned approver. */
+  async assignedRow(tx: Tx, p: Principal, id: string): Promise<Row | null> {
+    if (!(await this.approvals.isAssigned(tx, p, 'doctor', id))) return null;
+    const [r] = await tx
+      .select()
+      .from(doctors)
+      .where(and(eq(doctors.id, id), isNull(doctors.deletedAt)));
+    return (r as Row | undefined) ?? null;
   }
 
   /** Existing (non-deleted) doctors company-wide matching the duplicate rules, strong matches first. */

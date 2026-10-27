@@ -1338,6 +1338,16 @@
               ],
               "description": "Field-added doctors start pending until their manager decides (#26); company-wide roles add approved doctors. Read-only."
             }
+          },
+          {
+            "in": "query",
+            "name": "ids",
+            "schema": {
+              "description": "Batch fetch: comma-separated doctor ids (max 100). Only doctors you can read are returned; others are silently absent. Pass limit=100 to get all in one page.",
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$"
+            },
+            "description": "Batch fetch: comma-separated doctor ids (max 100). Only doctors you can read are returned; others are silently absent. Pass limit=100 to get all in one page."
           }
         ],
         "responses": {
@@ -6044,19 +6054,32 @@
           "TourPlans"
         ],
         "operationId": "getTourPlan",
-        "summary": "Caller's plan for the month (or userId's, if in team). Used for DCR prefill.",
+        "summary": "Caller's plan for the month (or userId's, if in team), or one plan by id.",
+        "description": "`{month}` is YYYY-MM, or a tour plan id (uuid). By id: readable by the owner, their reporting line with field:read, or an assigned approver (current or past step); otherwise 404. `userId` is ignored for an id.",
         "parameters": [
           {
             "in": "path",
             "name": "month",
             "schema": {
-              "type": "string",
-              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
-              "description": "Month (YYYY-MM)",
-              "example": "2026-11"
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                  "description": "Month (YYYY-MM)",
+                  "example": "2026-11"
+                },
+                {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUIDv7 identifier",
+                  "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                }
+              ],
+              "description": "YYYY-MM or plan id"
             },
             "required": true,
-            "description": "Month (YYYY-MM)"
+            "description": "YYYY-MM or plan id"
           },
           {
             "in": "query",
@@ -6313,6 +6336,16 @@
             "description": "Month (YYYY-MM)"
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TourPlanSubmit"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Submitted; approval created",
@@ -9222,7 +9255,7 @@
             }
           },
           "422": {
-            "description": "comment required to reject",
+            "description": "REJECTION_REASON_REQUIRED: reject without a non-blank comment",
             "content": {
               "application/json": {
                 "schema": {
@@ -11321,7 +11354,7 @@
             }
           },
           "422": {
-            "description": "comment required to reject",
+            "description": "REJECTION_REASON_REQUIRED: reject without a non-blank comment",
             "content": {
               "application/json": {
                 "schema": {
@@ -12017,6 +12050,87 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "REJECTION_REASON_REQUIRED: reason missing or blank",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approvals/{id}": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Approvals"
+        ],
+        "operationId": "getApproval",
+        "summary": "One approval request. Visible to the requester, an assigned approver (current or past step) and the reporting line above the requester. `subject` holds the full details (null for in-line viewers without read access to the subject).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not visible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -12100,6 +12214,16 @@
           },
           "409": {
             "description": "Already decided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "REJECTION_REASON_REQUIRED: reject without a non-blank comment",
             "content": {
               "application/json": {
                 "schema": {
@@ -15123,6 +15247,22 @@
         },
         "description": "Fills a draft (new, draft or rejected plan) from the STP or another month (#20). Dates map by week of month + weekday."
       },
+      "TourPlanSubmit": {
+        "type": "object",
+        "properties": {
+          "submitterNote": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "DcrUpsert": {
         "type": "object",
         "properties": {
@@ -16426,6 +16566,7 @@
             ]
           },
           "comment": {
+            "description": "Trimmed. Required to reject: missing, blank or whitespace-only gives 422 REJECTION_REASON_REQUIRED",
             "type": "string",
             "maxLength": 1000
           }
@@ -16593,6 +16734,7 @@
         "properties": {
           "reason": {
             "default": null,
+            "description": "Required (non-blank after trim); missing or blank gives 422 REJECTION_REASON_REQUIRED",
             "anyOf": [
               {
                 "type": "string",
@@ -16616,6 +16758,7 @@
             ]
           },
           "comment": {
+            "description": "Trimmed. Required to reject: missing, blank or whitespace-only gives 422 REJECTION_REASON_REQUIRED",
             "type": "string",
             "maxLength": 1000
           }
@@ -18285,6 +18428,38 @@
               "rejected"
             ],
             "description": "Field-added doctors start pending until their manager decides (#26); company-wide roles add approved doctors. Read-only."
+          },
+          "rejectionReason": {
+            "description": "Latest rejection reason while approvalStatus is rejected; only for the adder, their reporting line, the approvers and company-wide roles (else null). Read-only.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rejectedBy": {
+            "description": "Who rejected it. Read-only.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rejectedAt": {
+            "description": "When. Read-only.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -18307,6 +18482,26 @@
           "location",
           "phone",
           "approvalStatus"
+        ],
+        "additionalProperties": false
+      },
+      "UserRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
         ],
         "additionalProperties": false
       },
@@ -20346,6 +20541,45 @@
               "string",
               "null"
             ]
+          },
+          "submitterNote": {
+            "description": "Note from the submitter to the approver (POST submit body); cleared on edit",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rejectionReason": {
+            "description": "Why it was rejected (trimmed, required on reject); null unless status is rejected",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rejectedBy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who rejected it ({id, name}); null unless rejected"
+          },
+          "rejectedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was rejected; null unless rejected"
           }
         },
         "required": [
@@ -20363,7 +20597,10 @@
           "submittedAt",
           "decidedAt",
           "decidedBy",
-          "decisionComment"
+          "decisionComment",
+          "rejectionReason",
+          "rejectedBy",
+          "rejectedAt"
         ],
         "additionalProperties": false
       },
@@ -20949,6 +21186,13 @@
               {
                 "type": "null"
               }
+            ]
+          },
+          "rejectionReason": {
+            "description": "The reason of the rejecting step; null unless status is rejected",
+            "type": [
+              "string",
+              "null"
             ]
           }
         },
@@ -22552,7 +22796,10 @@
                 "type": "string",
                 "enum": [
                   "leave_request",
-                  "expense_claim"
+                  "expense_claim",
+                  "tour_plan",
+                  "doctor",
+                  "approval_request"
                 ]
               },
               {
@@ -22634,7 +22881,12 @@
           "expense.approved",
           "expense.rejected",
           "expense.paid",
-          "exceptions.digest"
+          "exceptions.digest",
+          "tour_plan.approved",
+          "tour_plan.rejected",
+          "doctor.approved",
+          "doctor.rejected",
+          "dcr_unlock.rejected"
         ]
       },
       "UnreadCount": {
@@ -22850,6 +23102,38 @@
               "null"
             ]
           },
+          "rejectionReason": {
+            "description": "Why it was rejected (trimmed, required on reject); null unless status is rejected",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rejectedBy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who rejected it ({id, name}); null unless rejected"
+          },
+          "rejectedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was rejected; null unless rejected"
+          },
           "cancelledAt": {
             "anyOf": [
               {
@@ -22909,6 +23193,9 @@
           "decidedAt",
           "decidedBy",
           "decisionComment",
+          "rejectionReason",
+          "rejectedBy",
+          "rejectedAt",
           "cancelledAt",
           "cancelledBy",
           "cancelReason",
@@ -23287,6 +23574,38 @@
               "null"
             ]
           },
+          "rejectionReason": {
+            "description": "Why it was rejected (trimmed, required on reject); null unless status is rejected",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rejectedBy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who rejected it ({id, name}); null unless rejected"
+          },
+          "rejectedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was rejected; null unless rejected"
+          },
           "paidAt": {
             "anyOf": [
               {
@@ -23331,6 +23650,9 @@
           "decidedAt",
           "decidedBy",
           "decisionComment",
+          "rejectionReason",
+          "rejectedBy",
+          "rejectedAt",
           "paidAt",
           "paymentRef",
           "version",
@@ -23453,6 +23775,38 @@
               "null"
             ]
           },
+          "rejectionReason": {
+            "description": "Why it was rejected (trimmed, required on reject); null unless status is rejected",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rejectedBy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who rejected it ({id, name}); null unless rejected"
+          },
+          "rejectedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was rejected; null unless rejected"
+          },
           "paidAt": {
             "anyOf": [
               {
@@ -23493,6 +23847,9 @@
           "decidedAt",
           "decidedBy",
           "decisionComment",
+          "rejectionReason",
+          "rejectedBy",
+          "rejectedAt",
           "paidAt",
           "paymentRef",
           "version"
@@ -24512,6 +24869,670 @@
           "decidedAt",
           "reason",
           "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "ApprovalDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "companyId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "subjectType": {
+            "type": "string",
+            "enum": [
+              "tour_plan",
+              "doctor",
+              "chemist",
+              "stockist",
+              "dcr_unlock",
+              "leave",
+              "device",
+              "expense"
+            ]
+          },
+          "subjectId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "requestedBy": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "requestedByName": {
+            "type": "string"
+          },
+          "approverId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reporting manager; null = any authorised manager"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "cancelled"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "ISO-8601 timestamp (UTC)"
+          },
+          "decidedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decidedBy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rejectionReason": {
+            "description": "The reason of the rejecting step; null unless status is rejected",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalSubject"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Full subject details for the requester, an assigned approver (any step) or a caller with read access to the subject; otherwise null"
+          }
+        },
+        "required": [
+          "id",
+          "companyId",
+          "subjectType",
+          "subjectId",
+          "requestedBy",
+          "requestedByName",
+          "approverId",
+          "status",
+          "summary",
+          "comment",
+          "createdAt",
+          "decidedAt",
+          "decidedBy",
+          "subject"
+        ],
+        "additionalProperties": false
+      },
+      "ApprovalSubject": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ApprovalSubjectTourPlan"
+          },
+          {
+            "$ref": "#/components/schemas/ApprovalSubjectLeave"
+          },
+          {
+            "$ref": "#/components/schemas/ApprovalSubjectExpense"
+          },
+          {
+            "$ref": "#/components/schemas/ApprovalSubjectDoctor"
+          },
+          {
+            "$ref": "#/components/schemas/ApprovalSubjectDcrUnlock"
+          }
+        ],
+        "type": "object",
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "tour_plan": "#/components/schemas/ApprovalSubjectTourPlan",
+            "leave": "#/components/schemas/ApprovalSubjectLeave",
+            "expense": "#/components/schemas/ApprovalSubjectExpense",
+            "doctor": "#/components/schemas/ApprovalSubjectDoctor",
+            "dcr_unlock": "#/components/schemas/ApprovalSubjectDcrUnlock"
+          }
+        }
+      },
+      "ApprovalSubjectTourPlan": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "tour_plan"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/TourPlan"
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "description": "Calendar date (YYYY-MM-DD, IST)"
+                },
+                "entries": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ApprovalTourPlanEntry"
+                  }
+                }
+              },
+              "required": [
+                "date",
+                "entries"
+              ],
+              "additionalProperties": false
+            },
+            "description": "plan.days with every id resolved to a name (deleted masters keep their id)"
+          }
+        },
+        "required": [
+          "type",
+          "plan",
+          "days"
+        ],
+        "additionalProperties": false
+      },
+      "ApprovalTourPlanEntry": {
+        "type": "object",
+        "properties": {
+          "session": {
+            "type": "string",
+            "enum": [
+              "full",
+              "am",
+              "pm"
+            ]
+          },
+          "workType": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "territories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalRef"
+            }
+          },
+          "jointWorkUsers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalRef"
+            }
+          },
+          "doctors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUIDv7 identifier",
+                  "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "specialtyName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "categoryName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "specialtyName",
+                "categoryName"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "chemists": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalRef"
+            }
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "session",
+          "workType",
+          "territories",
+          "jointWorkUsers",
+          "doctors",
+          "chemists",
+          "notes"
+        ],
+        "additionalProperties": false
+      },
+      "ApprovalRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "ApprovalSubjectLeave": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "leave"
+          },
+          "request": {
+            "$ref": "#/components/schemas/LeaveRequest"
+          },
+          "balance": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "item": {
+                    "$ref": "#/components/schemas/LeaveBalanceItem"
+                  },
+                  "availableBefore": {
+                    "description": "Without this request",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "availableAfter": {
+                    "description": "With this request counted",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "item",
+                  "availableBefore",
+                  "availableAfter"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Balance of this leave type for the request year; null = unknown"
+          },
+          "overlaps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUIDv7 identifier",
+                  "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                },
+                "userName": {
+                  "type": "string"
+                },
+                "typeCode": {
+                  "type": "string"
+                },
+                "fromDate": {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "description": "Calendar date (YYYY-MM-DD, IST)"
+                },
+                "toDate": {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "description": "Calendar date (YYYY-MM-DD, IST)"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "approved"
+                  ]
+                }
+              },
+              "required": [
+                "userId",
+                "userName",
+                "typeCode",
+                "fromDate",
+                "toDate",
+                "status"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Peers (same manager) with pending/approved leave overlapping these dates"
+          }
+        },
+        "required": [
+          "type",
+          "request",
+          "balance",
+          "overlaps"
+        ],
+        "additionalProperties": false
+      },
+      "ApprovalSubjectExpense": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "expense"
+          },
+          "claim": {
+            "$ref": "#/components/schemas/ExpenseClaim"
+          },
+          "allowancePlaces": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUIDv7 identifier",
+                  "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "band": {
+                  "type": "string"
+                },
+                "oneWayKm": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "band",
+                "oneWayKm"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Places referenced by claim.lines[].allowancePlaceId"
+          },
+          "receipts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "attachmentId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUIDv7 identifier",
+                  "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                },
+                "lineId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUIDv7 identifier",
+                  "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                },
+                "contentType": {
+                  "type": "string"
+                },
+                "downloadUrl": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "expiresAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                  "description": "ISO-8601 timestamp (UTC)"
+                }
+              },
+              "required": [
+                "attachmentId",
+                "lineId",
+                "contentType",
+                "downloadUrl",
+                "expiresAt"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Confirmed receipts only; short-lived presigned read URLs (5 min)"
+          }
+        },
+        "required": [
+          "type",
+          "claim",
+          "allowancePlaces",
+          "receipts"
+        ],
+        "additionalProperties": false
+      },
+      "ApprovalSubjectDoctor": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "doctor"
+          },
+          "doctor": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              "name": {
+                "type": "string"
+              },
+              "specialtyName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "categoryName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "territory": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ApprovalRef"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "city": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pincode": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "registrationNo": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "approvalStatus": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "specialtyName",
+              "categoryName",
+              "territory",
+              "city",
+              "pincode",
+              "registrationNo",
+              "approvalStatus"
+            ],
+            "additionalProperties": false
+          },
+          "possibleDuplicates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalRef"
+            },
+            "description": "Flagged when the doctor was added"
+          }
+        },
+        "required": [
+          "type",
+          "doctor",
+          "possibleDuplicates"
+        ],
+        "additionalProperties": false
+      },
+      "ApprovalSubjectDcrUnlock": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dcr_unlock"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                "description": "Calendar date (YYYY-MM-DD, IST)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "date",
+          "reason"
         ],
         "additionalProperties": false
       },

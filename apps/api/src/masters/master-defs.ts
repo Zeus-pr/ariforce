@@ -40,7 +40,7 @@ import {
   territories,
   workTypes,
 } from '@ariforce/db';
-import { eq, exists, sql, type SQL } from 'drizzle-orm';
+import { eq, exists, inArray, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import type { Principal } from '../auth/principal';
 
@@ -155,6 +155,7 @@ export const MASTERS: Record<string, MasterDef> = {
       q.territoryId ? inSubtree(doctors.territoryId, String(q.territoryId)) : undefined,
       q.specialtyId ? eq(doctors.specialtyId, String(q.specialtyId)) : undefined,
       q.categoryId ? eq(doctors.categoryId, String(q.categoryId)) : undefined,
+      q.ids ? inArray(doctors.id, String(q.ids).toLowerCase().split(',')) : undefined,
       q.approvalStatus
         ? eq(doctors.approvalStatus, q.approvalStatus as 'pending' | 'approved' | 'rejected')
         : undefined,

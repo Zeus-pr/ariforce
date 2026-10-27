@@ -42,6 +42,7 @@ export const tourPlans = pgTable(
     /** Canonical plan (TourPlanDay[]); plan_sessions + tour_plan_visits are derived from it on save. */
     days: jsonb('days').$type<unknown[]>().notNull().default([]),
     decisionComment: text('decision_comment'),
+    submitterNote: text('submitter_note'),
     ...syncCols(),
   },
   (t) => [

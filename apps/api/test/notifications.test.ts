@@ -145,7 +145,7 @@ describe.skipIf(!OWNER || !APP)('notifications (real API)', () => {
     expect((await decide('abm', id, 'reject')).body.status).toBe('rejected');
     await drain();
     expect(await types('bm', id)).toEqual(['leave.rejected']);
-    expect((await inbox('bm', id))[0]!.body).toMatch(/Comment: no/);
+    expect((await inbox('bm', id))[0]!.body).toMatch(/Reason: no/);
 
     r = await apply(D(3));
     const id2 = r.body.id as string;

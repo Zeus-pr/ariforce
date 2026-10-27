@@ -44,13 +44,14 @@ Should print nothing (or only unrelated apps).
 ## 5. Production database (Supabase, Mumbai) and files (Cloudflare R2)
 
 - Connection details arrive via a secure route; put them only in git-ignored `.env` files (names in `.env.example`).
-- Once per project, as owner over `DIRECT_URL`: `pnpm -F @ariforce/db db:migrate` (creates PostGIS, tables, RLS, the `ariforce_app` role), then in the Supabase SQL editor give the role a login: `ALTER ROLE ariforce_app LOGIN PASSWORD '<secret>'`. The API's `DATABASE_URL` is the **transaction pooler** URL with user `ariforce_app.<project-ref>`.
-- Leave Supabase Auth and the Data API unused (see ADR 0001).
+- Migrations (`packages/db/migrations/*.sql`, idempotent, in order) create PostGIS, tables, RLS and the `ariforce_app` role. Production: the lead applies them through the Supabase connector. A database you own: `pnpm -F @ariforce/db db:migrate` over `DIRECT_URL`. List and applied status: `docs/RUN-LOCAL.md` and `docs/README.md`.
+- `ariforce_app` login: `db:migrate` sets it only with `APP_DB_PASSWORD`, `CI` or `NODE_ENV=development`. In Supabase the owner sets it once by hand (`ALTER ROLE ariforce_app LOGIN PASSWORD ...`); the value never goes in git or chat. The API's `DATABASE_URL` is the **transaction pooler** URL with user `ariforce_app.<project-ref>`.
+- Leave Supabase Auth and the Data API unused (`0003_supabase_hardening` revokes `anon`/`authenticated`).
 - R2: create a private bucket + an API token scoped to it; set `R2_*`. Files are uploaded/downloaded with short-lived presigned URLs from the API.
 
 ## First System Admin and demo users (real database)
 
-Prerequisite: migration `0010_company_lookup.sql` applied (or pass `--company-id <uuid>` instead of `--company`).
+Prerequisite: migrations applied through at least `0010_company_lookup.sql` (or pass `--company-id <uuid>` instead of `--company`). `--role director` creates a director instead of a System Admin.
 `DATABASE_URL` (app role) is read from `apps/api/.env`. Passwords are read from env vars or a hidden
 prompt; they are never printed.
 

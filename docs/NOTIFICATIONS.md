@@ -119,6 +119,11 @@ commits. The job (`notify`) renders and inserts the notification.
 | `expense.approved` / `expense.rejected` | final decision                                                                                                       | claimant         |
 | `expense.paid`                          | marked paid                                                                                                          | claimant         |
 | `exceptions.digest`                     | daily exceptions job (#56): one per manager per run, new exceptions of direct reports; dedupe `exceptions:<runDate>` | direct manager   |
+| `tour_plan.approved`                    | tour plan finally approved (`data.comment`, approver in `actorName`)                                                 | requester        |
+| `tour_plan.rejected`                    | tour plan rejected (body has `Reason:`; `data.reason`)                                                               | requester        |
+| `doctor.approved`                       | added doctor finally approved (`data.comment`, approver in `actorName`)                                              | requester        |
+| `doctor.rejected`                       | field-added doctor rejected (body has `Reason:`; `data.reason`)                                                      | requester        |
+| `dcr_unlock.rejected`                   | DCR correction rejected (body has `Reason:`; `data.reason`; entityType `approval_request`)                           | requester        |
 
 Nobody is notified about their own action (recipient = actor is skipped).
 

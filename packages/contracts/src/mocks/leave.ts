@@ -221,6 +221,9 @@ export function leaveHandlers(baseUrl: string, who: (r: Request) => Me | undefin
         decidedAt: null,
         decidedBy: null,
         decisionComment: null,
+        rejectionReason: null,
+        rejectedBy: null,
+        rejectedAt: null,
         cancelledAt: null,
         cancelledBy: null,
         cancelReason: null,
@@ -244,12 +247,19 @@ export function leaveHandlers(baseUrl: string, who: (r: Request) => Me | undefin
       if (r.status !== 'pending') return e(409, 'CONFLICT', `Leave is ${r.status}`);
       const d = LeaveDecision.safeParse(await request.json());
       if (!d.success) return e(422, 'VALIDATION', d.error.message);
+      const rej = d.data.decision === 'reject';
+      if (rej && !d.data.comment)
+        return e(422, 'REJECTION_REASON_REQUIRED', 'A reason is required to reject');
+      const at = now();
       Object.assign(r, {
-        status: d.data.decision === 'approve' ? 'approved' : 'rejected',
+        status: rej ? 'rejected' : 'approved',
         approvalStep: null,
-        decidedAt: now(),
+        decidedAt: at,
         decidedBy: a.p.id,
-        decisionComment: d.data.comment ?? null,
+        decisionComment: d.data.comment || null,
+        rejectionReason: rej ? d.data.comment! : null,
+        rejectedBy: rej ? { id: a.p.id, name: a.p.name } : null,
+        rejectedAt: rej ? at : null,
         version: r.version + 1,
       });
       return HttpResponse.json(r);

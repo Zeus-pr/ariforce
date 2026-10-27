@@ -1,46 +1,125 @@
-# Run AriForce locally against the real database
+# Run AriForce locally
 
-Everything runs from the SSD checkout (`/Volumes/Prajesh_ext_512/AriForce`). Always start a shell with:
+Run everything from an SSD checkout or worktree under `/Volumes/Prajesh_ext_512/`. Start every shell
+with:
 
 ```sh
-cd /Volumes/Prajesh_ext_512/AriForce
-source scripts/env.sh        # keeps all caches/tools on the SSD
+source scripts/env.sh        # keeps pnpm/npm/turbo/node caches, tools and TMPDIR on the SSD
 ```
 
-Secrets live only in the git-ignored env files `apps/api/.env` and `packages/db/.env`. Variable
-names are listed in `.env.example`; never paste values into chat, git or logs.
+Secrets live only in the git-ignored env files `apps/api/.env` and `packages/db/.env`. The variable
+names are listed in `.env.example` and in the table below. Never paste values into chat, git or logs.
 
-## 0. One-time: apply the pending SQL (owner, Supabase SQL editor)
+## 1. Migrations
 
-The API code expects migrations up to 0017. On the real DB only 0000-0009 (and the hand-applied
-`joined_on` column) are present, so apply these files in order (each is safe to re-run):
+`packages/db/migrations/*.sql` are plain SQL files, applied in filename order. Every file is
+idempotent, so applying the full set again is safe. They are exported from Drizzle with
+`pnpm -F @ariforce/db db:sql`; hand-written files are noted in `docs/DATA-MODEL.md`.
 
-1. `packages/db/migrations/0010_company_lookup.sql`
-2. `packages/db/migrations/0011_field_settings.sql`
-3. `packages/db/migrations/0012_tour_plan_days.sql`
-4. `packages/db/migrations/0013_dcr_detail.sql`
-5. `packages/db/migrations/0014_functional_roles_enum.sql`
-6. `packages/db/migrations/0015_functional_roles_rows.sql`
-7. `packages/db/migrations/0016_employees_invites.sql`
-8. `packages/db/migrations/0017_users_joined_on.sql` (`ADD COLUMN IF NOT EXISTS`, no-op if present)
+| File                                 | Purpose                                                                                                               |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `0000_extensions.sql`                | `extensions` schema with PostGIS and pgcrypto                                                                         |
+| `0001_init.sql`                      | Core generated schema: companies, users, territories, masters, approvals, audit                                       |
+| `0002_security.sql`                  | `ariforce_app` role, grants, RLS by `app.current_company_id`, row-meta triggers, append-only audit                    |
+| `0003_supabase_hardening.sql`        | Revokes `anon`/`authenticated` (Supabase Data API) from the app schema                                                |
+| `0004_devices_consent_geo.sql`       | `devices`, `consent_records`, `geo_captures` (append-only)                                                            |
+| `0005_auth.sql`                      | better-auth tables (`auth_user`, `auth_session`, `auth_account`, `auth_verification`) and `auth_resolve_membership()` |
+| `0006_role_hierarchy.sql`            | 8-level role hierarchy plus `system_admin`; enum renames                                                              |
+| `0007_import_products.sql`           | `divisions`, `products`, `product_hq_mappings`, `import_jobs`/`import_rows`                                           |
+| `0008_field_activity_sales.sql`      | `dcrs`, `dcr_calls`, `dcr_call_products`, tour plan visits, sales actuals                                             |
+| `0009_kpi_views.sql`                 | `kpi_*` views (`security_invoker`)                                                                                    |
+| `0010_company_lookup.sql`            | `company_id_by_slug()` used by `admin:create-first`                                                                   |
+| `0011_field_settings.sql`            | Company geofence settings; `geo_captures` selfie and territory columns                                                |
+| `0012_tour_plan_days.sql`            | `tour_plans.days`, `decision_comment`, `standard_tour_plans`                                                          |
+| `0013_dcr_detail.sql`                | `joint_work_user_ids`, `dcrs.territory_ids`, `dcrs.tour_plan_id`                                                      |
+| `0014_functional_roles_enum.sql`     | Adds `distribution_head` and `accountant` enum values                                                                 |
+| `0015_functional_roles_rows.sql`     | Role rows for those two roles                                                                                         |
+| `0016_employees_invites.sql`         | `user_invites`, `invite_resolve()`, territory city/state, `users.designation`                                         |
+| `0017_users_joined_on.sql`           | `users.joined_on` (`IF NOT EXISTS`; it was hand-applied on the real DB earlier as "0010a")                            |
+| `0018_masters_write_rbm_up.sql`      | Masters write for RBM and above; BM/ABM read-only                                                                     |
+| `0019_role_permissions_baseline.sql` | Baseline `role_permissions` for every role (generated; `db:role-perms`)                                               |
+| `0020_signup_requests.sql`           | `signup_requests` and `auth_account_status()`                                                                         |
+| `0021_expense_claims.sql`            | `expense_claims`, `expense_lines`, `expense_attachments`                                                              |
+| `0022_role_permissions_expenses.sql` | Expense and finance permissions                                                                                       |
+| `0023_leave.sql`                     | `leave_settings`, `leave_policies`, `leave_requests`, `leave_grants`                                                  |
+| `0024_kpi_leave_views.sql`           | `kpi_user_leave_day` view                                                                                             |
+| `0025_role_permissions_leave.sql`    | Leave permissions                                                                                                     |
+| `0026_work_types_defaults.sql`       | 8 standard work types per company; `companies_without_work_types()` (health warning)                                  |
+| `0027_invite_status.sql`             | `invite_status()` behind `INVITE_INVALID` / `INVITE_USED` / `INVITE_EXPIRED`                                          |
+| `0028_notifications_jobs.sql`        | `notifications`, `jobs`, `jobs_*` runner functions                                                                    |
+| `0029_dcr_call_rcpa.sql`             | `dcr_call_rcpa` (RCPA lines on chemist calls)                                                                         |
+| `0030_jobs_functions_hardening.sql`  | Hardens the `SECURITY DEFINER` `jobs_*` functions (runner-only assertion)                                             |
+| `0031_exceptions.sql`                | `exception_rules`, `exceptions`, `exceptions_enqueue_daily()`; job allow-list extended                                |
+| `0032_product_price_history.sql`     | `product_price_history` (append-only)                                                                                 |
+| `0033_role_permissions_prices.sql`   | `products:prices` permission (System Admin)                                                                           |
+| `0034_tada_allowances.sql`           | `allowance_rates`, `allowance_places`, `expense_lines` allowance columns, category `allowance`                        |
+| `0035_doctor_duplicate_idx.sql`      | Two doctor lookup indexes for duplicate detection; no data change                                                     |
 
-Until these are applied, `/v1/me`, `/v1/users`, `/v1/team` and the masters fail with "column does
-not exist" and `admin:create-first` cannot resolve the company.
+Leave backdating: the SQL column default in `0023` is 7 days, but the effective default is 14. The API
+creates missing settings rows with 14 (`LEAVE_DEFAULT_BACKDATE_DAYS`), and the live company's row is
+set to 14. No migration changes this (`docs/LEAVE.md`).
 
-`DATABASE_URL` must use the Supabase **transaction pooler** host for this project:
-`aws-0-ap-south-1.pooler.supabase.com:6543`, user `ariforce_app.<project-ref>`. (The `aws-1-…` host
-returns "tenant/user not found".) The API never uses prepared statements and sets
+How they are applied:
+
+- **Production (Supabase):** the lead applies migrations through the Supabase connector, one file
+  at a time, in order. Applied status is tracked in `docs/README.md`.
+- **Local, against a database you own:** `DIRECT_URL` (owner connection) set in `packages/db/.env`,
+  then `pnpm -F @ariforce/db db:migrate`. It runs `packages/db/scripts/migrate.ts`, which applies
+  every file in order and prints `applied <file>` for each one (it prints this even when the file
+  changed nothing). With `CI` or `NODE_ENV=development` set, or `APP_DB_PASSWORD` given, it also
+  gives `ariforce_app` a login. In Supabase that password is set by hand (`docs/SETUP.md`).
+- Checks: `pnpm -F @ariforce/db db:sql:check` (the exported SQL matches the schema) and
+  `pnpm -F @ariforce/db db:role-perms:check` (`0019` matches `DEFAULT_ROLE_PERMISSIONS`).
+
+`DATABASE_URL` on Supabase must use the **transaction pooler** host
+`aws-0-ap-south-1.pooler.supabase.com:6543` with user `ariforce_app.<project-ref>`. The `aws-1-…`
+host returns "tenant/user not found". The API never uses prepared statements and sets
 `app.current_company_id` with `set_config(..., true)` inside each request transaction.
 
-## 1. Start the API (port 4000)
+## 2. Environment variables
 
-> With `NODE_ENV=production` the API validates its environment at boot and exits listing the
-> problem variable **names** (never values): `DATABASE_URL`, `BETTER_AUTH_SECRET` (>= 32 chars),
-> `BETTER_AUTH_URL` (https), `WEB_ORIGIN` (https origins), `TRUST_PROXY`, `R2_ACCOUNT_ID`,
-> `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`; optional ones are type-checked
-> (`R2_ENDPOINT`/`R2_PUBLIC_URL` https, `PORT`, `DB_POOL_MAX`, `SIGNUP_RATE_*` integers,
-> `EXPENSE_APPROVAL_LEVELS` 1|2) and `INVITE_RETURN_LINK=true` is refused. Local dev/test stay
-> lenient. Names: `.env.example`.
+Names and purpose only. Source: `apps/api/src/config/env.ts` (validated at boot only when
+`NODE_ENV=production`; the process exits listing the bad variable **names**, never values) and
+`.env.example`. "Prod" = required in production.
+
+| Variable                   | Prod | Purpose                                                                                                                    |
+| -------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`             | yes  | API connection as `ariforce_app` (postgres URL; Supabase transaction pooler)                                               |
+| `BETTER_AUTH_SECRET`       | yes  | better-auth signing secret, at least 32 characters                                                                         |
+| `BETTER_AUTH_URL`          | yes  | Public API base URL; https in production (`http://localhost:4000` locally)                                                 |
+| `WEB_ORIGIN`               | yes  | Comma-separated web origins for CORS and auth; https in production (default `http://localhost:3000,http://localhost:3200`) |
+| `TRUST_PROXY`              | yes  | Express `trust proxy` setting (default `loopback`)                                                                         |
+| `R2_ACCOUNT_ID`            | yes  | Cloudflare R2 account for presigned uploads (`docs/STORAGE.md`)                                                            |
+| `R2_ACCESS_KEY_ID`         | yes  | R2 access key id                                                                                                           |
+| `R2_SECRET_ACCESS_KEY`     | yes  | R2 secret key                                                                                                              |
+| `R2_BUCKET`                | yes  | R2 bucket name                                                                                                             |
+| `R2_ENDPOINT`              | no   | R2 S3 endpoint override (https)                                                                                            |
+| `R2_PUBLIC_URL`            | no   | Validated as https in production; not read anywhere else in the API today                                                  |
+| `NODE_ENV`                 | —    | `production` turns on env validation, HSTS, hides `/docs` and `/openapi.json`, and enables the jobs runner                 |
+| `PORT`                     | no   | API port (default 4000)                                                                                                    |
+| `DB_POOL_MAX`              | no   | Postgres pool size                                                                                                         |
+| `CLIENT_IP_MODE`           | no   | `cloudflare` (trust `CF-Connecting-IP`) or `socket`; `X-Forwarded-For` is never trusted                                    |
+| `AUTH_RATE_PER_IP`         | no   | Sign-in attempts per IP per 15 min (default 20; other auth routes 3×)                                                      |
+| `INVITE_RATE_PER_IP`       | no   | Invite accepts per IP per hour (default 10)                                                                                |
+| `SIGNUP_RATE_PER_IP`       | no   | Sign-up requests per IP per hour (default 10; sign-up options 6×)                                                          |
+| `SIGNUP_RATE_PER_EMAIL`    | no   | Sign-up requests per email per hour (default 3)                                                                            |
+| `SIGNUP_COMPANY_SLUG`      | no   | Company that self sign-up requests go to (default `arighna`)                                                               |
+| `TURNSTILE_SECRET`         | no   | Cloudflare Turnstile check on sign-up, active only when set (`CAPTCHA_FAILED`)                                             |
+| `INVITE_RETURN_LINK`       | no   | Local only: return the invite link in the response (mailer is a stub). Refused when `true` in production                   |
+| `EXPENSE_APPROVAL_LEVELS`  | no   | `1` or `2` approval steps for expense claims                                                                               |
+| `JOBS_RUNNER_ENABLED`      | no   | `true`/`false`; default on when `NODE_ENV=production`, off otherwise                                                       |
+| `JOBS_POLL_MS`             | no   | Runner poll interval (default 2000)                                                                                        |
+| `JOBS_BATCH_SIZE`          | no   | Jobs claimed per poll (default 10)                                                                                         |
+| `JOBS_LOCK_TIMEOUT_S`      | no   | Seconds before a locked job is considered stale (default 300)                                                              |
+| `DIRECT_URL`               | —    | Owner connection for migrations and seeds only (`packages/db/.env`). Never set it for the API                              |
+| `APP_DB_PASSWORD`          | —    | Local/CI: login password that `db:migrate` gives `ariforce_app`                                                            |
+| `NEXT_PUBLIC_API_MODE`     | —    | Web (`apps/web/.env.local`): `mock` (default, MSW) or `real`                                                               |
+| `NEXT_PUBLIC_API_BASE_URL` | —    | Web: API base URL, e.g. `http://localhost:4000`                                                                            |
+
+Script-only, read from your own shell: `ARIFORCE_ADMIN_PASSWORD` and `ARIFORCE_DEMO_PASSWORD`
+(`admin:create-first`), `DEMO_PASSWORD` (`pnpm -F @ariforce/api db:seed`, refuses production; has a local default), `CI`.
+
+## 3. Start the API (port 4000)
 
 ```sh
 pnpm install                                 # first time only
@@ -50,45 +129,57 @@ pnpm -F @ariforce/api start                  # node dist/main.js, loads apps/api
 # or, with reload: pnpm -F @ariforce/api dev
 ```
 
-Checks: `curl http://localhost:4000/v1/health` returns `{"status":"ok","warnings":[]}` (`warnings` is aggregate only, e.g. `{"code":"NO_WORK_TYPES","count":1,"message":"…"}` or `{"code":"WORK_TYPES_CHECK_FAILED","message":"…"}`; no company ids or slugs, which appear only in the API boot log; it never changes `status`), and
-`curl -i http://localhost:4000/v1/me` returns 401 when signed out. API docs: http://localhost:4000/docs
+Checks:
 
-Env names (apps/api/.env): `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`
-(`http://localhost:4000`), `WEB_ORIGIN` (default `http://localhost:3000,http://localhost:3200`),
-`PORT` (default 4000), `R2_*` for uploads. Don't set `DIRECT_URL` for the API.
+- `curl http://localhost:4000/v1/health` returns `{"status":"ok","warnings":[]}`. `status` is always
+  `ok`. `warnings` is aggregate only (cached about 60 s), one of:
+  - `{"code":"NO_WORK_TYPES","count":<n>,"message":"…"}`: n companies have no active work types.
+  - `{"code":"WORK_TYPES_CHECK_FAILED","message":"…"}`: the check could not run (DB down or 0026
+    missing).
 
-## 2. Create the first login (no passwords in chat or git)
+  Company ids and slugs appear only in the API boot log.
 
-Nobody on the real DB can sign in until an auth identity is linked. Run this once, in your own
-terminal. The password is read from a hidden prompt, or from `ARIFORCE_ADMIN_PASSWORD` if you
-export it in that shell. It is never printed.
+- `curl -i http://localhost:4000/v1/me` returns 401 when signed out.
+- API reference: http://localhost:4000/docs and `/openapi.json` (not served in production).
+
+### Jobs runner
+
+The DB-backed runner (`apps/api/src/jobs/jobs.runner.ts`, `docs/NOTIFICATIONS.md`) polls the
+`jobs` table every `JOBS_POLL_MS`, claims up to `JOBS_BATCH_SIZE` jobs, and reclaims jobs locked for
+longer than `JOBS_LOCK_TIMEOUT_S`. It is off by default outside production; set
+`JOBS_RUNNER_ENABLED=true` locally to see notifications and the daily exceptions job. Jobs are claimed with `FOR UPDATE SKIP LOCKED` (0028), so two runners do not take the same job. Queue
+counts: `GET /v1/jobs/stats`.
+
+## 4. Create the first login (no passwords in chat or git)
+
+Run once, in your own terminal. The password comes from a hidden prompt, or from
+`ARIFORCE_ADMIN_PASSWORD` if exported in that shell. It is never printed.
 
 ```sh
 pnpm -F @ariforce/api admin:create-first --company arighna \
   --email <your-admin-email> --name "System Admin"
 ```
 
-- To give the 25 imported employees access, managers (ABM and above) use the invite flow:
-  `POST /v1/employees/{id}/invite` creates a single-use, 7-day link. Only the SHA-256 of the token
-  is stored, and the employee picks their own password at `POST /v1/invites/accept`. Locally you can
-  set `INVITE_RETURN_LINK=true` to get the link in the response, because the mailer is a stub.
-- For demo logins, one per role: add `--demo-users --demo-domain <domain>`. The password comes from
+- `--role director` creates a director instead of a system admin.
+- Employees get access through invites (ABM and above): `POST /v1/employees/{id}/invite` or
+  `POST /v1/employees/invite-bulk`. The link is single-use for 7 days, only its SHA-256 is stored,
+  and the employee sets a password of at least 12 characters at `POST /v1/invites/accept`.
+- Demo logins, one per role: add `--demo-users --demo-domain <domain>`; password from
   `ARIFORCE_DEMO_PASSWORD` or the prompt.
-- Re-running is idempotent. Add `--reset-password` to set a new password.
+- Re-running is idempotent. `--reset-password` sets a new password.
 
-## 3. Sign-in scheme
+## 5. Sign-in scheme
 
-- better-auth email and password, `POST /v1/auth/sign-in/email` with `{ email, password }`.
-- **Browser:** the session cookie `better-auth.session_token` is HttpOnly, `SameSite=Lax` and not
-  `Secure` on http. localhost:3000 and localhost:3200 are the _same site_ as localhost:4000 (the port
-  does not matter for SameSite), so the cookie is sent when the web client uses
-  `credentials: 'include'`. The contracts client does this already. The API answers CORS for the
-  `WEB_ORIGIN` list with `Access-Control-Allow-Credentials: true`. Use `localhost` everywhere, not a
-  mix of `localhost` and `127.0.0.1`, because those are different sites.
-- **Mobile/CLI:** the sign-in response header `set-auth-token` carries a bearer token. Send it as
+- better-auth email and password: `POST /v1/auth/sign-in/email` with `{ email, password }`.
+- **Browser:** the session cookie `better-auth.session_token` is HttpOnly and `SameSite=Lax`.
+  localhost:3000/3200 and localhost:4000 are the same site, so the cookie is sent with
+  `credentials: 'include'` (the contracts client does this). CORS allows the `WEB_ORIGIN` list with
+  credentials and exposes `Retry-After` and `Content-Disposition`. Use `localhost` everywhere, not
+  a mix with `127.0.0.1`.
+- **Mobile/CLI:** the sign-in response header `set-auth-token` carries a bearer token; send it as
   `Authorization: Bearer <token>`.
 
-## 4. Start the web app and switch between mock and real
+## 6. Web app, mock or real
 
 `apps/web/.env.local` (git-ignored):
 
@@ -101,17 +192,47 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
 pnpm -F @ariforce/web dev                      # http://localhost:3000
 ```
 
-`mock` starts MSW in the browser with the contracts mock handlers, so no API is needed. `real`
-calls the API with the session cookie. Restart `next dev` after you change the flag.
+`mock` runs MSW in the browser with the contracts mock handlers. `real` calls the API with the
+session cookie. Restart `next dev` after changing the flag.
 
-## Real endpoints available
+## 7. Tests
 
-`/v1/me`; `/v1/doctors`, `/v1/chemists`, `/v1/stockists` (list with `q`, `sort`, `limit`,
-`cursor`, `includeTotal=true`, filters such as `territoryId` (subtree), `specialtyId` and
-`categoryId`, plus create, PATCH and import dry-run/commit); `/v1/specialties`,
-`/v1/doctor-categories`, `/v1/territories`; `/v1/users`; `/v1/team` and `/v1/employees`. See
-http://localhost:4000/docs for the full list.
+### Test database
 
-## Unit tests in apps/web
+API and DB integration tests need a real Postgres and are **skipped** (`describe.skipIf`) when
+`DIRECT_URL` or `DATABASE_URL` is not set. `scripts/test-db.sh` creates a throwaway local cluster on
+the SSD (`.cache/testdb`, port 54329; override with `ARIFORCE_TESTDB_DIR` / `ARIFORCE_TESTDB_PORT`).
+It applies every migration with PostGIS stubbed (`scripts/test-db-postgis-stub.sql`, geometry as
+text, GiST as btree), so spatial SQL is not exercised.
 
-apps/web has no vitest dependency, so `scripts/vitest.sh` fails there with `exec: vitest: not found`. Web behaviour is covered by the Playwright evidence scripts in `apps/web/e2e/*-evidence.mjs` (chromium + webkit). vitest runs in the API/packages workspaces only; nothing was installed outside the SSD to change this.
+```sh
+eval "$(sh scripts/test-db.sh up)"     # exports local-only DIRECT_URL and DATABASE_URL
+pnpm -F @ariforce/api test
+sh scripts/test-db.sh down             # stop and delete the cluster
+```
+
+`up` drops and recreates the `ariforce` database each time. Needs `initdb`, `pg_ctl` and `psql`
+on `PATH`. Never point tests at the real database.
+
+### scripts/vitest.sh
+
+Every package's `test` script runs `sh ../../scripts/vitest.sh run`. The wrapper sets `HOME` to
+`.cache/test-home` (vitest writes a secret token under `os.homedir()`), and pins
+`NODE_COMPILE_CACHE` and `TMPDIR` inside the repo, so nothing lands on the internal disk. Pass
+vitest arguments through, for example:
+
+```sh
+pnpm -F @ariforce/api exec sh ../../scripts/vitest.sh run test/leave.test.ts
+```
+
+### Full gate (API side)
+
+```sh
+pnpm -r --workspace-concurrency=1 --filter '!@ariforce/web' typecheck
+pnpm -r --filter '!@ariforce/web' lint
+pnpm exec prettier --check . '!apps/web/public/mockServiceWorker.js'
+pnpm -F @ariforce/contracts openapi:check
+pnpm -F @ariforce/db db:role-perms:check
+pnpm -F @ariforce/db db:sql:check
+pnpm -r --workspace-concurrency=1 --filter '!@ariforce/web' test
+```

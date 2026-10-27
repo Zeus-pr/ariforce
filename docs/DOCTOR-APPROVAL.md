@@ -1,6 +1,9 @@
 # Field-added doctor approval and duplicate detection (#26)
 
-Status: built on `feat/26-doctor-approval`. The decisions marked **D#** need lead confirmation.
+Status: built on `feat/26-doctor-approval`. The **D#** decisions stand as built.
+
+**Decided (Prajesh, 2026-10-27):** BM/ABM cannot propose doctors; `doctors:propose` is cancelled.
+Doctor-approval notifications come later (not built).
 Regulatory detail (NMC/state council registration checks) is out of scope here; verify with counsel
 before adding any registry lookup.
 
@@ -65,8 +68,8 @@ their doctors are `pending` and go to their reporting manager. BM/ABM may call t
 
 ## Questions for Prajesh
 
-- **Q1** Should BM/ABM be able to add doctors as `pending` proposals (new `doctors:propose`)?
-- **Q2** Should the approver be notified in-app (new notification types `doctor.submitted` /
+- **Q1** Decided: no. BM/ABM cannot propose doctors; `doctors:propose` is cancelled.
+- **Q2** Later: should the approver be notified in-app (new notification types `doctor.submitted` /
   `doctor.approved` / `doctor.rejected`)? Not built; the request shows in `/v1/approvals?mine=to_decide`.
 
 ## Assumptions / out of scope
