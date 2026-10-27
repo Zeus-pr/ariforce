@@ -1,3 +1,4 @@
+import { MailService } from '../mail/mail.service';
 import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
 import { revokeUserSessions } from '../auth/revoke';
 import {
@@ -63,12 +64,17 @@ export type Person = {
   rank: number;
 };
 
-/** Stub mailer: logs only the non-secret invite id; never the token or link. */
+/**
+ * Invite email (item F): sends the set-password link through MailService (Resend, or a log line
+ * when RESEND_API_KEY is unset). Logs never contain the token or link. Sent fire-and-forget from
+ * inside the transaction: a send failure never blocks the invite (admins can resend / copy link).
+ */
 @Injectable()
 export class InviteMailer {
-  private readonly log = new Logger('InviteMailer');
-  send(inviteId: string) {
-    this.log.log(`invite ${inviteId} queued (stub mailer, nothing sent)`);
+  constructor(private readonly mail: MailService) {}
+  send(to: string, name: string, token: string, expiresAt: Date) {
+    const base = process.env.WEB_ORIGIN?.split(',')[0]?.trim() || 'http://localhost:3000';
+    void this.mail.invite(to, name, `${base}/invite?token=${encodeURIComponent(token)}`, expiresAt);
   }
 }
 
@@ -357,7 +363,11 @@ export class TeamService {
       entityId: userId,
       after: { inviteId: inv!.id, expiresAt },
     });
-    this.mailer.send(inv!.id);
+    const [who] = await tx
+      .select({ name: users.name, email: users.email })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (who?.email) this.mailer.send(who.email, who.name, token, expiresAt);
     const base = process.env.WEB_ORIGIN?.split(',')[0] ?? 'http://localhost:3000';
     return {
       id: inv!.id,

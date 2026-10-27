@@ -13,6 +13,8 @@ const good = {
   R2_ACCESS_KEY_ID: 'fake-access-key',
   R2_SECRET_ACCESS_KEY: 'fake-secret-value-123',
   R2_BUCKET: 'bucket',
+  RESEND_API_KEY: 're_fakefakefake123',
+  MAIL_FROM: 'AriForce <no-reply@mail.example.com>',
 };
 
 describe('env validation (#80)', () => {
@@ -37,6 +39,8 @@ describe('env validation (#80)', () => {
       'R2_ACCESS_KEY_ID',
       'R2_SECRET_ACCESS_KEY',
       'R2_BUCKET',
+      'RESEND_API_KEY',
+      'MAIL_FROM',
     ])
       expect(p).toContain(`${n}: is required`);
     expect(envProblems({ ...good, R2_BUCKET: '' })).toEqual(['R2_BUCKET: is required']);
@@ -78,5 +82,20 @@ describe('env validation (#80)', () => {
       'app.example.com',
     ])
       expect(msg).not.toContain(v);
+  });
+  it('mail settings (item F) are checked without echoing values', () => {
+    const p = envProblems({
+      ...good,
+      RESEND_API_KEY: 'not-a-key',
+      MAIL_FROM: 'AriForce <no-reply@localhost>',
+      PASSWORD_RESET_RATE_PER_EMAIL: 'x',
+    });
+    expect([...new Set(p.map((l) => l.split(':')[0]))].sort()).toEqual([
+      'MAIL_FROM',
+      'PASSWORD_RESET_RATE_PER_EMAIL',
+      'RESEND_API_KEY',
+    ]);
+    expect(p.join('\n')).not.toContain('not-a-key');
+    expect(envProblems({ ...good, MAIL_FROM: 'no-reply@mail.example.com' })).toEqual([]);
   });
 });

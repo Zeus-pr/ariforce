@@ -80,4 +80,7 @@ export const LIMITS = {
   signupSubmitIp: () => ({ limit: num('SIGNUP_RATE_PER_IP', 10), windowMs: HOUR }),
   signupSubmitEmail: () => ({ limit: num('SIGNUP_RATE_PER_EMAIL', 3), windowMs: HOUR }),
   signupOptions: () => ({ limit: num('SIGNUP_RATE_PER_IP', 10) * 6, windowMs: HOUR }),
+  passwordForgotIp: () => ({ limit: num('PASSWORD_RESET_RATE_PER_IP', 10), windowMs: HOUR }),
+  passwordForgotEmail: () => ({ limit: num('PASSWORD_RESET_RATE_PER_EMAIL', 3), windowMs: HOUR }),
+  passwordResetIp: () => ({ limit: num('PASSWORD_RESET_RATE_PER_IP', 10) * 2, windowMs: HOUR }),
 };

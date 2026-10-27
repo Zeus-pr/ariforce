@@ -102,7 +102,15 @@ import {
   SfcTable,
   SfcTablePut,
 } from './schemas/sfc';
-import { Me, SessionInfo, SignInEmailBody } from './schemas/auth';
+import {
+  Me,
+  PasswordForgot,
+  PasswordForgotAccepted,
+  PasswordReset,
+  PasswordResetDone,
+  SessionInfo,
+  SignInEmailBody,
+} from './schemas/auth';
 import { RoleList } from './schemas/roles';
 import { Health } from './schemas/health';
 import { KpiQuery, KpiReport, ProductKpiReport } from './schemas/kpis';
@@ -1726,6 +1734,43 @@ function buildDocument(): OpenApiDocument {
             },
           },
         }),
+      },
+      '/v1/auth/password/forgot': {
+        post: {
+          tags: ['Auth'],
+          operationId: 'forgotPassword',
+          summary:
+            'Public. Emails a 6-digit reset code (valid 10 minutes, 3 tries) to an ACTIVE account. Always answers 200 with the same message, whether or not the email has an account; suspended, pending, rejected, retired and never-signed-in (invited) accounts get no email.',
+          requestBody: json(PasswordForgot),
+          responses: {
+            '200': { description: 'Accepted (generic)', ...json(PasswordForgotAccepted) },
+            '422': err('Validation failed (email)'),
+            '429': err('RATE_LIMITED: 3 per email per hour and 10 per IP per hour (Retry-After)'),
+          },
+        },
+      },
+      '/v1/auth/password/reset': {
+        post: {
+          tags: ['Auth'],
+          operationId: 'resetPassword',
+          summary:
+            'Public. Sets a new password (min 12) with the emailed code and signs out every device; sign in again afterwards. Unknown or ineligible accounts get the same error as a wrong code.',
+          requestBody: json(PasswordReset),
+          responses: {
+            '200': {
+              description: 'Password changed; all sessions revoked',
+              ...json(PasswordResetDone),
+            },
+            '400': err(
+              'PASSWORD_RESET_CODE_INVALID (wrong code, no code requested, or no eligible account) or PASSWORD_RESET_CODE_EXPIRED',
+            ),
+            '403': err(
+              'PASSWORD_RESET_TOO_MANY_ATTEMPTS: 3 wrong codes already used up this code (even the right code is refused); request a new one',
+            ),
+            '422': err('Validation failed (email, 6-digit code, password 12-128)'),
+            '429': err('RATE_LIMITED: 20 per IP per hour (Retry-After)'),
+          },
+        },
       },
       '/v1/auth/sign-up-request': {
         post: {
