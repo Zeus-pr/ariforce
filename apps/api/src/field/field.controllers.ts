@@ -1,3 +1,4 @@
+import { approvedLeaveDays } from '../leave/leave.util';
 import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
 import {
   CheckInCreate,
@@ -155,6 +156,10 @@ export class AttendanceController {
       for (const r of tpList)
         if (!plan.has(key(r.userId, r.date))) plan.set(key(r.userId, r.date), r);
       for (const r of dayRows) plan.set(key(r.userId, r.date), r);
+      // Approved leave (#51) wins over plan/DCR kinds when there is no punch-in.
+      const leaveMap = new Map(
+        (await approvedLeaveDays(tx, ids, from, to)).map((l) => [key(l.userId, l.date), l]),
+      );
       const byDay = new Map<string, typeof caps>();
       for (const c of caps) {
         const k = key(c.userId, localDate(c.capturedAt, s.timezone));
@@ -168,13 +173,14 @@ export class AttendanceController {
           const pin = c.find((x) => x.kind === 'punch_in');
           const pout = c.find((x) => x.kind === 'punch_out');
           const wt = plan.get(key(u.id, dt));
+          const lv = leaveMap.get(key(u.id, dt));
           const status: AttendanceDay['status'] = pin
             ? pout || dt < today
               ? pout
                 ? 'present'
                 : 'incomplete'
               : 'incomplete'
-            : wt?.kind === 'leave'
+            : lv || wt?.kind === 'leave'
               ? 'leave'
               : wt?.kind === 'holiday'
                 ? 'holiday'
@@ -188,6 +194,7 @@ export class AttendanceController {
             punchOut: pout ? toCheckIn(pout, s.timezone) : null,
             visits: c.filter((x) => x.kind === 'visit').length,
             workTypeId: wt?.workTypeId ?? null,
+            leave: lv ? { requestId: lv.requestId, typeCode: lv.typeCode, half: lv.half } : null,
           });
         }
       if (q.sort === 'date') all.reverse();

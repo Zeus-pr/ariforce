@@ -11,6 +11,17 @@ import {
   type TeamNode,
 } from '../schemas/team';
 import * as fx from './fixtures';
+import { KPI_KEYS, type KpiKey } from '../schemas/kpis';
+import { WEEK_KPI_KEYS } from '../schemas/team-profile';
+import {
+  TeamMemberChemistPage,
+  TeamMemberDoctorPage,
+  TeamPerformance,
+  TeamProfile,
+  type PerformanceBucket as PB,
+} from '../schemas/team-profile';
+import type * as zz from 'zod';
+type PerformanceBucket = zz.infer<typeof PB>;
 
 type Emp = {
   id: string;
@@ -250,6 +261,209 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
       const u = emps.find((x) => x.id === inv.userId)!;
       u.status = 'active';
       return HttpResponse.json({ userId: u.id, email: u.email });
+    }),
+  ];
+}
+
+/**
+ * Team member profile (#75) mocks. Same scope rules and error codes as the API; performance numbers are
+ * deterministic placeholders (shape only), expenses are 0, doctors/chemists come from the fixtures.
+ */
+function isoWeek(d: string) {
+  const t = new Date(`${d}T00:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + 3 - ((t.getUTCDay() + 6) % 7));
+  const y = t.getUTCFullYear();
+  const w = 1 + Math.floor((t.getTime() - Date.UTC(y, 0, 1)) / (7 * 86_400_000));
+  return `${y}-W${String(w).padStart(2, '0')}`;
+}
+
+export function teamProfileHandlers(baseUrl: string, who: (r: Request) => Me | undefined) {
+  const B = `${baseUrl}/v1/team/members/:userId`;
+  const guard = (request: Request, userId: string) => {
+    const p = who(request);
+    if (!p) return { res: e(401, 'UNAUTHENTICATED', 'Sign in required') };
+    const self = p.id === userId;
+    if (hierarchyRank(p.roles) === 0)
+      return { res: e(403, 'FORBIDDEN', 'Team profiles need a hierarchy role') };
+    if (
+      !self &&
+      (!(p.permissions as string[]).includes('reports:read') ||
+        hierarchyRank(p.roles) < MIN_MANAGER_RANK)
+    )
+      return { res: e(403, 'FORBIDDEN', 'Only ABM and above with reports:read may view others') };
+    const t = emps.find((x) => x.id === userId);
+    if (!t || rank(t) === 0 || !(self || wide(p) || subtree(p.id).has(userId)))
+      return { res: e(404, 'NOT_FOUND', 'Team member not found') };
+    return { p, t };
+  };
+  const today = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+  const terrs = (t: Emp) => [...terrSubtree(t.territoryIds)];
+  const pageOf = <T>(all: T[], url: URL) => {
+    const limit = Number(url.searchParams.get('limit') ?? 50);
+    const off = Number(
+      url.searchParams.get('cursor') ? atob(url.searchParams.get('cursor')!).slice(2) : 0,
+    );
+    const items = all.slice(off, off + limit);
+    return {
+      items,
+      nextCursor: off + limit < all.length ? btoa(`o:${off + limit}`) : null,
+      serverTime: new Date().toISOString(),
+      ...(url.searchParams.get('includeTotal') === 'true' ? { total: all.length } : {}),
+    };
+  };
+  const bucket = (label: string, from: string, to: string, week: boolean): PerformanceBucket => ({
+    label,
+    from,
+    to,
+    workingDays: week ? 6 : 26,
+    metrics: (week ? [...WEEK_KPI_KEYS] : [...KPI_KEYS]).map((kpi) => ({
+      kpi: kpi as KpiKey,
+      value: null,
+      numerator: 0,
+      denominator: 0,
+      unit: 'count' as const,
+      target: null,
+    })),
+    attendance: { presentDays: 0, leaveDays: 0, holidayDays: 0, absentDays: 0 },
+    expenses: null,
+  });
+  return [
+    http.get(`${B}/profile`, ({ request, params }) => {
+      const g = guard(request, String(params.userId));
+      if (g.res) return g.res;
+      const { depth: _d, ...member } = node(g.t, 0);
+      const mgr = emps.find((x) => x.id === g.t.managerId);
+      const ts = terrs(g.t);
+      return HttpResponse.json(
+        TeamProfile.parse({
+          member,
+          manager: mgr ? { id: mgr.id, name: mgr.name, role: node(mgr, 0).role } : null,
+          hq: member.territories.at(-1) ?? null,
+          counts: {
+            doctors: fx.doctors.filter((d) => ts.includes(d.territoryId)).length,
+            chemists: fx.chemists.filter((c) => ts.includes(c.territoryId)).length,
+            directReports: member.directReportCount,
+            subtreeSize: subtree(g.t.id).size - 1,
+          },
+          today: {
+            date: today(),
+            status: 'absent',
+            punchInAt: null,
+            punchOutAt: null,
+            leave: null,
+          },
+          lastPunchInAt: null,
+          canSeeExpenses:
+            g.p.id === g.t.id ||
+            (g.p.permissions as string[]).some(
+              (x) => x === 'expenses:approve' || x === 'finance:read',
+            ),
+        }),
+      );
+    }),
+    http.get(`${B}/performance`, ({ request, params }) => {
+      const g = guard(request, String(params.userId));
+      if (g.res) return g.res;
+      const sp = new URL(request.url).searchParams;
+      const week = sp.get('granularity') === 'week';
+      const to = sp.get('to') ?? today();
+      const buckets: PerformanceBucket[] = [];
+      if (week) {
+        let mon = to;
+        while (new Date(`${mon}T00:00:00Z`).getUTCDay() !== 1)
+          mon = new Date(Date.parse(`${mon}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+        for (let i = 7; i >= 0; i--) {
+          const f = new Date(Date.parse(`${mon}T00:00:00Z`) - i * 7 * 86_400_000);
+          const t = new Date(f.getTime() + 6 * 86_400_000);
+          buckets.push(
+            bucket(
+              isoWeek(f.toISOString().slice(0, 10)),
+              f.toISOString().slice(0, 10),
+              t.toISOString().slice(0, 10),
+              true,
+            ),
+          );
+        }
+      } else {
+        const [y, m] = to.split('-').map(Number) as [number, number];
+        for (let i = 5; i >= 0; i--) {
+          const f = new Date(Date.UTC(y, m - 1 - i, 1));
+          const t = new Date(Date.UTC(y, m - i, 0));
+          buckets.push(
+            bucket(
+              f.toISOString().slice(0, 7),
+              f.toISOString().slice(0, 10),
+              t.toISOString().slice(0, 10),
+              false,
+            ),
+          );
+        }
+      }
+      return HttpResponse.json(
+        TeamPerformance.parse({
+          userId: g.t.id,
+          granularity: week ? 'week' : 'month',
+          from: buckets[0]!.from,
+          to: buckets.at(-1)!.to,
+          generatedAt: new Date().toISOString(),
+          buckets,
+          total: bucket('total', buckets[0]!.from, buckets.at(-1)!.to, week),
+        }),
+      );
+    }),
+    http.get(`${B}/doctors`, ({ request, params }) => {
+      const g = guard(request, String(params.userId));
+      if (g.res) return g.res;
+      const ts = terrs(g.t);
+      const url = new URL(request.url);
+      const q = url.searchParams.get('q')?.toLowerCase();
+      const all = fx.doctors
+        .filter((d) => ts.includes(d.territoryId) && (!q || d.name.toLowerCase().includes(q)))
+        .map((d) => ({
+          id: d.id,
+          name: d.name,
+          qualification: d.qualification,
+          specialty: fx.specialties.find((s) => s.id === d.specialtyId)?.name ?? null,
+          category: fx.doctorCategories.find((c) => c.id === d.categoryId)?.name ?? null,
+          territoryId: d.territoryId,
+          territoryName: fx.territories.find((t) => t.id === d.territoryId)?.name ?? '',
+          city: d.city,
+          requiredVisits:
+            fx.doctorCategories.find((c) => c.id === d.categoryId)?.visitsPerMonth ?? 1,
+          visitsThisMonth: 0,
+          lastVisitDate: null,
+        }));
+      return HttpResponse.json(TeamMemberDoctorPage.parse(pageOf(all, url)));
+    }),
+    http.get(`${B}/chemists`, ({ request, params }) => {
+      const g = guard(request, String(params.userId));
+      if (g.res) return g.res;
+      const ts = terrs(g.t);
+      const url = new URL(request.url);
+      const all = fx.chemists
+        .filter((c) => ts.includes(c.territoryId))
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          territoryId: c.territoryId,
+          territoryName: fx.territories.find((t) => t.id === c.territoryId)?.name ?? '',
+          city: c.city,
+          lastVisitDate: null,
+        }));
+      return HttpResponse.json(TeamMemberChemistPage.parse(pageOf(all, url)));
+    }),
+    http.get(`${B}/export`, ({ request, params }) => {
+      const g = guard(request, String(params.userId));
+      if (g.res) return g.res;
+      const pdf = new URL(request.url).searchParams.get('format') === 'pdf';
+      return new HttpResponse(pdf ? '%PDF-1.4 mock' : 'PK mock', {
+        headers: {
+          'content-type': pdf
+            ? 'application/pdf'
+            : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'content-disposition': `attachment; filename="team-profile.${pdf ? 'pdf' : 'xlsx'}"`,
+        },
+      });
     }),
   ];
 }

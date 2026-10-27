@@ -23,9 +23,10 @@ import { duplicateKeys, mapImportRow, type ImportLookup } from '../import/templa
 import type { ImportEntity } from '../schemas/imports';
 import { SignInEmailBody } from '../schemas/auth';
 import { kpiReport, productKpiReport } from './kpis';
-import { teamHandlers } from './team';
+import { teamHandlers, teamProfileHandlers } from './team';
 import { signupHandlers } from './signup';
 import { expenseHandlers } from './expenses';
+import { leaveHandlers, mockLeaveOn, mockWeeklyOffDays } from './leave';
 import { mastersGuardHandlers } from './masters-guard';
 import {
   Approval,
@@ -51,11 +52,14 @@ import {
   StandardTourPlan,
   StandardTourPlanUpsert,
   TourPlan,
+  TourPlanCalendar,
   TourPlanCopy,
   TourPlanUpsert,
   copyFromMonth,
   copyFromStandard,
-  missingDates,
+  istDate,
+  missingRequiredDates,
+  requiredDates,
   prevMonth,
   WorkType,
   WorkTypeCreate,
@@ -370,7 +374,8 @@ export function createHandlers(baseUrl = '') {
     ...mastersGuardHandlers(baseUrl, mockPrincipal),
     ...signupHandlers(baseUrl, mockPrincipal),
     ...expenseHandlers(baseUrl, mockPrincipal),
-    http.get(`${baseUrl}/v1/health`, () => HttpResponse.json({ status: 'ok' })),
+    ...leaveHandlers(baseUrl, mockPrincipal),
+    http.get(`${baseUrl}/v1/health`, () => HttpResponse.json({ status: 'ok', warnings: [] })),
     http.post(`${baseUrl}/v1/files/upload-url`, () =>
       HttpResponse.json({
         fileKey: 'mock/doctor_photo/2026/10/mock.jpg',
@@ -457,6 +462,7 @@ export function createHandlers(baseUrl = '') {
     ...crud(baseUrl, '/v1/products', Product, ProductCreate, fx.products),
     ...crud(baseUrl, '/v1/work-types', WorkType, WorkTypeCreate, fx.workTypes),
     ...fieldHandlers(baseUrl),
+    ...teamProfileHandlers(baseUrl, mockPrincipal),
     ...teamHandlers(baseUrl, mockPrincipal),
   ];
 }
@@ -640,6 +646,7 @@ function fieldHandlers(baseUrl: string) {
           punchOut: null,
           visits: 0,
           workTypeId: null,
+          leave: mockLeaveOn(c.userId, c.date),
         };
         if (c.kind === 'punch_in') d.punchIn = c;
         else if (c.kind === 'punch_out') d.punchOut = c;
@@ -665,11 +672,17 @@ function fieldHandlers(baseUrl: string) {
             userId: u.id,
             userName: u.name,
             date: d,
-            status: kind === 'leave' ? 'leave' : kind === 'holiday' ? 'holiday' : 'absent',
+            status:
+              mockLeaveOn(u.id, d) || kind === 'leave'
+                ? 'leave'
+                : kind === 'holiday'
+                  ? 'holiday'
+                  : 'absent',
             punchIn: null,
             punchOut: null,
             visits: 0,
             workTypeId: dcr?.workTypeId ?? null,
+            leave: mockLeaveOn(u.id, d),
           });
         }
       return list(
@@ -694,6 +707,19 @@ function fieldHandlers(baseUrl: string) {
         ? { ...stp, days: b.data.days, version: stp.version + 1, updatedAt: serverTime() }
         : { ...stamp(), id: crypto.randomUUID(), userId: fx.me.id, days: b.data.days };
       return HttpResponse.json(StandardTourPlan.parse(stp));
+    }),
+    http.get(`${baseUrl}/v1/tour-plans/:month/calendar`, ({ params }) => {
+      const month = String(params.month);
+      const todayIST = istDate();
+      const weeklyOffDays = mockWeeklyOffDays();
+      return HttpResponse.json(
+        TourPlanCalendar.parse({
+          month,
+          todayIST,
+          weeklyOffDays,
+          requiredDates: requiredDates(month, todayIST, weeklyOffDays),
+        }),
+      );
     }),
     http.get(`${baseUrl}/v1/tour-plans/:month`, ({ params }) => {
       const p = tourPlans.find((t) => t.month === params.month && t.userId === fx.me.id);
@@ -738,11 +764,16 @@ function fieldHandlers(baseUrl: string) {
       const p = tourPlans.find((t) => t.month === params.month && t.userId === fx.me.id);
       if (!p) return notFound();
       if (p.status !== 'draft') return conflict('Not in draft');
-      const missing = missingDates(p.month, p.days);
+      const todayIST = istDate();
+      const weeklyOffDays = mockWeeklyOffDays();
+      const missing = missingRequiredDates(p.month, p.days, todayIST, weeklyOffDays).filter(
+        (d) => !mockLeaveOn(fx.me.id, d),
+      );
       if (missing.length)
-        return validation(`${missing.length} date(s) have no plan entry`, {
-          missingDates: missing,
-        });
+        return validation(
+          `${missing.length} required date(s) have no plan entry (weekly offs and, this month, past days are not required)`,
+          { missingDates: missing, todayIST, weeklyOffDays },
+        );
       Object.assign(p, { status: 'submitted', submittedAt: serverTime(), version: p.version + 1 });
       approvals.push({
         id: crypto.randomUUID(),

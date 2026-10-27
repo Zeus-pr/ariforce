@@ -865,6 +865,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/tour-plans/{month}/calendar': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Submit rule inputs for a month (no plan needed): today in IST, company weekly-off days, required dates. */
+    get: operations['getTourPlanCalendar'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/dcrs': {
     parameters: {
       query?: never;
@@ -1042,6 +1059,281 @@ export interface paths {
     };
     /** Public. Pick-lists for the sign-up form: territories {id,name,code} and possible managers {id,name,role} (active ABM-and-above hierarchy users only; no emails or phones). */
     get: operations['getSignUpOptions'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/team/members/{userId}/profile': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Profile of yourself or someone below you (ABM+; Director: everyone) */
+    get: operations['getTeamMemberProfile'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/team/members/{userId}/performance': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Weekly or monthly KPI series for one person */
+    get: operations['getTeamMemberPerformance'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/team/members/{userId}/doctors': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Approved doctors in the person’s territories, with their visits */
+    get: operations['listTeamMemberDoctors'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/team/members/{userId}/chemists': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Chemists in the person’s territories */
+    get: operations['listTeamMemberChemists'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/team/members/{userId}/export': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Profile + performance as Excel (Profile, Performance sheets) or PDF */
+    get: operations['exportTeamMemberProfile'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/leave/types': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Leave types (policies) with quotas */
+    get: operations['listLeaveTypes'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/leave/types/{code}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Create or update a leave type (settings:write) */
+    put: operations['putLeaveType'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/leave/settings': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Approval levels, backdate window, weekly offs, future limit */
+    get: operations['getLeaveSettings'];
+    /** Update leave settings (settings:write) */
+    put: operations['putLeaveSettings'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/leave/balances': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Balances per type for a year; others need leave:approve over them */
+    get: operations['getLeaveBalances'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/leave/requests': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Own requests; with leave:approve also your reporting line */
+    get: operations['listLeaveRequests'];
+    put?: never;
+    /** Apply for leave; starts the approval chain */
+    post: operations['applyLeave'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/leave/requests/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** One leave request */
+    get: operations['getLeaveRequest'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/leave/requests/{id}/cancel': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Owner: pending, or approved before it starts. Manager above: pending or approved. */
+    post: operations['cancelLeaveRequest'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/leave/requests/{id}/decision': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Current step approver or above; never your own. Same engine as expenses. */
+    post: operations['decideLeaveRequest'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/leave/grants': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Grants (opening, carry-forward, comp-off, adjustments) */
+    get: operations['listLeaveGrants'];
+    put?: never;
+    /** Grant days (e.g. comp-off) to someone in your reporting line */
+    post: operations['createLeaveGrant'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/leave/carry-forward': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Carry capped balances into the next year (idempotent, settings:write) */
+    post: operations['carryForwardLeave'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/leave/calendar': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Team leave calendar (max 92 days); yourself only without leave:approve */
+    get: operations['leaveCalendar'];
     put?: never;
     post?: never;
     delete?: never;
@@ -1931,6 +2223,99 @@ export interface components {
       token: string;
       password: string;
     };
+    /** @enum {string} */
+    PerformanceGranularity: 'week' | 'month';
+    /** @description PUT creates the type when the code is new */
+    LeaveTypeUpdate: {
+      name?: string;
+      paid?: boolean;
+      annualQuota?: number | null;
+      carryForward?: boolean;
+      carryForwardCap?: number | null;
+      halfDayAllowed?: boolean;
+      grantOnly?: boolean;
+      active?: boolean;
+      sortOrder?: number;
+      version?: number;
+    };
+    LeaveSettingsUpdate: {
+      approvalLevels?: number;
+      backdateDays?: number;
+      /** @description 0 = Sunday .. 6 = Saturday; not counted as leave days */
+      weeklyOffDays?: number[];
+      /** @description Latest start relative to today; null = up to 31 Dec this year */
+      maxFutureDays?: number | null;
+      version?: number;
+    };
+    /**
+     * @description pending -> approved | rejected; pending or approved -> cancelled (balance restored). Applying submits straight to approval.
+     * @enum {string}
+     */
+    LeaveStatus: 'pending' | 'approved' | 'rejected' | 'cancelled';
+    LeaveApply: {
+      /**
+       * @description Leave type code, e.g. CL, SL, EL, LOP, COMP
+       * @example CL
+       */
+      typeCode: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      fromDate: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      toDate: string;
+      /**
+       * @description Half day; fromDate = toDate
+       * @default null
+       */
+      half: components['schemas']['LeaveHalf'] | null;
+      /** @default null */
+      reason: string | null;
+    };
+    /** @enum {string} */
+    LeaveHalf: 'am' | 'pm';
+    LeaveCancel: {
+      /** @default null */
+      reason: string | null;
+    };
+    LeaveDecision: {
+      /** @enum {string} */
+      decision: 'approve' | 'reject';
+      comment?: string;
+    };
+    LeaveGrantCreate: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      /**
+       * @description Leave type code, e.g. CL, SL, EL, LOP, COMP
+       * @example CL
+       */
+      typeCode: string;
+      year: number;
+      /**
+       * @default grant
+       * @enum {string}
+       */
+      kind: 'opening' | 'grant' | 'adjustment';
+      days: number;
+      /**
+       * @description Comp-off: day worked
+       * @default null
+       */
+      workedDate: string | null;
+      reason: string;
+    };
+    LeaveCarryForward: {
+      fromYear: number;
+    };
     /**
      * @description draft -> submitted -> approved -> paid; submitted -> rejected -> (edit) -> submitted again
      * @enum {string}
@@ -2051,6 +2436,31 @@ export interface components {
       decision: 'approve' | 'reject';
       comment?: string;
     };
+    Health: {
+      /** @constant */
+      status: 'ok';
+      /** @description Empty when all is well; cached ~60 s */
+      warnings: components['schemas']['HealthWarning'][];
+    };
+    HealthWarning:
+      | {
+          /**
+           * @description Some companies have no active work types (DCR/Tour Plan dropdowns empty)
+           * @constant
+           */
+          code: 'NO_WORK_TYPES';
+          /** @description Number of such companies */
+          count: number;
+          message: string;
+        }
+      | {
+          /**
+           * @description The check could not run (DB unreachable or migration 0026 missing)
+           * @constant
+           */
+          code: 'WORK_TYPES_CHECK_FAILED';
+          message: string;
+        };
     Error: {
       error: {
         /** @example FORBIDDEN */
@@ -2124,7 +2534,10 @@ export interface components {
       | 'expenses:write'
       | 'expenses:read'
       | 'expenses:approve'
-      | 'finance:write';
+      | 'finance:write'
+      | 'leave:read'
+      | 'leave:write'
+      | 'leave:approve';
     RoleList: {
       items: components['schemas']['Role'][];
     };
@@ -3016,6 +3429,17 @@ export interface components {
       punchOut: components['schemas']['CheckIn'] | null;
       visits: number;
       workTypeId: string | null;
+      /** @description Approved leave on this day (#51); with no punch-in the status is leave, not absent */
+      leave: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        requestId: string;
+        typeCode: string;
+        half: ('am' | 'pm') | null;
+      } | null;
     };
     ConsentState: {
       deviceId: string | null;
@@ -3131,6 +3555,22 @@ export interface components {
        */
       userId: string;
       days: components['schemas']['StandardTourPlanDayOutput'][];
+    };
+    TourPlanCalendar: {
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      /**
+       * Format: date
+       * @description Today in Asia/Kolkata
+       */
+      todayIST: string;
+      /** @description From leave settings (0 = Sunday .. 6 = Saturday); default [0] */
+      weeklyOffDays: number[];
+      /** @description Dates submit needs an entry on: non-off dates; current month only from todayIST on. Full-day approved leave is also exempt at submit. */
+      requiredDates: string[];
     };
     DcrPage: {
       items: components['schemas']['Dcr'][];
@@ -3405,6 +3845,418 @@ export interface components {
         /** @description Highest hierarchy role (ABM and above) */
         role: components['schemas']['RoleKey'];
       }[];
+    };
+    TeamProfile: {
+      member: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+        /** @description Highest role; null if none assigned */
+        role: components['schemas']['RoleKey'] | null;
+        roles: components['schemas']['RoleKey'][];
+        /** @description Free-text HR title, not a role */
+        designation: string | null;
+        employeeCode: string | null;
+        /** @description Date of joining */
+        joinedOn: string | null;
+        phone: string | null;
+        email: string;
+        status: components['schemas']['UserStatus'];
+        managerId: string | null;
+        territories: components['schemas']['TeamTerritory'][];
+        directReportCount: number;
+        version: number;
+      };
+      /** @description Direct manager (users.manager_id) */
+      manager: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+        role: components['schemas']['RoleKey'] | null;
+      } | null;
+      /** @description Headquarters: the most specific (deepest) assigned territory */
+      hq: components['schemas']['TeamTerritory'] | null;
+      counts: {
+        /** @description Approved doctors in the person’s territories (incl. sub-territories) */
+        doctors: number;
+        chemists: number;
+        directReports: number;
+        /** @description Everyone below the person (excl. themself) */
+        subtreeSize: number;
+      };
+      today: {
+        /**
+         * Format: date
+         * @description Company-local (IST) date
+         */
+        date: string;
+        status: components['schemas']['ProfileAttendanceStatus'];
+        punchInAt: string | null;
+        punchOutAt: string | null;
+        leave: {
+          /**
+           * Format: uuid
+           * @description UUIDv7 identifier
+           * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+           */
+          requestId: string;
+          typeCode: string;
+          half: ('am' | 'pm') | null;
+        } | null;
+      };
+      /** @description Latest punch-in on any day */
+      lastPunchInAt: string | null;
+      /** @description Own profile, or viewer has expenses:approve or finance:read; performance.expenses is null otherwise */
+      canSeeExpenses: boolean;
+    };
+    /** @enum {string} */
+    ProfileAttendanceStatus:
+      'present' | 'absent' | 'leave' | 'holiday' | 'incomplete' | 'weekly_off';
+    TeamPerformance: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      granularity: components['schemas']['PerformanceGranularity'];
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      generatedAt: string;
+      buckets: components['schemas']['PerformanceBucket'][];
+      /** @description Whole range; label "total" */
+      total: components['schemas']['PerformanceBucket'];
+    };
+    PerformanceBucket: {
+      /**
+       * @description YYYY-MM (month) or ISO week YYYY-Www
+       * @example 2026-W43
+       */
+      label: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+      workingDays: number;
+      /** @description Same keys/maths as GET /v1/kpis (self). Week buckets carry day-grain KPIs only (call averages, DCR compliance/on-time, POB); month buckets carry all KPIs incl. coverage, TP adherence and sales vs target */
+      metrics: components['schemas']['KpiValue'][];
+      attendance: {
+        /** @description Days with a punch-in */
+        presentDays: number;
+        /** @description Approved leave + leave DCRs, half = 0.5 */
+        leaveDays: number;
+        holidayDays: number;
+        /** @description Working days up to today − present − leave */
+        absentDays: number;
+      };
+      expenses: {
+        /** @description INR, lines dated in the bucket on submitted/approved/paid claims */
+        claimed: number;
+        /** @description INR, of which on approved/paid claims */
+        approved: number;
+      } | null;
+    };
+    TeamMemberDoctorPage: {
+      items: components['schemas']['TeamMemberDoctor'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    /** @description No phone/address/DOB (PII kept to the masters API) */
+    TeamMemberDoctor: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      qualification: string | null;
+      specialty: string | null;
+      category: string | null;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      territoryName: string;
+      city: string | null;
+      /** @description Visits per cycle (category or override) */
+      requiredVisits: number;
+      /** @description Doctor calls by this person this month */
+      visitsThisMonth: number;
+      /** @description Last call by this person */
+      lastVisitDate: string | null;
+    };
+    TeamMemberChemistPage: {
+      items: components['schemas']['TeamMemberChemist'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    TeamMemberChemist: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      territoryName: string;
+      city: string | null;
+      lastVisitDate: string | null;
+    };
+    LeaveTypeList: {
+      items: components['schemas']['LeaveType'][];
+    };
+    LeaveType: {
+      /**
+       * @description Leave type code, e.g. CL, SL, EL, LOP, COMP
+       * @example CL
+       */
+      code: string;
+      name: string;
+      paid: boolean;
+      /** @description Days per calendar year; null = unlimited */
+      annualQuota: number | null;
+      carryForward: boolean;
+      /** @description null = no cap */
+      carryForwardCap: number | null;
+      halfDayAllowed: boolean;
+      /** @description Balance only from grants (comp-off) */
+      grantOnly: boolean;
+      active: boolean;
+      sortOrder: number;
+      version: number;
+    };
+    LeaveSettings: {
+      approvalLevels: number;
+      backdateDays: number;
+      /** @description 0 = Sunday .. 6 = Saturday; not counted as leave days */
+      weeklyOffDays: number[];
+      /** @description Latest start relative to today; null = up to 31 Dec this year */
+      maxFutureDays: number | null;
+      version: number;
+    };
+    LeaveBalance: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      year: number;
+      items: components['schemas']['LeaveBalanceItem'][];
+    };
+    LeaveBalanceItem: {
+      /**
+       * @description Leave type code, e.g. CL, SL, EL, LOP, COMP
+       * @example CL
+       */
+      typeCode: string;
+      typeName: string;
+      paid: boolean;
+      unlimited: boolean;
+      /** @description Opening grants + carry-forward from last year */
+      opening: number;
+      carriedForward: number;
+      /** @description Annual quota (accrued); null = unlimited */
+      quota: number | null;
+      /** @description Comp-off grants and adjustments (+/-) */
+      granted: number;
+      /** @description Approved days */
+      used: number;
+      /** @description Days awaiting approval (held from available) */
+      pending: number;
+      /** @description null = unlimited */
+      available: number | null;
+    };
+    LeaveRequestList: {
+      items: components['schemas']['LeaveRequest'][];
+    };
+    LeaveRequest: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      userName: string;
+      /**
+       * @description Leave type code, e.g. CL, SL, EL, LOP, COMP
+       * @example CL
+       */
+      typeCode: string;
+      typeName: string;
+      paid: boolean;
+      year: number;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      fromDate: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      toDate: string;
+      half: components['schemas']['LeaveHalf'] | null;
+      /** @description Counted days (weekly offs excluded; 0.5 for a half) */
+      days: number;
+      reason: string | null;
+      status: components['schemas']['LeaveStatus'];
+      approvalId: string | null;
+      /** @description Current step while pending */
+      approvalStep: number | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      decidedAt: string | null;
+      decidedBy: string | null;
+      decisionComment: string | null;
+      cancelledAt: string | null;
+      cancelledBy: string | null;
+      cancelReason: string | null;
+      version: number;
+    };
+    LeaveGrantList: {
+      items: components['schemas']['LeaveGrant'][];
+    };
+    LeaveGrant: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      /**
+       * @description Leave type code, e.g. CL, SL, EL, LOP, COMP
+       * @example CL
+       */
+      typeCode: string;
+      year: number;
+      /** @enum {string} */
+      kind: 'opening' | 'carry_forward' | 'grant' | 'adjustment';
+      days: number;
+      workedDate: string | null;
+      reason: string | null;
+      grantedBy: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+    };
+    LeaveCarryForwardResult: {
+      fromYear: number;
+      toYear: number;
+      written: number;
+      totalDays: number;
+    };
+    LeaveCalendar: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+      items: components['schemas']['LeaveCalendarEntry'][];
+    };
+    LeaveCalendarEntry: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      requestId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      userName: string;
+      /**
+       * @description Leave type code, e.g. CL, SL, EL, LOP, COMP
+       * @example CL
+       */
+      typeCode: string;
+      /** @enum {string} */
+      status: 'pending' | 'approved';
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      fromDate: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      toDate: string;
+      half: components['schemas']['LeaveHalf'] | null;
+      /** @description Counted leave dates inside from..to */
+      dates: string[];
     };
     ExpenseClaimList: {
       items: components['schemas']['ExpenseClaimSummary'][];
@@ -3789,16 +4641,13 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description OK */
+      /** @description OK. `warnings` are informational and never change the status */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': {
-            /** @constant */
-            status: 'ok';
-          };
+          'application/json': components['schemas']['Health'];
         };
       };
     };
@@ -7471,8 +8320,49 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Dates without an entry (details.missingDates) */
+      /** @description Required dates without an entry: details { missingDates, todayIST, weeklyOffDays }. Required = non-weekly-off dates; in the current month (IST) only today and later; full-day approved leave exempt. */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getTourPlanCalendar: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Month (YYYY-MM) */
+        month: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlanCalendar'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
         headers: {
           [name: string]: unknown;
         };
@@ -8107,6 +8997,1048 @@ export interface operations {
       };
       /** @description SIGNUP_DISABLED: company not configured */
       503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getTeamMemberProfile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Profile */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamProfile'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not in your subtree (or not a hierarchy user) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getTeamMemberPerformance: {
+    parameters: {
+      query?: {
+        granularity?: components['schemas']['PerformanceGranularity'];
+        /** @description Default: start of the 6th month back (month) / 8th ISO week back (week). Snapped to bucket start */
+        from?: string;
+        /** @description Default today (IST). Snapped to bucket end */
+        to?: string;
+      };
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Series */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamPerformance'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not in your subtree (or not a hierarchy user) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description RANGE_TOO_LONG (max 26 weeks / 24 months), VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listTeamMemberDoctors: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        /** @description Narrow to one of the person’s territories (incl. children) */
+        territoryId?: string;
+      };
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamMemberDoctorPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not in your subtree (or not a hierarchy user) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listTeamMemberChemists: {
+    parameters: {
+      query?: {
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+        /** @description Free-text search (name, code) */
+        q?: string;
+        /** @description When `true`, the page carries `total` (ignored with updatedSince) */
+        includeTotal?: 'true' | 'false';
+        /** @description Narrow to one of the person’s territories (incl. children) */
+        territoryId?: string;
+      };
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamMemberChemistPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not in your subtree (or not a hierarchy user) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  exportTeamMemberProfile: {
+    parameters: {
+      query: {
+        granularity?: components['schemas']['PerformanceGranularity'];
+        /** @description Default: start of the 6th month back (month) / 8th ISO week back (week). Snapped to bucket start */
+        from?: string;
+        /** @description Default today (IST). Snapped to bucket end */
+        to?: string;
+        format: 'xlsx' | 'pdf';
+      };
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description File (content-disposition: attachment) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': string;
+          'application/pdf': string;
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not in your subtree (or not a hierarchy user) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description RANGE_TOO_LONG, VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listLeaveTypes: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Types */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LeaveTypeList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  putLeaveType: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Leave type code, e.g. CL, SL, EL, LOP, COMP */
+        code: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['LeaveTypeUpdate'];
+      };
+    };
+    responses: {
+      /** @description Type */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LeaveType'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getLeaveSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Settings */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LeaveSettings'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  putLeaveSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['LeaveSettingsUpdate'];
+      };
+    };
+    responses: {
+      /** @description Settings */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LeaveSettings'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getLeaveBalances: {
+    parameters: {
+      query?: {
+        /** @description Default: you. Others need leave:approve over them */
+        userId?: string;
+        year?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Balance */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LeaveBalance'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description User not found / not in your reporting line */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listLeaveRequests: {
+    parameters: {
+      query?: {
+        userId?: string;
+        status?: components['schemas']['LeaveStatus'];
+        year?: number;
+        /** @description Requests ending on/after this date */
+        from?: string;
+        /** @description Requests starting on/before this date */
+        to?: string;
+        /** @description Only your own */
+        mine?: 'true' | 'false';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Requests */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LeaveRequestList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  applyLeave: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['LeaveApply'];
+      };
+    };
+    responses: {
+      /** @description Pending request */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LeaveRequest'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description LEAVE_OVERLAP, LEAVE_DCR_EXISTS */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description LEAVE_TYPE_UNKNOWN, LEAVE_HALF_DAY_NOT_ALLOWED, LEAVE_SPANS_YEARS, LEAVE_BACKDATE_WINDOW, LEAVE_TOO_FAR_AHEAD, LEAVE_NO_WORKING_DAYS, LEAVE_INSUFFICIENT_BALANCE, VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getLeaveRequest: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Request */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LeaveRequest'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  cancelLeaveRequest: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['LeaveCancel'];
+      };
+    };
+    responses: {
+      /** @description Cancelled */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LeaveRequest'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description LEAVE_NOT_CANCELLABLE */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  decideLeaveRequest: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['LeaveDecision'];
+      };
+    };
+    responses: {
+      /** @description Request after the decision */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LeaveRequest'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Own request, APPROVAL_NOT_YOUR_STEP or APPROVAL_ALREADY_DECIDED_BY_YOU */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not pending */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description comment required to reject */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listLeaveGrants: {
+    parameters: {
+      query?: {
+        userId?: string;
+        year?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Grants */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LeaveGrantList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createLeaveGrant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['LeaveGrantCreate'];
+      };
+    };
+    responses: {
+      /** @description Grant */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LeaveGrant'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description LEAVE_SELF_GRANT */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description User not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description LEAVE_TYPE_UNKNOWN, unlimited type */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  carryForwardLeave: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['LeaveCarryForward'];
+      };
+    };
+    responses: {
+      /** @description Result */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LeaveCarryForwardResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  leaveCalendar: {
+    parameters: {
+      query: {
+        /** @description Calendar date (YYYY-MM-DD, IST) */
+        from: string;
+        /** @description Calendar date (YYYY-MM-DD, IST) */
+        to: string;
+        userId?: string;
+        includePending?: 'true' | 'false';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Calendar */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LeaveCalendar'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Range too long */
+      422: {
         headers: {
           [name: string]: unknown;
         };

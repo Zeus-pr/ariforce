@@ -93,3 +93,29 @@ Context: single tenant in production (Arighna Pharmaceutical), 200-1,000 field r
 - `expense_attachments`: line, `file_key` (must start with `{company_id}/expense_receipt/`), `content_type`, `size_bytes <= 10485760`, `status` pending/confirmed, `confirmed_at`. No file names stored.
 - All three: RLS `tenant_isolation` (forced), row-meta triggers, soft delete, grants to `ariforce_app` only.
 - Permissions for the module are seeded by `0022_role_permissions_expenses.sql`. See docs/EXPENSES.md.
+
+## Leave (migrations 0023–0025, #51)
+
+- `leave_settings`: one per company; `approval_levels`, `backdate_days`, `weekly_off_days int[]`, `max_future_days`; `version`.
+- `leave_policies`: (company, `code`) unique; `name`, `paid`, `annual_quota numeric` (null = unlimited), `carry_forward`, `carry_forward_cap`, `half_day_allowed`, `grant_only`, `active`, `sort_order`; `version`.
+- `leave_requests`: user, policy, `year` (= year of from/to, check), `from_date`, `to_date`, `half` am/pm (only when from = to and `days` = 0.5, check), `days numeric(5,1)`, `reason`, `status` pending/approved/rejected/cancelled, `approval_request_id` (entity `leave`), decision and cancel fields; `version`.
+- `leave_grants`: user, policy, `year`, `kind` opening/carry_forward/grant/adjustment, `days`, `worked_date`, `reason`, `granted_by`; one live carry_forward grant per (user, policy, year) (partial unique).
+- View `kpi_user_leave_day` (0024, security_invoker): one row per approved leave day (weekly offs excluded) with `fraction` 1 or 0.5.
+- All tables: RLS `tenant_isolation` (forced), row-meta triggers, soft delete, grants to `ariforce_app` only. See docs/LEAVE.md.
+
+## Default work types (migration 0026)
+
+Every company needs work types or the DCR and Tour Plan dropdowns are empty. `packages/db/migrations/0026_work_types_defaults.sql` inserts the standard 8 for every existing company with `ON CONFLICT (company_id, code) DO NOTHING` (unique index `work_types_company_code_uq`), so existing rows and edited labels are kept and re-running is a no-op:
+
+| code       | name                    | kind      | counts_as_field_day | allowance_band | requires_location |
+| ---------- | ----------------------- | --------- | ------------------- | -------------- | ----------------- |
+| FIELD_HQ   | Field work (HQ)         | field     | true                | hq             | true              |
+| FIELD_EXHQ | Field work (ex-HQ)      | field     | true                | ex_hq          | true              |
+| FIELD_OUT  | Field work (outstation) | field     | true                | outstation     | true              |
+| MEETING    | Meeting                 | non_field | false               | none           | false             |
+| TRAINING   | Training                | non_field | false               | none           | false             |
+| OFFICE     | Office work             | non_field | false               | none           | false             |
+| LEAVE      | Leave                   | leave     | false               | none           | false             |
+| HOLIDAY    | Holiday                 | holiday   | false               | none           | false             |
+
+Source of truth: `DEFAULT_WORK_TYPES` (`packages/db/src/work-types.ts`), used by the dev seed and `admin:create-first`; a test keeps the SQL in sync. New companies created after 0026 get them from `admin:create-first` (or need the same insert). The migration also adds `companies_without_work_types()` (SECURITY DEFINER, id + slug only, app role only); the API logs a warning per such company (slug and id) at boot; the public `GET /v1/health` only reports `{ code: "NO_WORK_TYPES", count, message }` (or `WORK_TYPES_CHECK_FAILED`), never ids or slugs. The demo seed still has its older codes (FW-HQ, FW-EXHQ, FW-OS, MEET, TRANSIT) in addition.

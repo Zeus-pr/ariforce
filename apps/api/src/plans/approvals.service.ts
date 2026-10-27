@@ -48,8 +48,8 @@ export type StepHook = (
 ) => Promise<void>;
 
 export interface EntityOptions {
-  /** Approval levels up the reporting line (1 = reporting manager only). */
-  levels?: number;
+  /** Approval levels up the reporting line (1 = reporting manager only); a function reads company settings. */
+  levels?: number | ((tx: Tx, p: Principal) => Promise<number>);
   /** Extra permission the decider needs for this entity type. */
   permission?: Permission;
   onStep?: StepHook;
@@ -177,7 +177,9 @@ export class ApprovalsService {
               ? `DCR correction ${r.payload.date}`
               : r.entityType === 'expense' && typeof r.payload?.month === 'string'
                 ? `Expense claim ${r.payload.month}`
-                : (r.reason ?? r.entityType),
+                : r.entityType === 'leave' && typeof r.payload?.typeCode === 'string'
+                  ? `Leave ${r.payload.typeCode} ${String(r.payload.fromDate)}..${String(r.payload.toDate)} (${String(r.payload.days)} d)`
+                  : (r.reason ?? r.entityType),
         comment: st?.comment ?? null,
         createdAt: r.createdAt.toISOString(),
         decidedAt: st?.decidedAt?.toISOString() ?? null,
@@ -260,7 +262,7 @@ export class ApprovalsService {
         throw err(403, 'APPROVAL_ALREADY_DECIDED_BY_YOU', 'You approved an earlier step');
       const approved = b.decision === 'approve';
       const comment = b.comment ?? null;
-      const levels = opt.levels ?? 1;
+      const levels = typeof opt.levels === 'function' ? await opt.levels(tx, p) : (opt.levels ?? 1);
       if (approved && req.currentStep < levels && cur?.approverUserId) {
         const [up] = await tx
           .select({ managerId: users.managerId })

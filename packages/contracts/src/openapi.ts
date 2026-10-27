@@ -5,7 +5,7 @@ import {
   type ZodOpenApiOperationObject,
   type ZodOpenApiPathsObject,
 } from 'zod-openapi';
-import { ErrorBody, IdParam, IdempotencyKeyHeader, Month, page } from './schemas/common';
+import { ErrorBody, Id, IdParam, IdempotencyKeyHeader, Month, page } from './schemas/common';
 import { ImportJob, ImportRequest } from './schemas/imports';
 import {
   Division,
@@ -37,6 +37,7 @@ import {
   FieldListQuery,
   GeofenceSettings,
   TourPlan,
+  TourPlanCalendar,
   StandardTourPlan,
   StandardTourPlanUpsert,
   TourPlanCopy,
@@ -45,6 +46,7 @@ import {
 } from './schemas/field';
 import { Me, SessionInfo, SignInEmailBody } from './schemas/auth';
 import { RoleList } from './schemas/roles';
+import { Health } from './schemas/health';
 import { KpiQuery, KpiReport, ProductKpiReport } from './schemas/kpis';
 import { Territory, TerritoryListQuery } from './schemas/territories';
 import {
@@ -108,6 +110,39 @@ import {
   ExpenseReport,
   ExpenseReportQuery,
 } from './schemas/expenses';
+import {
+  LeaveApply,
+  LeaveBalance,
+  LeaveBalanceQuery,
+  LeaveCalendar,
+  LeaveCalendarQuery,
+  LeaveCancel,
+  LeaveCarryForward,
+  LeaveCarryForwardResult,
+  LeaveCode,
+  LeaveDecision,
+  LeaveGrant,
+  LeaveGrantCreate,
+  LeaveGrantList,
+  LeaveGrantQuery,
+  LeaveRequest,
+  LeaveRequestList,
+  LeaveRequestQuery,
+  LeaveSettings,
+  LeaveSettingsUpdate,
+  LeaveType,
+  LeaveTypeList,
+  LeaveTypeUpdate,
+} from './schemas/leave';
+import {
+  TeamMemberChemistPage,
+  TeamMemberDoctorPage,
+  TeamOutletQuery,
+  TeamPerformance,
+  TeamPerformanceQuery,
+  TeamProfile,
+  TeamProfileExportQuery,
+} from './schemas/team-profile';
 import { ConsentGrant, ConsentRecord, Device, DeviceEnrol } from './schemas/devices';
 
 const json = <T extends z.ZodType>(schema: T) => ({ content: { 'application/json': { schema } } });
@@ -277,7 +312,10 @@ function buildDocument(): OpenApiDocument {
           tags: ['System'],
           operationId: 'health',
           responses: {
-            '200': { description: 'OK', ...json(z.object({ status: z.literal('ok') })) },
+            '200': {
+              description: 'OK. `warnings` are informational and never change the status',
+              ...json(Health),
+            },
           },
         },
       },
@@ -688,8 +726,20 @@ function buildDocument(): OpenApiDocument {
             '200': { description: 'Submitted; approval created', ...json(TourPlan) },
             '404': err('No plan for the month'),
             '409': err('Not in draft'),
-            '422': err('Dates without an entry (details.missingDates)'),
+            '422': err(
+              'Required dates without an entry: details { missingDates, todayIST, weeklyOffDays }. Required = non-weekly-off dates; in the current month (IST) only today and later; full-day approved leave exempt.',
+            ),
           },
+        }),
+      },
+      '/v1/tour-plans/{month}/calendar': {
+        get: op({
+          tags: ['TourPlans'],
+          operationId: 'getTourPlanCalendar',
+          description:
+            'Submit rule inputs for a month (no plan needed): today in IST, company weekly-off days, required dates.',
+          requestParams: { path: z.object({ month: Month }) },
+          responses: { '200': { description: 'OK', ...json(TourPlanCalendar) } },
         }),
       },
       '/v1/dcrs': {
@@ -840,6 +890,251 @@ function buildDocument(): OpenApiDocument {
             '503': err('SIGNUP_DISABLED: company not configured'),
           },
         },
+      },
+      '/v1/team/members/{userId}/profile': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'getTeamMemberProfile',
+          summary: 'Profile of yourself or someone below you (ABM+; Director: everyone)',
+          requestParams: { path: z.object({ userId: Id }) },
+          responses: {
+            '200': { description: 'Profile', ...json(TeamProfile) },
+            '403': err(
+              'FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always',
+            ),
+            '404': err('Not in your subtree (or not a hierarchy user)'),
+          },
+        }),
+      },
+      '/v1/team/members/{userId}/performance': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'getTeamMemberPerformance',
+          summary: 'Weekly or monthly KPI series for one person',
+          requestParams: { path: z.object({ userId: Id }), query: TeamPerformanceQuery },
+          responses: {
+            '200': { description: 'Series', ...json(TeamPerformance) },
+            '403': err(
+              'FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always',
+            ),
+            '404': err('Not in your subtree (or not a hierarchy user)'),
+            '422': err('RANGE_TOO_LONG (max 26 weeks / 24 months), VALIDATION'),
+          },
+        }),
+      },
+      '/v1/team/members/{userId}/doctors': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'listTeamMemberDoctors',
+          summary: 'Approved doctors in the person’s territories, with their visits',
+          requestParams: { path: z.object({ userId: Id }), query: TeamOutletQuery },
+          responses: {
+            '200': { description: 'Page', ...json(TeamMemberDoctorPage) },
+            '403': err(
+              'FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always',
+            ),
+            '404': err('Not in your subtree (or not a hierarchy user)'),
+          },
+        }),
+      },
+      '/v1/team/members/{userId}/chemists': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'listTeamMemberChemists',
+          summary: 'Chemists in the person’s territories',
+          requestParams: { path: z.object({ userId: Id }), query: TeamOutletQuery },
+          responses: {
+            '200': { description: 'Page', ...json(TeamMemberChemistPage) },
+            '403': err(
+              'FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always',
+            ),
+            '404': err('Not in your subtree (or not a hierarchy user)'),
+          },
+        }),
+      },
+      '/v1/team/members/{userId}/export': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'exportTeamMemberProfile',
+          summary: 'Profile + performance as Excel (Profile, Performance sheets) or PDF',
+          requestParams: { path: z.object({ userId: Id }), query: TeamProfileExportQuery },
+          responses: {
+            '200': {
+              description: 'File (content-disposition: attachment)',
+              content: {
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
+                  schema: z.string().meta({ format: 'binary' }),
+                },
+                'application/pdf': { schema: z.string().meta({ format: 'binary' }) },
+              },
+            },
+            '403': err(
+              'FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always',
+            ),
+            '404': err('Not in your subtree (or not a hierarchy user)'),
+            '422': err('RANGE_TOO_LONG, VALIDATION'),
+          },
+        }),
+      },
+      '/v1/leave/types': {
+        get: op({
+          tags: ['Leave'],
+          operationId: 'listLeaveTypes',
+          summary: 'Leave types (policies) with quotas',
+          responses: { '200': { description: 'Types', ...json(LeaveTypeList) } },
+        }),
+      },
+      '/v1/leave/types/{code}': {
+        put: op({
+          tags: ['Leave'],
+          operationId: 'putLeaveType',
+          summary: 'Create or update a leave type (settings:write)',
+          requestParams: { path: z.object({ code: LeaveCode }) },
+          requestBody: json(LeaveTypeUpdate),
+          responses: {
+            '200': { description: 'Type', ...json(LeaveType) },
+            '409': err('VERSION_CONFLICT'),
+            '422': err('Validation'),
+          },
+        }),
+      },
+      '/v1/leave/settings': {
+        get: op({
+          tags: ['Leave'],
+          operationId: 'getLeaveSettings',
+          summary: 'Approval levels, backdate window, weekly offs, future limit',
+          responses: { '200': { description: 'Settings', ...json(LeaveSettings) } },
+        }),
+        put: op({
+          tags: ['Leave'],
+          operationId: 'putLeaveSettings',
+          summary: 'Update leave settings (settings:write)',
+          requestBody: json(LeaveSettingsUpdate),
+          responses: {
+            '200': { description: 'Settings', ...json(LeaveSettings) },
+            '409': err('VERSION_CONFLICT'),
+            '422': err('Validation'),
+          },
+        }),
+      },
+      '/v1/leave/balances': {
+        get: op({
+          tags: ['Leave'],
+          operationId: 'getLeaveBalances',
+          summary: 'Balances per type for a year; others need leave:approve over them',
+          requestParams: { query: LeaveBalanceQuery },
+          responses: {
+            '200': { description: 'Balance', ...json(LeaveBalance) },
+            '404': err('User not found / not in your reporting line'),
+          },
+        }),
+      },
+      '/v1/leave/requests': {
+        get: op({
+          tags: ['Leave'],
+          operationId: 'listLeaveRequests',
+          summary: 'Own requests; with leave:approve also your reporting line',
+          requestParams: { query: LeaveRequestQuery },
+          responses: { '200': { description: 'Requests', ...json(LeaveRequestList) } },
+        }),
+        post: op({
+          tags: ['Leave'],
+          operationId: 'applyLeave',
+          summary: 'Apply for leave; starts the approval chain',
+          requestBody: json(LeaveApply),
+          responses: {
+            '201': { description: 'Pending request', ...json(LeaveRequest) },
+            '409': err('LEAVE_OVERLAP, LEAVE_DCR_EXISTS'),
+            '422': err(
+              'LEAVE_TYPE_UNKNOWN, LEAVE_HALF_DAY_NOT_ALLOWED, LEAVE_SPANS_YEARS, LEAVE_BACKDATE_WINDOW, LEAVE_TOO_FAR_AHEAD, LEAVE_NO_WORKING_DAYS, LEAVE_INSUFFICIENT_BALANCE, VALIDATION',
+            ),
+          },
+        }),
+      },
+      '/v1/leave/requests/{id}': {
+        get: op({
+          tags: ['Leave'],
+          operationId: 'getLeaveRequest',
+          summary: 'One leave request',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'Request', ...json(LeaveRequest) },
+            '404': err('Not found'),
+          },
+        }),
+      },
+      '/v1/leave/requests/{id}/cancel': {
+        post: op({
+          tags: ['Leave'],
+          operationId: 'cancelLeaveRequest',
+          summary:
+            'Owner: pending, or approved before it starts. Manager above: pending or approved.',
+          requestParams: { path: IdParam },
+          requestBody: json(LeaveCancel),
+          responses: {
+            '200': { description: 'Cancelled', ...json(LeaveRequest) },
+            '404': err('Not found'),
+            '409': err('LEAVE_NOT_CANCELLABLE'),
+          },
+        }),
+      },
+      '/v1/leave/requests/{id}/decision': {
+        post: op({
+          tags: ['Leave'],
+          operationId: 'decideLeaveRequest',
+          summary: 'Current step approver or above; never your own. Same engine as expenses.',
+          requestParams: { path: IdParam },
+          requestBody: json(LeaveDecision),
+          responses: {
+            '200': { description: 'Request after the decision', ...json(LeaveRequest) },
+            '403': err('Own request, APPROVAL_NOT_YOUR_STEP or APPROVAL_ALREADY_DECIDED_BY_YOU'),
+            '404': err('Not found'),
+            '409': err('Not pending'),
+            '422': err('comment required to reject'),
+          },
+        }),
+      },
+      '/v1/leave/grants': {
+        get: op({
+          tags: ['Leave'],
+          operationId: 'listLeaveGrants',
+          summary: 'Grants (opening, carry-forward, comp-off, adjustments)',
+          requestParams: { query: LeaveGrantQuery },
+          responses: { '200': { description: 'Grants', ...json(LeaveGrantList) } },
+        }),
+        post: op({
+          tags: ['Leave'],
+          operationId: 'createLeaveGrant',
+          summary: 'Grant days (e.g. comp-off) to someone in your reporting line',
+          requestBody: json(LeaveGrantCreate),
+          responses: {
+            '201': { description: 'Grant', ...json(LeaveGrant) },
+            '403': err('LEAVE_SELF_GRANT'),
+            '404': err('User not found'),
+            '422': err('LEAVE_TYPE_UNKNOWN, unlimited type'),
+          },
+        }),
+      },
+      '/v1/leave/carry-forward': {
+        post: op({
+          tags: ['Leave'],
+          operationId: 'carryForwardLeave',
+          summary: 'Carry capped balances into the next year (idempotent, settings:write)',
+          requestBody: json(LeaveCarryForward),
+          responses: { '200': { description: 'Result', ...json(LeaveCarryForwardResult) } },
+        }),
+      },
+      '/v1/leave/calendar': {
+        get: op({
+          tags: ['Leave'],
+          operationId: 'leaveCalendar',
+          summary: 'Team leave calendar (max 92 days); yourself only without leave:approve',
+          requestParams: { query: LeaveCalendarQuery },
+          responses: {
+            '200': { description: 'Calendar', ...json(LeaveCalendar) },
+            '422': err('Range too long'),
+          },
+        }),
       },
       '/v1/expense-claims': {
         get: op({

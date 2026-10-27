@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as s from '../src/schema';
 import { rolePermissionMatrix } from '../src/role-permissions-sql';
+import { DEFAULT_WORK_TYPES } from '../src/work-types';
 import { DEMO_COMPANY_ID as C, ROLE_DEFS, T, U, roleId, seedIds } from '../src/seed-data';
 
 const url = process.env.DIRECT_URL;
@@ -277,6 +278,11 @@ await db.transaction(async (tx) => {
       { id: id('9', 6), companyId: C, code: 'LEAVE', name: 'Leave', kind: 'leave' },
       { id: id('9', 7), companyId: C, code: 'HOLIDAY', name: 'Holiday', kind: 'holiday' },
     ])
+    .onConflictDoNothing();
+  // Standard codes (same as migration 0026 / prod). The legacy demo codes above stay for existing tests.
+  await tx
+    .insert(s.workTypes)
+    .values(DEFAULT_WORK_TYPES.map((w) => ({ ...w, companyId: C })))
     .onConflictDoNothing();
   const addr = { city: 'Kolkata', state: 'West Bengal', pincode: '700004' };
   await tx

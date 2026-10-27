@@ -162,6 +162,34 @@
       "when": 1793052780708,
       "tag": "0022_role_permissions_expenses",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793079739664,
+      "tag": "0023_leave",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793079740071,
+      "tag": "0024_kpi_leave_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793079740474,
+      "tag": "0025_role_permissions_leave",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793091395174,
+      "tag": "0026_work_types_defaults",
+      "breakpoints": true
     }
   ]
 }

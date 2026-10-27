@@ -18,3 +18,6 @@ export * from './tour-plan';
 export * from './schemas/team';
 export * from './schemas/signup';
 export * from './schemas/expenses';
+export * from './schemas/leave';
+export * from './schemas/team-profile';
+export * from './schemas/health';

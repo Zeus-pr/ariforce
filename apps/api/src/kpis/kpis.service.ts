@@ -214,10 +214,23 @@ export class KpisService {
                  coalesce(sum(doctor_calls) filter (where field_day), 0) as doctor_calls,
                  coalesce(sum(chemist_calls) filter (where field_day), 0) as chemist_calls,
                  count(*) filter (where dcr_submitted) as submitted,
-                 count(*) filter (where dcr_on_time) as on_time,
-                 count(*) filter (where work_type_kind in ('leave','holiday') and extract(dow from date) <> 0) as off_days
+                 count(*) filter (where dcr_on_time) as on_time
           from kpi_user_day where user_id = any(${u}) and date between ${from}::date and ${upto}::date`,
     );
+    // Off days: DCR leave/holiday kinds plus approved leave (#51), max fraction per user-day, no Sundays.
+    const [off] = await rows<{ off_days: string | null }>(
+      tx,
+      sql`select coalesce(sum(f), 0) as off_days from (
+            select user_id, date, max(f) as f from (
+              select user_id, date, 1::numeric as f from kpi_user_day
+               where work_type_kind in ('leave','holiday') and user_id = any(${u})
+                 and date between ${from}::date and ${upto}::date
+              union all
+              select user_id, date, fraction from kpi_user_leave_day
+               where user_id = any(${u}) and date between ${from}::date and ${upto}::date
+            ) x where extract(dow from date) <> 0 group by user_id, date) y`,
+    );
+    if (d) d.off_days = off?.off_days ?? '0';
     const [m] = await rows<Record<string, string | null>>(
       tx,
       sql`select coalesce(sum(msl_size),0) as msl, coalesce(sum(unique_doctors_seen),0) as seen,
@@ -303,6 +316,35 @@ export class KpisService {
       },
     };
     return { workingDays, metrics: keys.map((k) => all[k]()) };
+  }
+
+  /**
+   * One person's KPIs for [from, to] (same maths as rollup=self). Caller must already be inside
+   * TenantService.run and must have checked scope. Used by the team member profile (#75).
+   */
+  async userMetrics(
+    tx: Tx,
+    userId: string,
+    from: string,
+    to: string,
+    today: string,
+    keys: KpiKey[],
+  ) {
+    const paths = (
+      await rows<{ path: string }>(
+        tx,
+        sql`select t.path from user_territories ut join territories t on t.id = ut.territory_id
+            where ut.user_id = ${userId} and t.deleted_at is null`,
+      )
+    ).map((r) => r.path);
+    return this.metrics(
+      tx,
+      { userId, territoryId: null, label: '', users: [userId], paths },
+      from,
+      to,
+      today,
+      keys,
+    );
   }
 
   report(p: Principal, q: Q) {

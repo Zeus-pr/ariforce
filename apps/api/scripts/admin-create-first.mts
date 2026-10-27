@@ -22,6 +22,7 @@ import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
 import { hashPassword } from 'better-auth/crypto';
 import { Client } from 'pg';
+import { DEFAULT_WORK_TYPES } from '@ariforce/db';
 import {
   DEFAULT_ROLE_PERMISSIONS,
   ROLE_KEYS,
@@ -113,6 +114,27 @@ try {
             set_config('app.request_id', $2, true)`,
     [companyId, `admin-create-first-${randomUUID()}`],
   );
+
+  // Work types: ensure the standard codes exist (same set as migration 0026; existing rows untouched).
+  let wtAdded = 0;
+  for (const w of DEFAULT_WORK_TYPES) {
+    const r = await c.query(
+      `insert into work_types (id, company_id, code, name, kind, counts_as_field_day, allowance_band, requires_location)
+       values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (company_id, code) do nothing`,
+      [
+        randomUUID(),
+        companyId,
+        w.code,
+        w.name,
+        w.kind,
+        w.countsAsFieldDay,
+        w.allowanceBand,
+        w.requiresLocation,
+      ],
+    );
+    wtAdded += r.rowCount ?? 0;
+  }
+  if (wtAdded) summary.push(`work types added: ${wtAdded}`);
 
   // Roles: ensure all 11 exist with the default permissions (existing permissions are kept).
   const roleIds = new Map<RoleKey, string>();

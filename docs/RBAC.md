@@ -55,6 +55,8 @@ Territory levels are a separate, geographic hierarchy (`national > zone > region
 | `expenses:read`, `expenses:write` (own claims)                                           |      ✓       |  ✓  |   ✓    |    ✓     |              |                   |            |
 | `expenses:approve` (team expense claims)                                                 |              |  ✓  |   ✓    |    ✓     |              |                   |            |
 | `finance:write` (mark expense claims paid)                                               |              |     |        |          |              |                   |     ✓      |
+| `leave:read`, `leave:write` (own leave)                                                  |      ✓       |  ✓  |   ✓    |    ✓     |              |                   |            |
+| `leave:approve` (team leave, grants, team calendar)                                      |              |  ✓  |   ✓    |    ✓     |              |                   |            |
 
 Field-added doctors are `pending` unless created by a director or system admin.
 
@@ -65,6 +67,14 @@ Field-added doctors are `pending` unless created by a director or system admin.
 ### Expense permissions (migration 0022, #52)
 
 `packages/db/migrations/0022_role_permissions_expenses.sql` re-syncs every role from `DEFAULT_ROLE_PERMISSIONS` after the expense permissions were added; `ROLE_PERMISSIONS_MIGRATION` in `packages/db/src/role-permissions-sql.ts` names the file the generator writes, and the drift test checks it. 0019 is unchanged. Details and scopes: docs/EXPENSES.md.
+
+### Team member profile (#75)
+
+`/v1/team/members/{userId}/*`: own profile for any hierarchy role (BM included); others need ABM+ and `reports:read` and the person strictly below in the viewer's subtree (Director: everyone). system_admin / distribution_head / accountant: 403. Out of scope: 404. Expenses in performance only for own profile or `expenses:approve` / `finance:read`. No new permission. Details: docs/TEAM-PROFILE.md.
+
+### Leave permissions (migration 0025, #51)
+
+`packages/db/migrations/0025_role_permissions_leave.sql` re-syncs every role from `DEFAULT_ROLE_PERMISSIONS` after `leave:read`, `leave:write` and `leave:approve` were added (`ROLE_PERMISSIONS_MIGRATION` now names 0025; the drift test follows it). Leave policy and carry-forward use `settings:write`. Details: docs/LEAVE.md.
 
 ### Masters permissions (lead rule, 2026-10-27)
 

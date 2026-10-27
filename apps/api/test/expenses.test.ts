@@ -404,4 +404,132 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
       .send({ decision: 'approve' });
     expect(r.status).toBe(403);
   });
+  it('Accountant (finance:* only, no expenses:*): approved/paid company-wide, read-only + pay', async () => {
+    const A = `${YEAR}-03`;
+    const day = (n: number) => `${A}-${String(n).padStart(2, '0')}`;
+    const perms = (
+      await owner.query(
+        `select r.permissions from roles r join user_roles ur on ur.role_id = r.id where ur.user_id = $1`,
+        [U.accountant],
+      )
+    ).rows.flatMap((r) => r.permissions as string[]);
+    expect(perms).toEqual(expect.arrayContaining(['finance:read', 'finance:write']));
+    expect(perms.filter((x) => x.startsWith('expenses:'))).toEqual([]);
+
+    const mk = async (who: string, amount: number) => {
+      const c = await http().post('/v1/expense-claims').set(as(who)).send({ month: A });
+      expect(c.status, JSON.stringify(c.body)).toBe(201);
+      const r = await http()
+        .post(`/v1/expense-claims/${c.body.id}/lines`)
+        .set(as(who))
+        .send(line({ date: day(2), amount }));
+      expect(r.status, JSON.stringify(r.body)).toBe(201);
+      return { id: c.body.id as string, lineId: r.body.lines[0].id as string };
+    };
+    const decide = (who: string, id: string, b: object) =>
+      http().post(`/v1/expense-claims/${id}/decision`).set(as(who)).send(b);
+    // approved (bm, with a confirmed receipt), submitted (bm2), rejected (abm), draft (rbm)
+    const ap = await mk('bm', 120);
+    const up = await http()
+      .post(`/v1/expense-claims/${ap.id}/lines/${ap.lineId}/attachments`)
+      .set(as('bm'))
+      .send({ fileName: 'r.pdf', contentType: 'application/pdf', sizeBytes: 64 });
+    expect(up.status).toBe(201);
+    store.put(decodeURIComponent(up.body.uploadUrl).split('/put/')[1]!, pdf(64), 'application/pdf');
+    const att = up.body.attachment.id as string;
+    expect((await http().post(`/v1/expense-attachments/${att}/confirm`).set(as('bm'))).status).toBe(
+      200,
+    );
+    expect((await http().post(`/v1/expense-claims/${ap.id}/submit`).set(as('bm'))).status).toBe(
+      200,
+    );
+    expect((await decide('abm', ap.id, { decision: 'approve' })).status).toBe(200);
+    expect((await decide('rbm', ap.id, { decision: 'approve' })).body.status).toBe('approved');
+    const sb = await mk('bm2', 130);
+    expect((await http().post(`/v1/expense-claims/${sb.id}/submit`).set(as('bm2'))).status).toBe(
+      200,
+    );
+    const rj = await mk('abm', 140);
+    await http().post(`/v1/expense-claims/${rj.id}/submit`).set(as('abm'));
+    expect((await decide('rbm', rj.id, { decision: 'reject', comment: 'no' })).body.status).toBe(
+      'rejected',
+    );
+    const dr = await mk('rbm', 150);
+
+    const acc = as('accountant');
+    const listIds = async () =>
+      (await http().get(`/v1/expense-claims?month=${A}`).set(acc)).body.items.map(
+        (x: { id: string }) => x.id,
+      );
+    expect(await listIds()).toEqual([ap.id]);
+    expect((await http().get(`/v1/expense-claims/${ap.id}`).set(acc)).status).toBe(200);
+    for (const h of [sb, rj, dr]) {
+      expect((await http().get(`/v1/expense-claims/${h.id}`).set(acc)).status).toBe(404);
+      expect((await http().get(`/v1/expense-claims/${h.id}/reconciliation`).set(acc)).status).toBe(
+        404,
+      );
+    }
+    const rec = await http().get(`/v1/expense-claims/${ap.id}/reconciliation`).set(acc);
+    expect(rec.status).toBe(200);
+    expect(rec.body.total).toBe(120);
+    expect((await http().post(`/v1/expense-attachments/${att}/download-url`).set(acc)).status).toBe(
+      200,
+    );
+    const dl = await owner.query(
+      `select actor_user_id from audit_log where entity_id = $1 and action = 'expense.attachment_downloaded'`,
+      [att],
+    );
+    expect(dl.rows.map((r) => r.actor_user_id)).toContain(U.accountant);
+    const rep = await http().get(`/v1/expense-reports?month=${A}`).set(acc);
+    expect(rep.status).toBe(200);
+    expect(rep.body.rows.map((x: { claimId: string }) => x.claimId)).toEqual([ap.id]);
+    for (const format of ['xlsx', 'pdf']) {
+      const ex = await http()
+        .get(`/v1/expense-reports/export?month=${A}&format=${format}`)
+        .set(acc);
+      expect(ex.status, format).toBe(200);
+    }
+
+    // Not allowed: create, lines, attachments, submit, decide; hidden claims cannot be paid.
+    expect((await http().post('/v1/expense-claims').set(acc).send({ month: A })).status).toBe(403);
+    expect(
+      (
+        await http()
+          .post(`/v1/expense-claims/${dr.id}/lines`)
+          .set(acc)
+          .send(line({ date: day(3) }))
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await http()
+          .put(`/v1/expense-claims/${ap.id}/lines/${ap.lineId}`)
+          .set(acc)
+          .send({ line: line({ date: day(2) }), version: 1 })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await http()
+          .post(`/v1/expense-claims/${ap.id}/lines/${ap.lineId}/attachments`)
+          .set(acc)
+          .send({ fileName: 'r.pdf', contentType: 'application/pdf', sizeBytes: 64 })
+      ).status,
+    ).toBe(403);
+    expect((await http().post(`/v1/expense-claims/${dr.id}/submit`).set(acc)).status).toBe(403);
+    expect((await decide('accountant', sb.id, { decision: 'approve' })).status).toBe(403);
+    expect(
+      (await http().post(`/v1/expense-claims/${sb.id}/pay`).set(acc).send({ paymentRef: 'X' }))
+        .status,
+    ).toBe(404);
+
+    const pay = await http()
+      .post(`/v1/expense-claims/${ap.id}/pay`)
+      .set(acc)
+      .send({ paymentRef: 'NEFT-ACC-1' });
+    expect(pay.status, JSON.stringify(pay.body)).toBe(200);
+    expect(pay.body.status).toBe('paid');
+    expect(await listIds()).toEqual([ap.id]);
+    expect((await http().get(`/v1/expense-claims/${ap.id}`).set(acc)).body.status).toBe('paid');
+  });
 });

@@ -42,7 +42,7 @@ pnpm -F @ariforce/api start                  # node dist/main.js, loads apps/api
 # or, with reload: pnpm -F @ariforce/api dev
 ```
 
-Checks: `curl http://localhost:4000/v1/health` returns `{"status":"ok"}`, and
+Checks: `curl http://localhost:4000/v1/health` returns `{"status":"ok","warnings":[]}` (`warnings` is aggregate only, e.g. `{"code":"NO_WORK_TYPES","count":1,"message":"…"}` or `{"code":"WORK_TYPES_CHECK_FAILED","message":"…"}`; no company ids or slugs, which appear only in the API boot log; it never changes `status`), and
 `curl -i http://localhost:4000/v1/me` returns 401 when signed out. API docs: http://localhost:4000/docs
 
 Env names (apps/api/.env): `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`

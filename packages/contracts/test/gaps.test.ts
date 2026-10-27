@@ -163,6 +163,11 @@ describe('contract gaps', () => {
       params: { path: { month: '2026-11' } },
     });
     expect(incomplete.response.status).toBe(422);
+    const cal = await api.GET('/v1/tour-plans/{month}/calendar', {
+      params: { path: { month: '2026-11' } },
+    });
+    expect(cal.data!.weeklyOffDays).toEqual([0]);
+    expect(cal.data!.requiredDates).not.toContain('2026-11-01'); // Sunday
     const entry = {
       session: 'full' as const,
       workTypeId: fx.workTypes[0]!.id,

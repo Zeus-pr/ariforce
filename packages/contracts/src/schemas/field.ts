@@ -103,6 +103,13 @@ export const AttendanceDay = z
     punchOut: CheckIn.nullable(),
     visits: z.int().min(0),
     workTypeId: Id.nullable(),
+    leave: z
+      .object({ requestId: Id, typeCode: z.string(), half: z.enum(['am', 'pm']).nullable() })
+      .nullable()
+      .meta({
+        description:
+          'Approved leave on this day (#51); with no punch-in the status is leave, not absent',
+      }),
   })
   .meta({ id: 'AttendanceDay' });
 export type AttendanceDay = z.infer<typeof AttendanceDay>;
@@ -170,6 +177,19 @@ export const TourPlan = Syncable.extend({
   decisionComment: z.string().nullable(),
 }).meta({ id: 'TourPlan' });
 export type TourPlan = z.infer<typeof TourPlan>;
+export const TourPlanCalendar = z
+  .object({
+    month: Month,
+    todayIST: DateOnly.meta({ description: 'Today in Asia/Kolkata' }),
+    weeklyOffDays: z
+      .array(z.int().min(0).max(6))
+      .meta({ description: 'From leave settings (0 = Sunday .. 6 = Saturday); default [0]' }),
+    requiredDates: z.array(DateOnly).meta({
+      description:
+        'Dates submit needs an entry on: non-off dates; current month only from todayIST on. Full-day approved leave is also exempt at submit.',
+    }),
+  })
+  .meta({ id: 'TourPlanCalendar' });
 export const TourPlanUpsert = z
   .object({ days: z.array(TourPlanDay), version: z.int().min(1).optional() })
   .meta({ id: 'TourPlanUpsert' });
