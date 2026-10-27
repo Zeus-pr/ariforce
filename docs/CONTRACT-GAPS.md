@@ -153,3 +153,14 @@ Built only from endpoints that exist; nothing is faked. Gaps for the API:
 - RESOLVED: `GET /v1/doctors?ids=` exists; the approver view no longer needs it (names come resolved in ApprovalDetail). Doctor 360 now uses `GET /v1/doctors/{id}`.
 - `REJECTION_REASON_REQUIRED` shown as "Give a reason to reject this request."; sign-up reject now requires a reason (max 500).
 - Open: rejected sign-up applicants cannot read their reason (API does not support it).
+
+## Real API read-only findings (2026-10-27, test sysadmin, 1 sign-in, 0 writes, API d82dd05)
+- Match the contract: /v1/me, notifications (+unread-count), products, price-history, doctors (incl. rejection fields), doctors?ids, chemists, territories, approvals, allowance rates/places.
+- GAP: GET /v1/admin/products has no schema in packages/contracts (the web reads it untyped). Needs an AdminProduct schema + openapi entry.
+- DATA: all 101 products have no PTR (missingPtr=true returns 101, false returns 0). Price history is empty ("No price changes yet").
+- GAP: /v1/exceptions, /v1/exceptions/summary and /v1/exception-rules return 403 for system_admin (no field:read). Web now hides /settings/exception-rules and its nav entry unless the role has both settings:write and field:read (476add8). Decide on the API side whether sysadmin should get field:read or keep rules elsewhere.
+- Not verified: approver views (TP submissions, approvals detail) on real data. This needs a BM/approver test login.
+
+## #86 Tour plan per-day submissions (web, against 35022cd)
+- Adopted: day status/submissionId, submissions[], month aggregate, submit {submitterNote?, dates?}, DAY_LOCKED (details.dates), EMPTY_PLAN, calendar days[], approval subject.submission + submission-only days, Approval.subjectId = submission id.
+- Mock follows the contract. Open question: should plan-level rejectionReason/rejectedBy still be set? The web reads per-submission fields and only falls back to the plan-level ones.
