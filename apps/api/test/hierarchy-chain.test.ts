@@ -20,8 +20,9 @@ const addDay = (d: string, n: number) =>
 while (new Date(`${monday}T00:00:00Z`).getUTCDay() !== 1) monday = addDay(monday, 1);
 
 /**
- * No VP / GM / Sales Manager: BM -> ABM -> RBM -> ZBM -> Director, plus skipped ranks
- * (BM -> RBM, ZBM -> Director). Fresh people so the seed's reporting line is untouched.
+ * Current chain (Prajesh 2026-10-27): BM -> ABM -> RBM -> Director. ZBM / Sales Manager / GM / VP
+ * exist as roles but nobody holds them. Also the gaps BM -> RBM and ABM -> Director. Fresh people
+ * so the seed's reporting line is untouched; no step may wait for an empty rank.
  */
 describe.skipIf(!OWNER || !APP)('hierarchy with skipped ranks (real API)', () => {
   let app: INestApplication;
@@ -60,11 +61,12 @@ describe.skipIf(!OWNER || !APP)('hierarchy with skipped ranks (real API)', () =>
       id[who] = s.id;
       tok[who] = s.bearer;
     };
-    await add('zbm', 'zonal_business_manager', U.director, [T.zone]); // skips VP/GM/SM
-    await add('rbm', 'regional_business_manager', id.zbm!, [T.region]);
+    await add('rbm', 'regional_business_manager', U.director, [T.region]); // skips ZBM..VP
     await add('abm', 'area_business_manager', id.rbm!, [T.area]);
     await add('bm', 'business_manager', id.abm!, [T.hq]); // full line
     await add('bmx', 'business_manager', id.rbm!, [T.hq]); // skips ABM
+    await add('abmd', 'area_business_manager', U.director, [T.area]); // skips RBM too
+    await add('bmd', 'business_manager', id.abmd!, [T.hq]);
     const s = await http()
       .put('/v1/leave/settings')
       .set(as('director'))
@@ -91,29 +93,106 @@ describe.skipIf(!OWNER || !APP)('hierarchy with skipped ranks (real API)', () =>
     expect(r.body.status).toBe('approved');
   });
 
-  it('leave with a skipped rank: BM -> RBM, second level is the ZBM', async () => {
+  it('leave with a skipped rank: BM -> RBM, second level is the Director', async () => {
     const l = await leave('bmx');
     expect((await decide('abm', l.id)).status, 'ABM is not in this line').toBe(404);
     let r = await decide('rbm', l.id);
     expect(r.body.status).toBe('pending');
-    r = await decide('zbm', l.id);
+    r = await decide('director', l.id);
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect(r.body.status).toBe('approved');
   });
 
-  it('leave when the manager is the director: one step, nothing stuck', async () => {
-    const l = await leave('zbm');
+  it('RBM requester (manager = Director): a single Director step, nothing stuck', async () => {
+    const l = await leave('rbm');
     const r = await decide('director', l.id);
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect(r.body.status).toBe('approved');
   });
 
-  it("leave when the manager's manager is the director (RBM -> ZBM -> Director)", async () => {
-    const l = await leave('rbm');
-    let r = await decide('zbm', l.id);
+  it('ABM -> Director gap: ABM leave is one Director step; its BM goes ABM then Director', async () => {
+    let r = await decide('director', (await leave('abmd')).id);
+    expect(r.body.status).toBe('approved');
+    const l = await leave('bmd');
+    r = await decide('abmd', l.id);
     expect(r.body.status).toBe('pending');
     r = await decide('director', l.id);
     expect(r.body.status).toBe('approved');
+  });
+
+  it('expenses, two levels: BM -> ABM -> RBM; RBM -> Director single step; BM -> RBM -> Director', async () => {
+    const M2 = `${1981 + (Date.now() % 15)}-03`;
+    const claim = async (who: string) => {
+      const c = await http().post('/v1/expense-claims').set(as(who)).send({ month: M2 });
+      expect(c.status, JSON.stringify(c.body)).toBe(201);
+      await http()
+        .post(`/v1/expense-claims/${c.body.id}/lines`)
+        .set(as(who))
+        .send({ date: `${M2}-03`, category: 'travel', amount: 100, notes: 'bus' });
+      const s = await http().post(`/v1/expense-claims/${c.body.id}/submit`).set(as(who));
+      expect(s.status, JSON.stringify(s.body)).toBe(200);
+      return c.body.id as string;
+    };
+    const dec = (who: string, cid: string) =>
+      http().post(`/v1/expense-claims/${cid}/decision`).set(as(who)).send({ decision: 'approve' });
+    let c = await claim('bm');
+    expect((await dec('abm', c)).body.status).toBe('submitted');
+    expect((await dec('rbm', c)).body.status).toBe('approved');
+    c = await claim('rbm');
+    const r = await dec('director', c);
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.status).toBe('approved');
+    c = await claim('bmx');
+    expect((await dec('rbm', c)).body.status).toBe('submitted');
+    expect((await dec('director', c)).body.status).toBe('approved');
+  });
+
+  it('doctor approval (masters:write is RBM+): RBM adds, the Director, its manager, decides in one step', async () => {
+    const add = async (who: string, tag: string) => {
+      const r = await http()
+        .post('/v1/doctors')
+        .set(as(who))
+        .send({
+          territoryId: T.hq,
+          name: `Dr. Chain ${tag} ${RUN}`,
+          qualification: 'MBBS',
+          specialtyId: null,
+          categoryId: null,
+          registrationNo: `CH-${tag}-${RUN}`,
+          addressLine: null,
+          city: null,
+          state: null,
+          pincode: `7${String(Date.now()).slice(-5)}`,
+          location: null,
+          phone: null,
+        });
+      expect(r.status, JSON.stringify(r.body)).toBe(201);
+      return r.body.id as string;
+    };
+    for (const [adder, approver, tag] of [['rbm', 'director', 'R']] as const) {
+      const docId = await add(adder, tag);
+      const q = await http()
+        .get('/v1/approvals?mine=to_decide&subjectType=doctor&limit=100')
+        .set(as(approver));
+      const a = q.body.items.find((x: { subjectId: string }) => x.subjectId === docId);
+      expect(a, `${approver} queue holds the doctor`).toBeTruthy();
+      const d = await http()
+        .post(`/v1/approvals/${a.id}/decision`)
+        .set(as(approver))
+        .send({ decision: 'approve' });
+      expect(d.body.status).toBe('approved');
+    }
+  });
+
+  it('SFC: ABM edits BMs below; RBM edits BMs under ABMs; Director company-wide', async () => {
+    const can = async (who: string, target: string) =>
+      (await http().get(`/v1/sfc/employees/${id[target]}/routes`).set(as(who))).body.canEdit;
+    expect(await can('abm', 'bm')).toBe(true);
+    expect(await can('rbm', 'bm')).toBe(true);
+    expect(await can('rbm', 'abm')).toBe(true);
+    expect(await can('director', 'bm')).toBe(true);
+    expect(await can('director', 'rbm')).toBe(true);
+    expect(await can('director', 'abmd')).toBe(true);
   });
 
   it('director sees, reads and decides any approval company-wide; early decision is final', async () => {
@@ -184,11 +263,13 @@ describe.skipIf(!OWNER || !APP)('hierarchy with skipped ranks (real API)', () =>
       http().post(`/v1/team/${id[who]}/manager`).set(as('sysadmin')).send({ managerId });
     let r = await set('bmx', U.director); // BM straight to the director
     expect(r.status, JSON.stringify(r.body)).toBe(200);
-    r = await set('bmx', id.zbm!); // BM -> ZBM
+    r = await set('abm', U.director); // ABM -> Director
     expect(r.status, JSON.stringify(r.body)).toBe(200);
-    r = await set('zbm', U.area); // a lower rank (seed ABM) may not manage a ZBM
+    r = await set('abm', id.rbm!);
+    expect(r.status).toBe(200);
+    r = await set('rbm', U.area); // a lower rank (seed ABM) may not manage an RBM
     expect(r.status).toBe(403);
-    r = await set('zbm', id.abm!); // own report as manager: a cycle
+    r = await set('rbm', id.abm!); // own report as manager: a cycle
     expect(r.status).toBe(409);
     r = await set('bmx', id.rbm!);
     expect(r.status).toBe(200);
