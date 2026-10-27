@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type { Me } from '../schemas/auth';
-import { ROLE_RANK, type RoleKey } from '../schemas/roles';
+import { isRetiredRole, ROLE_RANK, type RoleKey } from '../schemas/roles';
 import {
   EmployeeCreate,
   EmployeeUpdate,
@@ -143,6 +143,8 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
   const createOne = (p: Me, raw: unknown) => {
     const b = EmployeeCreate.safeParse(raw);
     if (!b.success) return e(422, 'VALIDATION', b.error.issues[0]?.message ?? 'Invalid');
+    if (isRetiredRole(b.data.role))
+      return e(422, 'ROLE_RETIRED', 'This role is retired and can no longer be assigned');
     const r = hierarchyRank(p.roles);
     const rr = ROLE_RANK[b.data.role];
     // System admin (users:write) may grant any role and any territory; no default manager.
@@ -300,6 +302,8 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
       const d = b.data;
       if (!admin && (d.email !== undefined || d.employeeCode !== undefined))
         return e(403, 'FORBIDDEN', 'Only a system admin can change email or employee code');
+      if (d.role && isRetiredRole(d.role) && !u.roles.includes(d.role))
+        return e(422, 'ROLE_RETIRED', 'This role is retired and can no longer be assigned');
       const r = hierarchyRank(p.roles);
       if (d.role && !admin && !(ROLE_RANK[d.role] > 0 && ROLE_RANK[d.role] < r))
         return e(403, 'FORBIDDEN', 'Role must be below your own');
@@ -476,7 +480,7 @@ export function teamProfileHandlers(baseUrl: string, who: (r: Request) => Me | u
           canSeeExpenses:
             g.p.id === g.t.id ||
             (g.p.permissions as string[]).some(
-              (x) => x === 'expenses:approve' || x === 'finance:read',
+              (x) => x === 'expenses:approve' || x === 'expenses:pay',
             ),
         }),
       );

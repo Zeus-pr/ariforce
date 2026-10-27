@@ -5,6 +5,7 @@ import request from 'supertest';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { U } from '@ariforce/db';
+import { bearerFor } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 
@@ -60,10 +61,7 @@ describe.skipIf(!OWNER || !APP)('leave (real API)', () => {
       [users],
     );
     for (const who of ['bm', 'bm2', 'abm', 'rbm', 'accountant', 'director']) {
-      const res = await http()
-        .post('/v1/auth/sign-in/email')
-        .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
-      tok[who] = `Bearer ${res.headers['set-auth-token']}`;
+      tok[who] = await bearerFor(http, who, PASSWORD);
     }
     const d = await http().get('/v1/leave/settings').set(as('director'));
     expect(d.body.backdateDays, 'new-company default backdating window').toBe(14);

@@ -7,6 +7,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEMO_COMPANY_ID as A, U } from '@ariforce/db';
 import { AllowanceDraftResult, AllowancePlace, AllowanceRate } from '@ariforce/contracts';
+import { bearerFor } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 
@@ -61,10 +62,7 @@ describe.skipIf(!OWNER || !APP)('TA/DA allowances (real API)', () => {
     await app.init();
     owner = new Pool({ connectionString: OWNER });
     for (const who of ['bm', 'bm2', 'director', 'accountant']) {
-      const res = await http()
-        .post('/v1/auth/sign-in/email')
-        .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
-      tok[who] = `Bearer ${res.headers['set-auth-token']}`;
+      tok[who] = await bearerFor(http, who, PASSWORD);
     }
     roleKey = (
       await owner.query(
@@ -290,8 +288,8 @@ describe.skipIf(!OWNER || !APP)('TA/DA allowances (real API)', () => {
       [claimId],
     );
     expect(audit.rows[0].n).toBe(3);
-    // Accountant reads the rate card (expenses:read) but cannot write it.
-    expect((await http().get('/v1/allowance-rates').set(as('accountant'))).status).toBe(200);
+    // Retired accountant: legacy finance:read no longer opens the rate card; never writes it.
+    expect((await http().get('/v1/allowance-rates').set(as('accountant'))).status).toBe(403);
     expect((await http().post('/v1/allowance-rates').set(as('accountant')).send({})).status).toBe(
       403,
     );

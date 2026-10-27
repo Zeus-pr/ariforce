@@ -74,13 +74,22 @@ describe('expense contracts', () => {
     ).toBe(false);
   });
 
-  it('permissions: BM own claims; ABM+ approve; accountant pays', () => {
+  it('permissions: BM own claims; ABM+ approve; director and system admin pay', () => {
     const P = DEFAULT_ROLE_PERMISSIONS as Record<string, readonly string[]>;
     expect(P.business_manager).toEqual(expect.arrayContaining(['expenses:read', 'expenses:write']));
     expect(P.business_manager).not.toContain('expenses:approve');
     for (const r of ['area_business_manager', 'general_manager', 'director'])
       expect(P[r]).toEqual(expect.arrayContaining(['expenses:write', 'expenses:approve']));
-    expect(P.accountant).toContain('finance:write');
+    for (const r of ['director', 'system_admin']) expect(P[r]).toContain('expenses:pay');
+    for (const r of [
+      'business_manager',
+      'area_business_manager',
+      'regional_business_manager',
+      'general_manager',
+      'vice_president',
+      'accountant',
+    ])
+      expect(P[r]).not.toContain('expenses:pay');
   });
 
   it('mock: draft -> lines -> hotel receipt -> submit -> approve -> pay; errors', async () => {
@@ -128,13 +137,16 @@ describe('expense contracts', () => {
     expect(
       (await call('abm', 'POST', `/v1/expense-claims/${c.id}/pay`, { paymentRef: 'N1' })).status,
     ).toBe(403);
-    r = await call('accountant', 'POST', `/v1/expense-claims/${c.id}/pay`, {
+    expect(
+      (await call('gm', 'POST', `/v1/expense-claims/${c.id}/pay`, { paymentRef: 'X' })).status,
+    ).toBe(403);
+    r = await call('sysadmin', 'POST', `/v1/expense-claims/${c.id}/pay`, {
       paymentRef: 'NEFT-1',
     });
     expect(((await r.json()) as any).status).toBe('paid');
-    r = await call('accountant', 'GET', '/v1/expense-reports?month=2026-09');
+    r = await call('sysadmin', 'GET', '/v1/expense-reports?month=2026-09');
     expect(((await r.json()) as any).rows.length).toBe(1);
-    r = await call('accountant', 'GET', '/v1/expense-reports/export?month=2026-09&format=pdf');
+    r = await call('sysadmin', 'GET', '/v1/expense-reports/export?month=2026-09&format=pdf');
     expect(r.headers.get('content-type')).toBe('application/pdf');
     r = await call('abm', 'GET', `/v1/expense-claims/${c.id}/reconciliation`);
     expect(((await r.json()) as any).days[0].flags).toContain('no_dcr');

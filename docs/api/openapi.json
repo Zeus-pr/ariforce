@@ -9589,7 +9589,7 @@
           "Expenses"
         ],
         "operationId": "listExpenseClaims",
-        "summary": "Your claims; with expenses:approve also non-draft claims of your reporting line; with finance:read approved/paid claims company-wide",
+        "summary": "Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide",
         "parameters": [
           {
             "in": "query",
@@ -10480,7 +10480,7 @@
         ],
         "operationId": "listAllowanceRates",
         "deprecated": true,
-        "summary": "expenses:read, finance:read or settings:write",
+        "summary": "expenses:read, expenses:pay or settings:write",
         "parameters": [
           {
             "in": "query",
@@ -10781,7 +10781,7 @@
         ],
         "operationId": "listAllowancePlaces",
         "deprecated": true,
-        "summary": "expenses:read, finance:read or settings:write",
+        "summary": "expenses:read, expenses:pay or settings:write",
         "parameters": [
           {
             "in": "query",
@@ -11790,7 +11790,7 @@
           "Expenses"
         ],
         "operationId": "payExpenseClaim",
-        "summary": "Accountant (finance:write): approved -> paid",
+        "summary": "Director / system admin (expenses:pay): approved -> paid",
         "parameters": [
           {
             "in": "path",
@@ -17839,6 +17839,7 @@
           "expenses:read",
           "expenses:approve",
           "finance:write",
+          "expenses:pay",
           "leave:read",
           "leave:write",
           "leave:approve",

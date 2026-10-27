@@ -124,7 +124,7 @@ export class TeamProfileService {
       )
     ).map((r) => r.path);
     const canSeeExpenses =
-      self || p.permissions.some((x) => x === 'expenses:approve' || x === 'finance:read');
+      self || p.permissions.some((x) => x === 'expenses:approve' || x === 'expenses:pay');
     return { all, t, paths, canSeeExpenses };
   }
 

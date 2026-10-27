@@ -5,6 +5,7 @@ import request from 'supertest';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { KPI_KEYS, WEEK_KPI_KEYS } from '@ariforce/contracts';
+import { bearerFor } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 import { buckets } from '../src/team/team-profile.service';
@@ -54,8 +55,7 @@ describe.skipIf(!OWNER || !APP)('team member profile (real API)', () => {
     for (const who of WHO) {
       const email = `${who}@demo.ariforce.in`;
       id[who] = (await owner.query(`select id from users where email = $1`, [email])).rows[0].id;
-      const res = await http().post('/v1/auth/sign-in/email').send({ email, password: PASSWORD });
-      tok[who] = `Bearer ${res.headers['set-auth-token']}`;
+      tok[who] = await bearerFor(http, who, PASSWORD);
     }
   });
   afterAll(async () => {

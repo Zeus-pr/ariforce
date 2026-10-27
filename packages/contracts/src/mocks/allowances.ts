@@ -17,7 +17,7 @@ import * as fx from './fixtures';
 
 /**
  * Mock TA/DA rate card and fare chart (#39, docs/TADA.md). Same shapes, permissions (read:
- * expenses:read, finance:read or settings:write; write: settings:write) and error codes as the API. Simplification: any fixture
+ * expenses:read, expenses:pay or settings:write; write: settings:write) and error codes as the API. Simplification: any fixture
  * territory counts as a headquarter (fixtures have no headquarter level).
  */
 type Rate = z.infer<typeof AllowanceRate>;
@@ -51,7 +51,7 @@ export function allowanceHandlers(baseUrl: string, who: (r: Request) => Me | und
     if (
       write
         ? !has('settings:write')
-        : !['expenses:read', 'finance:read', 'settings:write'].some(has)
+        : !['expenses:read', 'expenses:pay', 'settings:write'].some(has)
     )
       return { res: e(403, 'FORBIDDEN', 'Missing permission') };
     return { p };

@@ -5,6 +5,7 @@ import request from 'supertest';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { T, U } from '@ariforce/db';
+import { bearerFor } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 import { SignupService } from '../src/team/signup.service';
@@ -52,8 +53,7 @@ describe.skipIf(!OWNER || !APP)('Sign-up requests (real API)', () => {
     await app.init();
     owner = new Pool({ connectionString: OWNER });
     for (const who of ['sysadmin', 'director', 'gm', 'abm', 'bm', 'dh']) {
-      const res = await signIn(`${who}@demo.ariforce.in`, PASSWORD);
-      tok[who] = `Bearer ${res.headers['set-auth-token']}`;
+      tok[who] = await bearerFor(http, who, PASSWORD);
     }
   });
   beforeEach(() => app.get(SignupService).limiter.reset());
@@ -135,14 +135,18 @@ describe.skipIf(!OWNER || !APP)('Sign-up requests (real API)', () => {
     expect((await submit({ email: high, requestedRole: 'regional_business_manager' })).status).toBe(
       202,
     );
-    const dh = email('dh');
-    expect(
-      (await submit({ email: dh, requestedRole: 'distribution_head', territoryId: null })).status,
-    ).toBe(202);
+    // Retired roles cannot even be requested.
+    const dhTry = await submit({
+      email: email('dh'),
+      requestedRole: 'distribution_head',
+      territoryId: null,
+    });
+    expect(dhTry.status).toBe(422);
+    expect(dhTry.body.error.code).toBe('ROLE_RETIRED');
     const ids = (await http().get('/v1/signup-requests').set(as('abm'))).body.items.map(
       (x: { id: string }) => x.id,
     );
-    for (const e of [out, high, dh]) {
+    for (const e of [out, high]) {
       const id = await reqId(e);
       expect(ids).not.toContain(id);
       expect(
@@ -157,17 +161,19 @@ describe.skipIf(!OWNER || !APP)('Sign-up requests (real API)', () => {
     // BM and functional roles cannot review sign-ups at all.
     expect((await http().get('/v1/signup-requests').set(as('bm'))).status).toBe(403);
     expect((await http().get('/v1/signup-requests').set(as('dh'))).status).toBe(403);
-    // System admin sees all of them and can grant a functional role (no manager, no territory).
+    // System admin sees all of them but cannot grant a retired role (422 ROLE_RETIRED).
     const all = (await http().get('/v1/signup-requests').set(as('sysadmin'))).body.items.map(
       (x: { id: string }) => x.id,
     );
-    for (const e of [out, high, dh]) expect(all).toContain(await reqId(e));
-    const ok = await http()
-      .post(`/v1/signup-requests/${await reqId(dh)}/approve`)
-      .set(as('sysadmin'))
-      .send({ role: 'distribution_head' });
-    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
-    expect((await signIn(dh)).status).toBe(200);
+    for (const e of [out, high]) expect(all).toContain(await reqId(e));
+    for (const role of ['distribution_head', 'accountant']) {
+      const no = await http()
+        .post(`/v1/signup-requests/${await reqId(high)}/approve`)
+        .set(as('sysadmin'))
+        .send({ role });
+      expect(no.status, JSON.stringify(no.body)).toBe(422);
+      expect(no.body.error.code).toBe('ROLE_RETIRED');
+    }
   });
 
   it('system admin approves a director: no manager; manager given = 422', async () => {

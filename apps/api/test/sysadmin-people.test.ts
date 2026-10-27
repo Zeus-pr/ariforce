@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEMO_COMPANY_ID, T, U } from '@ariforce/db';
 import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
+import { insertRetiredHolder } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 import { TeamService } from '../src/team/team.service';
@@ -225,13 +226,17 @@ describe.skipIf(!OWNER || !APP)('System admin People page (list + edit)', () => 
     ).toBe(200);
   });
 
-  it('to and from functional roles and system_admin; territories may be empty', async () => {
+  it('to and from system_admin; retired roles rejected; territories may be empty', async () => {
     expect((await patch(id.b!, { territoryIds: [] })).status).toBe(422);
-    const fn = await patch(id.b!, { role: 'accountant', territoryIds: [] });
+    for (const role of ['accountant', 'distribution_head']) {
+      const r = await patch(id.b!, { role, territoryIds: [] });
+      expect(r.status, JSON.stringify(r.body)).toBe(422);
+      expect(r.body.error.code).toBe('ROLE_RETIRED');
+    }
+    const fn = await patch(id.b!, { role: 'system_admin', territoryIds: [] });
     expect(fn.status, JSON.stringify(fn.body)).toBe(200);
-    expect(fn.body).toMatchObject({ roles: ['accountant'], managerId: null, territories: [] });
+    expect(fn.body).toMatchObject({ roles: ['system_admin'], managerId: null, territories: [] });
     expect((await patch(id.b!, { managerId: id.a })).status).toBe(422);
-    expect((await patch(id.b!, { role: 'system_admin' })).status).toBe(200);
     expect((await patch(id.b!, { role: 'business_manager' })).status).toBe(422);
     const back = await patch(id.b!, {
       role: 'business_manager',
@@ -246,6 +251,33 @@ describe.skipIf(!OWNER || !APP)('System admin People page (list + edit)', () => 
     expect(
       (await patch(id.z!, { role: 'zonal_business_manager', managerId: U.director })).status,
     ).toBe(200);
+  });
+
+  it('retired-role holder (no login): listed, editable to a live role or status, never re-assigned', async () => {
+    const { id: h } = await insertRetiredHolder(
+      `${RUN}.dh-legacy@demo.ariforce.in`,
+      'distribution_head',
+    );
+    const list = await http().get('/v1/users').query({ q: RUN, limit: 100 }).set(as('sysadmin'));
+    const row = list.body.items.find((u: { id: string }) => u.id === h);
+    expect(row).toMatchObject({ roles: ['distribution_head'], hasLogin: false, status: 'invited' });
+    const team = await http().get('/v1/team').set(as('sysadmin'));
+    expect(team.status).toBe(200);
+    const roles = await http().get('/v1/roles').set(as('sysadmin'));
+    expect(roles.status).toBe(200);
+    expect((await patch(h, { designation: 'Legacy' })).status).toBe(200);
+    const st = await patch(h, { status: 'suspended' });
+    expect(st.status, JSON.stringify(st.body)).toBe(200);
+    const mv = await patch(h, {
+      role: 'business_manager',
+      territoryIds: [T.hq],
+      managerId: U.area,
+    });
+    expect(mv.status, JSON.stringify(mv.body)).toBe(200);
+    expect(mv.body).toMatchObject({ role: 'business_manager', managerId: U.area });
+    const back = await patch(h, { role: 'distribution_head', territoryIds: [] });
+    expect(back.status).toBe(422);
+    expect(back.body.error.code).toBe('ROLE_RETIRED');
   });
 
   it('pending approvals follow a manager change and leave a deactivated approver', async () => {
@@ -289,7 +321,7 @@ describe.skipIf(!OWNER || !APP)('System admin People page (list + edit)', () => 
         ip: null,
       } as unknown as Principal;
       const svc = app.get(TeamService);
-      for (const b of [{ role: 'accountant' as const }, { status: 'suspended' as const }])
+      for (const b of [{ status: 'suspended' as const }])
         await expect(
           svc.update(p, U.sysadmin, { version: await ver(U.sysadmin), ...b }),
         ).rejects.toMatchObject({ response: { code: 'LAST_SYSTEM_ADMIN' } });
@@ -303,13 +335,13 @@ describe.skipIf(!OWNER || !APP)('System admin People page (list + edit)', () => 
     const abmPatch = (uid: string, b: Record<string, unknown>) => patch(uid, b, 'abm');
     expect((await abmPatch(U.rep, { email: `${RUN}.x@demo.ariforce.in` })).status).toBe(403);
     expect((await abmPatch(U.rep, { employeeCode: `${RUN}-x` })).status).toBe(403);
-    expect((await abmPatch(U.rep, { role: 'accountant' })).status).toBe(403);
+    expect((await abmPatch(U.rep, { role: 'accountant' })).status).toBe(422);
     expect((await abmPatch(U.rep, { managerId: null })).status).toBe(422);
     expect((await abmPatch(U.rep, { territoryIds: [] })).status).toBe(422);
     expect((await abmPatch(U.rep, { territoryIds: [T.otherArea] })).status).toBe(403);
     expect((await abmPatch(U.otherRep, { name: 'x' })).status).toBe(403);
     expect((await patch(id.a!, { name: 'x' }, 'director')).status).toBe(200);
-    expect((await patch(id.a!, { role: 'accountant' }, 'director')).status).toBe(403);
+    expect((await patch(id.a!, { role: 'accountant' }, 'director')).status).toBe(422);
     expect((await abmPatch(U.rep, { designation: 'Medical Representative' })).status).toBe(200);
   });
 });

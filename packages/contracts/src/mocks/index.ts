@@ -19,6 +19,7 @@ import {
   Territory,
 } from '../index';
 import * as fx from './fixtures';
+import { isRetiredRole } from '../schemas/roles';
 import { duplicateKeys, mapImportRow, type ImportLookup } from '../import/templates';
 import type { ImportEntity } from '../schemas/imports';
 import { SignInEmailBody } from '../schemas/auth';
@@ -465,7 +466,9 @@ export function createHandlers(baseUrl = '') {
       return u ? HttpResponse.json(Me.parse(u)) : unauthenticated();
     }),
     http.get(`${baseUrl}/v1/roles`, () =>
-      HttpResponse.json({ items: z.array(Role).parse(fx.roles) }),
+      HttpResponse.json({
+        items: z.array(Role).parse(fx.roles.filter((r) => !isRetiredRole(r.key))),
+      }),
     ),
     http.post(`${baseUrl}/v1/divisions/import`, ({ request }) =>
       mockImport('divisions', mockDivisions as never, request),

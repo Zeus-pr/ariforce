@@ -25,8 +25,8 @@ Sales hierarchy, lowest to highest. `rank` is stored on `roles`; keys are the `r
 |    7 | `vice_president`            | Vice President               | self + team below                                                    |
 |    8 | `director`                  | Director                     | whole company                                                        |
 |    0 | `system_admin`              | System Admin (technical)     | users, masters, imports, settings; **no field data** unless granted  |
-|    0 | `distribution_head`         | Distribution Head            | stockists, sales and distribution views, company-wide (`sales:read`) |
-|    0 | `accountant`                | Accountant                   | expenses and finance reports, company-wide (`finance:read`)          |
+|    0 | `distribution_head`         | Distribution Head (RETIRED)  | stockists, sales and distribution views, company-wide (`sales:read`) |
+|    0 | `accountant`                | Accountant (RETIRED)         | expenses and finance reports, company-wide (`finance:read`)          |
 
 System Admin is outside the hierarchy: no manager, nobody reports to it, it is not an approver, and by default it lacks `field:read`, `field:write`, `approvals:decide` and `reports:read`. Granting field access is an explicit, audited permission change on its role.
 
@@ -52,10 +52,11 @@ Territory levels are a separate, geographic hierarchy (`national > zone > region
 | `users:write`                                                                            |              |     |        |          |      ✓       |                   |            |
 | `products:prices`                                                                        |              |     |        |          |      ✓       |                   |            |
 | `sales:read`                                                                             |              |     |        |          |              |         ✓         |            |
-| `finance:read`                                                                           |              |     |        |          |              |                   |     ✓      |
+| `finance:read` (legacy, unchecked since 0040)                                            |              |     |        |          |              |                   |     ✓      |
 | `expenses:read`, `expenses:write` (own claims)                                           |      ✓       |  ✓  |   ✓    |    ✓     |              |                   |            |
 | `expenses:approve` (team expense claims)                                                 |              |  ✓  |   ✓    |    ✓     |              |                   |            |
-| `finance:write` (mark expense claims paid)                                               |              |     |        |          |              |                   |     ✓      |
+| `finance:write` (legacy, unchecked since 0040)                                           |              |     |        |          |              |                   |     ✓      |
+| `expenses:pay` (mark claims paid; approved/paid claims + reports company-wide)           |              |     |        |    ✓     |      ✓       |                   |            |
 | `leave:read`, `leave:write` (own leave)                                                  |      ✓       |  ✓  |   ✓    |    ✓     |              |                   |            |
 | `leave:approve` (team leave, grants, team calendar)                                      |              |  ✓  |   ✓    |    ✓     |              |                   |            |
 | `sfc:read` (SFC: own for BM, reporting line for managers, all for Director/System Admin) |      ✓       |  ✓  |   ✓    |    ✓     |      ✓       |                   |            |
@@ -73,7 +74,22 @@ Field-added doctors are `pending` unless created by a director or system admin; 
 
 ### Team member profile (#75)
 
-`/v1/team/members/{userId}/*`: own profile for any hierarchy role (BM included); others need ABM+ and `reports:read` and the person strictly below in the viewer's subtree (Director: everyone). system_admin / distribution_head / accountant: 403. Out of scope: 404. Expenses in performance only for own profile or `expenses:approve` / `finance:read`. No new permission. Details: docs/TEAM-PROFILE.md.
+`/v1/team/members/{userId}/*`: own profile for any hierarchy role (BM included); others need ABM+ and `reports:read` and the person strictly below in the viewer's subtree (Director: everyone). system_admin / distribution_head / accountant: 403. Out of scope: 404. Expenses in performance only for own profile or `expenses:approve` / `expenses:pay`. No new permission. Details: docs/TEAM-PROFILE.md.
+
+### Retired roles: Distribution Head and Accountant (2026-10-27, BREAKING for web)
+
+Prajesh retired both roles (soft). `RETIRED_ROLE_KEYS` in contracts.
+
+- **No assignment**: `POST /v1/employees`, `POST /v1/employees/invite-bulk` (row `code: ROLE_RETIRED`), `PATCH /v1/employees/{id}` with `role`, `POST /v1/signup-requests/{id}/approve`, and the public sign-up request all return `422 ROLE_RETIRED` (`details.role`). A PATCH that re-sends the role the person already holds (unchanged form) is not an assignment and passes.
+- **Hidden**: `GET /v1/roles` no longer lists them; `ASSIGNABLE_ROLE_KEYS` is the picker list. `RoleKey` still contains them so old records parse.
+- **Holders** (anyone whose roles are all retired): sign-in returns `403 ROLE_RETIRED` (no session); `POST /v1/invites/accept` returns `422 ROLE_RETIRED` (invite stays unused); `POST /v1/employees/{id}/invite` returns `422 ROLE_RETIRED`. They still appear in `GET /v1/users`, People and audit; a system admin can change their role to a live role, their status, name etc.
+- **Kept**: the enum values, the role rows, their permission seeds, user rows and history.
+- **Expenses**: mark-paid moved to `expenses:pay` (director, system_admin), migration 0040. Nothing checks `finance:read`/`finance:write` any more. `sales:read` has no endpoint yet.
+- Data: `packages/db/scripts/data-fixes/2026-10-27-retired-role-holders-report.sql` (read-only) and `2026-10-27-retire-functional-role-holders.sql` (one-off, lead runs).
+
+### Expense pay (migration 0040)
+
+`0040_role_permissions_expenses_pay` sets every role from `DEFAULT_ROLE_PERMISSIONS`: `expenses:pay` for director and system_admin. Generated by `db:role-perms`.
 
 ### SFC permissions (migration 0039)
 
@@ -106,7 +122,7 @@ Field-added doctors are `pending` unless created by a director or system admin; 
 
 `packages/db/migrations/0006_role_hierarchy.sql` renames enum values in place (ids and assignments keep working): rep → business_manager, area_manager → area_business_manager, regional_manager → regional_business_manager, zonal_manager → zonal_business_manager, national_head → director, admin → system_admin (field permissions removed); adds sales_manager, general_manager, vice_president before director. Rows for the three new roles are created by the seed / admin UI (Postgres cannot use a new enum value in the transaction that adds it).
 
-### ADR: functional roles distribution_head and accountant (2026-10-27)
+### ADR: functional roles distribution_head and accountant (2026-10-27; superseded: both retired, see "Retired roles")
 
 - **Decision**: add two `role_key` values outside the 8-level chain, approved by the lead. Rank 0, like `system_admin`; `inHierarchy=false`.
 - **Why not designations**: they need different data access (sales/finance), not just a title. Other titles from the HR file stay free-text designations, not roles.
@@ -184,7 +200,7 @@ The server enforces every rule in `apps/api/src/team/team.service.ts`, and the m
 - Guards: no self-edit (403); the company always keeps one active system admin (422 `LAST_SYSTEM_ADMIN`); a role change must keep the manager above and direct reports below (422 `MANAGER_RANK` / `REPORTS_OUTRANK`); reporting cycles 409.
 - Side effects: role change or suspension deletes the person's sessions (#79). Roles, territories and reporting line are re-read on every request, so territory and manager changes apply on the next call without sign-out. Pending approval steps are re-pointed (see CHANGELOG-CONTRACTS). Tour plans, submissions, DCRs, doctors and sent notifications are not changed.
 
-- A `system_admin` holding `users:write` may create (`POST /v1/employees`, `/invite-bulk`), edit and re-invite **any role**: every hierarchy role including `director`, plus `distribution_head`, `accountant` and another `system_admin`, on any territory in the company. Functional roles need no territory and never have a manager (422). Every action is audit-logged (`employee.created`, `employee.invited`).
+- A `system_admin` holding `users:write` may create (`POST /v1/employees`, `/invite-bulk`), edit and re-invite **any role**: every hierarchy role including `director`, plus another `system_admin` (`distribution_head` and `accountant` are retired: 422 `ROLE_RETIRED`), on any territory in the company. Functional roles need no territory and never have a manager (422). Every action is audit-logged (`employee.created`, `employee.invited`).
 - The system admin is outside the reporting line, so no manager is set by default. A `director` never has a manager: passing `managerId` for a director returns 422.
 - Other managers keep the strict rule: they can only create roles below their own, inside their own subtree.
 - `POST /v1/employees/{id}/invite` also works for an existing employee row that has no login yet (for example imported users). The row goes back to `invited` until the invite is accepted. Users who already have a login get 409.

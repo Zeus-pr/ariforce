@@ -9,6 +9,7 @@ import {
   ROLE_RANK,
   hierarchyRank,
   isHierarchyRole,
+  isRetiredRole,
   type RoleKey,
   type TeamNode,
   type TeamTree,
@@ -274,6 +275,10 @@ export class TeamService {
   }
 
   private assertRole(p: Principal, role: RoleKey) {
+    if (isRetiredRole(role))
+      throw err(422, 'ROLE_RETIRED', `The ${role} role is retired and can no longer be assigned`, {
+        role,
+      });
     const r = ROLE_RANK[role];
     if (isAdmin(p)) return;
     if (!(r > 0 && r < hierarchyRank(p.roles)))
@@ -503,7 +508,9 @@ export class TeamService {
         throw err(403, 'FORBIDDEN', 'Only a system admin can change email or employee code');
       if (!admin && b.managerId === null)
         throw err(422, 'VALIDATION', 'managerId cannot be cleared');
-      if (b.role) this.assertRole(p, b.role);
+      // Re-sending a retired role the person already holds (unchanged form) is not an assignment.
+      if (b.role && !(isRetiredRole(b.role) && t.roles.includes(b.role)))
+        this.assertRole(p, b.role);
       if (b.territoryIds) await this.assertTerritories(tx, p, b.territoryIds);
       const beforeTerr = (
         await tx
@@ -725,6 +732,13 @@ export class TeamService {
       const t = await this.assertManageable(tx, p, all, id);
       if (t.hasLogin || t.status === 'suspended')
         throw err(409, 'CONFLICT', 'User has already joined');
+      if (t.roles.length && t.roles.every(isRetiredRole))
+        throw err(
+          422,
+          'ROLE_RETIRED',
+          'This person holds a retired role; change their role before inviting them',
+          { roles: t.roles },
+        );
       // Existing employee rows without a login (e.g. imported) become 'invited' so they can accept.
       if (t.status === 'active')
         await tx
@@ -764,6 +778,17 @@ export class TeamService {
       if (!claimed.length) throw err(409, 'INVITE_USED', 'This invite has already been used');
       const [u] = await tx.select().from(users).where(eq(users.id, m.user_id));
       if (!u || u.authUserId) throw err(409, 'INVITE_USED', 'This invite has already been used');
+      const held = await tx
+        .select({ key: roles.key })
+        .from(userRoles)
+        .innerJoin(roles, eq(roles.id, userRoles.roleId))
+        .where(eq(userRoles.userId, u.id));
+      if (held.length && held.every((x) => isRetiredRole(x.key)))
+        throw err(
+          422,
+          'ROLE_RETIRED',
+          'Your role is no longer in use; ask your administrator to update your account',
+        );
       const taken = await tx
         .select({ id: authUser.id })
         .from(authUser)
@@ -897,6 +922,15 @@ export class TeamService {
       const { r, u, all } = await this.pendingSignup(tx, p, id);
       const admin = isAdmin(p);
       const role = b.role;
+      if (isRetiredRole(role))
+        throw err(
+          422,
+          'ROLE_RETIRED',
+          `The ${role} role is retired and can no longer be assigned`,
+          {
+            role,
+          },
+        );
       const hierarchy = isHierarchyRole(role);
       if (!hierarchy && !admin)
         throw err(403, 'FORBIDDEN', 'Only a system admin can grant this role');
