@@ -10,7 +10,7 @@ const BM = { id: uid(7), name: 'Demo Business Manager' };
 const ABM = { id: uid(6) };
 
 for (const view of ['desktop', 'mobile']) {
-  const { ctx, page } = await open('director', '/dashboard', view);
+  const { ctx, page } = await open('director', '/', view);
   const target = BM;
   check(true, `${view}: target BM ${target.id}`);
   await page.goto(`${BASE}/team/members/${target.id}`, { waitUntil: 'load' });
@@ -54,7 +54,7 @@ for (const view of ['desktop', 'mobile']) {
 }
 // BM: /team is approver-only in the nav gate, so the profile route redirects away.
 {
-  const { ctx, page } = await open('business_manager', '/dashboard');
+  const { ctx, page } = await open('business_manager', '/');
   await page.goto(`${BASE}/team/members/${ABM.id}`, { waitUntil: 'load' });
   await page.waitForURL((u) => !u.pathname.startsWith('/team'), { timeout: 15000 });
   check(true, 'BM: /team/members route is gated (redirected)');
@@ -62,7 +62,7 @@ for (const view of ['desktop', 'mobile']) {
 }
 // ABM: own subtree opens; someone above → not-in-team message.
 {
-  const { ctx, page } = await open('area_business_manager', '/dashboard');
+  const { ctx, page } = await open('area_business_manager', '/');
   await page.goto(`${BASE}/team/members/${BM.id}`, { waitUntil: 'load' });
   await page.getByTestId('profile').waitFor({ timeout: 15000 });
   check(true, 'ABM: report BM profile opens');

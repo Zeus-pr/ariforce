@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Bell, LogOut, Search } from 'lucide-react';
+import { LogOut, Search } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@ariforce/ui/components/avatar';
 import { Button } from '@ariforce/ui/components/button';
 import {
@@ -22,6 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@ariforce/ui/components
 import { signOut } from '@/lib/mock-auth';
 import { ROLES, ROLE_LABEL, type Role } from '@/lib/roles';
 import { CommandPalette } from '@/components/search/command-palette';
+import { NotificationBell } from '@/components/notifications/notification-bell';
 import { useRole } from './role-context';
 
 export function SiteHeader() {
@@ -100,14 +101,7 @@ export function SiteHeader() {
           >
             <Search className="size-4" />
           </Button>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Notifications" className="text-muted-foreground">
-                <Bell className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Notifications</TooltipContent>
-          </Tooltip>
+          <NotificationBell />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
