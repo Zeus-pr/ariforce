@@ -6579,7 +6579,74 @@
             }
           },
           "422": {
-            "description": "Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown products, or a check-in that is not your visit to that outlet",
+            "description": "Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown or inactive products, a check-in that is not your visit to that outlet, POB on a doctor call / RCPA on a non-chemist call (details.pobOutletCallIds / rcpaOutletCallIds), duplicate POB products or RCPA brands in a call (details.duplicatePob / duplicateRcpa), or an out-of-scope stockistId / RCPA doctorId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rcpa/competitor-brands": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "DCR"
+        ],
+        "operationId": "listCompetitorBrands",
+        "summary": "Competitor brands already captured in RCPA in your company (#40)",
+        "description": "Distinct brands (case-insensitive, most used first) so reps reuse an existing spelling. q matches a prefix of any word. Needs field:read.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompetitorBrandList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
             "content": {
               "application/json": {
                 "schema": {
@@ -13094,9 +13161,17 @@
             }
           },
           "pob": {
+            "maxItems": 100,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PobLine"
+            }
+          },
+          "rcpa": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RcpaLine"
             }
           },
           "remarks": {
@@ -13225,7 +13300,7 @@
             ]
           },
           "value": {
-            "description": "INR, at PTR",
+            "description": "INR = quantity × product PTR, computed by the server (null when the product has no PTR). Ignored on input.",
             "anyOf": [
               {
                 "type": "number",
@@ -13241,7 +13316,71 @@
           "productId",
           "quantity"
         ],
-        "description": "Personal order booking line"
+        "description": "Personal order booking line (chemist and stockist calls only, #40)"
+      },
+      "RcpaLine": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Our product; anchors the molecule being audited",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "competitorBrand": {
+            "description": "Null/absent = this line counts our own brand",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "competitorCompany": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000,
+            "description": "Units sold/seen at the chemist"
+          },
+          "prescriptions": {
+            "description": "Prescription (Rx) count, if captured",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "doctorId": {
+            "description": "Prescribing doctor, in your scope",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "productId",
+          "quantity"
+        ],
+        "description": "Retail chemist prescription audit line (chemist calls, #40)"
       },
       "DcrCorrectionRequest": {
         "type": "object",
@@ -18037,6 +18176,12 @@
               "$ref": "#/components/schemas/PobLineOutput"
             }
           },
+          "rcpa": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RcpaLineOutput"
+            }
+          },
           "remarks": {
             "anyOf": [
               {
@@ -18064,8 +18209,50 @@
           "productsDetailed",
           "samples",
           "pob",
+          "rcpa",
           "remarks",
           "calledAt"
+        ],
+        "additionalProperties": false
+      },
+      "CompetitorBrandList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitorBrand"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "CompetitorBrand": {
+        "type": "object",
+        "properties": {
+          "brand": {
+            "type": "string"
+          },
+          "company": {
+            "description": "Most-used company for this brand",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uses": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "brand",
+          "company",
+          "uses"
         ],
         "additionalProperties": false
       },
@@ -21625,7 +21812,7 @@
             ]
           },
           "value": {
-            "description": "INR, at PTR",
+            "description": "INR = quantity × product PTR, computed by the server (null when the product has no PTR). Ignored on input.",
             "anyOf": [
               {
                 "type": "number",
@@ -21642,7 +21829,84 @@
           "quantity"
         ],
         "additionalProperties": false,
-        "description": "Personal order booking line"
+        "description": "Personal order booking line (chemist and stockist calls only, #40)"
+      },
+      "RcpaLineOutput": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Our product; anchors the molecule being audited",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "competitorBrand": {
+            "description": "Null/absent = this line counts our own brand",
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "competitorCompany": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000,
+            "description": "Units sold/seen at the chemist"
+          },
+          "prescriptions": {
+            "description": "Prescription (Rx) count, if captured",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "doctorId": {
+            "description": "Prescribing doctor, in your scope",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "productId",
+          "quantity"
+        ],
+        "additionalProperties": false,
+        "description": "Retail chemist prescription audit line (chemist calls, #40)"
       }
     },
     "securitySchemes": {

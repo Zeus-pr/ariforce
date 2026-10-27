@@ -797,6 +797,24 @@ function fieldHandlers(baseUrl: string) {
     http.get(`${baseUrl}/v1/dcrs`, ({ request }) =>
       list(Dcr, dcrs.map(withLock), new URL(request.url)),
     ),
+    http.get(`${baseUrl}/v1/rcpa/competitor-brands`, ({ request }) => {
+      const q = (new URL(request.url).searchParams.get('q') ?? '').trim().toLowerCase();
+      const counts = new Map<string, { brand: string; company: string | null; uses: number }>();
+      for (const l of dcrs.flatMap((d) => d.calls.flatMap((c) => c.rcpa))) {
+        if (!l.competitorBrand) continue;
+        const k = l.competitorBrand.toLowerCase();
+        const e = counts.get(k) ?? { brand: l.competitorBrand, company: null, uses: 0 };
+        e.uses += 1;
+        e.company ??= l.competitorCompany ?? null;
+        counts.set(k, e);
+      }
+      const items = [...counts.entries()]
+        .filter(([k]) => !q || k.split(' ').some((w) => w.startsWith(q)) || k.startsWith(q))
+        .map(([, v]) => v)
+        .sort((a, b) => b.uses - a.uses || a.brand.localeCompare(b.brand))
+        .slice(0, 20);
+      return HttpResponse.json({ items });
+    }),
     http.get(`${baseUrl}/v1/dcrs/:id`, ({ params }) => {
       const d = dcrs.find((x) => x.id === params.id);
       return d ? HttpResponse.json(withLock(d)) : notFound();
@@ -832,7 +850,43 @@ function fieldHandlers(baseUrl: string) {
           },
           { status: 422 },
         );
-      const calls = b.data.calls.map(({ clientId, ...c }) => ({ ...c, id: clientId }));
+      // #40: POB on chemist/stockist calls, RCPA on chemist calls, no duplicate lines.
+      const pobOutletCallIds = b.data.calls
+        .filter((c) => c.pob.length && c.outletKind === 'doctor')
+        .map((c) => c.clientId);
+      const rcpaOutletCallIds = b.data.calls
+        .filter((c) => c.rcpa.length && c.outletKind !== 'chemist')
+        .map((c) => c.clientId);
+      const dup = (keys: string[]) => new Set(keys).size !== keys.length;
+      const duplicatePob = b.data.calls
+        .filter((c) => dup(c.pob.map((l) => l.productId)))
+        .map((c) => c.clientId);
+      const duplicateRcpa = b.data.calls
+        .filter((c) =>
+          dup(c.rcpa.map((l) => `${l.productId}|${(l.competitorBrand ?? '').toLowerCase()}`)),
+        )
+        .map((c) => c.clientId);
+      if (
+        pobOutletCallIds.length ||
+        rcpaOutletCallIds.length ||
+        duplicatePob.length ||
+        duplicateRcpa.length
+      )
+        return validation('Invalid POB/RCPA lines', {
+          pobOutletCallIds,
+          rcpaOutletCallIds,
+          duplicatePob,
+          duplicateRcpa,
+        });
+      const ptr = (id: string) => fx.products.find((p) => p.id === id)?.ptr ?? null;
+      const calls = b.data.calls.map(({ clientId, ...c }) => ({
+        ...c,
+        id: clientId,
+        pob: c.pob.map((l) => {
+          const r = ptr(l.productId);
+          return { ...l, value: r == null ? null : Math.round(l.quantity * r * 100) / 100 };
+        }),
+      }));
       if (!d) {
         d = {
           ...stamp(),

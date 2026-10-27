@@ -37,6 +37,8 @@ import {
   CheckInListQuery,
   UserListQuery,
   UserSummary,
+  CompetitorBrandList,
+  CompetitorBrandQuery,
   ConsentState,
   Dcr,
   DcrListQuery,
@@ -769,9 +771,20 @@ function buildDocument(): OpenApiDocument {
             '200': { description: 'Saved', ...json(Dcr) },
             '409': err('DAY_LOCKED (request a correction) or VERSION_CONFLICT'),
             '422': err(
-              'Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown products, or a check-in that is not your visit to that outlet',
+              'Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown or inactive products, a check-in that is not your visit to that outlet, POB on a doctor call / RCPA on a non-chemist call (details.pobOutletCallIds / rcpaOutletCallIds), duplicate POB products or RCPA brands in a call (details.duplicatePob / duplicateRcpa), or an out-of-scope stockistId / RCPA doctorId',
             ),
           },
+        }),
+      },
+      '/v1/rcpa/competitor-brands': {
+        get: op({
+          tags: ['DCR'],
+          operationId: 'listCompetitorBrands',
+          summary: 'Competitor brands already captured in RCPA in your company (#40)',
+          description:
+            'Distinct brands (case-insensitive, most used first) so reps reuse an existing spelling. q matches a prefix of any word. Needs field:read.',
+          requestParams: { query: CompetitorBrandQuery },
+          responses: { '200': { description: 'OK', ...json(CompetitorBrandList) } },
         }),
       },
       '/v1/dcrs/correction-requests': {

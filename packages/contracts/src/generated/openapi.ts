@@ -899,6 +899,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/rcpa/competitor-brands': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Competitor brands already captured in RCPA in your company (#40)
+     * @description Distinct brands (case-insensitive, most used first) so reps reuse an existing spelling. q matches a prefix of any word. Needs field:read.
+     */
+    get: operations['listCompetitorBrands'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/dcrs/correction-requests': {
     parameters: {
       query?: never;
@@ -2215,6 +2235,7 @@ export interface components {
       productsDetailed: components['schemas']['DetailedProduct'][];
       samples: components['schemas']['SampleGiven'][];
       pob: components['schemas']['PobLine'][];
+      rcpa?: components['schemas']['RcpaLine'][];
       remarks: string | null;
       /**
        * Format: date-time
@@ -2248,7 +2269,7 @@ export interface components {
       productId: string;
       quantity: number;
     };
-    /** @description Personal order booking line */
+    /** @description Personal order booking line (chemist and stockist calls only, #40) */
     PobLine: {
       /**
        * Format: uuid
@@ -2258,8 +2279,26 @@ export interface components {
       productId: string;
       quantity: number;
       stockistId?: string | null;
-      /** @description INR, at PTR */
+      /** @description INR = quantity × product PTR, computed by the server (null when the product has no PTR). Ignored on input. */
       value?: number | null;
+    };
+    /** @description Retail chemist prescription audit line (chemist calls, #40) */
+    RcpaLine: {
+      /**
+       * Format: uuid
+       * @description Our product; anchors the molecule being audited
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      /** @description Null/absent = this line counts our own brand */
+      competitorBrand?: string | null;
+      competitorCompany?: string | null;
+      /** @description Units sold/seen at the chemist */
+      quantity: number;
+      /** @description Prescription (Rx) count, if captured */
+      prescriptions?: number | null;
+      /** @description Prescribing doctor, in your scope */
+      doctorId?: string | null;
     };
     DcrCorrectionRequest: {
       /**
@@ -3769,12 +3808,22 @@ export interface components {
       productsDetailed: components['schemas']['DetailedProductOutput'][];
       samples: components['schemas']['SampleGivenOutput'][];
       pob: components['schemas']['PobLineOutput'][];
+      rcpa: components['schemas']['RcpaLineOutput'][];
       remarks: string | null;
       /**
        * Format: date-time
        * @description ISO-8601 timestamp (UTC)
        */
       calledAt: string;
+    };
+    CompetitorBrandList: {
+      items: components['schemas']['CompetitorBrand'][];
+    };
+    CompetitorBrand: {
+      brand: string;
+      /** @description Most-used company for this brand */
+      company: string | null;
+      uses: number;
     };
     Approval: {
       /**
@@ -4794,7 +4843,7 @@ export interface components {
       productId: string;
       quantity: number;
     };
-    /** @description Personal order booking line */
+    /** @description Personal order booking line (chemist and stockist calls only, #40) */
     PobLineOutput: {
       /**
        * Format: uuid
@@ -4804,8 +4853,26 @@ export interface components {
       productId: string;
       quantity: number;
       stockistId?: string | null;
-      /** @description INR, at PTR */
+      /** @description INR = quantity × product PTR, computed by the server (null when the product has no PTR). Ignored on input. */
       value?: number | null;
+    };
+    /** @description Retail chemist prescription audit line (chemist calls, #40) */
+    RcpaLineOutput: {
+      /**
+       * Format: uuid
+       * @description Our product; anchors the molecule being audited
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      /** @description Null/absent = this line counts our own brand */
+      competitorBrand?: string | null;
+      competitorCompany?: string | null;
+      /** @description Units sold/seen at the chemist */
+      quantity: number;
+      /** @description Prescription (Rx) count, if captured */
+      prescriptions?: number | null;
+      /** @description Prescribing doctor, in your scope */
+      doctorId?: string | null;
     };
   };
   responses: never;
@@ -8662,8 +8729,49 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown products, or a check-in that is not your visit to that outlet */
+      /** @description Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown or inactive products, a check-in that is not your visit to that outlet, POB on a doctor call / RCPA on a non-chemist call (details.pobOutletCallIds / rcpaOutletCallIds), duplicate POB products or RCPA brands in a call (details.duplicatePob / duplicateRcpa), or an out-of-scope stockistId / RCPA doctorId */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listCompetitorBrands: {
+    parameters: {
+      query?: {
+        q?: string;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CompetitorBrandList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
         headers: {
           [name: string]: unknown;
         };

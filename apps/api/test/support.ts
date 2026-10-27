@@ -22,3 +22,35 @@ export async function ensureProduct(http: Http, bm: string, director: string): P
   const again = await http().get(`/v1/products?q=PX${run}`).set({ authorization: director });
   return again.body.items[0].id;
 }
+
+/** A fresh product (in the first product's division) with the given PTR / active flag (#40). */
+export async function createProduct(
+  http: Http,
+  bm: string,
+  director: string,
+  o: { ptr?: number | null; active?: boolean } = {},
+): Promise<string> {
+  const base = await ensureProduct(http, bm, director);
+  const div = (await http().get(`/v1/products/${base}`).set({ authorization: director })).body
+    .divisionId;
+  const code = `PR${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  const res = await http()
+    .post('/v1/products')
+    .set({ authorization: director })
+    .send({
+      divisionId: div,
+      code,
+      name: `Product ${code}`,
+      brand: null,
+      composition: null,
+      packSize: null,
+      form: null,
+      mrp: null,
+      ptr: o.ptr ?? null,
+      pts: null,
+      isSample: false,
+      active: o.active ?? true,
+    });
+  if (res.status !== 201) throw new Error(`product create failed: ${JSON.stringify(res.body)}`);
+  return res.body.id;
+}

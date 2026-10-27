@@ -8,7 +8,7 @@ import { calendarWorkingDates } from '@ariforce/contracts';
 import { T } from '@ariforce/db';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
-import { ensureProduct } from './support';
+import { createProduct } from './support';
 
 const OWNER = process.env.DIRECT_URL;
 const APP = process.env.DATABASE_URL;
@@ -37,7 +37,10 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
     const wt = (await http().get('/v1/work-types?limit=50').set(as('bm'))).body.items;
     const field = wt.find((w: { kind: string }) => w.kind === 'field').id;
     const doctor = (await http().get('/v1/doctors?limit=1').set(as('bm'))).body.items[0].id;
-    product = await ensureProduct(http, tok.bm!, tok.director!);
+    const chemist = (await http().get(`/v1/chemists?territoryId=${T.hq}&limit=1`).set(as('bm')))
+      .body.items[0].id;
+    // PTR 300 → the server values the 5-unit POB at 1500 (#40: value = quantity × PTR).
+    product = await createProduct(http, tok.bm!, tok.director!, { ptr: 300 });
     const res = await http()
       .put('/v1/dcrs')
       .set(as('bm'))
@@ -57,7 +60,19 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
             jointWorkUserIds: [],
             productsDetailed: [{ productId: product, order: 1 }],
             samples: [{ productId: product, quantity: 3 }],
-            pob: [{ productId: product, quantity: 5, stockistId: null, value: 1500 }],
+            pob: [],
+            calledAt: new Date().toISOString(),
+          },
+          {
+            clientId: uuidv7(),
+            outletKind: 'chemist',
+            outletId: chemist,
+            checkInId: null,
+            remarks: null,
+            jointWorkUserIds: [],
+            productsDetailed: [],
+            samples: [],
+            pob: [{ productId: product, quantity: 5, stockistId: null, value: 1 }],
             calledAt: new Date().toISOString(),
           },
         ],

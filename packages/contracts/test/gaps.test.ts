@@ -96,6 +96,75 @@ describe('contract gaps', () => {
     expect(real.data!.totals.created).toBe(1);
   });
 
+  it('POB/RCPA at chemist calls (#40): outlet rules, duplicates, PTR value, brand lookup', async () => {
+    const date = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const chem = fx.chemists[0]!;
+    const [p1, p2] = [fx.products[0]!, fx.products[1]!];
+    const call = (o: Record<string, unknown>) => ({
+      clientId: uuid(),
+      outletKind: 'chemist' as const,
+      outletId: chem.id,
+      checkInId: null,
+      jointWorkUserIds: [],
+      productsDetailed: [],
+      samples: [],
+      pob: [],
+      rcpa: [],
+      remarks: null,
+      calledAt: new Date().toISOString(),
+      ...o,
+    });
+    const put = (calls: unknown[]) =>
+      api.PUT('/v1/dcrs', {
+        body: {
+          date,
+          workTypeId: fx.workTypes[0]!.id,
+          territoryIds: [chem.territoryId],
+          deviationReason: 'test',
+          submit: false,
+          calls: calls as never,
+        },
+      });
+    const doctorPob = await put([
+      call({
+        outletKind: 'doctor',
+        outletId: fx.doctors[0]!.id,
+        pob: [{ productId: p1.id, quantity: 1 }],
+      }),
+    ]);
+    expect(doctorPob.response.status).toBe(422);
+    const dupRcpa = await put([
+      call({
+        rcpa: [
+          { productId: p2.id, competitorBrand: 'Dolo 650', quantity: 5 },
+          { productId: p2.id, competitorBrand: ' DOLO   650 ', quantity: 3 },
+        ],
+      }),
+    ]);
+    expect(dupRcpa.response.status).toBe(422);
+    const ok = await put([
+      call({
+        pob: [{ productId: p1.id, quantity: 10, value: 1 }],
+        rcpa: [
+          { productId: p2.id, quantity: 8 },
+          {
+            productId: p2.id,
+            competitorBrand: ' Dolo   650 ',
+            competitorCompany: 'Micro',
+            quantity: 5,
+            prescriptions: 2,
+          },
+        ],
+      }),
+    ]);
+    expect(ok.response.status).toBe(200);
+    const c = ok.data!.calls[0]!;
+    expect(c.pob[0]!.value).toBe(10 * p1.ptr!); // server value from PTR, client value ignored
+    expect(c.rcpa[1]!.competitorBrand).toBe('Dolo 650');
+    const brands = await api.GET('/v1/rcpa/competitor-brands', { params: { query: { q: 'do' } } });
+    expect(brands.data!.items).toEqual([{ brand: 'Dolo 650', company: 'Micro', uses: 1 }]);
+  });
+
   it('check-in sequence, DCR with detailing/samples/POB, TP approval', async () => {
     const loc = {
       location: { lat: 22.57, lng: 88.36 },
@@ -145,7 +214,7 @@ describe('contract gaps', () => {
             jointWorkUserIds: [],
             productsDetailed: [{ productId: fx.products[0]!.id, order: 1 }],
             samples: [{ productId: fx.products[0]!.id, quantity: 2 }],
-            pob: [{ productId: fx.products[1]!.id, quantity: 10 }],
+            pob: [],
             remarks: null,
             calledAt: new Date().toISOString(),
           },
@@ -153,6 +222,7 @@ describe('contract gaps', () => {
       },
     });
     expect(dcr.data!.status).toBe('submitted');
+    expect(dcr.data!.calls[0]!.rcpa).toEqual([]); // rcpa defaults to [] (older clients)
     expect(dcr.data!.calls[0]!.samples[0]!.quantity).toBe(2);
 
     await api.PUT('/v1/tour-plans/{month}', {
