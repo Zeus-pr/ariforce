@@ -24,7 +24,7 @@ import type { ImportEntity } from '../schemas/imports';
 import { SignInEmailBody } from '../schemas/auth';
 import { kpiReport, productKpiReport } from './kpis';
 import { listNotifications, seedNotifications } from './notifications';
-import { teamHandlers, teamProfileHandlers } from './team';
+import { mockEmployees, teamHandlers, teamProfileHandlers } from './team';
 import { signupHandlers } from './signup';
 import { allowanceHandlers } from './allowances';
 import { expenseHandlers } from './expenses';
@@ -474,11 +474,17 @@ export function createHandlers(baseUrl = '') {
     http.post(`${baseUrl}/v1/product-hq-mappings/import`, ({ request }) =>
       mockImport('product_hq', mockHq as never, request),
     ),
-    http.get(`${baseUrl}/v1/territories`, ({ request }) =>
-      list(Territory, fx.territories, new URL(request.url)),
-    ),
+    http.get(`${baseUrl}/v1/territories`, ({ request }) => {
+      const url = new URL(request.url);
+      // HQ-level rows live apart so pickers that list leaf territories keep their fixtures.
+      return list(
+        Territory,
+        url.searchParams.get('level') === 'headquarter' ? fx.hqTerritories : fx.territories,
+        url,
+      );
+    }),
     http.get(`${baseUrl}/v1/territories/:id`, ({ params }) => {
-      const t = fx.territories.find((r) => r.id === params.id);
+      const t = [...fx.territories, ...fx.hqTerritories].find((r) => r.id === params.id);
       return t ? HttpResponse.json(Territory.parse(t)) : notFound();
     }),
     http.get(`${baseUrl}/v1/specialties`, ({ request }) =>
@@ -756,19 +762,24 @@ function fieldHandlers(baseUrl: string) {
           }
       }
       const role = url.searchParams.get('role');
-      const rows = fx.mockUsers
+      // Like the API: q matches name, employee code or email.
+      const q = url.searchParams.get('q')?.toLowerCase();
+      url.searchParams.delete('q');
+      const rows = mockEmployees()
         .filter((u) => (wide || team.has(u.id)) && (!role || u.roles.includes(role as never)))
+        .filter((u) => !q || [u.name, u.employeeCode ?? '', u.email].some((x) => x.toLowerCase().includes(q)))
         .map((u) => ({
           id: u.id,
           name: u.name,
           email: u.email,
           employeeCode: u.employeeCode,
+          phone: u.phone,
           roles: u.roles,
           managerId: u.managerId,
           territoryIds: u.territoryIds,
-          status: 'active' as const,
-          hasLogin: true,
-          inviteStatus: 'accepted' as const,
+          status: u.status,
+          hasLogin: u.status === 'active' || u.status === 'suspended',
+          inviteStatus: (u.status === 'invited' ? 'pending' : u.status === 'active' ? 'accepted' : 'none') as 'pending' | 'accepted' | 'none',
           inviteExpiresAt: null,
         }));
       return list(UserSummary, rows, url);

@@ -32,7 +32,7 @@ api.use({
     if (
       MOCKING &&
       typeof window !== 'undefined' &&
-      (/^\/v1\/(expense|leave\/|team\/members\/|exception|notifications|admin\/|allowance)/.test(new URL(request.url).pathname) ||
+      (/^\/v1\/(expense|leave\/|team\/members\/|exception|notifications|admin\/|allowance|employees)/.test(new URL(request.url).pathname) ||
         // Doctor create decides pending vs approved by principal.
         (request.method === 'POST' && new URL(request.url).pathname === '/v1/doctors'))
     ) {

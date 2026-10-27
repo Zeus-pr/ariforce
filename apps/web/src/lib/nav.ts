@@ -181,6 +181,15 @@ export const NAV: NavItem[] = [
     section: 'admin',
   },
   {
+    slug: 'invites',
+    title: 'Invite people',
+    href: '/admin/invites',
+    icon: UserPlus,
+    // System admin with users:write (the API's isAdmin): any hierarchy role, any HQ, company-wide.
+    roles: ROLES.filter((r) => isSystemAdmin(r) && (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never)),
+    section: 'admin',
+  },
+  {
     slug: 'product-prices',
     title: 'Product prices',
     href: '/admin/product-prices',

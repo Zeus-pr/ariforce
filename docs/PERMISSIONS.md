@@ -33,3 +33,14 @@ Rule: `isSystemAdmin(role) || roleLevel(role) >= roleLevel('regional_business_ma
 ## Routes (Oct 27)
 
 Doctors, Chemists and Stockists are standalone pages at `/doctors`, `/chemists`, `/stockists` (import at `/{kind}/import`, writers only). Same layout: entity title, search, filters, Import + Add (RBM+ and System Admin), table. Old `/masters`, `/masters/{kind}` and `/masters/{kind}/import` redirect (307, query kept) via next.config.ts. The Administration "Master Data" item is gone; System Admin sees the three pages under Business. On /doctors a row opens the doctor profile; writers get Edit there.
+
+## Invite people (System Admin)
+
+`/admin/invites`, nav entry "Invite people" in the Administration section. Shown only to `system_admin` with `users:write` (the API's `isAdmin`); every other role gets no nav entry and the route guard sends them home.
+
+- Existing employee: server-side search over `GET /v1/users?q=` (company-wide for System Admin). Shows name, code, email, role, HQ, manager and status. The link goes to the saved email via `POST /v1/employees/{id}/invite`. People who already signed in (`hasLogin`, or a 409 from the API) get a plain "already joined" note instead of a link.
+- New person: name, email, phone, any role (including System Admin, Distribution Head, Accountant), HQ (Business Manager: HQ-level territories only, including empty HQs) or territory (other sales roles), optional manager who outranks the role. Directors and functional roles have no manager; functional roles have no territory. "Add several" sends rows through `POST /v1/employees/invite-bulk` with per-row results.
+- After sending: a copyable link (when the API returns one), and a "Waiting to join" list from `GET /v1/users?status=invited` with "Send new link" per person and "Invite all pending". A new link cancels the old one; there is no separate cancel.
+- Director's My Team invite flow is unchanged.
+
+Evidence: `apps/web/e2e/admin-invites-evidence.mjs` (Chromium and WebKit, 36 checks each).

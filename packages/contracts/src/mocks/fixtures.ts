@@ -65,6 +65,30 @@ export const territories: Territory[] = [
   },
 ];
 
+/** Headquarter-level territories (served for GET /v1/territories?level=headquarter); Howrah has nobody yet. */
+export const hqTerritories: Territory[] = [
+  {
+    ...base,
+    id: tid(11),
+    parentId: tid(4),
+    level: 'headquarter',
+    code: 'HQ-KOLN',
+    name: 'Kolkata North HQ',
+    path: `${tid(1)}.${tid(2)}.${tid(3)}.${tid(4)}.${tid(11)}`,
+    centroid: null,
+  },
+  {
+    ...base,
+    id: tid(12),
+    parentId: tid(4),
+    level: 'headquarter',
+    code: 'HQ-HWH',
+    name: 'Howrah HQ',
+    path: `${tid(1)}.${tid(2)}.${tid(3)}.${tid(4)}.${tid(12)}`,
+    centroid: null,
+  },
+];
+
 export const roles: Role[] = ROLE_KEYS.map((key, i) => ({
   id: `01930000-0000-7000-8000-0000000002${String(i).padStart(2, '0')}`,
   key,

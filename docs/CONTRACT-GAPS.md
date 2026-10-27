@@ -164,3 +164,14 @@ Built only from endpoints that exist; nothing is faked. Gaps for the API:
 ## #86 Tour plan per-day submissions (web, against 35022cd)
 - Adopted: day status/submissionId, submissions[], month aggregate, submit {submitterNote?, dates?}, DAY_LOCKED (details.dates), EMPTY_PLAN, calendar days[], approval subject.submission + submission-only days, Approval.subjectId = submission id.
 - Mock follows the contract. Open question: should plan-level rejectionReason/rejectedBy still be set? The web reads per-submission fields and only falls back to the plan-level ones.
+
+## System Admin invites (feat/sysadmin-invite-any acf486a, merged a5406bf)
+
+Adopted in web `/admin/invites`. Still open, by design or not yet in the API:
+- No endpoint to cancel a link on its own; sending a new link cancels the earlier one.
+- No endpoint lists invites; the pending list is `GET /v1/users?status=invited` (+ `inviteStatus`/`inviteExpiresAt`).
+- Links are shown only when the API returns `inviteUrl` (`INVITE_RETURN_LINK=true`, non-production); otherwise the screen says the invite was emailed.
+- HQ edit from this screen is not built: `PATCH /v1/employees/{id}` needs `version`, and `UserSummary` (`GET /v1/users`) does not carry it; `GET /v1/team` is not a picker for System Admin.
+- The server does no territory-level check; the web limits Business Managers to HQ-level territories.
+- Mock: `/v1/employees*` requests now carry the mock session (`x-mock-user`), so mock create/invite rules match the signed-in role.
+
