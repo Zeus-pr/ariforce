@@ -21,6 +21,7 @@ import {
   type OfficeForm,
   type SfcHq,
 } from '@/lib/dcr/model';
+import { ChoiceSelect } from './choice-select';
 import { SearchSelect, type SelectOption } from './search-select';
 
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
@@ -115,16 +116,19 @@ export function SfcPanel({
         return (
           <div key={h.hqTerritoryId} className="flex flex-col gap-2">
             {h.candidates.length > 1 && (
-              <fieldset className="flex flex-col gap-1.5" disabled={readOnly}>
-                <legend className="mb-1 text-sm font-medium">{h.hqName}: which route did you travel?</legend>
-                {h.candidates.map((r) => (
-                  <label key={r.id} className={cn('flex min-h-11 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm transition-colors', chosen === r.id ? 'border-primary bg-brand-50' : 'hover:bg-muted')}>
-                    <input type="radio" name={`route-${h.hqTerritoryId}`} className="accent-[var(--brand-navy)]" checked={chosen === r.id} onChange={() => onChoose(h.hqTerritoryId, r.id)} data-testid="dcr-sfc-route" />
-                    <span className="min-w-0 flex-1 truncate">{r.fromPlace} to {r.toPlace}</span>
-                    <span className="shrink-0 text-muted-foreground tabular-nums">{km(r.oneWayKm)}</span>
-                  </label>
-                ))}
-              </fieldset>
+              <div className="flex flex-col gap-1.5">
+                <Label id={`route-${h.hqTerritoryId}`}>{h.hqName}: which route did you travel?</Label>
+                <ChoiceSelect
+                  aria-labelledby={`route-${h.hqTerritoryId}`}
+                  value={chosen}
+                  onValueChange={(id) => onChoose(h.hqTerritoryId, id)}
+                  choices={h.candidates.map((r) => ({ value: r.id, label: `${r.fromPlace} to ${r.toPlace}`, hint: km(r.oneWayKm) }))}
+                  placeholder="Choose your route"
+                  disabled={readOnly}
+                  className="sm:max-w-md"
+                  testId="dcr-sfc-route"
+                />
+              </div>
             )}
             {c ? (
               <RouteFacts title={`${h.hqName} · ${c.fromPlace} to ${c.toPlace}`} c={c} note="From your SFC. Read-only; changes are made on the SFC screen." />
@@ -336,6 +340,41 @@ function Field({ label, optional, children, htmlFor, errors = [] }: { label: str
   );
 }
 
+const MEETING_TYPES = ['Cycle meeting', 'Area review', 'Regional review', 'Conference or CME', 'Team meeting'];
+const TRAINING_TYPES = ['Product training', 'Induction', 'Field skills workshop', 'Compliance training', 'Refresher training'];
+const ADMIN_TASKS = ['Expense filing', 'Stock reconciliation', 'Reports and MIS', 'Office visit', 'Bank or courier work'];
+const OTHER = '__other';
+
+/** A type from a short preset list, or "Other" with the name typed in. Stored as the text itself. */
+function TypeSelect({ id, label, presets, value, onChange, placeholder, otherPlaceholder, maxLength = 120, disabled, errors = [], testId }: { id: string; label: string; presets: string[]; value: string; onChange: (v: string) => void; placeholder: string; otherPlaceholder: string; maxLength?: number; disabled: boolean; errors?: string[]; testId: string }) {
+  const [otherPicked, setOtherPicked] = useState(false);
+  const other = otherPicked || (!!value && !presets.includes(value));
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label id={`${id}-label`}>{label}</Label>
+      <ChoiceSelect
+        id={id}
+        aria-labelledby={`${id}-label`}
+        value={other ? OTHER : value}
+        onValueChange={(v) => {
+          setOtherPicked(v === OTHER);
+          onChange(v === OTHER ? '' : v);
+        }}
+        choices={[...presets.map((p) => ({ value: p, label: p })), { value: OTHER, label: 'Other', hint: 'Type it in' }]}
+        placeholder={placeholder}
+        disabled={disabled}
+        invalid={errors.length > 0 && !other}
+        className="sm:max-w-sm"
+        testId={testId}
+      />
+      {other && (
+        <Input autoFocus={otherPicked} aria-label={`${label} (other)`} value={value} maxLength={maxLength} disabled={disabled} onChange={(e) => onChange(e.target.value)} placeholder={otherPlaceholder} aria-invalid={errors.length > 0 || undefined} className="af-fade md:text-base" data-testid={`${testId}-other`} />
+      )}
+      <FieldError messages={errors} />
+    </div>
+  );
+}
+
 /** Meeting and Training: type/name, in person or online, where, when, how long, who, remarks. */
 export function MeetingFields({ kind, value, onChange, readOnly, errors }: { kind: 'meeting' | 'training'; value: MeetingForm; onChange: (v: MeetingForm) => void; readOnly: boolean; errors: Record<string, string[]> }) {
   const set = (p: Partial<MeetingForm>) => onChange({ ...value, ...p });
@@ -343,19 +382,34 @@ export function MeetingFields({ kind, value, onChange, readOnly, errors }: { kin
   return (
     <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-2" data-testid={`dcr-${kind}`}>
       <div className="sm:col-span-2">
-        <Field label={`${what} type or name`} htmlFor="m-title" errors={errors.title}>
-          <Input id="m-title" value={value.title} maxLength={120} onChange={(e) => set({ title: e.target.value })} placeholder={kind === 'meeting' ? 'e.g. Monthly area review' : 'e.g. New product launch training'} className="md:text-base" />
-        </Field>
+        <TypeSelect
+          id="m-title"
+          label={`${what} type`}
+          presets={kind === 'meeting' ? MEETING_TYPES : TRAINING_TYPES}
+          value={value.title}
+          onChange={(title) => set({ title })}
+          placeholder={`Choose the ${what.toLowerCase()} type`}
+          otherPlaceholder={kind === 'meeting' ? 'e.g. Distributor meet' : 'e.g. New product launch training'}
+          disabled={readOnly}
+          errors={errors.title}
+          testId={`dcr-${kind}-type`}
+        />
       </div>
       <div className="flex flex-col gap-1.5 sm:col-span-2">
-        <span className="text-sm font-medium">Mode</span>
-        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Mode">
-          {(['in_person', 'online'] as const).map((m) => (
-            <button key={m} type="button" role="radio" aria-checked={value.mode === m} onClick={() => set({ mode: m })} className={cn('min-h-11 rounded-md border px-3 text-sm transition-colors', value.mode === m ? 'border-primary bg-brand-50 font-medium' : 'hover:bg-muted')} data-testid={`dcr-mode-${m}`}>
-              {m === 'in_person' ? 'In person' : 'Online'}
-            </button>
-          ))}
-        </div>
+        <Label id="m-mode-label">Mode</Label>
+        <ChoiceSelect
+          aria-labelledby="m-mode-label"
+          value={value.mode}
+          onValueChange={(mode) => set({ mode: mode as MeetingForm['mode'] })}
+          choices={[
+            { value: 'in_person', label: 'In person' },
+            { value: 'online', label: 'Online' },
+          ]}
+          placeholder="Choose the mode"
+          disabled={readOnly}
+          className="sm:max-w-sm"
+          testId="dcr-mode"
+        />
       </div>
       <div className="sm:col-span-2">
         <Field label={value.mode === 'online' ? 'Link or platform' : 'Location'} optional={value.mode === 'online'} htmlFor="m-loc" errors={errors.location}>
@@ -396,9 +450,19 @@ export function OfficeFields({ value, onChange, readOnly, errors }: { value: Off
   return (
     <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-2" data-testid="dcr-office">
       <div className="sm:col-span-2">
-        <Field label="Task type" htmlFor="o-type" errors={errors.taskType}>
-          <Input id="o-type" value={value.taskType} maxLength={60} onChange={(e) => set({ taskType: e.target.value })} placeholder="e.g. Expense filing, stock reconciliation" className="md:text-base" />
-        </Field>
+        <TypeSelect
+          id="o-type"
+          label="Task type"
+          presets={ADMIN_TASKS}
+          value={value.taskType}
+          onChange={(taskType) => set({ taskType })}
+          placeholder="Choose the task type"
+          otherPlaceholder="e.g. Sample stock count"
+          maxLength={60}
+          disabled={readOnly}
+          errors={errors.taskType}
+          testId="dcr-office-type"
+        />
       </div>
       <div className="sm:col-span-2">
         <Field label="What you did" htmlFor="o-desc" errors={errors.description}>
@@ -480,18 +544,24 @@ export function LeaveFields({ date, value, onChange, readOnly, errors }: { date:
   return (
     <div className="flex flex-col gap-4" data-testid="dcr-leave">
       {reqs.length > 0 ? (
-        <fieldset className="flex flex-col gap-2" disabled={readOnly}>
-          <legend className="mb-1 text-sm font-medium">Leave covering this date</legend>
-          {reqs.map((l) => (
-            <label key={l.id} className={cn('flex min-h-11 cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 text-sm transition-colors', value === l.id ? 'border-primary bg-brand-50' : 'hover:bg-muted')} data-testid="dcr-leave-option">
-              <input type="radio" name="leave" className="mt-1 accent-[var(--brand-navy)]" checked={value === l.id} onChange={() => onChange(l.id)} />
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span className="font-medium">{l.typeName} · {l.half ? HALF_LABEL[l.half] : l.fromDate === l.toDate ? 'Full day' : `${l.fromDate} to ${l.toDate} (${l.days} days)`}</span>
-                <span className="text-xs text-muted-foreground">{l.status === 'approved' ? 'Approved' : 'Awaiting approval'}{l.reason ? ` · ${l.reason}` : ''}</span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
+        <div className="flex flex-col gap-1.5">
+          <Label id="l-req-label">Leave covering this date</Label>
+          <ChoiceSelect
+            aria-labelledby="l-req-label"
+            value={value}
+            onValueChange={onChange}
+            choices={reqs.map((l) => ({
+              value: l.id,
+              label: `${l.typeName} · ${l.half ? HALF_LABEL[l.half] : l.fromDate === l.toDate ? 'Full day' : `${l.fromDate} to ${l.toDate} (${l.days} days)`}`,
+              hint: `${l.status === 'approved' ? 'Approved' : 'Awaiting approval'}${l.reason ? ` · ${l.reason}` : ''}`,
+            }))}
+            placeholder="Choose the leave for this day"
+            disabled={readOnly}
+            invalid={errors.length > 0}
+            className="sm:max-w-md"
+            testId="dcr-leave-request"
+          />
+        </div>
       ) : (
         !applying && <p className="text-sm text-muted-foreground">No leave request covers this date yet.</p>
       )}
@@ -508,19 +578,28 @@ export function LeaveFields({ date, value, onChange, readOnly, errors }: { date:
       )}
       {applying && (
         <div className="af-enter grid gap-4 rounded-xl border bg-card p-4 sm:grid-cols-2" data-testid="dcr-leave-form">
-          <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <span className="text-sm font-medium">Leave type</span>
-            <SearchSelect label="Leave types" options={types.map((t) => ({ id: t.code, label: t.name, badge: t.code }))} value={form.typeCode ? [form.typeCode] : []} onChange={(ids) => setForm((f) => ({ ...f, typeCode: ids[0] ?? '' }))} placeholder="Choose a leave type" emptyText="No leave types are set up. Ask your administrator." testId="dcr-leave-type" />
+          <div className="flex flex-col gap-1.5">
+            <Label id="l-type-label">Leave type</Label>
+            {types.length ? (
+              <ChoiceSelect aria-labelledby="l-type-label" value={form.typeCode} onValueChange={(typeCode) => setForm((f) => ({ ...f, typeCode }))} choices={types.map((t) => ({ value: t.code, label: t.name, hint: t.code }))} placeholder="Choose a leave type" testId="dcr-leave-type" />
+            ) : (
+              <p className="text-sm text-muted-foreground">No leave types are set up. Ask your administrator.</p>
+            )}
           </div>
-          <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <span className="text-sm font-medium">Duration</span>
-            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Duration">
-              {([['', 'Full day'], ['am', 'First half'], ['pm', 'Second half']] as const).map(([k, l]) => (
-                <button key={k || 'full'} type="button" role="radio" aria-checked={form.half === k} onClick={() => setForm((f) => ({ ...f, half: k }))} className={cn('min-h-11 rounded-md border px-2 text-sm transition-colors', form.half === k ? 'border-primary bg-brand-50 font-medium' : 'hover:bg-muted')}>
-                  {l}
-                </button>
-              ))}
-            </div>
+          <div className="flex flex-col gap-1.5">
+            <Label id="l-half-label">Duration</Label>
+            <ChoiceSelect
+              aria-labelledby="l-half-label"
+              value={form.half || 'full'}
+              onValueChange={(v) => setForm((f) => ({ ...f, half: v === 'full' ? '' : (v as 'am' | 'pm') }))}
+              choices={[
+                { value: 'full', label: 'Full day' },
+                { value: 'am', label: 'First half' },
+                { value: 'pm', label: 'Second half' },
+              ]}
+              placeholder="Choose the duration"
+              testId="dcr-leave-half"
+            />
           </div>
           <div className="flex flex-col gap-1.5 sm:col-span-2">
             <Label htmlFor="l-reason">Reason <span className="font-normal text-muted-foreground">(optional)</span></Label>

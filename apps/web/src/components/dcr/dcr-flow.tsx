@@ -33,6 +33,7 @@ import {
   type WorkTypeOption,
 } from '@/lib/dcr/model';
 import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
+import { ChoiceSelect } from './choice-select';
 import { CallCard, type CustomerScope, FieldError, LeaveFields, MeetingFields, OfficeFields, SfcPanel } from './dcr-sections';
 import { SearchSelect, type SelectOption } from './search-select';
 
@@ -41,6 +42,14 @@ const nowHHmm = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata
 const timeLabel = (iso: string) => `${new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(iso))} IST`;
 
 /** DCR redesign: one scrollable page, sections appear as the previous choice is made. */
+
+const WORK_ON_HINT: Record<string, string> = {
+  field: 'Doctor, chemist and stockist visits',
+  meeting: 'Cycle meetings, reviews, conferences',
+  training: 'Product or skills training',
+  office: 'Admin work at the office or home',
+  leave: 'Full or half day off',
+};
 export function DcrFlow() {
   const today = useSyncExternalStore(noop, todayIST, () => null);
   if (!today) return <div className="h-[560px]" aria-busy="true" />;
@@ -303,7 +312,7 @@ function Flow({ today }: { today: string }) {
   const status = !dcr ? 'Not started' : dcr.status === 'draft' ? 'Draft' : dcr.status === 'submitted' ? 'Submitted' : 'Locked';
   const territoryOptions: SelectOption[] = rows.map((r) => ({
     id: r.id,
-    label: r.level === 'headquarter' ? `${r.name} (whole HQ)` : r.name,
+    label: r.level === 'headquarter' ? `${r.name} (whole HQ)` : `${r.name} · ${r.hqName}`,
     hint: r.level === 'territory' ? r.code : 'Every territory of this HQ',
     group: r.hqName,
     badge: r.level === 'headquarter' ? 'HQ' : null,
@@ -369,23 +378,17 @@ function Flow({ today }: { today: string }) {
           {choices.length === 0 ? (
             <p className="text-sm text-muted-foreground">No work types are set up yet. Ask your administrator.</p>
           ) : (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Work on">
-              {choices.map((c) => (
-                <button
-                  key={c.key}
-                  type="button"
-                  role="radio"
-                  aria-checked={s.workOn?.key === c.key}
-                  disabled={readOnly}
-                  onClick={() => chooseWorkOn(c.key)}
-                  className={cn('min-h-12 rounded-lg border bg-card px-3 py-2 text-left text-sm font-medium transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70', s.workOn?.key === c.key ? 'border-primary bg-brand-50' : 'hover:bg-muted')}
-                  data-testid="dcr-workon"
-                  data-branch={c.branch}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
+            <ChoiceSelect
+              aria-label="Work on"
+              value={s.workOn?.key ?? ''}
+              onValueChange={chooseWorkOn}
+              choices={choices.map((c) => ({ value: c.key, label: c.label, hint: WORK_ON_HINT[c.branch] }))}
+              placeholder="Choose what you worked on"
+              disabled={readOnly}
+              invalid={errorsFor('workOn').length > 0}
+              className="sm:max-w-sm"
+              testId="dcr-workon"
+            />
           )}
           <FieldError messages={errorsFor('workOn')} />
           {!field && s.territoryIds.length > 0 && !readOnly && (
@@ -396,30 +399,23 @@ function Flow({ today }: { today: string }) {
 
       {field && (
         <Step title="Band" hint="Where the field day took you. This decides which SFC route and TA/DA apply." testId="dcr-step-band">
-          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Band">
-            {BANDS.map((b) => {
-              const wt = s.workOn!.workTypes.find((w) => w.band === b.band);
-              const on = !!wt && s.workTypeId === wt.id;
-              return (
-                <button
-                  key={b.band}
-                  type="button"
-                  role="radio"
-                  aria-checked={on}
-                  disabled={!wt || readOnly}
-                  title={wt ? undefined : 'Not set up for your company'}
-                  onClick={() => wt && chooseBand(wt.id)}
-                  className={cn('flex min-h-16 flex-col items-start gap-0.5 rounded-lg border bg-card px-3 py-2 text-left transition-[background-color,border-color,transform] duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50', on ? 'border-primary bg-brand-50' : 'hover:bg-muted')}
-                  data-testid="dcr-band"
-                  data-band={b.band}
-                >
-                  <span className="text-base font-semibold tracking-tight">{b.short}</span>
-                  <span className="text-xs text-muted-foreground">{b.label}</span>
-                </button>
-              );
+          <ChoiceSelect
+            aria-label="Band"
+            value={s.workOn!.workTypes.find((w) => w.id === s.workTypeId)?.band ?? ''}
+            onValueChange={(band) => {
+              const wt = s.workOn!.workTypes.find((w) => w.band === band);
+              if (wt) chooseBand(wt.id);
+            }}
+            choices={BANDS.map((b) => {
+              const set = s.workOn!.workTypes.some((w) => w.band === b.band);
+              return { value: b.band, label: `${b.short} · ${b.label}`, hint: set ? b.hint : 'Not set up for your company', disabled: !set };
             })}
-          </div>
-          <p className="text-xs text-muted-foreground">{BANDS.find((b) => s.workOn!.workTypes.find((w) => w.id === s.workTypeId)?.band === b.band)?.hint ?? 'HQ: within your HQ town. EX: outside HQ, back the same day. OS: overnight stay.'}</p>
+            placeholder="Choose HQ, EX or OS"
+            disabled={readOnly}
+            invalid={errorsFor('band').length > 0}
+            className="sm:max-w-sm"
+            testId="dcr-band"
+          />
           <FieldError messages={errorsFor('band')} />
         </Step>
       )}
