@@ -34,6 +34,7 @@ import { companySettings, localDate } from '../field/field.util';
 import { ApprovalsService } from '../plans/approvals.service';
 import { nameRejecters, rejectionFields } from '../common/rejection';
 import { addDay, countedDates } from './leave.util';
+import { dayReportSql } from '../dcr/day-report';
 
 type ReqRow = typeof leaveRequests.$inferSelect;
 type PolicyRow = typeof leavePolicies.$inferSelect;
@@ -570,7 +571,8 @@ export class LeaveService implements OnModuleInit {
       if (!b.half) {
         const worked = await tx.execute<{ date: string }>(sql`
           select to_char(d.date, 'YYYY-MM-DD') as date from dcrs d join work_types w on w.id = d.work_type_id
-          where d.user_id = ${p.userId} and d.deleted_at is null and w.kind in ('field', 'non_field')
+          where d.user_id = ${p.userId} and d.deleted_at is null and ${dayReportSql('d')}
+            and w.kind in ('field', 'non_field')
             and d.date between ${b.fromDate}::date and ${b.toDate}::date order by 1`);
         const hit = worked.rows.map((r) => r.date).filter((d) => dates.includes(d));
         if (hit.length)

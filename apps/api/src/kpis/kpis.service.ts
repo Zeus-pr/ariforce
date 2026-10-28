@@ -241,7 +241,7 @@ export class KpisService {
     );
     const [pob] = await rows<{ v: string | null }>(
       tx,
-      sql`select coalesce(sum(p.value),0) as v from dcr_calls c
+      sql`select coalesce(sum(p.value),0) as v from dcr_day_calls c
           join dcr_call_products p on p.call_id = c.id and p.kind = 'pob' and p.deleted_at is null
           where c.deleted_at is null and c.user_id = any(${u}) and c.date between ${from}::date and ${to}::date`,
     );

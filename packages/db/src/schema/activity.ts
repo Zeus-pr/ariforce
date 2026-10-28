@@ -155,7 +155,11 @@ export const dcrs = pgTable(
     ...syncCols(),
   },
   (t) => [
-    uniqueIndex('dcrs_user_date_uq').on(t.companyId, t.userId, t.date),
+    // 0045: several drafts per user and day; at most one live submitted/approved report.
+    uniqueIndex('dcrs_user_date_submitted_uq')
+      .on(t.companyId, t.userId, t.date)
+      .where(sql`status IN ('submitted', 'approved') AND deleted_at IS NULL`),
+    index('dcrs_user_date_idx').on(t.companyId, t.userId, t.date),
     uniqueIndex('dcrs_submit_key_uq')
       .on(t.companyId, t.userId, t.submitIdempotencyKey)
       .where(sql`submit_idempotency_key IS NOT NULL`),

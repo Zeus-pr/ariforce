@@ -31,6 +31,7 @@ import { ZodPipe } from '../common/zod.pipe';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { CheckInsService, capDate, err, toCheckIn, type CheckInQuery } from './checkins.service';
 import { MAX_RANGE_DAYS, companySettings, dateRange, localDate } from './field.util';
+import { isDayReport } from '../dcr/day-report';
 
 @Controller({ path: 'check-ins', version: '1' })
 export class CheckInsController {
@@ -134,6 +135,7 @@ export class AttendanceController {
                 inArray(dcrs.userId, ids),
                 sql`${dcrs.date} between ${from} and ${to}`,
                 sql`${dcrs.deletedAt} is null`,
+                isDayReport(dcrs),
               ),
             )
         : [];

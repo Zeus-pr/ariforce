@@ -2,6 +2,7 @@ import type { AllowanceDay, AllowanceDraftRequest } from '@ariforce/contracts';
 import { type Tx } from '@ariforce/db';
 import { sql } from 'drizzle-orm';
 import { err } from '../field/checkins.service';
+import { dayReportSql } from '../dcr/day-report';
 
 type Band = 'hq' | 'ex_hq' | 'outstation';
 type Rate = {
@@ -60,7 +61,7 @@ export async function computeAllowances(
     await tx.execute<{ id: string; date: string; status: string; code: string; band: string }>(
       sql`select d.id, to_char(d.date, 'YYYY-MM-DD') as date, d.status, wt.code, wt.allowance_band as band
         from dcrs d join work_types wt on wt.id = d.work_type_id
-        where d.user_id = ${claim.userId} and d.deleted_at is null
+        where d.user_id = ${claim.userId} and d.deleted_at is null and ${dayReportSql('d')}
           and d.date >= ${from}::date and d.date < ${to}::date and d.date <= ${today}::date
         order by d.date`,
     )

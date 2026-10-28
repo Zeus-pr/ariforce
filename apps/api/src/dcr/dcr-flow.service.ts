@@ -12,6 +12,7 @@ import {
 } from '@ariforce/contracts';
 import {
   companies,
+  dcrCalls,
   dcrSfcRoutes,
   dcrs,
   leaveRequests,
@@ -24,6 +25,7 @@ import {
 import {
   and,
   asc,
+  desc,
   eq,
   ilike,
   inArray,
@@ -42,6 +44,14 @@ import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { companySettings, localDate } from '../field/field.util';
 import { approvedLeaveDays, assertNotOnLeave } from '../leave/leave.util';
+import {
+  SUBMITTED_STATUSES,
+  draftsNewestFirst,
+  isDaySubmittedViolation,
+  resolveDraftTarget,
+  submitConflict,
+  submittedOf,
+} from './day-report';
 import { DcrService } from './dcr.service';
 import { resolveSfcCandidates, type SfcSource } from './sfc-resolve';
 
@@ -160,10 +170,16 @@ export class DcrFlowService {
         .from(workTypes)
         .where(and(isNull(workTypes.deletedAt), eq(workTypes.active, true)))
         .orderBy(asc(workTypes.code));
-      const [row] = await tx
+      const rows = await tx
         .select()
         .from(dcrs)
         .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, date), isNull(dcrs.deletedAt)));
+      // Several drafts per day, at most one submitted report (0045).
+      const sub = submittedOf(rows);
+      const ordered = [...(sub ? [sub] : []), ...draftsNewestFirst(rows)];
+      const dtos = ordered.length ? await this.dcr.toDto(tx, s, ordered) : [];
+      const submitted = sub ? dtos[0]! : null;
+      const drafts = sub ? dtos.slice(1) : dtos;
       return {
         date,
         workTypes: wts.map((w) => ({
@@ -175,7 +191,9 @@ export class DcrFlowService {
           usesSfc: workTypeBand(w) !== null,
           detailsKind: dcrDetailsKind(w),
         })),
-        dcr: row ? (await this.dcr.toDto(tx, s, [row]))[0]! : null,
+        dcr: submitted ?? drafts[0] ?? null,
+        submitted,
+        drafts,
       };
     });
   }
@@ -414,27 +432,45 @@ export class DcrFlowService {
       const s = await companySettings(tx, p);
       if (b.date > localDate(new Date(), s.timezone))
         throw err(422, 'VALIDATION', 'DCR date is in the future');
-      const [cur] = await tx
+      // Lock the caller's live DCRs of the date: a concurrent submit of one of them is seen here.
+      const day = await tx
         .select()
         .from(dcrs)
-        .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, b.date)))
+        .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, b.date), isNull(dcrs.deletedAt)))
+        .orderBy(desc(dcrs.updatedAt), desc(dcrs.id))
         .for('update');
+      const byId = b.id
+        ? (day.find((r) => r.id === b.id) ??
+          (
+            await tx
+              .select()
+              .from(dcrs)
+              .where(and(eq(dcrs.id, b.id), eq(dcrs.userId, p.userId), isNull(dcrs.deletedAt)))
+              .for('update')
+          )[0])
+        : undefined;
       const li = await this.dcr.lockInfo(tx, s, p.userId, b.date);
       if (li.locked)
         throw err(409, 'DAY_LOCKED', 'This day is locked; request a correction', {
           lockAt: li.lockAt.toISOString(),
         });
-      if (cur && !cur.deletedAt && cur.status === 'submitted')
-        throw err(409, 'ALREADY_SUBMITTED', 'Submitted DCRs are read-only; request a correction', {
-          id: cur.id,
-        });
-      if (cur && b.version && b.version !== cur.version)
+      const target = resolveDraftTarget(b, byId, day);
+      if (target.action === 'error') {
+        if (target.status === 404) throw new NotFoundException('Draft not found');
+        const stale =
+          target.code === 'VERSION_CONFLICT'
+            ? b.id
+              ? byId
+              : draftsNewestFirst(day)[0]
+            : undefined;
         throw err(
-          409,
-          'VERSION_CONFLICT',
-          'Stale version',
-          (await this.dcr.toDto(tx, s, [cur]))[0],
+          target.status,
+          target.code,
+          target.message,
+          stale ? (await this.dcr.toDto(tx, s, [stale]))[0] : target.details,
         );
+      }
+      const cur = target.action === 'update' ? target.row : undefined;
 
       const wt = await this.workType(tx, b.workTypeId);
       const band = workTypeBand(wt);
@@ -468,11 +504,7 @@ export class DcrFlowService {
         status: 'draft' as const,
       };
       const [row] = cur
-        ? await tx
-            .update(dcrs)
-            .set({ ...vals, deletedAt: null })
-            .where(eq(dcrs.id, cur.id))
-            .returning()
+        ? await tx.update(dcrs).set(vals).where(eq(dcrs.id, cur.id)).returning()
         : await tx
             .insert(dcrs)
             .values({
@@ -495,7 +527,7 @@ export class DcrFlowService {
       await this.audit.record(tx, p, 'dcr.draft_save', {
         entityType: 'dcr',
         entityId: dcrId,
-        after: { date: b.date, calls: b.calls.length, hqs: hqs.length },
+        after: { date: b.date, calls: b.calls.length, hqs: hqs.length, created: !cur },
       });
       const [fresh] = await tx.select().from(dcrs).where(eq(dcrs.id, dcrId));
       return (await this.dcr.toDto(tx, s, [fresh!]))[0]!;
@@ -522,6 +554,18 @@ export class DcrFlowService {
       if (reused)
         throw err(409, 'IDEMPOTENCY_CONFLICT', 'Idempotency-Key already used for another DCR', {
           id: reused.id,
+        });
+      // Only one submitted report per day; the other drafts of the day are kept.
+      const existingId = submitConflict(
+        cur.id,
+        await tx
+          .select()
+          .from(dcrs)
+          .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, cur.date), isNull(dcrs.deletedAt))),
+      );
+      if (existingId)
+        throw err(409, 'DAY_ALREADY_SUBMITTED', 'This day already has a submitted report', {
+          existingId,
         });
       if (version !== cur.version)
         throw err(
@@ -647,17 +691,39 @@ export class DcrFlowService {
             ),
           );
       }
-      await tx
-        .update(dcrs)
-        .set({
-          status: 'submitted',
-          submittedAt: new Date(),
-          submittedBy: p.userId,
-          submitIdempotencyKey: key,
-          band,
-          tourPlanId: plan.tourPlanId,
-        })
-        .where(eq(dcrs.id, cur.id));
+      try {
+        // Savepoint: a race with another submit of the same day trips the partial unique index.
+        await tx.transaction(async (sp) => {
+          await sp
+            .update(dcrs)
+            .set({
+              status: 'submitted',
+              submittedAt: new Date(),
+              submittedBy: p.userId,
+              submitIdempotencyKey: key,
+              band,
+              tourPlanId: plan.tourPlanId,
+            })
+            .where(eq(dcrs.id, cur.id));
+        });
+      } catch (e) {
+        if (!isDaySubmittedViolation(e)) throw e;
+        const [other] = await tx
+          .select({ id: dcrs.id })
+          .from(dcrs)
+          .where(
+            and(
+              eq(dcrs.userId, p.userId),
+              eq(dcrs.date, cur.date),
+              isNull(dcrs.deletedAt),
+              ne(dcrs.id, cur.id),
+              inArray(dcrs.status, [...SUBMITTED_STATUSES]),
+            ),
+          );
+        throw err(409, 'DAY_ALREADY_SUBMITTED', 'This day already has a submitted report', {
+          existingId: other?.id ?? null,
+        });
+      }
       await this.audit.record(tx, p, 'dcr.submit', {
         entityType: 'dcr',
         entityId: cur.id,
@@ -665,6 +731,42 @@ export class DcrFlowService {
       });
       const [fresh] = await tx.select().from(dcrs).where(eq(dcrs.id, cur.id));
       return (await this.dcr.toDto(tx, s, [fresh!]))[0]! satisfies Dcr;
+    });
+  }
+
+  /** DELETE /v1/dcrs/:id: soft-delete one of your drafts with its calls and SFC choices. */
+  remove(p: Principal, id: string) {
+    return this.tenant.run(p, async (tx) => {
+      const s = await companySettings(tx, p);
+      const [cur] = await tx
+        .select()
+        .from(dcrs)
+        .where(and(eq(dcrs.id, id), eq(dcrs.userId, p.userId), isNull(dcrs.deletedAt)))
+        .for('update');
+      if (!cur) throw new NotFoundException('DCR not found');
+      if (cur.status !== 'draft')
+        throw err(409, 'ALREADY_SUBMITTED', 'Submitted DCRs cannot be deleted', { id });
+      const li = await this.dcr.lockInfo(tx, s, p.userId, cur.date);
+      if (li.locked)
+        throw err(409, 'DAY_LOCKED', 'This day is locked; request a correction', {
+          lockAt: li.lockAt.toISOString(),
+        });
+      const now = new Date();
+      const calls = await tx
+        .update(dcrCalls)
+        .set({ deletedAt: now })
+        .where(and(eq(dcrCalls.dcrId, id), isNull(dcrCalls.deletedAt)))
+        .returning({ id: dcrCalls.id });
+      await tx
+        .update(dcrSfcRoutes)
+        .set({ deletedAt: now })
+        .where(and(eq(dcrSfcRoutes.dcrId, id), isNull(dcrSfcRoutes.deletedAt)));
+      await tx.update(dcrs).set({ deletedAt: now }).where(eq(dcrs.id, id));
+      await this.audit.record(tx, p, 'dcr.delete', {
+        entityType: 'dcr',
+        entityId: id,
+        before: { date: cur.date, status: cur.status, calls: calls.length },
+      });
     });
   }
 

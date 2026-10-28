@@ -14,6 +14,7 @@ response enums, or changed server behaviour for the same request).
 
 | Feature (commit)                                               | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DCR multi-draft (`feat/dcr-multi-draft`, migration 0045)       | **Behaviour change for web.** `PUT /v1/dcrs/draft` without `id` and without `version` now creates a new draft every time (was: upsert per user + date). Without `id` but with `version` it still updates the latest draft of the date (older clients). Draft saves and submits on a date that already has a submitted report return `409 DAY_ALREADY_SUBMITTED` (`details.existingId`) instead of `409 ALREADY_SUBMITTED`. Send `id` to update a specific draft                                                                                                                                                                                                                                                 |
 | Territory levels + approvals (`feat/sfc-routes`, Part 3)       | **Breaking for web.** Assigning a `business_manager` any non-`headquarter` territory now returns `422 TERRITORY_LEVEL_INVALID` (`details.territoryIds`, `details.expectedLevel`, `details.role`) on create, invite-bulk (row code), PATCH role/territories, signup approve. Approvals can now finish before the configured level count when the decider already covers the next approver.                                                                                                                                                                                                                                                                                                                       |
 | Retired roles + expense pay (`feat/sfc-routes`, Part 2)        | **Breaking for web; reverses part of "System admin invites any role".** `distribution_head` / `accountant` can no longer be assigned: create, invite-bulk (row code), PATCH role, sign-up approve and sign-up submit return `422 ROLE_RETIRED`. `GET /v1/roles` omits them. Holders get `403 ROLE_RETIRED` on sign-in, `422 ROLE_RETIRED` on invite accept and on re-invite. `AUTH_STATE_CODES.retired` added. Mark-paid permission renamed: `POST /v1/expense-claims/{id}/pay` needs `expenses:pay` (director, system_admin) instead of `finance:write`; company-wide approved/paid claim reads and `/expense-reports` use `expenses:pay` instead of `finance:read`. Gate UI on `expenses:pay`. Migration 0040 |
 | TP per-day submissions #86 (`feat/86-tp-submissions`)          | **Breaking for web.** Tour-plan `Approval.subjectId` is now a submission id (plan id in `payload.planId` / detail `subject.plan.id`). `PUT /v1/tour-plans/{month}` returns `409 DAY_LOCKED` (`details.dates`) when a submitted/approved day changes, instead of `409` for any non-draft plan; copy keeps locked days. `POST .../submit` no longer returns `409 Not in draft`: it submits the remaining draft/rejected days, or `409 DAY_LOCKED` / `422 EMPTY_PLAN`. Editing a rejected plan keeps month status `rejected` (was `draft`). Month status is now an aggregate. DCR plan, attendance, `tp_not_submitted` and `kpi_tp_adherence_month` use approved days only                                         |
@@ -49,6 +50,32 @@ Additive (no migration; uses 0042). Web impact noted per item.
 - Contracts exports: `planTerritoryLinks`, `territoryLinkResult`, `territoryKey`, `masterNameKey`,
   `territoryCodeFor`, `readTerritoryLinkRow`. MSW mock implements the endpoint (an `area` counts as an
   HQ in fixtures) and the filter; doctor/chemist fixtures carry `localTerritoryId: null`.
+
+## DCR multi-draft (`feat/dcr-multi-draft`, migration 0045)
+
+Several drafts per user and day; at most one submitted report per day (partial unique index
+`dcrs_user_date_submitted_uq` on `(company_id, user_id, date)` where status is `submitted` or
+`approved` and not deleted; replaces the full `dcrs_user_date_uq`).
+
+- `PUT /v1/dcrs/draft`: optional `id`. With `id`: updates that draft (yours, still a draft, same date;
+  404 otherwise, 409 `ALREADY_SUBMITTED` if it is no longer a draft, 422 `VALIDATION` on another date,
+  409 `VERSION_CONFLICT`). Without `id`: creates a new draft; without `id` but with `version`: updates
+  the latest draft of the date. 409 `DAY_ALREADY_SUBMITTED` (`details.existingId`) when the date has
+  a submitted report. Soft-deleted drafts are never revived.
+- New `DELETE /v1/dcrs/{id}` (field:write): 204; soft-deletes your draft with its calls and SFC
+  choices. 404 (not found / not yours), 409 `ALREADY_SUBMITTED` (not a draft), 409 `DAY_LOCKED`.
+- `POST /v1/dcrs/{id}/submit`: 409 `DAY_ALREADY_SUBMITTED` (`details.existingId`) when another report of
+  the date is submitted (also on a concurrent-submit race). Other drafts of the day are kept.
+- `GET /v1/dcrs/options`: adds `submitted: Dcr | null` and `drafts: Dcr[]` (newest first); `dcr` stays
+  (submitted, else latest draft).
+- `GET /v1/dcrs`: `mine=true` filter; list items carry `callCount`.
+- `PUT /v1/dcrs` (legacy): edits the day report (submitted, else latest draft); can return 409
+  `DAY_ALREADY_SUBMITTED`.
+- New error code: `DAY_ALREADY_SUBMITTED`.
+- Readers use the day report (submitted, else the latest draft): KPI views (`kpi_user_day`, and via
+  the new `dcr_day_calls` view `kpi_user_doctor_month`, `kpi_user_month`, `kpi_product_month`,
+  `kpi_tp_adherence_month`), exceptions `dcr_missing`, expense reconcile, TA/DA, team calendar and
+  profile, leave clash. A check-in counts as already linked only by a submitted report.
 
 ## Managers get field:write (`fix/manager-field-write`, migration 0044)
 

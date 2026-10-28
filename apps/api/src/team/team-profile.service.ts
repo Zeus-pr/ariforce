@@ -27,6 +27,7 @@ import { profileExceptions } from '../exceptions/exceptions.engine';
 import { approvedLeaveDays } from '../leave/leave.util';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { TeamService, type Person } from './team.service';
+import { dayReportSql } from '../dcr/day-report';
 
 type Gran = z.infer<typeof PerformanceGranularity>;
 type Range = { granularity?: Gran; from?: string; to?: string };
@@ -164,7 +165,8 @@ export class TeamProfileService {
       const [dcr] = await rows<{ kind: string }>(
         tx,
         sql`select wt.kind::text as kind from dcrs r join work_types wt on wt.id = r.work_type_id
-            where r.user_id = ${userId} and r.date = ${today}::date and r.deleted_at is null limit 1`,
+            where r.user_id = ${userId} and r.date = ${today}::date and r.deleted_at is null
+              and ${dayReportSql('r')} limit 1`,
       );
       const ts = (v: Date | string | null | undefined) => (v ? new Date(v).toISOString() : null);
       const pin = caps.find((x) => x.kind === 'punch_in');
@@ -241,7 +243,8 @@ export class TeamProfileService {
             tx,
             sql`select to_char(r.date, 'YYYY-MM-DD') as d, wt.kind::text as kind from dcrs r
                 join work_types wt on wt.id = r.work_type_id
-                where r.user_id = ${userId} and r.deleted_at is null and r.date between ${from}::date and ${upto}::date`,
+                where r.user_id = ${userId} and r.deleted_at is null and ${dayReportSql('r')}
+                  and r.date between ${from}::date and ${upto}::date`,
           )
         ).map((r) => [r.d, r.kind]),
       );
@@ -343,10 +346,10 @@ export class TeamProfileService {
         tx,
         sql`select o.id, o.name, o.qualification, sp.name as specialty, dc.name as category,
                    o.territory_id, t.name as territory_name, o.city, l.required_visits,
-                   (select count(*) from dcr_calls c where c.user_id = ${userId} and c.outlet_kind = 'doctor'
+                   (select count(*) from dcr_day_calls c where c.user_id = ${userId} and c.outlet_kind = 'doctor'
                       and c.outlet_id = o.id and c.deleted_at is null
                       and c.date >= ${monthStart(today)}::date and c.date <= ${today}::date) as visits,
-                   (select to_char(max(c.date), 'YYYY-MM-DD') from dcr_calls c where c.user_id = ${userId}
+                   (select to_char(max(c.date), 'YYYY-MM-DD') from dcr_day_calls c where c.user_id = ${userId}
                       and c.outlet_kind = 'doctor' and c.outlet_id = o.id and c.deleted_at is null) as last_visit
             from kpi_user_doctor_list l join doctors o on o.id = l.doctor_id
             join territories t on t.id = o.territory_id
@@ -395,7 +398,7 @@ export class TeamProfileService {
       const r = await rows<Record<string, string | null>>(
         tx,
         sql`select o.id, o.name, o.territory_id, t.name as territory_name, o.city,
-                   (select to_char(max(c.date), 'YYYY-MM-DD') from dcr_calls c where c.user_id = ${userId}
+                   (select to_char(max(c.date), 'YYYY-MM-DD') from dcr_day_calls c where c.user_id = ${userId}
                       and c.outlet_kind = 'chemist' and c.outlet_id = o.id and c.deleted_at is null) as last_visit
             from chemists o join territories t on t.id = o.territory_id
             where ${where} order by o.name, o.id limit ${limit + 1} offset ${off}`,

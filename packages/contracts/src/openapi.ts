@@ -891,7 +891,9 @@ function buildDocument(): OpenApiDocument {
           requestBody: json(DcrUpsert),
           responses: {
             '200': { description: 'Saved', ...json(Dcr) },
-            '409': err('DAY_LOCKED (request a correction) or VERSION_CONFLICT'),
+            '409': err(
+              'DAY_LOCKED (request a correction), VERSION_CONFLICT, ALREADY_SUBMITTED, DAY_ALREADY_SUBMITTED (details.existingId)',
+            ),
             '422': err(
               'Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown or inactive products, a check-in that is not your visit to that outlet, RCPA on a non-chemist call (details.rcpaOutletCallIds), duplicate POB products or RCPA brands in a call (details.duplicatePob / duplicateRcpa), or an out-of-scope stockistId / RCPA doctorId',
             ),
@@ -925,7 +927,8 @@ function buildDocument(): OpenApiDocument {
         get: op({
           tags: ['DCR'],
           operationId: 'getDcrOptions',
-          summary: 'Work types (band, SFC use, details kind) and your DCR for a date',
+          summary:
+            'Work types (band, SFC use, details kind) and your reports for a date (submitted, drafts)',
           requestParams: { query: DcrOptionsQuery },
           responses: {
             '200': { description: 'OK', ...json(DcrOptions) },
@@ -971,11 +974,17 @@ function buildDocument(): OpenApiDocument {
         put: op({
           tags: ['DCR'],
           operationId: 'putDcrDraft',
-          summary: 'Create or update your draft DCR for a date (idempotent per user + date)',
+          summary:
+            'Save a draft DCR: update one by id, or create a new one (several drafts per day)',
+          description:
+            'With id: updates that draft (yours, still a draft, same date, version check). Without id: creates a new draft, except that a body with version but no id (older clients) updates the latest draft of the date. A day with a submitted report takes no new drafts.',
           requestBody: json(DcrDraftPut),
           responses: {
             '200': { description: 'Saved draft', ...json(Dcr) },
-            '409': err('ALREADY_SUBMITTED, DAY_LOCKED, VERSION_CONFLICT'),
+            '404': err('Not found (no such draft of yours)'),
+            '409': err(
+              'ALREADY_SUBMITTED (this DCR is not a draft), DAY_ALREADY_SUBMITTED (the date has a submitted report; details.existingId), DAY_LOCKED, VERSION_CONFLICT',
+            ),
             '422': err(
               'VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds)',
             ),
@@ -997,7 +1006,7 @@ function buildDocument(): OpenApiDocument {
             },
             '404': err('Not found (not your DCR)'),
             '409': err(
-              'ALREADY_SUBMITTED (other key), IDEMPOTENCY_CONFLICT (key used on another DCR), VERSION_CONFLICT, DAY_LOCKED',
+              'ALREADY_SUBMITTED (other key), DAY_ALREADY_SUBMITTED (another report of the date is submitted; details.existingId), IDEMPOTENCY_CONFLICT (key used on another DCR), VERSION_CONFLICT, DAY_LOCKED',
             ),
             '422': err(
               'VALIDATION, SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND',
@@ -1011,6 +1020,18 @@ function buildDocument(): OpenApiDocument {
           operationId: 'getDcr',
           requestParams: { path: IdParam },
           responses: { '200': { description: 'OK', ...json(Dcr) }, '404': err('Not found') },
+        }),
+        delete: op({
+          tags: ['DCR'],
+          operationId: 'deleteDcrDraft',
+          summary: 'Delete one of your drafts (soft delete with its calls and SFC choices)',
+          description: 'Needs field:write. Only your own drafts, inside the day-lock window.',
+          requestParams: { path: IdParam },
+          responses: {
+            '204': { description: 'Deleted' },
+            '404': err('Not found (not your DCR)'),
+            '409': err('ALREADY_SUBMITTED (not a draft), DAY_LOCKED'),
+          },
         }),
       },
       '/v1/approvals': {

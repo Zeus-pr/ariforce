@@ -988,7 +988,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Work types (band, SFC use, details kind) and your DCR for a date */
+    /** Work types (band, SFC use, details kind) and your reports for a date (submitted, drafts) */
     get: operations['getDcrOptions'];
     put?: never;
     post?: never;
@@ -1060,7 +1060,10 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** Create or update your draft DCR for a date (idempotent per user + date) */
+    /**
+     * Save a draft DCR: update one by id, or create a new one (several drafts per day)
+     * @description With id: updates that draft (yours, still a draft, same date, version check). Without id: creates a new draft, except that a body with version but no id (older clients) updates the latest draft of the date. A day with a submitted report takes no new drafts.
+     */
     put: operations['putDcrDraft'];
     post?: never;
     delete?: never;
@@ -1096,7 +1099,11 @@ export interface paths {
     get: operations['getDcr'];
     put?: never;
     post?: never;
-    delete?: never;
+    /**
+     * Delete one of your drafts (soft delete with its calls and SFC choices)
+     * @description Needs field:write. Only your own drafts, inside the day-lock window.
+     */
+    delete: operations['deleteDcrDraft'];
     options?: never;
     head?: never;
     patch?: never;
@@ -2965,6 +2972,12 @@ export interface components {
       reason: string;
     };
     DcrDraftPut: {
+      /**
+       * Format: uuid
+       * @description Draft to update (yours, still a draft, same date). Omit to create a new draft; omitting id but sending version updates the latest draft of the date (older clients)
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id?: string;
       /**
        * Format: date
        * @description Calendar date (YYYY-MM-DD, IST)
@@ -5028,6 +5041,8 @@ export interface components {
       sfcRoutes: components['schemas']['DcrSfcRoute'][];
       /** @default null */
       submittedBy: string | null;
+      /** @description Live calls on this DCR (GET /v1/dcrs list only) */
+      callCount?: number;
     };
     DcrCall: {
       /**
@@ -5183,8 +5198,18 @@ export interface components {
        */
       date: string;
       workTypes: components['schemas']['DcrWorkTypeOption'][];
-      /** @description Your DCR for the date (draft or submitted), if any */
+      /** @description Your report for the date: the submitted one, else the latest draft (kept for older clients) */
       dcr: components['schemas']['Dcr'] | null;
+      /**
+       * @description Your submitted report for the date (at most one per day), if any
+       * @default null
+       */
+      submitted: components['schemas']['Dcr'] | null;
+      /**
+       * @description Your drafts for the date, newest first (several allowed per day)
+       * @default []
+       */
+      drafts: components['schemas']['Dcr'][];
     };
     DcrWorkTypeOption: {
       /**
@@ -10986,6 +11011,8 @@ export interface operations {
         /** @description Territory incl. descendants */
         territoryId?: string;
         status?: 'draft' | 'submitted' | 'locked';
+        /** @description true: only the caller's own DCRs (ignores userId) */
+        mine?: 'true' | 'false';
       };
       header?: never;
       path?: never;
@@ -11062,7 +11089,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description DAY_LOCKED (request a correction) or VERSION_CONFLICT */
+      /** @description DAY_LOCKED (request a correction), VERSION_CONFLICT, ALREADY_SUBMITTED, DAY_ALREADY_SUBMITTED (details.existingId) */
       409: {
         headers: {
           [name: string]: unknown;
@@ -11415,7 +11442,16 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description ALREADY_SUBMITTED, DAY_LOCKED, VERSION_CONFLICT */
+      /** @description Not found (no such draft of yours) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description ALREADY_SUBMITTED (this DCR is not a draft), DAY_ALREADY_SUBMITTED (the date has a submitted report; details.existingId), DAY_LOCKED, VERSION_CONFLICT */
       409: {
         headers: {
           [name: string]: unknown;
@@ -11490,7 +11526,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description ALREADY_SUBMITTED (other key), IDEMPOTENCY_CONFLICT (key used on another DCR), VERSION_CONFLICT, DAY_LOCKED */
+      /** @description ALREADY_SUBMITTED (other key), DAY_ALREADY_SUBMITTED (another report of the date is submitted; details.existingId), IDEMPOTENCY_CONFLICT (key used on another DCR), VERSION_CONFLICT, DAY_LOCKED */
       409: {
         headers: {
           [name: string]: unknown;
@@ -11551,6 +11587,63 @@ export interface operations {
       };
       /** @description Not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteDcrDraft: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found (not your DCR) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description ALREADY_SUBMITTED (not a draft), DAY_LOCKED */
+      409: {
         headers: {
           [name: string]: unknown;
         };

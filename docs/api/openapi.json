@@ -6761,6 +6761,19 @@
                 "locked"
               ]
             }
+          },
+          {
+            "in": "query",
+            "name": "mine",
+            "schema": {
+              "description": "true: only the caller's own DCRs (ignores userId)",
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "true: only the caller's own DCRs (ignores userId)"
           }
         ],
         "responses": {
@@ -6848,7 +6861,7 @@
             }
           },
           "409": {
-            "description": "DAY_LOCKED (request a correction) or VERSION_CONFLICT",
+            "description": "DAY_LOCKED (request a correction), VERSION_CONFLICT, ALREADY_SUBMITTED, DAY_ALREADY_SUBMITTED (details.existingId)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7013,7 +7026,7 @@
           "DCR"
         ],
         "operationId": "getDcrOptions",
-        "summary": "Work types (band, SFC use, details kind) and your DCR for a date",
+        "summary": "Work types (band, SFC use, details kind) and your reports for a date (submitted, drafts)",
         "parameters": [
           {
             "in": "query",
@@ -7309,7 +7322,8 @@
           "DCR"
         ],
         "operationId": "putDcrDraft",
-        "summary": "Create or update your draft DCR for a date (idempotent per user + date)",
+        "summary": "Save a draft DCR: update one by id, or create a new one (several drafts per day)",
+        "description": "With id: updates that draft (yours, still a draft, same date, version check). Without id: creates a new draft, except that a body with version but no id (older clients) updates the latest draft of the date. A day with a submitted report takes no new drafts.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -7350,8 +7364,18 @@
               }
             }
           },
+          "404": {
+            "description": "Not found (no such draft of yours)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "409": {
-            "description": "ALREADY_SUBMITTED, DAY_LOCKED, VERSION_CONFLICT",
+            "description": "ALREADY_SUBMITTED (this DCR is not a draft), DAY_ALREADY_SUBMITTED (the date has a submitted report; details.existingId), DAY_LOCKED, VERSION_CONFLICT",
             "content": {
               "application/json": {
                 "schema": {
@@ -7463,7 +7487,7 @@
             }
           },
           "409": {
-            "description": "ALREADY_SUBMITTED (other key), IDEMPOTENCY_CONFLICT (key used on another DCR), VERSION_CONFLICT, DAY_LOCKED",
+            "description": "ALREADY_SUBMITTED (other key), DAY_ALREADY_SUBMITTED (another report of the date is submitted; details.existingId), IDEMPOTENCY_CONFLICT (key used on another DCR), VERSION_CONFLICT, DAY_LOCKED",
             "content": {
               "application/json": {
                 "schema": {
@@ -7544,6 +7568,79 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "DCR"
+        ],
+        "operationId": "deleteDcrDraft",
+        "summary": "Delete one of your drafts (soft delete with its calls and SFC choices)",
+        "description": "Needs field:write. Only your own drafts, inside the day-lock window.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (not your DCR)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ALREADY_SUBMITTED (not a draft), DAY_LOCKED",
             "content": {
               "application/json": {
                 "schema": {
@@ -16871,6 +16968,13 @@
       "DcrDraftPut": {
         "type": "object",
         "properties": {
+          "id": {
+            "description": "Draft to update (yours, still a draft, same date). Omit to create a new draft; omitting id but sending version updates the latest draft of the date (older clients)",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
           "date": {
             "type": "string",
             "format": "date",
@@ -23535,6 +23639,12 @@
                 "type": "null"
               }
             ]
+          },
+          "callCount": {
+            "description": "Live calls on this DCR (GET /v1/dcrs list only)",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           }
         },
         "required": [
@@ -24020,13 +24130,35 @@
                 "type": "null"
               }
             ],
-            "description": "Your DCR for the date (draft or submitted), if any"
+            "description": "Your report for the date: the submitted one, else the latest draft (kept for older clients)"
+          },
+          "submitted": {
+            "default": null,
+            "description": "Your submitted report for the date (at most one per day), if any",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Dcr"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "drafts": {
+            "default": [],
+            "description": "Your drafts for the date, newest first (several allowed per day)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Dcr"
+            }
           }
         },
         "required": [
           "date",
           "workTypes",
-          "dcr"
+          "dcr",
+          "submitted",
+          "drafts"
         ],
         "additionalProperties": false
       },

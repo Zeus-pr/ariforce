@@ -587,11 +587,21 @@ function fieldHandlers(baseUrl: string) {
     version: 1,
     source: 'own' as const,
   });
+  // Multi-draft: several drafts per user and day, at most one submitted report.
+  const myDay = (date: string) =>
+    dcrs.filter((x) => x.date === date && x.userId === fx.me.id && !x.deletedAt);
+  const submittedOf = (date: string) => myDay(date).find((x) => x.status !== 'draft');
+  const draftsOf = (date: string) =>
+    myDay(date)
+      .filter((x) => x.status === 'draft')
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id));
   const dcrFlowHandlers = () => [
     http.get(`${baseUrl}/v1/dcrs/options`, ({ request }) => {
       const q = DcrOptionsQuery.safeParse(Object.fromEntries(new URL(request.url).searchParams));
       if (!q.success) return validation('Invalid query', z.treeifyError(q.error));
-      const d = dcrs.find((x) => x.date === q.data.date && x.userId === fx.me.id);
+      const sub = submittedOf(q.data.date);
+      const drafts = draftsOf(q.data.date);
+      const d = sub ?? drafts[0];
       return HttpResponse.json(
         DcrOptions.parse({
           date: q.data.date,
@@ -607,6 +617,8 @@ function fieldHandlers(baseUrl: string) {
               detailsKind: dcrDetailsKind(w),
             })),
           dcr: d ? withLock(d) : null,
+          submitted: sub ? withLock(sub) : null,
+          drafts: drafts.map(withLock),
         }),
       );
     }),
@@ -661,9 +673,22 @@ function fieldHandlers(baseUrl: string) {
       if (b.data.date > today()) return validation('DCR date is in the future');
       if (isLocked(b.data.date))
         return dcrError(409, 'DAY_LOCKED', 'Day locked; request a correction');
-      let d = dcrs.find((x) => x.date === b.data.date && x.userId === fx.me.id);
-      if (d?.status === 'submitted')
-        return dcrError(409, 'ALREADY_SUBMITTED', 'Read-only after submit');
+      let d: (typeof dcrs)[number] | undefined;
+      if (b.data.id) {
+        d = dcrs.find((x) => x.id === b.data.id && x.userId === fx.me.id && !x.deletedAt);
+        if (!d) return notFound();
+        if (d.status !== 'draft')
+          return dcrError(409, 'ALREADY_SUBMITTED', 'Read-only after submit');
+        if (d.date !== b.data.date)
+          return validation('date must equal the draft date', { field: 'date' });
+      }
+      const sub = submittedOf(b.data.date);
+      if (sub)
+        return dcrError(409, 'DAY_ALREADY_SUBMITTED', 'This day already has a submitted report', {
+          existingId: sub.id,
+        });
+      // Older clients send no id but the version of the draft they loaded: update the latest draft.
+      if (!b.data.id && b.data.version) d = draftsOf(b.data.date)[0];
       if (d && b.data.version && b.data.version !== d.version)
         return dcrError(409, 'VERSION_CONFLICT', 'Stale version');
       const wt = fx.workTypes.find((w) => w.id === b.data.workTypeId);
@@ -738,6 +763,11 @@ function fieldHandlers(baseUrl: string) {
           : dcrError(409, 'ALREADY_SUBMITTED', 'Already submitted');
       if (b.data.version !== d.version) return dcrError(409, 'VERSION_CONFLICT', 'Stale version');
       if (isLocked(d.date)) return dcrError(409, 'DAY_LOCKED', 'Day locked');
+      const other = submittedOf(d.date);
+      if (other)
+        return dcrError(409, 'DAY_ALREADY_SUBMITTED', 'This day already has a submitted report', {
+          existingId: other.id,
+        });
       const wt = fx.workTypes.find((w) => w.id === d.workTypeId)!;
       const band = mockBand(wt);
       const want = dcrDetailsKind(wt);
@@ -775,6 +805,19 @@ function fieldHandlers(baseUrl: string) {
         updatedAt: frozenAt,
       });
       return HttpResponse.json(Dcr.parse(withLock(d)));
+    }),
+    http.delete(`${baseUrl}/v1/dcrs/:id`, ({ params }) => {
+      const d = dcrs.find((x) => x.id === params.id && x.userId === fx.me.id && !x.deletedAt);
+      if (!d) return notFound();
+      if (d.status !== 'draft')
+        return dcrError(409, 'ALREADY_SUBMITTED', 'Submitted DCRs are read-only');
+      if (isLocked(d.date)) return dcrError(409, 'DAY_LOCKED', 'Day locked');
+      Object.assign(d, {
+        deletedAt: serverTime(),
+        updatedAt: serverTime(),
+        version: d.version + 1,
+      });
+      return new HttpResponse(null, { status: 204 });
     }),
   ];
   // #86: per-day status. Submitted/approved days are locked; the month status is an aggregate.
@@ -1189,9 +1232,14 @@ function fieldHandlers(baseUrl: string) {
       });
       return HttpResponse.json(TourPlan.parse(p));
     }),
-    http.get(`${baseUrl}/v1/dcrs`, ({ request }) =>
-      list(Dcr, dcrs.map(withLock), new URL(request.url)),
-    ),
+    http.get(`${baseUrl}/v1/dcrs`, ({ request }) => {
+      const url = new URL(request.url);
+      const mine = url.searchParams.get('mine') === 'true';
+      const rows = dcrs
+        .filter((x) => !mine || x.userId === fx.me.id)
+        .map((x) => ({ ...withLock(x), callCount: x.calls.length }));
+      return list(Dcr, rows, url);
+    }),
     http.get(`${baseUrl}/v1/rcpa/competitor-brands`, ({ request }) => {
       const q = (new URL(request.url).searchParams.get('q') ?? '').trim().toLowerCase();
       const counts = new Map<string, { brand: string; company: string | null; uses: number }>();
@@ -1217,14 +1265,12 @@ function fieldHandlers(baseUrl: string) {
     }),
     http.put(`${baseUrl}/v1/dcrs`, async ({ request }) => {
       const b = DcrUpsert.safeParse(await request.json());
-      const prior = b.success
-        ? dcrs.find((x) => x.date === b.data.date && x.userId === fx.me.id)
-        : undefined;
+      const prior = b.success ? (submittedOf(b.data.date) ?? draftsOf(b.data.date)[0]) : undefined;
       if (prior?.submittedBy)
         return dcrError(409, 'ALREADY_SUBMITTED', 'Submitted DCRs are read-only');
       if (!b.success) return validation('Invalid DCR', z.treeifyError(b.error));
       if (b.data.date > today()) return validation('DCR date is in the future');
-      let d = dcrs.find((x) => x.date === b.data.date && x.userId === fx.me.id);
+      let d = submittedOf(b.data.date) ?? draftsOf(b.data.date)[0];
       if (isLocked(b.data.date)) return conflict('Day locked; request a correction');
       if (d && b.data.version && b.data.version !== d.version) return conflict('Stale version');
       const wt = fx.workTypes.find((w) => w.id === b.data.workTypeId);

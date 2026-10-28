@@ -40,6 +40,7 @@ import { ApprovalsService } from '../plans/approvals.service';
 import { nameRejecters, rejectionFields } from '../common/rejection';
 import { keyExt, sniffMatches } from './files.util';
 import { computeAllowances } from '../allowances/allowances.engine';
+import { isDayReport } from '../dcr/day-report';
 
 type ClaimRow = typeof expenseClaims.$inferSelect;
 type LineRow = typeof expenseLines.$inferSelect;
@@ -826,6 +827,7 @@ export class ExpensesService implements OnModuleInit {
         and(
           eq(dcrs.userId, c.userId),
           isNull(dcrs.deletedAt),
+          isDayReport(dcrs),
           gte(dcrs.date, c.month),
           lt(dcrs.date, nextMonth(m)),
         ),

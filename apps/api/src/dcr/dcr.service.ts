@@ -29,6 +29,7 @@ import { v7 as uuidv7 } from 'uuid';
 import type * as z from 'zod';
 import type { Principal } from '../auth/principal';
 import { dayStates, loadSubs } from '../plans/tp-submissions';
+import { SUBMITTED_STATUSES, dayReport, isDaySubmittedViolation } from './day-report';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { CheckInsService, err } from '../field/checkins.service';
@@ -51,6 +52,7 @@ export interface DcrQuery {
   userId?: string;
   territoryId?: string;
   status?: Dcr['status'];
+  mine?: 'true' | 'false';
 }
 
 /** SQL: day-lock instant for a dcrs.date-like expression. */
@@ -220,7 +222,9 @@ export class DcrService {
       const locked = sql`(now() > ${lockAtSql(dcrs.date, s)} and coalesce(${unlockedUntilSql(dcrs.userId, dcrs.date)} < now(), true))`;
       const where = [
         isNull(dcrs.deletedAt),
-        this.checkIns.userFilter(p, q.userId, dcrs.userId),
+        q.mine === 'true'
+          ? eq(dcrs.userId, p.userId)
+          : this.checkIns.userFilter(p, q.userId, dcrs.userId),
         q.from ? sql`${dcrs.date} >= ${q.from}` : undefined,
         q.to ? sql`${dcrs.date} <= ${q.to}` : undefined,
         q.territoryId
@@ -247,7 +251,10 @@ export class DcrService {
         .limit(limit + 1)
         .offset(offset);
       const out: Record<string, unknown> = {
-        items: await this.toDto(tx, s, rows.slice(0, limit)),
+        items: (await this.toDto(tx, s, rows.slice(0, limit))).map((d) => ({
+          ...d,
+          callCount: d.calls.length,
+        })),
         nextCursor: rows.length > limit ? encodeCursor(offset + limit) : null,
         serverTime: new Date().toISOString(),
       };
@@ -406,9 +413,12 @@ export class DcrService {
         );
       });
       if (wrong.length) bad.checkInIds = wrong.map((c) => c.checkInId!);
+      // Multi-draft (0045): a check-in counts as used only by a live submitted report; other
+      // drafts of the day are alternatives and may reuse it.
       const used = await tx
         .select({ geo: dcrCalls.geoCaptureId })
         .from(dcrCalls)
+        .innerJoin(dcrs, eq(dcrs.id, dcrCalls.dcrId))
         .where(
           and(
             inArray(
@@ -416,6 +426,9 @@ export class DcrService {
               ci.map((c) => c.checkInId!),
             ),
             isNull(dcrCalls.deletedAt),
+            isNull(dcrs.deletedAt),
+            inArray(dcrs.status, [...SUBMITTED_STATUSES]),
+            dcrId ? ne(dcrCalls.dcrId, dcrId) : sql`true`,
             notInArray(
               dcrCalls.id,
               b.calls.map((c) => c.clientId),
@@ -443,11 +456,15 @@ export class DcrService {
       const s = await companySettings(tx, p);
       if (b.date > localDate(new Date(), s.timezone))
         throw err(422, 'VALIDATION', 'DCR date is in the future');
-      const [cur] = await tx
-        .select()
-        .from(dcrs)
-        .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, b.date)))
-        .for('update');
+      // Multi-draft (0045): the legacy upsert edits the day report (submitted, else latest draft)
+      // and no longer revives soft-deleted rows.
+      const cur = dayReport(
+        await tx
+          .select()
+          .from(dcrs)
+          .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, b.date), isNull(dcrs.deletedAt)))
+          .for('update'),
+      );
       const li = await this.lockInfo(tx, s, p.userId, b.date);
       if (li.locked)
         throw err(409, 'DAY_LOCKED', 'This day is locked; request a correction', {
@@ -516,22 +533,40 @@ export class DcrService {
         deviationReason: reason,
         ...(b.submit ? { status: 'submitted' as const, submittedAt: new Date() } : {}),
       };
-      const [row] = cur
-        ? await tx
-            .update(dcrs)
-            .set({ ...vals, deletedAt: null })
-            .where(eq(dcrs.id, cur.id))
-            .returning()
-        : await tx
-            .insert(dcrs)
-            .values({
-              id: uuidv7(),
-              companyId: p.companyId,
-              userId: p.userId,
-              date: b.date,
-              ...vals,
-            })
-            .returning();
+      let row: DcrRow | undefined;
+      try {
+        // Savepoint: a concurrent submit of the same day trips dcrs_user_date_submitted_uq.
+        [row] = await tx.transaction((sp) =>
+          cur
+            ? sp.update(dcrs).set(vals).where(eq(dcrs.id, cur.id)).returning()
+            : sp
+                .insert(dcrs)
+                .values({
+                  id: uuidv7(),
+                  companyId: p.companyId,
+                  userId: p.userId,
+                  date: b.date,
+                  ...vals,
+                })
+                .returning(),
+        );
+      } catch (e) {
+        if (!isDaySubmittedViolation(e)) throw e;
+        const [other] = await tx
+          .select({ id: dcrs.id })
+          .from(dcrs)
+          .where(
+            and(
+              eq(dcrs.userId, p.userId),
+              eq(dcrs.date, b.date),
+              isNull(dcrs.deletedAt),
+              inArray(dcrs.status, [...SUBMITTED_STATUSES]),
+            ),
+          );
+        throw err(409, 'DAY_ALREADY_SUBMITTED', 'This day already has a submitted report', {
+          existingId: other?.id ?? null,
+        });
+      }
       const dcrId = row!.id;
       await this.writeCalls(tx, p, dcrId, b.date, b.calls, ptr);
       await this.audit.record(tx, p, b.submit ? 'dcr.submit' : 'dcr.save', {
@@ -712,10 +747,19 @@ export class DcrService {
             unlockedUntil: li.unlockedUntil?.toISOString() ?? null,
           },
         );
-      const [cur] = await tx
-        .select({ id: dcrs.id })
-        .from(dcrs)
-        .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, date)));
+      // The day report (submitted, else latest draft) is the subject of the correction.
+      const cur = dayReport(
+        await tx
+          .select({
+            id: dcrs.id,
+            date: dcrs.date,
+            status: dcrs.status,
+            version: dcrs.version,
+            updatedAt: dcrs.updatedAt,
+          })
+          .from(dcrs)
+          .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, date), isNull(dcrs.deletedAt))),
+      );
       const id = await this.approvals.request(
         tx,
         p,

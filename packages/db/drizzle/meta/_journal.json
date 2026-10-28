@@ -316,6 +316,13 @@
       "when": 1793290000000,
       "tag": "0044_manager_field_write",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1793300000000,
+      "tag": "0045_dcr_multi_draft",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Headers,
   Get,
   HttpCode,
@@ -128,6 +129,15 @@ export class DcrController {
   get(@CurrentPrincipal() p: Principal, @Param('id') id: string) {
     if (!Id.safeParse(id).success) throw new NotFoundException('DCR not found');
     return this.svc.get(p, id);
+  }
+
+  /** Multi-draft: delete one of your drafts (soft delete with its calls and SFC choices). */
+  @Delete(':id')
+  @HttpCode(204)
+  @RequirePermissions('field:write')
+  async remove(@CurrentPrincipal() p: Principal, @Param('id') id: string) {
+    if (!Id.safeParse(id).success) throw new NotFoundException('DCR not found');
+    await this.flow.remove(p, id);
   }
 }
 
