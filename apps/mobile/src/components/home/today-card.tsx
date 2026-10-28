@@ -10,13 +10,14 @@ import { TintedIcon } from '../tinted-icon';
 import type { FeatureKey } from '@/lib/features';
 import { formatTime } from '@/lib/format';
 import type { HomeData } from '@/mocks/home';
-import { colors, motion, spacing } from '@/theme';
+import { colors, motion, sizes, spacing } from '@/theme';
 
 type Punch = { state: 'in' | 'out' | 'none'; at: Date | null };
 
 /**
  * Today at a glance, in the order a rep works the day: punch in, the plan, the report.
- * Punch in/out is a local stub (no API, no GPS); the next step is expo-location + the attendance API.
+ * Three rows of identical height (sizes.row): icon tile, one-line title, one-line subtitle.
+ * Punch in/out is a local stub (no API, no GPS); real punch-in needs expo-location + the API.
  */
 export function TodayCard({
   data,
@@ -42,11 +43,11 @@ export function TodayCard({
   const punchedIn = punch.state === 'in';
   const status =
     punch.state === 'in' ? 'Punched in' : punch.state === 'out' ? 'Punched out' : 'Not punched in';
-  const when = punch.at ? formatTime(punch.at) : 'Punch in when you start work';
+  const title = punch.at ? `${status} · ${formatTime(punch.at)}` : status;
 
   return (
     <Card>
-      <View style={styles.punchRow}>
+      <View style={[styles.punchRow, styles.divider]}>
         <Animated.View
           key={punch.state}
           entering={reduced ? undefined : FadeIn.duration(motion.fast)}
@@ -57,15 +58,16 @@ export function TodayCard({
           />
         </Animated.View>
         <View
-          style={styles.punchText}
+          style={styles.text}
           accessible
-          accessibilityLabel={`${status}${punch.at ? ` at ${when}` : ''}, ${data.attendance.place}`}
+          accessibilityLabel={`${title}, ${data.attendance.place}, location not captured`}
         >
-          <AppText variant="headline" style={punchedIn && styles.success}>
-            {status}
+          <AppText variant="rowTitle" style={punchedIn && styles.success} numberOfLines={1}>
+            {title}
           </AppText>
-          <AppText variant="caption">{when}</AppText>
-          <AppText variant="small">{data.attendance.place} · GPS preview, not captured</AppText>
+          <AppText variant="small" numberOfLines={1}>
+            {data.attendance.place} · GPS stub
+          </AppText>
         </View>
         <Button
           label={punchedIn ? 'Punch out' : 'Punch in'}
@@ -75,23 +77,19 @@ export function TodayCard({
         />
       </View>
 
-      <View style={styles.rule} />
-
       <ListRow
         icon="calendar-month-outline"
         tone="blue"
-        title={`Tour plan: ${plan.workType}`}
-        subtitle={[`${plan.area} (${plan.band})`, plan.workWith && `with ${plan.workWith}`]
-          .filter(Boolean)
-          .join(' · ')}
+        title={`${plan.workType} · ${plan.area} (${plan.band})`}
+        subtitle={plan.workWith ? `Tour plan · with ${plan.workWith}` : 'Tour plan · working alone'}
         onPress={() => onOpen('tour-plan')}
         divider
       />
       <ListRow
         icon="clipboard-text-outline"
         tone={dcrToday.submitted ? 'green' : 'orange'}
-        title={dcrToday.submitted ? 'DCR submitted' : 'DCR not submitted'}
-        subtitle={`${dcrToday.submitted ? 'Done for today' : 'Due today'} · ${met} of ${doctorsToday.length} doctors met`}
+        title={dcrToday.submitted ? 'DCR submitted' : 'DCR due today'}
+        subtitle={`${met} of ${doctorsToday.length} doctors met`}
         onPress={() => onOpen('dcr')}
       />
     </Card>
@@ -99,13 +97,16 @@ export function TodayCard({
 }
 
 const styles = StyleSheet.create({
+  // Same box as ListRow: height sizes.row, gutter padding, icon tile + text.
   punchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    padding: spacing.lg,
+    minHeight: sizes.row,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
   },
-  punchText: { flex: 1 },
+  divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator },
+  text: { flex: 1 },
   success: { color: colors.success },
-  rule: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
 });

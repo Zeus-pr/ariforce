@@ -5,7 +5,7 @@ import { PressableScale } from '../pressable-scale';
 import { SectionHeader } from '../section-header';
 import { TintedIcon } from '../tinted-icon';
 import { FEATURES, type FeatureKey } from '@/lib/features';
-import { colors, spacing } from '@/theme';
+import { colors, layout, sizes, spacing } from '@/theme';
 
 const ACTIONS = ['dcr', 'tour-plan', 'leave', 'expenses'] as const satisfies readonly FeatureKey[];
 
@@ -39,12 +39,14 @@ export function QuickActions({ onOpen }: { onOpen: (feature: FeatureKey) => void
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: spacing.sm },
+  row: { flexDirection: 'row', gap: layout.inner },
   cell: { flex: 1 },
+  // Fixed tile height: four equal boxes whatever the label.
   tile: {
+    height: sizes.tile,
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.sm,
-    paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xs,
   },
   pressed: { backgroundColor: colors.ground },

@@ -5,7 +5,10 @@ import { SectionHeader } from '../section-header';
 import { formatTime } from '@/lib/format';
 import type { PlannedDoctor } from '@/mocks/home';
 
-/** Doctors on today's plan, met ones marked with the call time. */
+/**
+ * Doctors on today's plan, met ones marked with the call time. Rows are information only (no
+ * chevron); "All doctors" opens the list.
+ */
 export function DoctorsToday({
   doctors,
   onOpenDoctors,
@@ -33,7 +36,6 @@ export function DoctorsToday({
               title={d.name}
               subtitle={`${d.speciality} · ${d.area}`}
               trailing={<Chip label={status} tone={d.metAt ? 'green' : 'neutral'} />}
-              onPress={onOpenDoctors}
               accessibilityLabel={`${d.name}, ${d.speciality}, ${d.area}, ${status}`}
               divider={i < doctors.length - 1}
             />

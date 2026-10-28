@@ -49,8 +49,8 @@ export function ApprovalsCard({
 }
 
 const styles = StyleSheet.create({
-  card: { flexDirection: 'row', paddingVertical: spacing.lg },
-  cell: { flex: 1, alignItems: 'center', paddingHorizontal: spacing.xs },
+  card: { flexDirection: 'row', alignItems: 'stretch', paddingVertical: spacing.lg },
+  cell: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xs },
   cellRule: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.separator },
   zero: { color: colors.subtle },
   pressed: { backgroundColor: colors.ground },

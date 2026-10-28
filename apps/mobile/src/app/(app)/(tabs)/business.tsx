@@ -4,18 +4,20 @@ import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { ListRow } from '@/components/list-row';
 import { FEATURES, featureHref, type FeatureKey } from '@/lib/features';
-import { colors, spacing } from '@/theme';
+import { useBottomSpace } from '@/components/floating-tab-bar';
+import { colors, layout, spacing } from '@/theme';
 
 const LISTS = ['doctors', 'chemists', 'stockists'] as const satisfies readonly FeatureKey[];
 
 /** Stub: the three customer lists a rep calls on. Each opens "Coming soon". */
 export default function BusinessTab() {
   const router = useRouter();
+  const bottom = useBottomSpace();
   return (
     <ScrollView
       style={styles.flex}
       contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
     >
       <Card>
         {LISTS.map((key, i) => {
@@ -26,7 +28,7 @@ export default function BusinessTab() {
               icon={f.icon}
               tone={f.tone}
               title={f.title}
-              subtitle={f.blurb}
+              subtitle={f.short}
               onPress={() => router.push(featureHref(key))}
               divider={i < LISTS.length - 1}
             />
@@ -42,6 +44,6 @@ export default function BusinessTab() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.ground },
-  content: { padding: spacing.xl, gap: spacing.md },
-  note: { paddingHorizontal: spacing.xs },
+  content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm, gap: layout.inner },
+  note: { paddingHorizontal: layout.gutter },
 });

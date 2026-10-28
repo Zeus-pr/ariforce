@@ -85,6 +85,14 @@ never on debug + Metro.
   PLACEHOLDER, with the API source for each block). Punch in/out is local state; no GPS is read
   and nothing is sent. The screen shows a "Sample data" chip until `HOME_IS_PLACEHOLDER` is
   false.
+- **Layout rhythm** (`layout` in `theme.ts`): one screen gutter (16), one gap between sections
+  (24), one gap inside them (12). Every list row is the same box (`sizes.row`, one-line title
+  and subtitle); grids use equal-flex rows so cards in a row match.
+- **Tab bar** (`src/components/floating-tab-bar.tsx`): custom `tabBar` for expo-router `Tabs`,
+  CUTLY's expanding-capsule pattern in AriForce navy. It floats 16 dp from the sides and sits
+  above the safe area / gesture bar; the active tab widens into a navy pill with its label
+  (Reanimated CSS transition, instant under Reduce Motion), with a selection haptic on press.
+  Scroll screens add `useBottomSpace()` as bottom padding so nothing hides behind it.
 - **Icons**: `@expo/vector-icons` Material Community (JS + font, works in Expo Go), loaded with
   the app fonts so they never pop in.
 - **Splash**: the native splash (`expo-splash-screen`, mark on `#F4F8FD`) stays until fonts
@@ -139,6 +147,9 @@ cd apps/mobile
 - **2026-10-28** Home uses expo-router JS `Tabs`, not `NativeTabs` (the expo-router skill's
   default): the tab bar keeps Google Sans labels and the same look on Android and iOS, and needs
   no SF Symbols / Material Symbols setup. Revisit when the app gets a dev build.
+- **2026-10-29** Floating capsule tab bar (custom `tabBar`). Solid white with a hairline and a
+  soft `boxShadow`, no blur: `expo-blur` would be a new native module. In this expo-router build
+  the custom bar gets `emitter` + `navigateToTab`, not `navigation` (see `BottomTabBarProps`).
 - **2026-10-28** Punch-in GPS is a stub. Real punch-in needs `expo-location` (in Expo Go, but a
   new native module): add it together with the attendance API.
 - From CUTLY: never `Alert.alert` (inline errors and in-app banners); never put

@@ -11,13 +11,15 @@ import { SectionHeader } from '@/components/section-header';
 import { useAuth } from '@/lib/auth-context';
 import { FEATURES, featureHref, type FeatureKey } from '@/lib/features';
 import { isApprover, roleLabel } from '@/lib/roles';
-import { colors, spacing } from '@/theme';
+import { useBottomSpace } from '@/components/floating-tab-bar';
+import { colors, layout, spacing } from '@/theme';
 
 /** Account, the features without a tab, and Sign out. */
 export default function MoreTab() {
   const { user, signOut } = useAuth();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
+  const bottom = useBottomSpace();
 
   const roles = user?.roles ?? [];
   const name = user?.name?.trim() || user?.email || 'Your account';
@@ -38,7 +40,7 @@ export default function MoreTab() {
     <ScrollView
       style={styles.flex}
       contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
     >
       <View style={styles.profile} accessible accessibilityRole="summary">
         <Avatar name={name} large />
@@ -59,7 +61,7 @@ export default function MoreTab() {
       </Card>
 
       <View style={styles.section}>
-        <SectionHeader title="More" />
+        <SectionHeader title="Work" />
         <Card>
           {links.map((key, i) => {
             const f = FEATURES[key];
@@ -69,6 +71,7 @@ export default function MoreTab() {
                 icon={f.icon}
                 tone={f.tone}
                 title={f.title}
+                subtitle={f.short}
                 onPress={() => router.push(featureHref(key))}
                 divider={i < links.length - 1}
               />
@@ -95,15 +98,14 @@ export default function MoreTab() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.ground },
-  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm },
   profile: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.lg,
-    paddingHorizontal: spacing.xs,
-    paddingBottom: spacing.xl,
+    paddingBottom: layout.section,
   },
   profileText: { flex: 1 },
-  section: { marginTop: spacing.xl },
+  section: { marginTop: layout.section },
   version: { textAlign: 'center', marginTop: spacing.lg },
 });

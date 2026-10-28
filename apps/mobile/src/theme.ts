@@ -11,6 +11,7 @@ import type { TextStyle } from 'react-native';
 export const colors = {
   navy: '#0F2A4A',
   navyPressed: '#0B1F37',
+  navyClear: 'rgba(15, 42, 74, 0)', // navy at 0 alpha: fades to/from navy without greying
   brandNavy: '#162D5A', // the logo's own navy, for the wordmark
   teal: '#0CAAC1',
   tealDeep: '#0C8498', // teal that passes 4.5:1 on white, for text and focus
@@ -78,6 +79,18 @@ export const sizes = {
   iconTileLg: 48, // quick-action tiles
   badge: 8, // unread dot
   progress: 6, // KPI progress track
+  row: 72, // every list row: icon tile + one-line title + one-line subtitle
+  tile: 96, // quick-action tiles
+  tabBar: 64, // floating tab bar height
+} as const;
+
+/** Screen rhythm: one gutter for every screen edge, one gap between sections, one inside them. */
+export const layout = {
+  gutter: spacing.lg,
+  section: spacing.xl,
+  inner: spacing.md, // section title to content, and between cards in a grid
+  tabBarInset: spacing.lg, // floating bar distance from the screen sides
+  tabBarLift: spacing.sm, // floating bar distance above the safe area / gesture bar
 } as const;
 
 export const iconSize = { sm: 18, md: 22, lg: 24 } as const;
@@ -85,6 +98,7 @@ export const iconSize = { sm: 18, md: 22, lg: 24 } as const;
 /** boxShadow strings (not legacy shadow/elevation props); navy-tinted, low. */
 export const shadows = {
   card: '0 1px 2px rgba(15, 42, 74, 0.06), 0 4px 12px rgba(15, 42, 74, 0.05)',
+  floating: '0 2px 6px rgba(15, 42, 74, 0.08), 0 10px 28px rgba(15, 42, 74, 0.16)',
 } as const;
 
 /** Named text styles (type ramp). Screens use <AppText variant=…>, never raw font sizes. */
@@ -159,7 +173,7 @@ export const type = {
 export type TypeVariant = keyof typeof type;
 
 /** Tab bar label: no colour here, the tab bar tints it (active navy, inactive muted). */
-export const tabLabel = { fontFamily: fonts.medium, fontSize: 12, lineHeight: 16 } as const;
+export const tabLabel = { fontFamily: fonts.semibold, fontSize: 13, lineHeight: 18 } as const;
 
 /** Motion (expo-animation / emil-design-eng): strong ease-out, short UI durations. */
 export const motion = {

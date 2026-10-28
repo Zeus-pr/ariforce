@@ -1,34 +1,10 @@
-import * as Haptics from 'expo-haptics';
 import { Tabs } from 'expo-router';
-import type { ColorValue } from 'react-native';
 import { HeaderActions } from '@/components/header-actions';
-import { Icon, type IconName } from '@/components/icon';
+import { FloatingTabBar, InTabsContext, type TabMeta } from '@/components/floating-tab-bar';
 import { LogoLockup } from '@/components/logo-lockup';
 import { useAuth } from '@/lib/auth-context';
 import { getHomeMock } from '@/mocks/home';
-import { colors, fonts, spacing, tabLabel } from '@/theme';
-
-function tabIcon(active: IconName, idle: IconName) {
-  function TabIcon({
-    color,
-    size,
-    focused,
-  }: {
-    color: ColorValue | null;
-    size: number;
-    focused: boolean;
-  }) {
-    // Tab tints are theme strings; anything else falls back to the Icon default.
-    return (
-      <Icon
-        name={focused ? active : idle}
-        color={typeof color === 'string' ? color : null}
-        size={size}
-      />
-    );
-  }
-  return TabIcon;
-}
+import { colors, fonts } from '@/theme';
 
 function HomeHeaderRight() {
   const { user } = useAuth();
@@ -38,56 +14,41 @@ function HomeHeaderRight() {
   return <HeaderActions name={name} unread={unread} />;
 }
 
-/** Bottom tabs, as on the website's main areas. Non-Home tabs are stubs for now. */
+const TABS: Record<string, TabMeta> = {
+  index: { label: 'Home', icon: 'home-variant-outline', iconActive: 'home-variant' },
+  business: { label: 'Business', icon: 'briefcase-outline', iconActive: 'briefcase' },
+  dcr: { label: 'DCR', icon: 'clipboard-text-outline', iconActive: 'clipboard-text' },
+  'tour-plan': { label: 'Tour Plan', icon: 'calendar-month-outline', iconActive: 'calendar-month' },
+  more: { label: 'More', icon: 'dots-horizontal', iconActive: 'dots-horizontal' },
+};
+
+/** Bottom tabs on a floating capsule bar. Non-Home tabs are stubs for now. */
 export default function TabsLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.ground },
-        headerShadowVisible: false,
-        headerTitleAlign: 'left',
-        headerTitleStyle: { fontFamily: fonts.semibold, color: colors.ink },
-        headerLeftContainerStyle: { paddingLeft: spacing.sm },
-        tabBarActiveTintColor: colors.navy,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarLabelStyle: tabLabel,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.separator },
-        sceneStyle: { backgroundColor: colors.ground },
-      }}
-      screenListeners={{
-        tabPress: () => {
-          Haptics.selectionAsync().catch(() => {});
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          headerTitle: () => <LogoLockup />,
-          headerRight: () => <HomeHeaderRight />,
-          tabBarIcon: tabIcon('home-variant', 'home-variant-outline'),
+    <InTabsContext.Provider value>
+      <Tabs
+        tabBar={(props) => <FloatingTabBar {...props} meta={TABS} />}
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.ground },
+          headerShadowVisible: false,
+          headerTitleAlign: 'left',
+          headerTitleStyle: { fontFamily: fonts.semibold, color: colors.ink },
+          sceneStyle: { backgroundColor: colors.ground },
         }}
-      />
-      <Tabs.Screen
-        name="business"
-        options={{ title: 'Business', tabBarIcon: tabIcon('briefcase', 'briefcase-outline') }}
-      />
-      <Tabs.Screen
-        name="dcr"
-        options={{ title: 'DCR', tabBarIcon: tabIcon('clipboard-text', 'clipboard-text-outline') }}
-      />
-      <Tabs.Screen
-        name="tour-plan"
-        options={{
-          title: 'Tour Plan',
-          tabBarIcon: tabIcon('calendar-month', 'calendar-month-outline'),
-        }}
-      />
-      <Tabs.Screen
-        name="more"
-        options={{ title: 'More', tabBarIcon: tabIcon('dots-horizontal', 'dots-horizontal') }}
-      />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'Home',
+            headerTitle: () => <LogoLockup />,
+            headerRight: () => <HomeHeaderRight />,
+          }}
+        />
+        <Tabs.Screen name="business" options={{ title: 'Business' }} />
+        <Tabs.Screen name="dcr" options={{ title: 'DCR' }} />
+        <Tabs.Screen name="tour-plan" options={{ title: 'Tour Plan' }} />
+        <Tabs.Screen name="more" options={{ title: 'More' }} />
+      </Tabs>
+    </InTabsContext.Provider>
   );
 }

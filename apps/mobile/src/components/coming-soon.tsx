@@ -1,18 +1,20 @@
 import { ScrollView, StyleSheet, View } from 'react-native';
+import { useBottomSpace } from './floating-tab-bar';
 import { AppText } from './app-text';
 import { Chip } from './chip';
 import { TintedIcon } from './tinted-icon';
 import { FEATURES, type FeatureKey } from '@/lib/features';
-import { colors, spacing } from '@/theme';
+import { colors, layout, spacing } from '@/theme';
 
 /** Stub for a feature that is on the website but not in the app yet. */
 export function ComingSoon({ feature }: { feature: FeatureKey }) {
   const f = FEATURES[feature];
+  const bottom = useBottomSpace();
   return (
     <ScrollView
       style={styles.flex}
       contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
     >
       <View style={styles.body}>
         <TintedIcon name={f.icon} tone={f.tone} large />
@@ -33,7 +35,13 @@ export function ComingSoon({ feature }: { feature: FeatureKey }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.ground },
-  content: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl },
-  body: { alignItems: 'center', gap: spacing.md, paddingBottom: spacing.xxxl },
+  // Same gutter as every screen; centred in the space above the tab bar.
+  content: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: layout.gutter,
+    paddingTop: layout.section,
+  },
+  body: { alignItems: 'center', gap: spacing.md },
   center: { textAlign: 'center' },
 });

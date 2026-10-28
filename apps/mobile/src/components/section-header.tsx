@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from './app-text';
-import { colors, spacing } from '@/theme';
+import { colors, layout, spacing } from '@/theme';
 
 export function SectionHeader({
   title,
@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    marginBottom: layout.inner,
     gap: spacing.md,
   },
   titles: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm, flexShrink: 1 },

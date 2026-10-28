@@ -4,7 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { AppText } from './app-text';
 import { Icon, type IconName } from './icon';
 import { TintedIcon } from './tinted-icon';
-import { colors, spacing, touch, type Tone } from '@/theme';
+import { colors, sizes, spacing, type Tone } from '@/theme';
 
 type Props = {
   title: string;
@@ -18,7 +18,10 @@ type Props = {
   accessibilityLabel?: string;
 };
 
-/** One row inside a grouped card. Tappable rows get a pressed fill (no scale inside lists). */
+/**
+ * One row inside a grouped card. Every row is the same height (sizes.row) and shows one line of
+ * title and one of subtitle, so rows never differ by content. Tappable rows get a pressed fill.
+ */
 export function ListRow({
   title,
   subtitle,
@@ -33,11 +36,11 @@ export function ListRow({
     <>
       {icon ? <TintedIcon name={icon} tone={tone} /> : null}
       <View style={styles.text}>
-        <AppText variant="rowTitle" numberOfLines={2}>
+        <AppText variant="rowTitle" numberOfLines={1}>
           {title}
         </AppText>
         {subtitle ? (
-          <AppText variant="small" numberOfLines={2}>
+          <AppText variant="small" numberOfLines={1}>
             {subtitle}
           </AppText>
         ) : null}
@@ -79,9 +82,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    minHeight: touch.min + spacing.lg,
+    minHeight: sizes.row,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
   },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator },
   pressed: { backgroundColor: colors.ground },

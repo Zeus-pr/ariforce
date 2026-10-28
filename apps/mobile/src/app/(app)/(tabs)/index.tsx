@@ -14,7 +14,8 @@ import { featureHref, type FeatureKey } from '@/lib/features';
 import { formatDate, greeting } from '@/lib/format';
 import { isApprover } from '@/lib/roles';
 import { getHomeMock, HOME_IS_PLACEHOLDER } from '@/mocks/home';
-import { colors, spacing } from '@/theme';
+import { useBottomSpace } from '@/components/floating-tab-bar';
+import { colors, layout, spacing } from '@/theme';
 
 /**
  * Rep home, top to bottom in the order the day needs it:
@@ -26,6 +27,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const [now, setNow] = useState(() => new Date());
   const [refreshing, setRefreshing] = useState(false);
+  const bottom = useBottomSpace();
 
   // Keep the greeting and date right if the app stays open across noon, 5 pm or midnight.
   useEffect(() => {
@@ -52,7 +54,7 @@ export default function HomeScreen() {
     <ScrollView
       style={styles.flex}
       contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -62,7 +64,7 @@ export default function HomeScreen() {
         />
       }
     >
-      <View style={styles.hello}>
+      <View>
         <AppText variant="greeting">{greeting(now)},</AppText>
         <AppText variant="name" accessibilityRole="header" numberOfLines={2}>
           {name}
@@ -106,13 +108,12 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.ground },
-  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
-  hello: { paddingTop: spacing.sm, paddingHorizontal: spacing.xs },
+  content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm },
   dateRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     marginTop: spacing.xs,
   },
-  section: { marginTop: spacing.xl },
+  section: { marginTop: layout.section },
 });
