@@ -167,6 +167,8 @@ export const stockists = pgTable(
     territoryId: uuid('territory_id')
       .notNull()
       .references(() => territories.id),
+    /** Territory (level 'territory') under the HQ in territory_id (0042); null until backfilled. */
+    localTerritoryId: uuid('local_territory_id').references(() => territories.id),
     name: text('name').notNull(),
     gstin: text('gstin'),
     drugLicenseNo: text('drug_license_no'),
@@ -175,6 +177,7 @@ export const stockists = pgTable(
   },
   (t) => [
     index('stockists_territory_idx').on(t.companyId, t.territoryId),
+    index('stockists_local_territory_idx').on(t.companyId, t.localTerritoryId),
     index('stockists_updated_idx').on(t.companyId, t.updatedAt),
   ],
 );
