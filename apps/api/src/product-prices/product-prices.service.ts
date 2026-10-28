@@ -4,6 +4,7 @@ import {
   pricesConsistent,
   type AdminProduct,
   type AdminProductQuery,
+  type ProductImageSet,
   type ProductPricesBulkResponse,
   type ProductPricesBulkResult,
   type ProductPricesUpdate,
@@ -15,6 +16,8 @@ import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
+import { checkProductImageHead, isProductImageKey, sniffImage } from '../files/product-image';
+import { StorageService } from '../files/storage.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 
 type Prices = { mrp: number | null; ptr: number | null; pts: number | null };
@@ -65,7 +68,18 @@ export class ProductPricesService {
   constructor(
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
+    private readonly storage: StorageService,
   ) {}
+
+  /** Fills imageUrl (presigned GET, local crypto) for rows that have a picture. */
+  private async withImageUrls(p: Principal, rows: AdminProduct[]): Promise<AdminProduct[]> {
+    return Promise.all(
+      rows.map(async (r) => ({
+        ...r,
+        imageUrl: r.imageFileKey ? await this.storage.imageUrl(p.companyId, r.imageFileKey) : null,
+      })),
+    );
+  }
 
   private async listRows(tx: Tx, where: ReturnType<typeof sql>, limit: number, offset: number) {
     const r = await tx.execute<{
@@ -78,13 +92,14 @@ export class ProductPricesService {
       mrp: string | null;
       ptr: string | null;
       pts: string | null;
+      image_file_key: string | null;
       updated_at: Date | string;
       version: number;
       by_id: string | null;
       by_name: string | null;
       changed_at: Date | string | null;
     }>(sql`select p.id, p.code, p.name, p.brand, p.division_id, p.active, p.mrp, p.ptr, p.pts,
-        p.updated_at, p.version, h.changed_by as by_id, u.name as by_name, h.changed_at
+        p.image_file_key, p.updated_at, p.version, h.changed_by as by_id, u.name as by_name, h.changed_at
       from products p
       left join lateral (select changed_by, changed_at from product_price_history h
         where h.product_id = p.id order by h.changed_at desc, h.id desc limit 1) h on true
@@ -105,6 +120,8 @@ export class ProductPricesService {
       updatedAt: iso(x.updated_at),
       updatedBy: x.by_id ? { id: x.by_id, name: x.by_name ?? '' } : null,
       pricesUpdatedAt: x.changed_at ? iso(x.changed_at) : null,
+      imageFileKey: x.image_file_key,
+      imageUrl: null,
       version: x.version,
     }));
   }
@@ -125,7 +142,7 @@ export class ProductPricesService {
       if (q.divisionId) conds.push(sql`p.division_id = ${q.divisionId}`);
       const rows = await this.listRows(tx, sql.join(conds, sql` and `), limit + 1, offset);
       return {
-        items: rows.slice(0, limit),
+        items: await this.withImageUrls(p, rows.slice(0, limit)),
         nextCursor: rows.length > limit ? encodeCursor(offset + limit) : null,
       };
     });
@@ -214,8 +231,87 @@ export class ProductPricesService {
     return this.tenant.run(p, async (tx) => {
       const { version, ...patch } = b;
       await this.apply(tx, p, { productId: id }, patch, version, 'single', null);
-      const [dto] = await this.listRows(tx, sql`p.id = ${id}`, 1, 0);
-      return dto!;
+      return this.row(tx, p, id);
+    });
+  }
+
+  private async row(tx: Tx, p: Principal, id: string) {
+    const [dto] = await this.withImageUrls(p, await this.listRows(tx, sql`p.id = ${id}`, 1, 0));
+    return dto!;
+  }
+
+  /**
+   * Attach an uploaded picture. Same completion checks as expense receipts: the object must exist in
+   * R2 within size/type and its first bytes must match; a rejected upload is deleted (unless some
+   * product already uses that key) and audited in a committed transaction, then the error is thrown.
+   */
+  async setImage(p: Principal, id: string, b: ProductImageSet) {
+    if (!isProductImageKey(p.companyId, b.fileKey))
+      throw err(
+        422,
+        'VALIDATION',
+        'fileKey must come from POST /v1/files/upload-url with purpose product_image',
+        {
+          reason: 'IMAGE_KEY_INVALID',
+        },
+      );
+    const r = await this.tenant.run(p, async (tx) => {
+      const row = await this.find(tx, { productId: id });
+      if (b.version !== undefined && b.version !== row.version)
+        throw err(409, 'VERSION_CONFLICT', 'Product changed; reload', { version: row.version });
+      if (row.imageFileKey === b.fileKey) return { ok: await this.row(tx, p, id) };
+      const reject = async (x: { reason: string; message: string }) => {
+        const [used] = await tx
+          .select({ id: products.id })
+          .from(products)
+          .where(eq(products.imageFileKey, b.fileKey))
+          .limit(1);
+        if (!used) await this.storage.remove(b.fileKey).catch(() => undefined);
+        await this.audit.record(tx, p, 'product.image_rejected', {
+          entityType: 'product',
+          entityId: id,
+          after: { reason: x.reason, fileKey: b.fileKey },
+        });
+        return { error: err(422, 'VALIDATION', x.message, { reason: x.reason }) };
+      };
+      const head = checkProductImageHead(b.fileKey, await this.storage.head(b.fileKey));
+      if ('reason' in head) {
+        if (head.reason === 'UPLOAD_MISSING')
+          throw err(422, 'VALIDATION', head.message, { reason: head.reason });
+        return await reject(head);
+      }
+      if (!sniffImage(head.contentType, await this.storage.firstBytes(b.fileKey, 16)))
+        return await reject({
+          reason: 'UPLOAD_FORMAT_INVALID',
+          message: 'File content does not match its type',
+        });
+      await tx.update(products).set({ imageFileKey: b.fileKey }).where(eq(products.id, row.id));
+      await this.audit.record(tx, p, 'product.image_set', {
+        entityType: 'product',
+        entityId: id,
+        before: { imageFileKey: row.imageFileKey },
+        after: { imageFileKey: b.fileKey },
+      });
+      return { ok: await this.row(tx, p, id) };
+    });
+    if ('error' in r) throw r.error;
+    return r.ok;
+  }
+
+  /** Remove the picture (idempotent). The R2 object is kept so the audit trail can still resolve it. */
+  clearImage(p: Principal, id: string) {
+    return this.tenant.run(p, async (tx) => {
+      const row = await this.find(tx, { productId: id });
+      if (row.imageFileKey) {
+        await tx.update(products).set({ imageFileKey: null }).where(eq(products.id, row.id));
+        await this.audit.record(tx, p, 'product.image_cleared', {
+          entityType: 'product',
+          entityId: id,
+          before: { imageFileKey: row.imageFileKey },
+          after: { imageFileKey: null },
+        });
+      }
+      return this.row(tx, p, id);
     });
   }
 

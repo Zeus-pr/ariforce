@@ -55,6 +55,7 @@ import {
   ProductPriceHistory,
   ProductPricesBulkRequest,
   ProductPricesBulkResponse,
+  ProductImageSet,
   ProductPricesUpdate,
 } from './schemas/product-prices';
 import {
@@ -499,9 +500,14 @@ function buildDocument(): OpenApiDocument {
           operationId: 'createUploadUrl',
           summary:
             'Presigned R2 PUT URL (10 min). Upload directly to R2, then save fileKey on the record.',
+          description:
+            'purpose product_image: image/jpeg, image/png or image/webp, at most 5 MB, needs products:prices; attach with PUT /v1/products/{id}/image. import_source needs imports:write. expense_receipt is refused (use the claim attachment routes).',
           requestBody: json(UploadUrlRequest),
           responses: {
             '200': { description: 'Presigned upload', ...json(UploadUrlResponse) },
+            '403': err(
+              'FORBIDDEN (product_image needs products:prices; import_source needs imports:write)',
+            ),
             '422': err('Validation failed (type/size)'),
             '503': err('Storage not configured'),
           },
@@ -2191,6 +2197,45 @@ function buildDocument(): OpenApiDocument {
             },
             '403': err('FORBIDDEN (needs products:prices)'),
             '422': err('VALIDATION (rows missing, empty or more than 300)'),
+          },
+        }),
+      },
+      '/v1/products/{id}/image': {
+        put: op({
+          tags: ['Product prices'],
+          operationId: 'setProductImage',
+          summary:
+            'Attach an uploaded picture (upload-url purpose product_image, then PUT the bytes to R2). Replaces any current picture.',
+          description:
+            'The fileKey must be the caller company product_image key. The object is checked in R2: it must exist, be at most 5 MB, be image/jpeg|png|webp and its first bytes must match that type (a rejected upload is deleted). Bumps the product version/updatedAt, so GET /v1/products?updatedSince picks it up.',
+          requestParams: { path: IdParam },
+          requestBody: json(ProductImageSet),
+          responses: {
+            '200': {
+              description: 'Saved (row with imageFileKey and a fresh imageUrl)',
+              ...json(AdminProduct),
+            },
+            '403': err('FORBIDDEN (needs products:prices)'),
+            '404': err('PRODUCT_NOT_FOUND'),
+            '409': err('VERSION_CONFLICT (only when version is sent)'),
+            '422': err(
+              'VALIDATION; error.details.reason = IMAGE_KEY_INVALID (not a product_image key of your company), UPLOAD_MISSING (PUT the bytes first), UPLOAD_TOO_LARGE (> 5 MB), UPLOAD_TYPE_INVALID or UPLOAD_FORMAT_INVALID',
+            ),
+            '503': err('Storage not configured'),
+          },
+        }),
+        delete: op({
+          tags: ['Product prices'],
+          operationId: 'clearProductImage',
+          summary: 'Remove the product picture (idempotent). The R2 object is kept for audit.',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': {
+              description: 'Cleared (imageFileKey and imageUrl null)',
+              ...json(AdminProduct),
+            },
+            '403': err('FORBIDDEN (needs products:prices)'),
+            '404': err('PRODUCT_NOT_FOUND'),
           },
         }),
       },

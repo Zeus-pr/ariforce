@@ -30,6 +30,27 @@ response enums, or changed server behaviour for the same request).
 | Health (`a72e145`)                                             | `HealthWarning` dropped `companyId` / `companySlug` and became aggregate (`NO_WORK_TYPES` with `count`). Only clients of `0c97952` are affected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | TP submit (`36c29f5`, superseded by `0bb7b40`)                 | `POST /v1/tour-plans/{month}/submit` 422 rule changed: weekly offs and past days of the current month (IST) are no longer required                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
+## Product image (`feat/product-image`, migration 0047)
+
+Additive. Products get a picture, uploaded from the product prices admin and shown in the DCR picker.
+
+- `FilePurpose` gains `product_image` (snake_case like the others). `POST /v1/files/upload-url` with that
+  purpose: `image/jpeg|png|webp` only, `sizeBytes` <= 5 MB (422 `VALIDATION` otherwise), needs
+  `products:prices` (403 `FORBIDDEN`).
+- `Product` (`GET /v1/products`, `/v1/products/{id}`, PATCH response) and `AdminProduct` (`GET /v1/admin/products`,
+  price PATCH response) gain `imageFileKey: string|null` and `imageUrl: string|null`. `imageUrl` is a presigned
+  R2 GET for `<img src>`, signed for 60 min from the start of a 30-min window (valid >= 30 min, same URL within
+  the window). Null if no picture or storage is off. Not settable through product create/update/import.
+- New `PUT /v1/products/{id}/image` `{fileKey, version?}` -> 200 `AdminProduct` (new `version`, fresh `imageUrl`).
+  The object is HEAD-checked in R2 (exists, <= 5 MB, allowed type matching the key extension) and its magic bytes
+  sniffed; a rejected upload is deleted. Errors: 404 `PRODUCT_NOT_FOUND`, 403 `FORBIDDEN`, 409 `VERSION_CONFLICT`
+  (only if `version` sent), 422 `VALIDATION` with `details.reason` `IMAGE_KEY_INVALID` | `UPLOAD_MISSING` |
+  `UPLOAD_TOO_LARGE` | `UPLOAD_TYPE_INVALID` | `UPLOAD_FORMAT_INVALID`, 503 storage not configured.
+- New `DELETE /v1/products/{id}/image` -> 200 `AdminProduct` (`imageUrl: null`; version bumped only if a picture
+  was removed). Idempotent. The R2 object is kept for audit.
+- Setting or clearing bumps the product `version`/`updatedAt` (row trigger), so `?updatedSince` syncs pick it up.
+  Audit actions `product.image_set`, `product.image_cleared`, `product.image_rejected`.
+
 ## Territory link import + `localTerritoryId` (`feat/territory-importer`)
 
 Additive (no migration; uses 0042). Web impact noted per item.

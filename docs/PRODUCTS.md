@@ -39,6 +39,19 @@ Bulk: each row in its own transaction; result per row `{index, productId, produc
 updated|unchanged|failed, code, message}` plus `summary {total, updated, unchanged, failed}` and `bulkId`.
 Row errors: `VALIDATION`, `PRODUCT_NOT_FOUND`, `PTR_ABOVE_MRP`. Codes match case-insensitively.
 
+## Product image (migration 0047)
+
+Upload box on the prices admin; the DCR picker reads the same `imageUrl` from `GET /v1/products`.
+
+1. `POST /v1/files/upload-url` `{purpose: 'product_image', contentType: image/jpeg|png|webp, sizeBytes <= 5 MB, fileName?}`
+   -> `{fileKey, uploadUrl, method: 'PUT', headers, expiresAt}` (10 min).
+2. `PUT uploadUrl` with the raw bytes and exactly `headers` (content-type, content-length are signed).
+3. `PUT /v1/products/{id}/image` `{fileKey, version?}` -> 200 `AdminProduct` with `imageUrl` and the new `version`.
+4. `DELETE /v1/products/{id}/image` -> 200 `AdminProduct` (`imageUrl: null`).
+
+All need `products:prices`. `products.image_file_key` holds the R2 key only. `imageUrl` is a presigned GET valid
+30-60 min; re-fetch the list for a fresh one.
+
 ## Decisions for lead
 
 1. New permission `products:prices` instead of reusing `users:write` (the only other system_admin-only

@@ -4,6 +4,7 @@ import {
   AdminProductQuery,
   ProductPricesBulkRequest,
   ProductPricesBulkRow,
+  ProductImageSet,
   ProductPricesUpdate,
   pricesConsistent,
   type AdminProduct,
@@ -51,6 +52,8 @@ const dto = (p: (typeof fx.products)[number]): AdminProduct => {
     updatedAt: p.updatedAt,
     updatedBy: h ? h.changedBy : null,
     pricesUpdatedAt: h ? h.changedAt : null,
+    imageFileKey: p.imageFileKey ?? null,
+    imageUrl: p.imageFileKey ? `https://mock-r2.invalid/download/${p.imageFileKey}` : null,
     version: p.version,
   };
 };
@@ -183,6 +186,41 @@ export function productPriceHandlers(baseUrl: string, who: (r: Request) => Me | 
         },
         results,
       });
+    }),
+    // Product picture. Simplified: no R2 HEAD/format check; any mock key with purpose product_image.
+    http.put(`${baseUrl}/v1/products/:id/image`, async ({ request, params }) => {
+      const a = auth(request);
+      if (a.res) return a.res;
+      const b = ProductImageSet.safeParse(await body(request));
+      if (!b.success) return invalid(b.error.issues);
+      const p = fx.products.find((x) => x.id === params.id && !x.deletedAt);
+      if (!p) return e(404, 'PRODUCT_NOT_FOUND', 'Product not found');
+      if (b.data.version !== undefined && b.data.version !== p.version)
+        return e(409, 'VERSION_CONFLICT', 'Product changed; reload', { version: p.version });
+      if (!/^[^/]+\/product_image\//.test(b.data.fileKey) || b.data.fileKey.includes('..'))
+        return e(422, 'VALIDATION', 'fileKey must come from upload-url purpose product_image', {
+          reason: 'IMAGE_KEY_INVALID',
+        });
+      if (p.imageFileKey !== b.data.fileKey)
+        Object.assign(p, {
+          imageFileKey: b.data.fileKey,
+          version: p.version + 1,
+          updatedAt: new Date().toISOString(),
+        });
+      return HttpResponse.json(dto(p));
+    }),
+    http.delete(`${baseUrl}/v1/products/:id/image`, ({ request, params }) => {
+      const a = auth(request);
+      if (a.res) return a.res;
+      const p = fx.products.find((x) => x.id === params.id && !x.deletedAt);
+      if (!p) return e(404, 'PRODUCT_NOT_FOUND', 'Product not found');
+      if (p.imageFileKey)
+        Object.assign(p, {
+          imageFileKey: null,
+          version: p.version + 1,
+          updatedAt: new Date().toISOString(),
+        });
+      return HttpResponse.json(dto(p));
     }),
     http.get(`${B}/:id/price-history`, ({ request, params }) => {
       const a = auth(request);

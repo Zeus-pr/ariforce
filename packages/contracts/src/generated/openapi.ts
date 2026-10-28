@@ -183,7 +183,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Presigned R2 PUT URL (10 min). Upload directly to R2, then save fileKey on the record. */
+    /**
+     * Presigned R2 PUT URL (10 min). Upload directly to R2, then save fileKey on the record.
+     * @description purpose product_image: image/jpeg, image/png or image/webp, at most 5 MB, needs products:prices; attach with PUT /v1/products/{id}/image. import_source needs imports:write. expense_receipt is refused (use the claim attachment routes).
+     */
     post: operations['createUploadUrl'];
     delete?: never;
     options?: never;
@@ -2388,6 +2391,32 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/products/{id}/image': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Attach an uploaded picture (upload-url purpose product_image, then PUT the bytes to R2). Replaces any current picture.
+     * @description The fileKey must be the caller company product_image key. The object is checked in R2: it must exist, be at most 5 MB, be image/jpeg|png|webp and its first bytes must match that type (a rejected upload is deleted). Bumps the product version/updatedAt, so GET /v1/products?updatedSince picks it up.
+     *
+     *     Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
+     */
+    put: operations['setProductImage'];
+    post?: never;
+    /**
+     * Remove the product picture (idempotent). The R2 object is kept for audit.
+     * @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
+     */
+    delete: operations['clearProductImage'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/admin/products/{id}/price-history': {
     parameters: {
       query?: never;
@@ -2445,7 +2474,12 @@ export interface components {
     };
     /** @enum {string} */
     FilePurpose:
-      'doctor_photo' | 'visit_attachment' | 'expense_receipt' | 'avatar' | 'import_source';
+      | 'doctor_photo'
+      | 'visit_attachment'
+      | 'expense_receipt'
+      | 'avatar'
+      | 'import_source'
+      | 'product_image';
     DownloadUrlRequest: {
       fileKey: string;
     };
@@ -3581,6 +3615,12 @@ export interface components {
       /** @description ProductPricesBulkRow[]; each row is validated on its own */
       rows: unknown[];
     };
+    ProductImageSet: {
+      /** @description fileKey from POST /v1/files/upload-url with purpose product_image, after the PUT */
+      fileKey: string;
+      /** @description Current product version; mismatch = 409 VERSION_CONFLICT */
+      version?: number;
+    };
     Health: {
       /** @constant */
       status: 'ok';
@@ -4288,6 +4328,16 @@ export interface components {
       /** @description Can be given as a physician sample */
       isSample: boolean;
       active: boolean;
+      /**
+       * @description R2 key of the product picture (upload purpose product_image); null = none
+       * @default null
+       */
+      imageFileKey: string | null;
+      /**
+       * @description Presigned GET for the picture (valid >= 30 min, <= 60 min); null if none or storage is off. Re-fetch the product for a fresh URL.
+       * @default null
+       */
+      imageUrl: string | null;
     };
     WorkTypePage: {
       items: components['schemas']['WorkType'][];
@@ -6834,6 +6884,16 @@ export interface components {
         name: string;
       } | null;
       pricesUpdatedAt: string | null;
+      /**
+       * @description R2 key of the product picture (upload purpose product_image); null = none
+       * @default null
+       */
+      imageFileKey: string | null;
+      /**
+       * @description Presigned GET for the picture (valid >= 30 min, <= 60 min); null if none or storage is off. Re-fetch the product for a fresh URL.
+       * @default null
+       */
+      imageUrl: string | null;
       version: number;
     };
     ProductPricesBulkResponse: {
@@ -7558,7 +7618,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      /** @description FORBIDDEN (product_image needs products:prices; import_source needs imports:write) */
       403: {
         headers: {
           [name: string]: unknown;
@@ -16399,6 +16459,137 @@ export interface operations {
       };
       /** @description VALIDATION (rows missing, empty or more than 300) */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  setProductImage: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ProductImageSet'];
+      };
+    };
+    responses: {
+      /** @description Saved (row with imageFileKey and a fresh imageUrl) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminProduct'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs products:prices) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description PRODUCT_NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT (only when version is sent) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION; error.details.reason = IMAGE_KEY_INVALID (not a product_image key of your company), UPLOAD_MISSING (PUT the bytes first), UPLOAD_TOO_LARGE (> 5 MB), UPLOAD_TYPE_INVALID or UPLOAD_FORMAT_INVALID */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Storage not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  clearProductImage: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cleared (imageFileKey and imageUrl null) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminProduct'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs products:prices) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description PRODUCT_NOT_FOUND */
+      404: {
         headers: {
           [name: string]: unknown;
         };

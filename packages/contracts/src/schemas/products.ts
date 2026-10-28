@@ -17,6 +17,20 @@ export const Division = Syncable.extend({
 }).meta({ id: 'Division' });
 export type Division = z.infer<typeof Division>;
 
+/**
+ * Product picture (set via PUT /v1/products/{id}/image, never via create/update). imageUrl is a
+ * presigned R2 GET, valid at least 30 min (same URL within a 30-min window, so browsers can cache it).
+ */
+export const productImageFields = {
+  imageFileKey: z.string().max(300).nullable().default(null).meta({
+    description: 'R2 key of the product picture (upload purpose product_image); null = none',
+  }),
+  imageUrl: z.url().nullable().default(null).meta({
+    description:
+      'Presigned GET for the picture (valid >= 30 min, <= 60 min); null if none or storage is off. Re-fetch the product for a fresh URL.',
+  }),
+};
+
 export const Product = Syncable.extend({
   divisionId: Id,
   code: z.string().max(40).meta({ description: 'Company SKU code, unique per company' }),
@@ -30,9 +44,14 @@ export const Product = Syncable.extend({
   pts: z.number().min(0).nullable().meta({ description: 'Price to stockist, INR' }),
   isSample: z.boolean().meta({ description: 'Can be given as a physician sample' }),
   active: z.boolean(),
+  ...productImageFields,
 }).meta({ id: 'Product' });
 export type Product = z.infer<typeof Product>;
-export const ProductCreate = Product.omit(writable).meta({ id: 'ProductCreate' });
+export const ProductCreate = Product.omit({ ...writable, imageFileKey: true, imageUrl: true }).meta(
+  {
+    id: 'ProductCreate',
+  },
+);
 export const ProductUpdate = ProductCreate.partial()
   .extend({ version: z.int().min(1) })
   .meta({ id: 'ProductUpdate' });

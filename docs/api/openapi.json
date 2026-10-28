@@ -787,6 +787,7 @@
         ],
         "operationId": "createUploadUrl",
         "summary": "Presigned R2 PUT URL (10 min). Upload directly to R2, then save fileKey on the record.",
+        "description": "purpose product_image: image/jpeg, image/png or image/webp, at most 5 MB, needs products:prices; attach with PUT /v1/products/{id}/image. import_source needs imports:write. expense_receipt is refused (use the claim attachment routes).",
         "requestBody": {
           "content": {
             "application/json": {
@@ -818,7 +819,7 @@
             }
           },
           "403": {
-            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "description": "FORBIDDEN (product_image needs products:prices; import_source needs imports:write)",
             "content": {
               "application/json": {
                 "schema": {
@@ -14645,6 +14646,193 @@
         }
       }
     },
+    "/v1/products/{id}/image": {
+      "put": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Product prices"
+        ],
+        "operationId": "setProductImage",
+        "summary": "Attach an uploaded picture (upload-url purpose product_image, then PUT the bytes to R2). Replaces any current picture.",
+        "description": "The fileKey must be the caller company product_image key. The object is checked in R2: it must exist, be at most 5 MB, be image/jpeg|png|webp and its first bytes must match that type (a rejected upload is deleted). Bumps the product version/updatedAt, so GET /v1/products?updatedSince picks it up.\n\nRequires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductImageSet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved (row with imageFileKey and a fresh imageUrl)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProduct"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN (needs products:prices)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PRODUCT_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "VERSION_CONFLICT (only when version is sent)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION; error.details.reason = IMAGE_KEY_INVALID (not a product_image key of your company), UPLOAD_MISSING (PUT the bytes first), UPLOAD_TOO_LARGE (> 5 MB), UPLOAD_TYPE_INVALID or UPLOAD_FORMAT_INVALID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ]
+      },
+      "delete": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Product prices"
+        ],
+        "operationId": "clearProductImage",
+        "summary": "Remove the product picture (idempotent). The R2 object is kept for audit.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cleared (imageFileKey and imageUrl null)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProduct"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN (needs products:prices)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PRODUCT_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-required-permissions": [
+          "masters:write"
+        ],
+        "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
+      }
+    },
     "/v1/admin/products/{id}/price-history": {
       "get": {
         "security": [
@@ -14809,7 +14997,8 @@
           "visit_attachment",
           "expense_receipt",
           "avatar",
-          "import_source"
+          "import_source",
+          "product_image"
         ]
       },
       "DownloadUrlRequest": {
@@ -18929,6 +19118,26 @@
           "rows"
         ]
       },
+      "ProductImageSet": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "fileKey from POST /v1/files/upload-url with purpose product_image, after the PUT"
+          },
+          "version": {
+            "description": "Current product version; mismatch = 409 VERSION_CONFLICT",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "fileKey"
+        ]
+      },
       "Health": {
         "type": "object",
         "properties": {
@@ -21179,6 +21388,32 @@
           },
           "active": {
             "type": "boolean"
+          },
+          "imageFileKey": {
+            "default": null,
+            "description": "R2 key of the product picture (upload purpose product_image); null = none",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "imageUrl": {
+            "default": null,
+            "description": "Presigned GET for the picture (valid >= 30 min, <= 60 min); null if none or storage is off. Re-fetch the product for a fresh URL.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -21199,7 +21434,9 @@
           "ptr",
           "pts",
           "isSample",
-          "active"
+          "active",
+          "imageFileKey",
+          "imageUrl"
         ],
         "additionalProperties": false
       },
@@ -29779,6 +30016,32 @@
               }
             ]
           },
+          "imageFileKey": {
+            "default": null,
+            "description": "R2 key of the product picture (upload purpose product_image); null = none",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "imageUrl": {
+            "default": null,
+            "description": "Presigned GET for the picture (valid >= 30 min, <= 60 min); null if none or storage is off. Re-fetch the product for a fresh URL.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "version": {
             "type": "integer",
             "minimum": 1,
@@ -29798,6 +30061,8 @@
           "updatedAt",
           "updatedBy",
           "pricesUpdatedAt",
+          "imageFileKey",
+          "imageUrl",
           "version"
         ],
         "additionalProperties": false

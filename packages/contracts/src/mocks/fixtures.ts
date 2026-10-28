@@ -211,6 +211,8 @@ export const products: Product[] = [
     pts: 86.4,
     isSample: true,
     active: true,
+    imageFileKey: null,
+    imageUrl: null,
   },
   {
     ...base,
@@ -227,6 +229,8 @@ export const products: Product[] = [
     pts: 21.6,
     isSample: false,
     active: true,
+    imageFileKey: null,
+    imageUrl: null,
   },
 ];
 export const productHqMappings: ProductHqMapping[] = [

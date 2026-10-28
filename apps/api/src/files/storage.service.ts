@@ -20,6 +20,10 @@ const EXT: Record<UploadUrlRequest['contentType'], string> = {
 };
 export const UPLOAD_TTL_S = 600;
 export const DOWNLOAD_TTL_S = 300;
+/** Product pictures: signed for 60 min from the start of a 30-min window, so each URL is valid for
+ * at least 30 min and identical within the window (browser/CDN cacheable, cheap for long lists). */
+export const IMAGE_URL_TTL_S = 3600;
+export const IMAGE_URL_WINDOW_S = 1800;
 
 export interface StorageEnv {
   R2_ACCOUNT_ID?: string;
@@ -38,6 +42,7 @@ export interface StorageEnv {
 export class StorageService {
   private readonly client: S3Client | null;
   private readonly bucket: string | null;
+  private imageCache = { window: -1, urls: new Map<string, string>() };
 
   constructor(env: StorageEnv = process.env) {
     const endpoint =
@@ -135,6 +140,26 @@ export class StorageService {
   async remove(fileKey: string): Promise<void> {
     const { client, bucket } = this.ready();
     await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: fileKey }));
+  }
+
+  /**
+   * Inline presigned GET for a picture of the caller's company (local crypto, no R2 call; memoised per
+   * window). Null when storage is not configured or the key is foreign, so lists never fail on it.
+   */
+  async imageUrl(companyId: string, fileKey: string, now = new Date()): Promise<string | null> {
+    if (!this.client || !this.bucket) return null;
+    if (!fileKey.startsWith(`${companyId}/`) || fileKey.includes('..')) return null;
+    const window = Math.floor(now.getTime() / (IMAGE_URL_WINDOW_S * 1000));
+    if (this.imageCache.window !== window) this.imageCache = { window, urls: new Map() };
+    const hit = this.imageCache.urls.get(fileKey);
+    if (hit) return hit;
+    const url = await getSignedUrl(
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucket, Key: fileKey }),
+      { expiresIn: IMAGE_URL_TTL_S, signingDate: new Date(window * IMAGE_URL_WINDOW_S * 1000) },
+    );
+    if (this.imageCache.urls.size < 5000) this.imageCache.urls.set(fileKey, url);
+    return url;
   }
 
   async downloadUrl(

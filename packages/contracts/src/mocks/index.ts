@@ -24,6 +24,7 @@ import { assignableTerritoryLevels } from '../schemas/territories';
 import { duplicateKeys, mapImportRow, type ImportLookup } from '../import/templates';
 import type { ImportEntity } from '../schemas/imports';
 import { SignInEmailBody } from '../schemas/auth';
+import { UploadUrlRequest } from '../schemas/files';
 import { kpiReport, productKpiReport } from './kpis';
 import { listNotifications, seedNotifications } from './notifications';
 import { teamHandlers, teamProfileHandlers } from './team';
@@ -427,15 +428,31 @@ export function createHandlers(baseUrl = '') {
     ...leaveHandlers(baseUrl, mockPrincipal),
     ...exceptionHandlers(baseUrl, mockPrincipal),
     http.get(`${baseUrl}/v1/health`, () => HttpResponse.json({ status: 'ok', warnings: [] })),
-    http.post(`${baseUrl}/v1/files/upload-url`, () =>
-      HttpResponse.json({
-        fileKey: 'mock/doctor_photo/2026/10/mock.jpg',
+    http.post(`${baseUrl}/v1/files/upload-url`, async ({ request }) => {
+      // Same validation as the API (e.g. product_image: jpeg/png/webp, <= 5 MB); key echoes the purpose.
+      const raw = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      const b = UploadUrlRequest.safeParse(raw ?? { purpose: 'doctor_photo' });
+      if (raw && !b.success)
+        return HttpResponse.json(
+          {
+            error: { code: 'VALIDATION', message: b.error.issues.map((i) => i.message).join('; ') },
+          },
+          { status: 422 },
+        );
+      const purpose = b.success ? b.data.purpose : 'doctor_photo';
+      const type = b.success ? b.data.contentType : 'image/jpeg';
+      const ext = { 'image/png': 'png', 'image/webp': 'webp' }[type as string] ?? 'jpg';
+      return HttpResponse.json({
+        fileKey: `mock/${purpose}/2026/10/${crypto.randomUUID()}.${ext}`,
         uploadUrl: 'https://mock-r2.invalid/upload',
         method: 'PUT',
-        headers: { 'content-type': 'image/jpeg' },
+        headers: {
+          'content-type': type,
+          ...(b.success ? { 'content-length': String(b.data.sizeBytes) } : {}),
+        },
         expiresAt: new Date(Date.now() + 600_000).toISOString(),
-      }),
-    ),
+      });
+    }),
     http.post(`${baseUrl}/v1/files/download-url`, () =>
       HttpResponse.json({
         downloadUrl: 'https://mock-r2.invalid/download',

@@ -330,6 +330,13 @@
       "when": 1793310000000,
       "tag": "0046_kpi_submitted_only",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1793320000000,
+      "tag": "0047_product_image",
+      "breakpoints": true
     }
   ]
 }
