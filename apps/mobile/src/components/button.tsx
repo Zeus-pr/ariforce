@@ -23,6 +23,12 @@ const variants = {
     fg: colors.navy,
     border: colors.borderStrong,
   },
+  tint: {
+    bg: colors.infoWash,
+    bgPressed: colors.infoWashPressed,
+    fg: colors.info,
+    border: 'transparent',
+  },
 } as const;
 
 type Props = {
@@ -32,6 +38,8 @@ type Props = {
   loading?: boolean;
   loadingLabel?: string;
   disabled?: boolean;
+  /** compact: 48dp tall, sized to its label (inline in a card). Default: 52dp. */
+  compact?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -47,6 +55,7 @@ export function Button({
   loading,
   loadingLabel,
   disabled,
+  compact,
   style,
 }: Props) {
   const reduced = useReducedMotion();
@@ -67,6 +76,7 @@ export function Button({
         <Animated.View
           style={[
             styles.base,
+            compact && styles.compact,
             {
               backgroundColor: pressed ? v.bgPressed : v.bg,
               borderColor: v.border,
@@ -100,5 +110,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  compact: { minHeight: touch.min, paddingHorizontal: spacing.lg },
   content: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
 });

@@ -27,8 +27,27 @@ export const colors = {
   danger: '#B42318',
   dangerWash: '#FEF3F2',
   dangerBorder: '#FBD5D0',
+  success: '#15803D', // 5:1 on white, for text
+  successWash: '#E8F6EC',
+  info: '#2563C9', // 5:1 on infoWash, for text and icons
+  infoWash: '#EAF1FD',
+  infoWashPressed: '#D9E6FB',
+  warn: '#C2410C', // 4.8:1 on warnWash
+  warnWash: '#FFF1E8',
   onNavy: '#FFFFFF',
 } as const;
+
+/** Icon tints: foreground on its own wash. Every pair is at least 3:1 (icons) or 4.5:1 (text). */
+export const tones = {
+  teal: { fg: colors.tealDeep, bg: colors.tealWash },
+  blue: { fg: colors.info, bg: colors.infoWash },
+  orange: { fg: colors.warn, bg: colors.warnWash },
+  green: { fg: colors.success, bg: colors.successWash },
+  red: { fg: colors.danger, bg: colors.dangerWash },
+  neutral: { fg: colors.muted, bg: colors.ground },
+} as const;
+
+export type Tone = keyof typeof tones;
 
 /** Font family per weight (static files, so never set fontWeight with them). */
 export const fonts = {
@@ -50,6 +69,18 @@ export const spacing = {
 } as const;
 
 export const radius = { sm: 8, md: 12, lg: 16, full: 9999 } as const;
+
+/** Fixed component sizes (dp). */
+export const sizes = {
+  avatar: 36,
+  avatarLg: 56,
+  iconTile: 40, // tinted icon square in cards and rows
+  iconTileLg: 48, // quick-action tiles
+  badge: 8, // unread dot
+  progress: 6, // KPI progress track
+} as const;
+
+export const iconSize = { sm: 18, md: 22, lg: 24 } as const;
 
 /** boxShadow strings (not legacy shadow/elevation props); navy-tinted, low. */
 export const shadows = {
@@ -74,8 +105,8 @@ export const type = {
   },
   name: {
     fontFamily: fonts.bold,
-    fontSize: 32,
-    lineHeight: 38,
+    fontSize: 28,
+    lineHeight: 34,
     letterSpacing: -0.6,
     color: colors.ink,
   },
@@ -108,10 +139,27 @@ export const type = {
     letterSpacing: -0.3,
     color: colors.brandNavy,
   },
-  avatar: { fontFamily: fonts.semibold, fontSize: 14, lineHeight: 18, color: colors.onNavy },
+  avatar: { fontFamily: fonts.semibold, fontSize: 15, lineHeight: 20, color: colors.onNavy },
+  avatarLg: { fontFamily: fonts.semibold, fontSize: 22, lineHeight: 28, color: colors.onNavy },
+  section: { fontFamily: fonts.semibold, fontSize: 18, lineHeight: 24, color: colors.ink },
+  kpi: {
+    fontFamily: fonts.bold,
+    fontSize: 24,
+    lineHeight: 30,
+    letterSpacing: -0.3,
+    color: colors.ink,
+  },
+  count: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 26, color: colors.ink },
+  rowTitle: { fontFamily: fonts.medium, fontSize: 16, lineHeight: 21, color: colors.ink },
+  small: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 18, color: colors.muted },
+  chip: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 16, color: colors.ink },
+  action: { fontFamily: fonts.medium, fontSize: 13, lineHeight: 17, color: colors.ink },
 } as const satisfies Record<string, TextStyle>;
 
 export type TypeVariant = keyof typeof type;
+
+/** Tab bar label: no colour here, the tab bar tints it (active navy, inactive muted). */
+export const tabLabel = { fontFamily: fonts.medium, fontSize: 12, lineHeight: 16 } as const;
 
 /** Motion (expo-animation / emil-design-eng): strong ease-out, short UI durations. */
 export const motion = {

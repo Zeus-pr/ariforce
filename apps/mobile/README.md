@@ -1,8 +1,8 @@
 # @ariforce/mobile
 
 Expo SDK 58 (expo-router, React Native 0.88, React 19.3) stub of the AriForce field app for
-Android and iOS: brand splash, email + password sign-in against the AriForce API, and a
-placeholder home with sign-out. It runs in **Expo Go**: every native module it uses ships in
+Android and iOS: brand splash, email + password sign-in against the AriForce API, a rep home
+screen on sample data, and bottom tabs whose other screens are stubs. It runs in **Expo Go**: every native module it uses ships in
 Expo Go for SDK 58. Nothing here needs a development build yet.
 
 ## Run on the Android emulator (Expo Go)
@@ -74,8 +74,19 @@ never on debug + Metro.
 ## How it works
 
 - **Routes** (`src/app`): root `_layout.tsx` gates on the session with `Stack.Protected`:
-  signed out sees `sign-in`, signed in sees `(app)/index` (home). The `(app)` group uses the
-  native stack header with the AriForce lockup.
+  signed out sees `sign-in`, signed in sees `(app)`. `(app)/_layout.tsx` is a stack holding
+  `(tabs)` (Home, Business, DCR, Tour Plan, More; expo-router `Tabs`) and
+  `coming-soon/[feature]`, the stub every unbuilt feature opens (keys in `src/lib/features.ts`).
+  More holds the account details and Sign out.
+- **Home** (`(tabs)/index.tsx`, blocks in `src/components/home/`), top to bottom: greeting,
+  today (punch in/out, today's tour plan, DCR status), flags, quick actions, approvals (ABM and
+  above only, same rule as the website), doctors planned today, this month's KPIs.
+- **Sample data**: everything on Home except the user comes from `src/mocks/home.ts` (marked
+  PLACEHOLDER, with the API source for each block). Punch in/out is local state; no GPS is read
+  and nothing is sent. The screen shows a "Sample data" chip until `HOME_IS_PLACEHOLDER` is
+  false.
+- **Icons**: `@expo/vector-icons` Material Community (JS + font, works in Expo Go), loaded with
+  the app fonts so they never pop in.
 - **Splash**: the native splash (`expo-splash-screen`, mark on `#F4F8FD`) stays until fonts
   load; the in-app splash puts the mark in the same place, adds the wordmark, "Field Force
   CRM", "Arighna Pharma" and the three-dot loader, and fades out once the stored session is
@@ -125,6 +136,11 @@ cd apps/mobile
   stub. Use `@expo/ui` first when those arrive.
 - **2026-10-28** Light only (`userInterfaceStyle: "light"`), matching the mockups. Dark mode
   needs light/dark pairs in `theme.ts` first.
+- **2026-10-28** Home uses expo-router JS `Tabs`, not `NativeTabs` (the expo-router skill's
+  default): the tab bar keeps Google Sans labels and the same look on Android and iOS, and needs
+  no SF Symbols / Material Symbols setup. Revisit when the app gets a dev build.
+- **2026-10-28** Punch-in GPS is a stub. Real punch-in needs `expo-location` (in Expo Go, but a
+  new native module): add it together with the attendance API.
 - From CUTLY: never `Alert.alert` (inline errors and in-app banners); never put
   `lottie-react-native` in `app.json` plugins (breaks Expo Go); `expo-status-bar` takes no
   `backgroundColor`; use `StyleSheet.absoluteFill`; set weight with `fontFamily`, never

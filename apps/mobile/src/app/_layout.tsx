@@ -12,6 +12,7 @@ import GoogleSansMedium from '../../assets/fonts/GoogleSans-Medium.ttf';
 import GoogleSansRegular from '../../assets/fonts/GoogleSans-Regular.ttf';
 import GoogleSansSemiBold from '../../assets/fonts/GoogleSans-SemiBold.ttf';
 import { BrandSplash } from '@/components/brand-splash';
+import { iconFont } from '@/components/icon';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { queryClient } from '@/lib/query-client';
 import { colors, fonts, motion } from '@/theme';
@@ -44,6 +45,7 @@ function RootNavigator() {
     [fonts.medium]: GoogleSansMedium,
     [fonts.semibold]: GoogleSansSemiBold,
     [fonts.bold]: GoogleSansBold,
+    ...iconFont,
   });
   // CUTLY: never hold launch hostage to fonts; fall back to system type after 2.5s.
   const [fontTimeout, setFontTimeout] = useState(false);
