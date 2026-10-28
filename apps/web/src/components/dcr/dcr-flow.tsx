@@ -33,8 +33,11 @@ import {
   type SfcHq,
   type WorkTypeOption,
   SAVED_CUSTOMER,
+  normaliseWorkTypes,
+  cleanSfcHqs,
 } from '@/lib/dcr/model';
 import { failureMessage, thrownMessage } from '@/lib/dcr/errors';
+import { bandOf } from '@/lib/dcr/bands';
 import { ChoiceSelect } from './choice-select';
 import { CallCard, type CustomerScope, FieldError, LeaveFields, MeetingFields, OfficeFields, SfcPanel } from './dcr-sections';
 import { SearchSelect, type SelectOption } from './search-select';
@@ -156,7 +159,7 @@ function Flow({ today }: { today: string }) {
         return setLoadError(failureMessage(r, 'Could not load the report for this date.'));
       }
       setApiMissing(false);
-      const wts = r.data.workTypes as WorkTypeOption[];
+      const wts = normaliseWorkTypes(r.data.workTypes as WorkTypeOption[]);
       setWorkTypes(wts);
       const d = r.data.dcr;
       setDcr(d);
@@ -289,7 +292,17 @@ function Flow({ today }: { today: string }) {
       await apiReady();
       const r = await api.GET('/v1/dcrs/sfc-match', { params: { query: { date, workTypeId, territoryIds } } });
       if (!live) return;
-      if (r.data) return setS((x) => ({ ...x, sfc: { state: 'ok', hqs: r.data.hqs } }));
+      if (r.data) {
+        const band = bandOf(r.data.band) ?? wtBand(workTypeId);
+        const hqs = cleanSfcHqs(r.data.hqs, band);
+        // Every candidate of an HQ was legacy/combined: same as no SFC route for that HQ.
+        const empty = hqs.filter((h) => !h.candidates.length).map((h) => h.hqTerritoryId);
+        if (empty.length) {
+          setMissingHqIds(empty);
+          return setS((x) => ({ ...x, sfc: { state: 'no_match', hqs: [] } }));
+        }
+        return setS((x) => ({ ...x, sfc: { state: 'ok', hqs } }));
+      }
       const e = toApiError(r);
       if (e.code === 'SFC_NO_MATCH') {
         const det = e.details as { hqs?: SfcHq[]; missingHqIds?: string[] } | undefined;
@@ -305,6 +318,9 @@ function Flow({ today }: { today: string }) {
   }, [sfcKey]);
 
   const probs = findProblems(s);
+  function wtBand(id: string) {
+    return bandOf((workTypes ?? []).find((w) => w.id === id)?.band);
+  }
   const errorsFor = (key: string) => (showErrors ? probs.filter((p) => p.key === key).map((p) => p.text) : []);
   const errorsByField = (keys: string[]) => Object.fromEntries(keys.map((k) => [k, errorsFor(k)]));
 

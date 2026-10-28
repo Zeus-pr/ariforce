@@ -13,7 +13,6 @@ import {
   Dcr,
   DcrDraftPut,
   DcrOptions,
-  DcrSfcMatch,
   DcrSubmit,
   dcrDetailsKind,
   type DcrBand,
@@ -26,49 +25,57 @@ import {
   DCR_TERRITORIES,
   DCR_WORK_TYPES,
   DCR_WORK_WITH,
+  DCR_LEGACY_SFC,
+  LEGACY_ROW_OFFSET,
   SFC_SHEET_FOR_HQ,
   sfcRouteUuid,
 } from './fixtures';
+import { sfcCategoryOf } from './bands';
 
 const err = (status: number, code: string, message: string, details?: unknown) =>
   HttpResponse.json({ error: { code, message, details } }, { status });
 const validation = (message: string, details?: unknown) => err(422, 'VALIDATION', message, details);
 
-const CATEGORY: Record<string, 'hq' | 'ex' | 'os'> = {
-  HQ: 'hq',
-  EX: 'ex',
-  'EX HQ': 'ex',
-  OS: 'os',
-  'OUT EX HQ': 'os',
-  OUTSTATION: 'os',
-};
 const BAND_CATEGORY: Record<DcrBand, 'hq' | 'ex' | 'os'> = { hq: 'hq', ex_hq: 'ex', outstation: 'os' };
 const MODE: Record<string, string> = { BIKE: 'bike', BUS: 'bus', TRAIN: 'train', 'BUS / TRAIN': 'bus_train', CAR: 'car' };
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-/** The rep's SFC candidates for one HQ and band, from the SFC screen's own fixture rows. */
+/**
+ * The rep's SFC candidates for one HQ and band, from the SFC screen's own fixture rows plus the DCR
+ * legacy rows. Exact categories match in any case. Like an un-migrated server, combined categories
+ * ("Ex / Os") leak through for either of their bands with the raw value, so the UI must drop them.
+ */
 function candidates(hqId: string, band: DcrBand) {
   const sheet = SFC_SHEET_FOR_HQ[hqId];
   if (!sheet) return [];
-  return seedRows(sheet)
-    .map((r, i) => ({ r, i, cat: CATEGORY[r.category.trim().toUpperCase()] }))
-    .filter((x) => x.cat === BAND_CATEGORY[band])
-    .map(({ r, i, cat }) => {
-      const km = r.distanceKm ?? 0;
-      const one = r.actualFare ? null : r2(km * DEFAULT_RATE);
+  const want = BAND_CATEGORY[band];
+  const rows = [
+    ...seedRows(sheet).map((r, i) => ({ i, from: r.fromPlace, to: r.toPlace, km: r.distanceKm ?? 0, mode: r.travelMode, raw: r.category, af: r.actualFare, da: r.da })),
+    ...(DCR_LEGACY_SFC[sheet] ?? []).map(([from, to, km, mode, raw, af], i) => ({ i: LEGACY_ROW_OFFSET + i, from, to, km, mode, raw, af: !!af, da: null })),
+  ];
+  return rows
+    .filter((x) => {
+      const exact = sfcCategoryOf(x.raw);
+      if (exact) return exact === want;
+      const parts = x.raw.split('/').map((p) => sfcCategoryOf(p));
+      return parts.length > 1 && parts.includes(want);
+    })
+    .map((x) => {
+      const one = x.af ? null : r2(x.km * DEFAULT_RATE);
       return {
-        id: sfcRouteUuid(sheet, i),
-        fromPlace: r.fromPlace,
-        toPlace: r.toPlace,
-        oneWayKm: km,
-        bothWayKm: r2(km * 2),
+        id: sfcRouteUuid(sheet, x.i),
+        fromPlace: x.from,
+        toPlace: x.to,
+        oneWayKm: x.km,
+        bothWayKm: r2(x.km * 2),
         oneWayAmount: one,
         bothWayAmount: one == null ? null : r2(one * 2),
-        actualFare: r.actualFare,
-        travelMode: (MODE[r.travelMode] ?? null) as 'bike' | null,
-        category: cat!,
+        actualFare: x.af,
+        travelMode: (MODE[x.mode] ?? null) as 'bike' | null,
+        // Raw value on purpose (mixed case / combined): the UI normalises or drops it.
+        category: x.raw as 'hq' | 'ex' | 'os',
         band,
-        da: r.da,
+        da: x.da,
         version: 1,
       };
     });
@@ -202,17 +209,22 @@ export function mockDcrFlow(base: string) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return validation('date is required (YYYY-MM-DD)');
       const { me } = persona(request);
       const d = dcrs.find((x) => x.date === date && x.userId === me.id) ?? null;
-      return HttpResponse.json(
-        DcrOptions.parse({
-          date,
-          workTypes: DCR_WORK_TYPES.map((w) => ({
-            ...w,
-            usesSfc: w.band !== null,
-            detailsKind: dcrDetailsKind(w),
-          })),
-          dcr: d ? { ...d, lockAt: lockAt(d.date) } : null,
-        }),
-      );
+      const body = DcrOptions.parse({
+        date,
+        workTypes: DCR_WORK_TYPES.map((w) => ({
+          ...w,
+          usesSfc: w.band !== null,
+          detailsKind: dcrDetailsKind(w),
+        })),
+        dcr: d ? { ...d, lockAt: lockAt(d.date) } : null,
+      });
+      // Legacy band values from un-migrated work types, added after parsing on purpose: the UI maps
+      // 'Ex' to EX case-insensitively (a duplicate band, so the first wins) and drops 'EX / OS'.
+      const legacy = [
+        { id: '01930000-0000-7000-8000-00000000d1a1', code: 'FIELD-EX-OLD', name: 'Field work (EX, legacy)', kind: 'field', band: 'Ex', usesSfc: true, detailsKind: null },
+        { id: '01930000-0000-7000-8000-00000000d1a2', code: 'FIELD-EXOS-OLD', name: 'Field work (EX / OS, legacy)', kind: 'field', band: 'EX / OS', usesSfc: true, detailsKind: null },
+      ];
+      return HttpResponse.json({ ...body, workTypes: [...body.workTypes, ...legacy] });
     }),
     http.get(`${base}/v1/dcrs/territories`, () =>
       HttpResponse.json({
@@ -245,7 +257,8 @@ export function mockDcrFlow(base: string) {
       if (sfcDown()) return err(503, 'SFC_UNAVAILABLE', 'SFC lookup failed; retry');
       const m = match(wt.band, ids);
       if (m.bad) return validation('Unknown or out-of-scope territories', { territoryIds: ids });
-      const body = DcrSfcMatch.parse({ band: wt.band, hqs: m.hqs });
+      // Not parsed with DcrSfcMatch: legacy categories are passed through raw (see candidates()).
+      const body = { band: wt.band, hqs: m.hqs };
       const missingHqIds = body.hqs.filter((h) => !h.candidates.length).map((h) => h.hqTerritoryId);
       if (missingHqIds.length)
         return err(404, 'SFC_NO_MATCH', 'No SFC route for some HQ of the day', { ...body, missingHqIds });
@@ -344,13 +357,15 @@ export function mockDcrFlow(base: string) {
           const chosen = d.sfcRoutes.find((r) => r.hqTerritoryId === h.hqTerritoryId)?.sfcRouteId ?? h.autoSelectedId;
           if (!h.candidates.length)
             return err(422, 'SFC_NO_MATCH', `No SFC route for ${h.hqName}`, { missingHqIds: [h.hqTerritoryId] });
-          const c = h.candidates.find((x) => x.id === chosen);
+          // Combined/legacy categories can't be submitted (the UI never offers them).
+          const c = h.candidates.find((x) => x.id === chosen && sfcCategoryOf(x.category));
           if (!c) return err(422, 'SFC_ROUTE_REQUIRED', `Pick the SFC route for ${h.hqName}`, { hqTerritoryIds: [h.hqTerritoryId] });
           const { id, version, ...rest } = c;
           routes.push({
             hqTerritoryId: h.hqTerritoryId,
             sfcRouteId: id,
-            snapshot: { ...rest, sfcRouteId: id, routeVersion: version, hqTerritoryId: h.hqTerritoryId, ratePerKm: DEFAULT_RATE, frozenAt },
+            // Stored normalised, as the server does after 0043.
+            snapshot: { ...rest, category: sfcCategoryOf(rest.category)!, sfcRouteId: id, routeVersion: version, hqTerritoryId: h.hqTerritoryId, ratePerKm: DEFAULT_RATE, frozenAt },
           });
         }
       }

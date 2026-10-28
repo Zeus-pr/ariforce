@@ -69,5 +69,21 @@ export const DCR_WORK_WITH = [
 ];
 
 /** Stable UUIDs for SFC fixture route ids (the SFC screen uses readable ids). */
+/**
+ * Extra SFC rows for the DCR mock only, as legacy data looks after migration 0043: mixed-case exact
+ * categories ("Ex", " os ") that must match, and combined/unknown ones ("Ex / Os", "Meeting") that the
+ * UI must ignore. [from, to, km, travel mode, raw category, actual fare]. Ids follow the sheet rows (100+).
+ */
+export const DCR_LEGACY_SFC: Record<string, [string, string, number, string, string, boolean?][]> = {
+  'sfc-u-dgp': [
+    ['DURGAPUR', 'ASANSOL', 42, 'BIKE', 'Ex'],
+    ['DURGAPUR', 'KOLKATA', 170, 'BUS / TRAIN', ' os ', true],
+    ['DURGAPUR', 'BANKURA', 50, 'BIKE', 'Ex / Os'],
+    ['DURGAPUR', 'ASANSOL', 42, 'BIKE', 'Meeting'],
+  ],
+  'sfc-u-bnk': [['BANKURA', 'SONAMUKHI', 38, 'BIKE', 'eX']],
+};
+export const LEGACY_ROW_OFFSET = 100;
+
 export const sfcRouteUuid = (sheet: string, index: number) =>
   uid(7, (Object.values(SFC_SHEET_FOR_HQ).indexOf(sheet) + 1) * 1000 + index);

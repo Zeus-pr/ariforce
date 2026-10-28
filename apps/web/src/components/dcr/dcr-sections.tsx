@@ -24,6 +24,7 @@ import {
 import { ChoiceSelect } from './choice-select';
 import { SearchSelect, type SelectOption } from './search-select';
 import { failureMessage, thrownMessage } from '@/lib/dcr/errors';
+import { bandOf, sfcCategoryOf } from '@/lib/dcr/bands';
 
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
 const km = (n: number) => `${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 }).format(n)} km`;
@@ -112,7 +113,8 @@ export function SfcPanel({
   return (
     <div className="flex flex-col gap-3" data-testid="dcr-sfc">
       {hqs.map((h) => {
-        const chosen = choice[h.hqTerritoryId] ?? h.autoSelectedId ?? '';
+        const picked = choice[h.hqTerritoryId];
+        const chosen = (picked && h.candidates.some((x) => x.id === picked) ? picked : h.autoSelectedId) ?? '';
         const c = h.candidates.find((x) => x.id === chosen);
         return (
           <div key={h.hqTerritoryId} className="flex flex-col gap-2">
@@ -143,9 +145,17 @@ export function SfcPanel({
   );
 }
 
+/** "Ex-HQ (EX)"; a legacy or unknown band/category is shown as not set, never echoed raw. */
+function bandText(c: { band: unknown; category: unknown }) {
+  const band = bandOf(c.band);
+  const cat = sfcCategoryOf(c.category);
+  if (!band) return 'Not set';
+  return cat ? `${BAND_LABEL[band]} (${cat.toUpperCase()})` : BAND_LABEL[band];
+}
+
 function RouteFacts({ title, c, note }: { title: string; c: Candidate; note: string }) {
   const facts: [string, string][] = [
-    ['Band', `${BAND_LABEL[c.band]} (${c.category.toUpperCase()})`],
+    ['Band', bandText(c)],
     ['Travel', c.travelMode ? MODE_LABEL[c.travelMode] ?? c.travelMode : 'Not set'],
     ['Distance', `${km(c.oneWayKm)} one way · ${km(c.bothWayKm)} both`],
     ['TA (both ways)', money(c.bothWayAmount, c.actualFare)],

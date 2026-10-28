@@ -4,6 +4,7 @@
  * Admin work and Leave (by detailsKind), plus any other work type as-is (e.g. Holiday).
  */
 import type { Dcr, DcrBand, DcrDetails, DcrDraftPut, DcrSfcMatch } from '@ariforce/contracts';
+import { bandOf, categoryFitsBand, sfcCategoryOf } from './bands';
 import type { ApiError } from '@/lib/api';
 
 export type WorkTypeOption = {
@@ -32,6 +33,32 @@ export const MODE_LABEL: Record<string, string> = { bike: 'Bike', bus: 'Bus', tr
 
 /** One "Work On" choice. Field covers every work type with a band; the band picks the exact one. */
 export type WorkOn = { key: string; label: string; branch: 'field' | 'meeting' | 'training' | 'office' | 'leave' | 'other'; workTypes: WorkTypeOption[] };
+
+/**
+ * Work types with their band normalised (any case; 'ex'/'os' accepted). A field work type whose band
+ * is set but unrecognised (legacy "EX / OS", "MEETING") is dropped rather than shown as a band.
+ */
+export function normaliseWorkTypes(wts: WorkTypeOption[]): WorkTypeOption[] {
+  return wts.flatMap((w) => {
+    const band = bandOf(w.band);
+    if (w.kind === 'field' && w.band != null && !band) return [];
+    return [{ ...w, band }];
+  });
+}
+
+/**
+ * SFC candidates kept only when their category is exactly the band's (case-insensitive); legacy,
+ * combined or unknown categories are dropped. The auto pick is kept only if it survived.
+ */
+export function cleanSfcHqs(hqs: SfcHq[], band: DcrBand | null): SfcHq[] {
+  return hqs.map((h) => {
+    const candidates = band
+      ? h.candidates.filter((c) => categoryFitsBand(c.category, band)).map((c) => ({ ...c, category: sfcCategoryOf(c.category)!, band }))
+      : [];
+    const autoSelectedId = candidates.some((c) => c.id === h.autoSelectedId) ? h.autoSelectedId : candidates.length === 1 ? candidates[0]!.id : null;
+    return { ...h, candidates, autoSelectedId };
+  });
+}
 
 export function workOnChoices(wts: WorkTypeOption[]): WorkOn[] {
   const out: WorkOn[] = [];
@@ -167,7 +194,14 @@ export function problems(s: FlowState): { key: string; text: string }[] {
 export function draftBody(s: FlowState, version?: number): DcrDraftPut {
   const field = s.workOn?.branch === 'field';
   const routes = field && s.sfc.state === 'ok'
-    ? s.sfc.hqs.map((h) => ({ hqTerritoryId: h.hqTerritoryId, sfcRouteId: s.routeChoice[h.hqTerritoryId] ?? h.autoSelectedId ?? '' })).filter((r) => r.sfcRouteId)
+    ? s.sfc.hqs
+        .map((h) => {
+          // A remembered choice counts only if it is still one of the (cleaned) candidates.
+          const picked = s.routeChoice[h.hqTerritoryId];
+          const ok = picked && h.candidates.some((c) => c.id === picked) ? picked : null;
+          return { hqTerritoryId: h.hqTerritoryId, sfcRouteId: ok ?? h.autoSelectedId ?? '' };
+        })
+        .filter((r) => r.sfcRouteId)
     : [];
   const details = field ? null : detailsOf(s);
   return {
