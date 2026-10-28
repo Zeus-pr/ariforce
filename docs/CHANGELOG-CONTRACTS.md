@@ -51,6 +51,14 @@ Additive (no migration; uses 0042). Web impact noted per item.
   `territoryCodeFor`, `readTerritoryLinkRow`. MSW mock implements the endpoint (an `area` counts as an
   HQ in fixtures) and the filter; doctor/chemist fixtures carry `localTerritoryId: null`.
 
+## Drafts ignored by team calendar, leave clash, team attendance (`fix/drafts-ignored-calendar-leave`)
+
+No contract or DB change. `GET` team calendar (attendance days), the full-day leave apply clash
+(`409 LEAVE_DCR_EXISTS`) and the team-profile attendance buckets use only live submitted/approved
+DCRs. A draft no longer blocks applying for leave; submitting a field/non-field draft on an
+approved-leave day still fails with `422 LEAVE_DAY_BLOCKED` (`details.dates`). TA/DA, expense
+reconcile, correction requests and the team-profile today badge keep the draft fallback.
+
 ## KPIs count submitted DCRs only (`fix/kpi-submitted-only`, migration 0046)
 
 No contract change. `kpi_user_day` and `dcr_day_calls` now include only live `submitted`/`approved`

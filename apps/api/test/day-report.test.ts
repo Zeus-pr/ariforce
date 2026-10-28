@@ -5,8 +5,13 @@ import {
   draftsNewestFirst,
   isDaySubmittedViolation,
   resolveDraftTarget,
+  isSubmittedReport,
   submitConflict,
+  submittedOnly,
+  submittedReportSql,
 } from '../src/dcr/day-report';
+import { dcrs } from '@ariforce/db';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 const D = '2026-10-28';
 const row = (
@@ -117,5 +122,25 @@ describe('submit conflict', () => {
       isDaySubmittedViolation({ cause: { code: '23505', constraint: 'dcrs_submit_key_uq' } }),
     ).toBe(false);
     expect(isDaySubmittedViolation(new Error('x'))).toBe(false);
+  });
+});
+
+describe('submitted only (drafts ignored)', () => {
+  const pg = new PgDialect();
+  it('keeps live submitted/approved rows, never falls back to a draft', () => {
+    expect(submittedOnly([a, b, gone]).map((r) => r.id)).toEqual([]);
+    expect(
+      submittedOnly([a, sub, { ...sub, id: 'ap', status: 'approved' }]).map((r) => r.id),
+    ).toEqual(['s', 'ap']);
+    expect(submittedOnly([{ ...sub, deletedAt: new Date() }])).toEqual([]);
+  });
+  it('renders the drizzle and raw SQL filters', () => {
+    expect(pg.sqlToQuery(isSubmittedReport(dcrs)).sql).toBe(
+      `("dcrs"."deleted_at" is null and "dcrs"."status" in ('submitted', 'approved'))`,
+    );
+    expect(pg.sqlToQuery(submittedReportSql('d')).sql).toBe(
+      `(d.deleted_at is null and d.status in ('submitted', 'approved'))`,
+    );
+    expect(() => submittedReportSql('d or 1=1')).toThrow();
   });
 });

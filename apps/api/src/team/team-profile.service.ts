@@ -27,7 +27,7 @@ import { profileExceptions } from '../exceptions/exceptions.engine';
 import { approvedLeaveDays } from '../leave/leave.util';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { TeamService, type Person } from './team.service';
-import { dayReportSql } from '../dcr/day-report';
+import { dayReportSql, submittedReportSql } from '../dcr/day-report';
 
 type Gran = z.infer<typeof PerformanceGranularity>;
 type Range = { granularity?: Gran; from?: string; to?: string };
@@ -243,7 +243,7 @@ export class TeamProfileService {
             tx,
             sql`select to_char(r.date, 'YYYY-MM-DD') as d, wt.kind::text as kind from dcrs r
                 join work_types wt on wt.id = r.work_type_id
-                where r.user_id = ${userId} and r.deleted_at is null and ${dayReportSql('r')}
+                where r.user_id = ${userId} and ${submittedReportSql('r')}
                   and r.date between ${from}::date and ${upto}::date`,
           )
         ).map((r) => [r.d, r.kind]),

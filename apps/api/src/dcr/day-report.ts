@@ -140,3 +140,21 @@ export function dayReportSql(alias: string): SQL {
     `${a}.id = (select x.id from dcrs x where x.company_id = ${a}.company_id and x.user_id = ${a}.user_id and x.date = ${a}.date and x.deleted_at is null order by (x.status = 'draft'), x.updated_at desc, x.id desc limit 1)`,
   );
 }
+
+/**
+ * Submitted-only (drafts ignored, no fallback): the dcrs row is a live submitted/approved report.
+ * Used where a draft must not count (team calendar, leave clash, team attendance; KPIs use the
+ * 0046 views). Pass the outer query's dcrs columns.
+ */
+export function isSubmittedReport(c: { status: AnyColumn; deletedAt: AnyColumn }): SQL {
+  return sql`(${c.deletedAt} is null and ${c.status} in ('submitted', 'approved'))`;
+}
+
+/** Raw-SQL form of isSubmittedReport for a dcrs alias, e.g. `and ${submittedReportSql('d')}`. */
+export function submittedReportSql(alias: string): SQL {
+  if (!/^[a-z_][a-z0-9_]*$/.test(alias)) throw new Error(`bad alias ${alias}`);
+  return sql.raw(`(${alias}.deleted_at is null and ${alias}.status in ('submitted', 'approved'))`);
+}
+
+/** In-memory form: live submitted/approved rows only. */
+export const submittedOnly = <T extends DayRow>(rows: T[]): T[] => live(rows).filter(isSubmitted);
