@@ -3,7 +3,7 @@
  * parsing and matching rules are unit-tested with a synthetic workbook. See docs/SFC.md.
  */
 import ExcelJS from 'exceljs';
-import type { SFC_TRAVEL_MODES } from '@ariforce/contracts';
+import type { SFC_TRAVEL_MODES, SfcCategory } from '@ariforce/contracts';
 
 type SfcTravelMode = (typeof SFC_TRAVEL_MODES)[number];
 
@@ -14,7 +14,7 @@ export interface SfcSheetRow {
   oneWayKm: number;
   actualFare: boolean;
   travelMode: SfcTravelMode | null;
-  category: string | null;
+  category: SfcCategory | null;
 }
 export interface SfcSheet {
   title: string;
@@ -61,12 +61,21 @@ export function parseMode(v: unknown): SfcTravelMode | null {
   return 'other';
 }
 
-/** Trims and unifies spacing around '/', e.g. 'EX/ OS' -> 'EX / OS'. */
-export function normCategory(v: unknown): string | null {
-  const s = clean(v)
-    .replace(/\s*\/\s*/g, ' / ')
-    .toUpperCase();
-  return s ? s.slice(0, 40) : null;
+/**
+ * Sheet category -> SfcCategory (same key rule as data-fixes/2026-10-28-sfc-category-normalise.sql):
+ * upper case, non-alphanumerics removed; HQ -> hq; EX, EXHQ -> ex; OS, OUTSTATION, OUTEXHQ -> os;
+ * blank -> null. Anything else (MEETING, 'EX / OS', ...) is `undefined`: the row is skipped and
+ * reported, never guessed.
+ */
+export function normCategory(v: unknown): SfcCategory | null | undefined {
+  const k = clean(v)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '');
+  if (!k) return null;
+  if (k === 'HQ') return 'hq';
+  if (k === 'EX' || k === 'EXHQ') return 'ex';
+  if (k === 'OS' || k === 'OUTSTATION' || k === 'OUTEXHQ') return 'os';
+  return undefined;
 }
 
 const isActual = (v: unknown) => /ACTUAL/i.test(clean(v));
@@ -129,6 +138,13 @@ export async function parseSfcWorkbook(file: string): Promise<SfcSheet[]> {
         sheet.problems.push(`row ${row.number}: missing place or distance`);
         return;
       }
+      const category = h.cat >= 0 ? normCategory(vals[h.cat]) : null;
+      if (category === undefined) {
+        sheet.problems.push(
+          `row ${row.number}: unknown category '${clean(vals[h.cat]).slice(0, 40)}' (row skipped)`,
+        );
+        return;
+      }
       sheet.rows.push({
         sl,
         fromPlace: from.toUpperCase(),
@@ -136,7 +152,7 @@ export async function parseSfcWorkbook(file: string): Promise<SfcSheet[]> {
         oneWayKm: km,
         actualFare: isActual(vals[h.amt]) || isActual(vals[h.amt2]),
         travelMode: h.mode >= 0 ? parseMode(vals[h.mode]) : null,
-        category: h.cat >= 0 ? normCategory(vals[h.cat]) : null,
+        category,
       });
     });
     if (!header) sheet.problems.push('no header row (FROM PLACE ...) found');

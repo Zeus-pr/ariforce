@@ -3,7 +3,7 @@ import { Id, Syncable, listQuery } from './common';
 import { RoleKey } from './roles';
 
 export const TerritoryLevel = z
-  .enum(['national', 'zone', 'region', 'area', 'headquarter'])
+  .enum(['national', 'zone', 'region', 'area', 'headquarter', 'territory'])
   .meta({ id: 'TerritoryLevel' });
 export type TerritoryLevel = z.infer<typeof TerritoryLevel>;
 
@@ -13,10 +13,13 @@ export const TERRITORY_LEVELS = TerritoryLevel.options;
 /**
  * Which territory levels a role may hold (Part 3). A Business Manager holds headquarter-level
  * territories only; ABM and above may hold a headquarter or anything higher. Roles outside the
- * hierarchy (system admin) are unrestricted. Enforced on writes as 422 TERRITORY_LEVEL_INVALID.
+ * hierarchy (system admin) may hold any level above 'territory'. A 'territory' (unit under an HQ,
+ * migration 0042) groups doctors/chemists/stockists and is never assigned to people. Enforced on writes as
+ * 422 TERRITORY_LEVEL_INVALID.
  */
+export const PEOPLE_TERRITORY_LEVELS = TERRITORY_LEVELS.filter((l) => l !== 'territory');
 export const assignableTerritoryLevels = (role: RoleKey): readonly TerritoryLevel[] =>
-  role === 'business_manager' ? ['headquarter'] : TERRITORY_LEVELS;
+  role === 'business_manager' ? ['headquarter'] : PEOPLE_TERRITORY_LEVELS;
 
 export const Territory = Syncable.extend({
   parentId: Id.nullable(),

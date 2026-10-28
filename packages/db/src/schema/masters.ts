@@ -99,6 +99,8 @@ export const doctors = pgTable(
     territoryId: uuid('territory_id')
       .notNull()
       .references(() => territories.id),
+    /** Territory (level 'territory') under the HQ in territory_id (0042); null until backfilled. */
+    localTerritoryId: uuid('local_territory_id').references(() => territories.id),
     name: text('name').notNull(),
     qualification: text('qualification'),
     specialtyId: uuid('specialty_id').references(() => specialties.id),
@@ -121,6 +123,7 @@ export const doctors = pgTable(
   },
   (t) => [
     index('doctors_territory_idx').on(t.companyId, t.territoryId),
+    index('doctors_local_territory_idx').on(t.companyId, t.localTerritoryId),
     index('doctors_updated_idx').on(t.companyId, t.updatedAt),
     // Duplicate detection on field-added doctors (#26).
     index('doctors_regno_idx').on(t.companyId, sql`upper(${t.registrationNo})`),
@@ -141,6 +144,8 @@ export const chemists = pgTable(
     territoryId: uuid('territory_id')
       .notNull()
       .references(() => territories.id),
+    /** Territory (level 'territory') under the HQ in territory_id (0042); null until backfilled. */
+    localTerritoryId: uuid('local_territory_id').references(() => territories.id),
     name: text('name').notNull(),
     gstin: text('gstin'),
     drugLicenseNo: text('drug_license_no'),
@@ -149,6 +154,7 @@ export const chemists = pgTable(
   },
   (t) => [
     index('chemists_territory_idx').on(t.companyId, t.territoryId),
+    index('chemists_local_territory_idx').on(t.companyId, t.localTerritoryId),
     index('chemists_updated_idx').on(t.companyId, t.updatedAt),
   ],
 );
@@ -161,6 +167,8 @@ export const stockists = pgTable(
     territoryId: uuid('territory_id')
       .notNull()
       .references(() => territories.id),
+    /** Territory (level 'territory') under the HQ in territory_id (0042); null until backfilled. */
+    localTerritoryId: uuid('local_territory_id').references(() => territories.id),
     name: text('name').notNull(),
     gstin: text('gstin'),
     drugLicenseNo: text('drug_license_no'),
@@ -169,6 +177,7 @@ export const stockists = pgTable(
   },
   (t) => [
     index('stockists_territory_idx').on(t.companyId, t.territoryId),
+    index('stockists_local_territory_idx').on(t.companyId, t.localTerritoryId),
     index('stockists_updated_idx').on(t.companyId, t.updatedAt),
   ],
 );

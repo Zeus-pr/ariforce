@@ -19,6 +19,7 @@ import { companyId, pk, syncCols } from './_common';
 import { geoCaptures } from './devices';
 import { doctors, stockists, workTypes } from './masters';
 import { products } from './products';
+import { sfcRoutes } from './sfc';
 import { companies, territories, users } from './tenancy';
 
 export const docStatus = pgEnum('doc_status', ['draft', 'submitted', 'approved', 'rejected']);
@@ -139,9 +140,59 @@ export const dcrs = pgTable(
     /** Reason when the day deviates from the approved TP. */
     deviationReason: text('deviation_reason'),
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    /** Field day band (0043): hq | ex_hq | outstation; null for non-field days. */
+    band: text('band', { enum: ['hq', 'ex_hq', 'outstation'] }),
+    /** Non-field details (0043), shape per work type (contracts DcrDetails). */
+    details: jsonb('details'),
+    /** Day-level Work With (0043): anyone in the company. */
+    workWithUserIds: uuid('work_with_user_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    submittedBy: uuid('submitted_by').references(() => users.id),
+    /** Idempotency-Key of POST /v1/dcrs/{id}/submit (0043). */
+    submitIdempotencyKey: text('submit_idempotency_key'),
     ...syncCols(),
   },
-  (t) => [uniqueIndex('dcrs_user_date_uq').on(t.companyId, t.userId, t.date)],
+  (t) => [
+    uniqueIndex('dcrs_user_date_uq').on(t.companyId, t.userId, t.date),
+    uniqueIndex('dcrs_submit_key_uq')
+      .on(t.companyId, t.userId, t.submitIdempotencyKey)
+      .where(sql`submit_idempotency_key IS NOT NULL`),
+    check('dcrs_band_ck', sql`band IS NULL OR band IN ('hq', 'ex_hq', 'outstation')`),
+    check('dcrs_details_ck', sql`details IS NULL OR jsonb_typeof(details) = 'object'`),
+    check(
+      'dcrs_submit_key_ck',
+      sql`submit_idempotency_key IS NULL OR length(submit_idempotency_key) BETWEEN 1 AND 200`,
+    ),
+  ],
+);
+
+/** One chosen SFC route per HQ involved in a field day (0043); snapshot frozen at submit. */
+export const dcrSfcRoutes = pgTable(
+  'dcr_sfc_routes',
+  {
+    id: pk(),
+    companyId: companyId().references(() => companies.id),
+    dcrId: uuid('dcr_id')
+      .notNull()
+      .references(() => dcrs.id),
+    hqTerritoryId: uuid('hq_territory_id')
+      .notNull()
+      .references(() => territories.id),
+    sfcRouteId: uuid('sfc_route_id')
+      .notNull()
+      .references(() => sfcRoutes.id),
+    snapshot: jsonb('snapshot'),
+    ...syncCols(),
+  },
+  (t) => [
+    uniqueIndex('dcr_sfc_routes_dcr_hq_uq')
+      .on(t.companyId, t.dcrId, t.hqTerritoryId)
+      .where(sql`deleted_at IS NULL`),
+    index('dcr_sfc_routes_route_idx').on(t.companyId, t.sfcRouteId),
+    check('dcr_sfc_routes_snapshot_ck', sql`snapshot IS NULL OR jsonb_typeof(snapshot) = 'object'`),
+  ],
 );
 
 export const dcrCalls = pgTable(

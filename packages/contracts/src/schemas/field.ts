@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { DcrBand, DcrDetails, DcrSfcRoute } from './dcr-parts';
 import { UserRef, DateOnly, GeoPoint, Id, Month, Syncable, Timestamp, listQuery } from './common';
 import { RoleKey } from './roles';
 
@@ -441,6 +442,16 @@ export const Dcr = Syncable.extend({
   unlockedUntil: Timestamp.nullable().meta({
     description: 'Set while an approved correction request keeps a locked day editable (48 h)',
   }),
+  band: DcrBand.nullable()
+    .default(null)
+    .meta({ description: 'Field-day band (from the work type); null for non-field days' }),
+  details: DcrDetails.nullable().default(null),
+  workWithUserIds: z.array(Id).default([]).meta({ description: 'Day-level Work With (anyone)' }),
+  sfcRoutes: z
+    .array(DcrSfcRoute)
+    .default([])
+    .meta({ description: 'One chosen SFC route per HQ of the day; snapshots set at submit' }),
+  submittedBy: Id.nullable().default(null),
 }).meta({ id: 'Dcr' });
 export type Dcr = z.infer<typeof Dcr>;
 export const DcrUpsert = z

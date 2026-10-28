@@ -13,6 +13,7 @@ import {
   dcrCallRcpa,
   dcrCalls,
   dcrs,
+  dcrSfcRoutes,
   doctors,
   geoCaptures,
   products,
@@ -75,7 +76,7 @@ export class DcrService {
     private readonly approvals: ApprovalsService,
   ) {}
 
-  private async lockInfo(tx: Tx, s: CompanySettings, userId: string, date: string) {
+  async lockInfo(tx: Tx, s: CompanySettings, userId: string, date: string) {
     const res = await tx.execute(
       sql`select ${lockAtSql(sql`${date}`, s)}::text as lock_at,
                  ${unlockedUntilSql(sql`${userId}::uuid`, sql`${date}`)}::text as unlocked_until`,
@@ -96,7 +97,7 @@ export class DcrService {
     };
   }
 
-  private async toDto(tx: Tx, s: CompanySettings, rows: DcrRow[]): Promise<Dcr[]> {
+  async toDto(tx: Tx, s: CompanySettings, rows: DcrRow[]): Promise<Dcr[]> {
     if (!rows.length) return [];
     const ids = rows.map((r) => r.id);
     const calls = await tx
@@ -133,6 +134,11 @@ export class DcrService {
           )
           .orderBy(asc(dcrCallRcpa.id))
       : [];
+    const routes = await tx
+      .select()
+      .from(dcrSfcRoutes)
+      .where(and(inArray(dcrSfcRoutes.dcrId, ids), isNull(dcrSfcRoutes.deletedAt)))
+      .orderBy(asc(dcrSfcRoutes.createdAt), asc(dcrSfcRoutes.id));
     const out: Dcr[] = [];
     for (const r of rows) {
       const li = await this.lockInfo(tx, s, r.userId, r.date);
@@ -153,6 +159,17 @@ export class DcrService {
         submittedAt: r.submittedAt?.toISOString() ?? null,
         lockAt: li.lockAt.toISOString(),
         unlockedUntil: li.unlockedUntil?.toISOString() ?? null,
+        band: r.band,
+        details: (r.details as Dcr['details']) ?? null,
+        workWithUserIds: r.workWithUserIds,
+        sfcRoutes: routes
+          .filter((x) => x.dcrId === r.id)
+          .map((x) => ({
+            hqTerritoryId: x.hqTerritoryId,
+            sfcRouteId: x.sfcRouteId,
+            snapshot: (x.snapshot as Dcr['sfcRoutes'][number]['snapshot']) ?? null,
+          })),
+        submittedBy: r.submittedBy,
         calls: calls
           .filter((c) => c.dcrId === r.id)
           .map((c): DcrCall => {
@@ -264,7 +281,7 @@ export class DcrService {
   }
 
   /** The TP for the date's month and its entries for that date, if that day is approved (#86). */
-  private async plan(tx: Tx, userId: string, date: string) {
+  async plan(tx: Tx, userId: string, date: string) {
     const [tp] = await tx
       .select()
       .from(tourPlans)
@@ -282,7 +299,7 @@ export class DcrService {
     return { tourPlanId: tp.id, entries };
   }
 
-  private async validateCalls(tx: Tx, p: Principal, b: Upsert, dcrId: string | undefined) {
+  async validateCalls(tx: Tx, p: Principal, b: Pick<Upsert, 'calls'>, dcrId: string | undefined) {
     const bad: Record<string, string[]> = {};
     const scope = this.tenant.scope(p, territories.path);
     for (const kind of ['doctor', 'chemist', 'stockist'] as const) {
@@ -436,6 +453,8 @@ export class DcrService {
         throw err(409, 'DAY_LOCKED', 'This day is locked; request a correction', {
           lockAt: li.lockAt.toISOString(),
         });
+      if (cur?.submitIdempotencyKey)
+        throw err(409, 'ALREADY_SUBMITTED', 'Submitted DCRs are read-only; request a correction');
       if (cur && b.version && b.version !== cur.version)
         throw err(409, 'VERSION_CONFLICT', 'Stale version', (await this.toDto(tx, s, [cur]))[0]);
 
@@ -514,115 +533,7 @@ export class DcrService {
             })
             .returning();
       const dcrId = row!.id;
-      const now = new Date();
-      const keep = b.calls.map((c) => c.clientId);
-      await tx
-        .update(dcrCalls)
-        .set({ deletedAt: now })
-        .where(
-          and(
-            eq(dcrCalls.dcrId, dcrId),
-            isNull(dcrCalls.deletedAt),
-            keep.length ? notInArray(dcrCalls.id, keep) : sql`true`,
-          ),
-        );
-      for (const c of b.calls) {
-        const v = {
-          outletKind: c.outletKind,
-          outletId: c.outletId,
-          calledAt: new Date(c.calledAt),
-          geoCaptureId: c.checkInId ?? null,
-          jointWorkUserId: c.jointWorkUserIds[0] ?? null,
-          jointWorkUserIds: c.jointWorkUserIds,
-          remarks: c.remarks ?? null,
-        };
-        await tx
-          .insert(dcrCalls)
-          .values({
-            id: c.clientId,
-            companyId: p.companyId,
-            dcrId,
-            userId: p.userId,
-            date: b.date,
-            ...v,
-          })
-          .onConflictDoUpdate({ target: dcrCalls.id, set: { ...v, deletedAt: null } });
-      }
-      if (keep.length) {
-        // Saved POB values stay as saved (lead rule): an existing line for the same call and
-        // product with the same quantity keeps its stored value; an edited quantity or a new
-        // line is priced at the current PTR. A stored null (no PTR then) is priced now.
-        const prior = new Map<string, { quantity: number | null; value: string | null }>();
-        for (const l of await tx
-          .select({
-            callId: dcrCallProducts.callId,
-            productId: dcrCallProducts.productId,
-            quantity: dcrCallProducts.quantity,
-            value: dcrCallProducts.value,
-          })
-          .from(dcrCallProducts)
-          .where(
-            and(
-              inArray(dcrCallProducts.callId, keep),
-              eq(dcrCallProducts.kind, 'pob'),
-              isNull(dcrCallProducts.deletedAt),
-            ),
-          ))
-          prior.set(`${l.callId}|${l.productId}`, { quantity: l.quantity, value: l.value });
-        const pobLineValue = (callId: string, productId: string, quantity: number) => {
-          const was = prior.get(`${callId}|${productId}`);
-          if (was && was.quantity === quantity && was.value !== null) return was.value;
-          return pobValue(quantity, ptr.get(productId) ?? null);
-        };
-        await tx
-          .update(dcrCallProducts)
-          .set({ deletedAt: now })
-          .where(and(inArray(dcrCallProducts.callId, keep), isNull(dcrCallProducts.deletedAt)));
-        const lines = b.calls.flatMap((c) => [
-          ...c.productsDetailed.map((x) => ({
-            callId: c.clientId,
-            productId: x.productId,
-            kind: 'detailed' as const,
-            seq: x.order,
-          })),
-          ...c.samples.map((x) => ({
-            callId: c.clientId,
-            productId: x.productId,
-            kind: 'sample' as const,
-            quantity: x.quantity,
-          })),
-          ...c.pob.map((x) => ({
-            callId: c.clientId,
-            productId: x.productId,
-            kind: 'pob' as const,
-            quantity: x.quantity,
-            stockistId: x.stockistId ?? null,
-            value: pobLineValue(c.clientId, x.productId, x.quantity),
-          })),
-        ]);
-        if (lines.length)
-          await tx
-            .insert(dcrCallProducts)
-            .values(lines.map((l) => ({ id: uuidv7(), companyId: p.companyId, ...l })));
-        await tx
-          .update(dcrCallRcpa)
-          .set({ deletedAt: now })
-          .where(and(inArray(dcrCallRcpa.callId, keep), isNull(dcrCallRcpa.deletedAt)));
-        const rcpa = b.calls.flatMap((c) =>
-          c.rcpa.map((x) => ({
-            id: uuidv7(),
-            companyId: p.companyId,
-            callId: c.clientId,
-            productId: x.productId,
-            competitorBrand: x.competitorBrand ?? null,
-            competitorCompany: x.competitorCompany ?? null,
-            quantity: x.quantity,
-            prescriptions: x.prescriptions ?? null,
-            doctorId: x.doctorId ?? null,
-          })),
-        );
-        if (rcpa.length) await tx.insert(dcrCallRcpa).values(rcpa);
-      }
+      await this.writeCalls(tx, p, dcrId, b.date, b.calls, ptr);
       await this.audit.record(tx, p, b.submit ? 'dcr.submit' : 'dcr.save', {
         entityType: 'dcr',
         entityId: dcrId,
@@ -637,6 +548,126 @@ export class DcrService {
       const [fresh] = await tx.select().from(dcrs).where(eq(dcrs.id, dcrId));
       return (await this.toDto(tx, s, [fresh!]))[0]!;
     });
+  }
+
+  /** Replace the DCR's calls, product lines and RCPA with `calls` (soft delete + upsert by clientId). */
+  async writeCalls(
+    tx: Tx,
+    p: Principal,
+    dcrId: string,
+    date: string,
+    calls: Upsert['calls'],
+    ptr: Map<string, string | null>,
+  ) {
+    const now = new Date();
+    const keep = calls.map((c) => c.clientId);
+    await tx
+      .update(dcrCalls)
+      .set({ deletedAt: now })
+      .where(
+        and(
+          eq(dcrCalls.dcrId, dcrId),
+          isNull(dcrCalls.deletedAt),
+          keep.length ? notInArray(dcrCalls.id, keep) : sql`true`,
+        ),
+      );
+    for (const c of calls) {
+      const v = {
+        outletKind: c.outletKind,
+        outletId: c.outletId,
+        calledAt: new Date(c.calledAt),
+        geoCaptureId: c.checkInId ?? null,
+        jointWorkUserId: c.jointWorkUserIds[0] ?? null,
+        jointWorkUserIds: c.jointWorkUserIds,
+        remarks: c.remarks ?? null,
+      };
+      await tx
+        .insert(dcrCalls)
+        .values({
+          id: c.clientId,
+          companyId: p.companyId,
+          dcrId,
+          userId: p.userId,
+          date: date,
+          ...v,
+        })
+        .onConflictDoUpdate({ target: dcrCalls.id, set: { ...v, deletedAt: null } });
+    }
+    if (keep.length) {
+      // Saved POB values stay as saved (lead rule): an existing line for the same call and
+      // product with the same quantity keeps its stored value; an edited quantity or a new
+      // line is priced at the current PTR. A stored null (no PTR then) is priced now.
+      const prior = new Map<string, { quantity: number | null; value: string | null }>();
+      for (const l of await tx
+        .select({
+          callId: dcrCallProducts.callId,
+          productId: dcrCallProducts.productId,
+          quantity: dcrCallProducts.quantity,
+          value: dcrCallProducts.value,
+        })
+        .from(dcrCallProducts)
+        .where(
+          and(
+            inArray(dcrCallProducts.callId, keep),
+            eq(dcrCallProducts.kind, 'pob'),
+            isNull(dcrCallProducts.deletedAt),
+          ),
+        ))
+        prior.set(`${l.callId}|${l.productId}`, { quantity: l.quantity, value: l.value });
+      const pobLineValue = (callId: string, productId: string, quantity: number) => {
+        const was = prior.get(`${callId}|${productId}`);
+        if (was && was.quantity === quantity && was.value !== null) return was.value;
+        return pobValue(quantity, ptr.get(productId) ?? null);
+      };
+      await tx
+        .update(dcrCallProducts)
+        .set({ deletedAt: now })
+        .where(and(inArray(dcrCallProducts.callId, keep), isNull(dcrCallProducts.deletedAt)));
+      const lines = calls.flatMap((c) => [
+        ...c.productsDetailed.map((x) => ({
+          callId: c.clientId,
+          productId: x.productId,
+          kind: 'detailed' as const,
+          seq: x.order,
+        })),
+        ...c.samples.map((x) => ({
+          callId: c.clientId,
+          productId: x.productId,
+          kind: 'sample' as const,
+          quantity: x.quantity,
+        })),
+        ...c.pob.map((x) => ({
+          callId: c.clientId,
+          productId: x.productId,
+          kind: 'pob' as const,
+          quantity: x.quantity,
+          stockistId: x.stockistId ?? null,
+          value: pobLineValue(c.clientId, x.productId, x.quantity),
+        })),
+      ]);
+      if (lines.length)
+        await tx
+          .insert(dcrCallProducts)
+          .values(lines.map((l) => ({ id: uuidv7(), companyId: p.companyId, ...l })));
+      await tx
+        .update(dcrCallRcpa)
+        .set({ deletedAt: now })
+        .where(and(inArray(dcrCallRcpa.callId, keep), isNull(dcrCallRcpa.deletedAt)));
+      const rcpa = calls.flatMap((c) =>
+        c.rcpa.map((x) => ({
+          id: uuidv7(),
+          companyId: p.companyId,
+          callId: c.clientId,
+          productId: x.productId,
+          competitorBrand: x.competitorBrand ?? null,
+          competitorCompany: x.competitorCompany ?? null,
+          quantity: x.quantity,
+          prescriptions: x.prescriptions ?? null,
+          doctorId: x.doctorId ?? null,
+        })),
+      );
+      if (rcpa.length) await tx.insert(dcrCallRcpa).values(rcpa);
+    }
   }
 
   /** Distinct competitor brands captured in RCPA in the caller's company (#40). */

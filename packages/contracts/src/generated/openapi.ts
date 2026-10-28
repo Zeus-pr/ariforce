@@ -959,6 +959,111 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/dcrs/options': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Work types (band, SFC use, details kind) and your DCR for a date */
+    get: operations['getDcrOptions'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/dcrs/territories': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** HQs in your scope, each with its 'territory' children (pick any mix, several HQs allowed) */
+    get: operations['listDcrTerritories'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/dcrs/work-with': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Active users of the company for Work With (anyone may work with anyone) */
+    get: operations['listDcrWorkWith'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/dcrs/sfc-match': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * SFC route candidates per HQ of the day (field work types only)
+     * @description Each territory resolves to its HQ (itself or its parent). Per HQ: your live routes on that HQ whose category maps to the work type band (ex -> ex_hq, hq -> hq, os -> outstation). Other categories (MEETING, EX / OS, legacy text) never match.
+     */
+    get: operations['matchDcrSfc'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/dcrs/draft': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Create or update your draft DCR for a date (idempotent per user + date) */
+    put: operations['putDcrDraft'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/dcrs/{id}/submit': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Submit a draft: full re-check, freezes one TA/DA snapshot per HQ route; read-only after */
+    post: operations['submitDcr'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/dcrs/{id}': {
     parameters: {
       query?: never;
@@ -2282,7 +2387,7 @@ export interface components {
       rememberMe?: boolean;
     };
     /** @enum {string} */
-    TerritoryLevel: 'national' | 'zone' | 'region' | 'area' | 'headquarter';
+    TerritoryLevel: 'national' | 'zone' | 'region' | 'area' | 'headquarter' | 'territory';
     /** @enum {string} */
     RoleKey:
       | 'business_manager'
@@ -2817,6 +2922,132 @@ export interface components {
       date: string;
       reason: string;
     };
+    DcrDraftPut: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      /** @description Optional; must equal the work type band */
+      band?: components['schemas']['DcrBand'];
+      /** @default [] */
+      territoryIds: string[];
+      /** @default [] */
+      workWithUserIds: string[];
+      /** @description One per HQ of the day (field only). Omit to keep the saved choices */
+      sfcRoutes?: components['schemas']['DcrSfcRouteChoice'][];
+      details?: components['schemas']['DcrDetails'] | null;
+      deviationReason?: string | null;
+      calls?: components['schemas']['DcrCallInput'][];
+      /** @description Row version from the last read */
+      version?: number;
+    };
+    /** @enum {string} */
+    DcrBand: 'hq' | 'ex_hq' | 'outstation';
+    DcrSfcRouteChoice: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      sfcRouteId: string;
+    };
+    /** @description Non-field day details; kind must match the work type (DcrWorkTypeOption.detailsKind) */
+    DcrDetails:
+      | components['schemas']['DcrMeetingDetails']
+      | components['schemas']['DcrTrainingDetails']
+      | components['schemas']['DcrOfficeDetails']
+      | components['schemas']['DcrLeaveDetails'];
+    DcrMeetingDetails: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'meeting';
+      /** @description Meeting / training type or name */
+      title: string;
+      /** @enum {string} */
+      mode: 'in_person' | 'online';
+      /** @description Free text; required when mode = in_person (link or text when online) */
+      location?: string | null;
+      /**
+       * @description Local time HH:mm (IST)
+       * @example 10:30
+       */
+      startTime: string;
+      /** @description Minutes, 1-720 */
+      durationMin: number;
+      /** @description Free text */
+      attendees?: string | null;
+      remarks?: string | null;
+    };
+    DcrTrainingDetails: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'training';
+      /** @description Meeting / training type or name */
+      title: string;
+      /** @enum {string} */
+      mode: 'in_person' | 'online';
+      /** @description Free text; required when mode = in_person (link or text when online) */
+      location?: string | null;
+      /**
+       * @description Local time HH:mm (IST)
+       * @example 10:30
+       */
+      startTime: string;
+      /** @description Minutes, 1-720 */
+      durationMin: number;
+      /** @description Free text */
+      attendees?: string | null;
+      remarks?: string | null;
+      /** @description Free text */
+      trainer?: string | null;
+    };
+    /** @description Admin / office work */
+    DcrOfficeDetails: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'office';
+      taskType: string;
+      description: string;
+      startTime?: string | null;
+      /** @description Minutes, 1-720 */
+      durationMin: number;
+      remarks?: string | null;
+    };
+    DcrLeaveDetails: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'leave';
+      /**
+       * Format: uuid
+       * @description Your leave request covering the date (pending or approved)
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      leaveRequestId: string;
+    };
+    DcrSubmit: {
+      version: number;
+    };
     ManagerAssign: {
       /**
        * Format: uuid
@@ -3141,13 +3372,18 @@ export interface components {
       actualFare: boolean;
       /** @default null */
       travelMode: components['schemas']['SfcTravelMode'] | null;
-      /** @default null */
-      category: string | null;
+      /**
+       * @description ex | hq | os; anything else is 422 VALIDATION
+       * @default null
+       */
+      category: components['schemas']['SfcCategory'] | null;
       /** @default null */
       da: number | null;
     };
     /** @enum {string} */
     SfcTravelMode: 'bike' | 'bus' | 'train' | 'bus_train' | 'car' | 'other';
+    /** @enum {string} */
+    SfcCategory: 'ex' | 'hq' | 'os';
     AllowanceDraftRequest: {
       /** @default false */
       dryRun: boolean;
@@ -4631,6 +4867,25 @@ export interface components {
       lockAt: string;
       /** @description Set while an approved correction request keeps a locked day editable (48 h) */
       unlockedUntil: string | null;
+      /**
+       * @description Field-day band (from the work type); null for non-field days
+       * @default null
+       */
+      band: components['schemas']['DcrBand'] | null;
+      /** @default null */
+      details: components['schemas']['DcrDetailsOutput'] | null;
+      /**
+       * @description Day-level Work With (anyone)
+       * @default []
+       */
+      workWithUserIds: string[];
+      /**
+       * @description One chosen SFC route per HQ of the day; snapshots set at submit
+       * @default []
+       */
+      sfcRoutes: components['schemas']['DcrSfcRoute'][];
+      /** @default null */
+      submittedBy: string | null;
     };
     DcrCall: {
       /**
@@ -4659,6 +4914,57 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       calledAt: string;
+    };
+    DcrSfcRoute: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      sfcRouteId: string;
+      /** @description Set at submit; null on drafts */
+      snapshot: components['schemas']['DcrSfcSnapshot'] | null;
+    };
+    DcrSfcSnapshot: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      sfcRouteId: string;
+      routeVersion: number;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      fromPlace: string;
+      toPlace: string;
+      oneWayKm: number;
+      bothWayKm: number;
+      /** @description null = actual fare */
+      oneWayAmount: number | null;
+      /** @description null = actual fare */
+      bothWayAmount: number | null;
+      actualFare: boolean;
+      travelMode: components['schemas']['SfcTravelMode'] | null;
+      category: components['schemas']['SfcCategory'];
+      band: components['schemas']['DcrBand'];
+      da: number | null;
+      /** @description Company TA rate per km at submit */
+      ratePerKm: number;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      frozenAt: string;
     };
     CompetitorBrandList: {
       items: components['schemas']['CompetitorBrand'][];
@@ -4720,6 +5026,110 @@ export interface components {
       decidedBy: string | null;
       /** @description The reason of the rejecting step; null unless status is rejected */
       rejectionReason?: string | null;
+    };
+    DcrOptions: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      workTypes: components['schemas']['DcrWorkTypeOption'][];
+      /** @description Your DCR for the date (draft or submitted), if any */
+      dcr: components['schemas']['Dcr'] | null;
+    };
+    DcrWorkTypeOption: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      code: string;
+      name: string;
+      /** @enum {string} */
+      kind: 'field' | 'non_field' | 'leave' | 'holiday';
+      /** @description Field work types only */
+      band: components['schemas']['DcrBand'] | null;
+      /** @description true for field work types; Meeting never */
+      usesSfc: boolean;
+      /** @description Required details.kind on submit; null = no details */
+      detailsKind: ('meeting' | 'training' | 'office' | 'leave') | null;
+    };
+    DcrHqOptionList: {
+      items: components['schemas']['DcrHqOption'][];
+    };
+    DcrHqOption: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      code: string;
+      name: string;
+      /** @description Level 'territory' under this HQ */
+      territories: components['schemas']['DcrTerritoryOption'][];
+    };
+    DcrTerritoryOption: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      code: string;
+      name: string;
+    };
+    DcrWorkWithList: {
+      items: components['schemas']['DcrWorkWithUser'][];
+    };
+    DcrWorkWithUser: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      employeeCode: string | null;
+      designation: string | null;
+    };
+    /** @description Candidates per HQ of the day (employee + HQ + band). 404 SFC_NO_MATCH lists the same per-HQ result in details when any HQ has none. */
+    DcrSfcMatch: {
+      band: components['schemas']['DcrBand'];
+      hqs: components['schemas']['DcrSfcHqMatch'][];
+    };
+    DcrSfcHqMatch: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      hqName: string;
+      candidates: components['schemas']['DcrSfcCandidate'][];
+      /** @description Set when exactly one candidate matches */
+      autoSelectedId: string | null;
+    };
+    DcrSfcCandidate: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      fromPlace: string;
+      toPlace: string;
+      oneWayKm: number;
+      bothWayKm: number;
+      oneWayAmount: number | null;
+      bothWayAmount: number | null;
+      actualFare: boolean;
+      travelMode: components['schemas']['SfcTravelMode'] | null;
+      category: components['schemas']['SfcCategory'];
+      band: components['schemas']['DcrBand'];
+      da: number | null;
+      version: number;
     };
     ApprovalPage: {
       items: components['schemas']['Approval'][];
@@ -5670,6 +6080,7 @@ export interface components {
       bothWayAmount: number | null;
       actualFare: boolean;
       travelMode: components['schemas']['SfcTravelMode'] | null;
+      /** @description 'ex' | 'hq' | 'os' (SfcCategory). Rows not yet migrated by the data fix may still hold legacy text; show it and require a choice on edit. */
       category: string | null;
       da: number | null;
       version: number;
@@ -6423,6 +6834,87 @@ export interface components {
       prescriptions?: number | null;
       /** @description Prescribing doctor, in your scope */
       doctorId?: string | null;
+    };
+    /** @description Non-field day details; kind must match the work type (DcrWorkTypeOption.detailsKind) */
+    DcrDetailsOutput:
+      | components['schemas']['DcrMeetingDetailsOutput']
+      | components['schemas']['DcrTrainingDetailsOutput']
+      | components['schemas']['DcrOfficeDetailsOutput']
+      | components['schemas']['DcrLeaveDetailsOutput'];
+    DcrMeetingDetailsOutput: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'meeting';
+      /** @description Meeting / training type or name */
+      title: string;
+      /** @enum {string} */
+      mode: 'in_person' | 'online';
+      /** @description Free text; required when mode = in_person (link or text when online) */
+      location?: string | null;
+      /**
+       * @description Local time HH:mm (IST)
+       * @example 10:30
+       */
+      startTime: string;
+      /** @description Minutes, 1-720 */
+      durationMin: number;
+      /** @description Free text */
+      attendees?: string | null;
+      remarks?: string | null;
+    };
+    DcrTrainingDetailsOutput: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'training';
+      /** @description Meeting / training type or name */
+      title: string;
+      /** @enum {string} */
+      mode: 'in_person' | 'online';
+      /** @description Free text; required when mode = in_person (link or text when online) */
+      location?: string | null;
+      /**
+       * @description Local time HH:mm (IST)
+       * @example 10:30
+       */
+      startTime: string;
+      /** @description Minutes, 1-720 */
+      durationMin: number;
+      /** @description Free text */
+      attendees?: string | null;
+      remarks?: string | null;
+      /** @description Free text */
+      trainer?: string | null;
+    };
+    /** @description Admin / office work */
+    DcrOfficeDetailsOutput: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'office';
+      taskType: string;
+      description: string;
+      startTime?: string | null;
+      /** @description Minutes, 1-720 */
+      durationMin: number;
+      remarks?: string | null;
+    };
+    DcrLeaveDetailsOutput: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'leave';
+      /**
+       * Format: uuid
+       * @description Your leave request covering the date (pending or approved)
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      leaveRequestId: string;
     };
     SfcSettingsOutput: {
       /** @description TA per km (INR) used to compute SFC amounts on write */
@@ -10449,6 +10941,342 @@ export interface operations {
       };
       /** @description Day is not locked, or already unlocked */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getDcrOptions: {
+    parameters: {
+      query: {
+        /** @description Calendar date (YYYY-MM-DD, IST) */
+        date: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DcrOptions'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listDcrTerritories: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DcrHqOptionList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listDcrWorkWith: {
+    parameters: {
+      query?: {
+        q?: string;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DcrWorkWithList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  matchDcrSfc: {
+    parameters: {
+      query: {
+        /** @description Calendar date (YYYY-MM-DD, IST) */
+        date: string;
+        /** @description UUIDv7 identifier */
+        workTypeId: string;
+        /** @description Comma-separated territory ids (HQ and/or territory level) */
+        territoryIds: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DcrSfcMatch'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description SFC_NO_MATCH: some HQ has no route; details = { band, hqs, missingHqIds } */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (not a field work type, unknown or out-of-scope territory) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description SFC_UNAVAILABLE: lookup failed, retry */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  putDcrDraft: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DcrDraftPut'];
+      };
+    };
+    responses: {
+      /** @description Saved draft */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Dcr'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description ALREADY_SUBMITTED, DAY_LOCKED, VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  submitDcr: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Required. Same key after success returns the submitted DCR (200) */
+        'idempotency-key': string;
+      };
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DcrSubmit'];
+      };
+    };
+    responses: {
+      /** @description Submitted (also returned for a retry with the same key) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Dcr'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found (not your DCR) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description ALREADY_SUBMITTED (other key), IDEMPOTENCY_CONFLICT (key used on another DCR), VERSION_CONFLICT, DAY_LOCKED */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION, SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND */
+      422: {
         headers: {
           [name: string]: unknown;
         };

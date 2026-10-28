@@ -74,15 +74,15 @@ describe.skipIf(!OWNER || !APP)('SFC routes (real API)', () => {
         etag: t0.etag,
         hqTerritoryId: T.hq,
         routes: [
-          { fromPlace: 'Alpha', toPlace: 'Alpha', oneWayKm: 0, travelMode: 'bike', category: 'HQ' },
-          { fromPlace: 'Alpha', toPlace: 'Beta', oneWayKm: 30, travelMode: 'bike', category: 'EX' },
+          { fromPlace: 'Alpha', toPlace: 'Alpha', oneWayKm: 0, travelMode: 'bike', category: 'hq' },
+          { fromPlace: 'Alpha', toPlace: 'Beta', oneWayKm: 30, travelMode: 'bike', category: 'ex' },
           {
             fromPlace: 'Alpha',
             toPlace: 'Metro',
             oneWayKm: 102,
             actualFare: true,
             travelMode: 'bus_train',
-            category: 'MEETING',
+            category: 'os',
             da: 150,
           },
         ],

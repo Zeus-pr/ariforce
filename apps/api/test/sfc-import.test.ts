@@ -40,7 +40,8 @@ async function workbook(file: string) {
   };
   add('SHYAMBAZAR HQ_SFC FORMAT', 'RIYAA BM', 'SHYAMBAZAR', [
     [1, 'SHYAMBAZAR ', 'SHYAMBAZAR', '0', '0', 0, 0, 'BIKE', 'HQ'],
-    [2, 'SHYAMBAZAR', 'NORTHVILLE', '30 KM', '60 KM', 88.05, { formula: 'F5*2' }, 'BIKE', 'EX/ OS'],
+    [2, 'SHYAMBAZAR', 'NORTHVILLE', '30 KM', '60 KM', 88.05, { formula: 'F5*2' }, 'BIKE', 'EX HQ'],
+    [3, 'SHYAMBAZAR', 'MIDTOWN', '10 KM', '20 KM', 29.5, 59, 'BIKE', 'EX/ OS'],
     [
       4,
       'SHYAMBAZAR',
@@ -50,7 +51,7 @@ async function workbook(file: string) {
       'ACTUAL FARE',
       'ACTUAL FARE',
       'BUS / TRAIN',
-      'MEETING',
+      'OUT EX HQ',
     ],
     [5, null, null, null, null, null, null, null, null],
     [6],
@@ -71,8 +72,13 @@ describe('SFC import helpers', () => {
     expect(parseKm('ACTUAL FARE')).toBeNull();
     expect(parseMode('BUS / TRAIN')).toBe('bus_train');
     expect(parseMode('BIKE')).toBe('bike');
-    expect(normCategory('EX/ OS')).toBe('EX / OS');
-    expect(normCategory(' OUT EX HQ ')).toBe('OUT EX HQ');
+    expect(normCategory(' OUT EX HQ ')).toBe('os');
+    expect(normCategory('EX HQ')).toBe('ex');
+    expect(normCategory('HQ')).toBe('hq');
+    expect(normCategory('OS')).toBe('os');
+    expect(normCategory('')).toBeNull();
+    expect(normCategory('EX/ OS')).toBeUndefined();
+    expect(normCategory('MEETING')).toBeUndefined();
   });
   it('fuzzy-matches close spellings by name and HQ, reports ambiguity', () => {
     expect(similarity('SUROJIT SHIKARI', 'Suraji Shikari')).toBeGreaterThanOrEqual(0.75);
@@ -108,7 +114,9 @@ describe('SFC import helpers', () => {
         actualFare: true,
         travelMode: 'bus_train',
       });
-      expect(s!.rows[1]!.category).toBe('EX / OS');
+      expect(s!.rows[1]!.category).toBe('ex');
+      expect(s!.rows[2]!.category).toBe('os');
+      expect(s!.problems.join(';')).toMatch(/unknown category 'EX\/ OS' \(row skipped\)/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -186,7 +194,7 @@ describe.skipIf(!OWNER || !APP)('import-sfc script (real DB)', () => {
     expect(rows[1]).toMatchObject({
       one_way_amount: '88.50',
       both_way_amount: '177.00',
-      category: 'EX / OS',
+      category: 'ex',
     });
     expect(rows[2]).toMatchObject({
       one_way_amount: null,

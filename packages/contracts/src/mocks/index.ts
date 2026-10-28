@@ -49,6 +49,13 @@ import {
   Dcr,
   DcrCorrectionRequest,
   DcrUpsert,
+  DcrDraftPut,
+  DcrOptions,
+  DcrOptionsQuery,
+  DcrSfcMatch,
+  DcrSfcMatchQuery,
+  DcrSubmit,
+  dcrDetailsKind,
   DCR_UNLOCK_HOURS,
   isDeviation,
   Division,
@@ -522,6 +529,7 @@ function fieldHandlers(baseUrl: string) {
   const tourPlans: TourPlan[] = [];
   let stp: StandardTourPlan | null = null;
   const dcrs: Dcr[] = [];
+  const submitKeys = new Map<string, string>();
   const approvals = structuredClone(fx.approvals);
   let geofence = { ...fx.geofence };
   const outletRows = (kind: string) =>
@@ -543,6 +551,222 @@ function fieldHandlers(baseUrl: string) {
   };
   const conflict = (message: string, status = 409) =>
     HttpResponse.json({ error: { code: 'CONFLICT', message } }, { status });
+  const dcrError = (status: number, code: string, message: string, details?: unknown) =>
+    HttpResponse.json({ error: { code, message, details } }, { status });
+  /** Mock band: field work types are 'hq' (fixtures carry no allowance band). */
+  const mockBand = (w: { kind: string }) => (w.kind === 'field' ? ('hq' as const) : null);
+  const mockHqs = () => fx.territories.filter((t) => ['headquarter', 'area'].includes(t.level));
+  const hqOf = (id: string) => {
+    const t = fx.territories.find((x) => x.id === id);
+    if (!t) return null;
+    return t.level === 'territory' ? t.parentId : t.id;
+  };
+  /** One synthetic SFC candidate per HQ (category hq). */
+  const mockCandidate = (hqId: string) => ({
+    id: `0193ffff-0000-7000-8000-${hqId.slice(-12)}`,
+    fromPlace: 'HQ',
+    toPlace: 'Market',
+    oneWayKm: 10,
+    bothWayKm: 20,
+    oneWayAmount: 29.5,
+    bothWayAmount: 59,
+    actualFare: false,
+    travelMode: 'bike' as const,
+    category: 'hq' as const,
+    band: 'hq' as const,
+    da: 150,
+    version: 1,
+  });
+  const dcrFlowHandlers = () => [
+    http.get(`${baseUrl}/v1/dcrs/options`, ({ request }) => {
+      const q = DcrOptionsQuery.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+      if (!q.success) return validation('Invalid query', z.treeifyError(q.error));
+      const d = dcrs.find((x) => x.date === q.data.date && x.userId === fx.me.id);
+      return HttpResponse.json(
+        DcrOptions.parse({
+          date: q.data.date,
+          workTypes: fx.workTypes
+            .filter((w) => w.active)
+            .map((w) => ({
+              id: w.id,
+              code: w.code,
+              name: w.name,
+              kind: w.kind,
+              band: mockBand(w),
+              usesSfc: mockBand(w) !== null,
+              detailsKind: dcrDetailsKind(w),
+            })),
+          dcr: d ? withLock(d) : null,
+        }),
+      );
+    }),
+    http.get(`${baseUrl}/v1/dcrs/territories`, () =>
+      HttpResponse.json({
+        items: mockHqs().map((h) => ({
+          id: h.id,
+          code: h.code,
+          name: h.name,
+          territories: fx.territories
+            .filter((t) => t.level === 'territory' && t.parentId === h.id)
+            .map((t) => ({ id: t.id, code: t.code, name: t.name })),
+        })),
+      }),
+    ),
+    http.get(`${baseUrl}/v1/dcrs/work-with`, ({ request }) => {
+      const q = (new URL(request.url).searchParams.get('q') ?? '').toLowerCase();
+      return HttpResponse.json({
+        items: fx.mockUsers
+          .filter((u) => u.id !== fx.me.id && (!q || u.name.toLowerCase().includes(q)))
+          .map((u) => ({
+            id: u.id,
+            name: u.name,
+            employeeCode: u.employeeCode ?? null,
+            designation: null,
+          })),
+      });
+    }),
+    http.get(`${baseUrl}/v1/dcrs/sfc-match`, ({ request }) => {
+      const q = DcrSfcMatchQuery.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+      if (!q.success) return validation('Invalid query', z.treeifyError(q.error));
+      const wt = fx.workTypes.find((w) => w.id === q.data.workTypeId);
+      const band = wt ? mockBand(wt) : null;
+      if (!band) return validation('SFC applies to field work types only');
+      const hqIds = [...new Set(q.data.territoryIds.map(hqOf))];
+      if (hqIds.some((h) => !h)) return validation('Unknown territories');
+      return HttpResponse.json(
+        DcrSfcMatch.parse({
+          band,
+          hqs: (hqIds as string[]).map((h) => ({
+            hqTerritoryId: h,
+            hqName: fx.territories.find((t) => t.id === h)?.name ?? '',
+            candidates: [mockCandidate(h)],
+            autoSelectedId: mockCandidate(h).id,
+          })),
+        }),
+      );
+    }),
+    http.put(`${baseUrl}/v1/dcrs/draft`, async ({ request }) => {
+      const b = DcrDraftPut.safeParse(await request.json());
+      if (!b.success) return validation('Invalid DCR', z.treeifyError(b.error));
+      if (b.data.date > today()) return validation('DCR date is in the future');
+      if (isLocked(b.data.date))
+        return dcrError(409, 'DAY_LOCKED', 'Day locked; request a correction');
+      let d = dcrs.find((x) => x.date === b.data.date && x.userId === fx.me.id);
+      if (d?.status === 'submitted')
+        return dcrError(409, 'ALREADY_SUBMITTED', 'Read-only after submit');
+      if (d && b.data.version && b.data.version !== d.version)
+        return dcrError(409, 'VERSION_CONFLICT', 'Stale version');
+      const wt = fx.workTypes.find((w) => w.id === b.data.workTypeId);
+      if (!wt) return validation('Unknown work type');
+      const band = mockBand(wt);
+      if (wt.kind !== 'field' && b.data.calls.length)
+        return validation('Calls need a field work type');
+      if (!band && b.data.sfcRoutes?.length)
+        return validation('SFC applies to field work types only');
+      const want = dcrDetailsKind(wt);
+      if (b.data.details && b.data.details.kind !== want)
+        return validation(`details.kind must be '${want}'`, { field: 'details' });
+      const hqIds = b.data.territoryIds.map(hqOf);
+      if (hqIds.some((h) => !h)) return validation('Unknown territories');
+      const foreign = (b.data.sfcRoutes ?? []).filter((r) => !hqIds.includes(r.hqTerritoryId));
+      if (foreign.length)
+        return dcrError(422, 'SFC_MISMATCH', 'Route HQ is not an HQ of the day', {
+          hqTerritoryIds: foreign.map((r) => r.hqTerritoryId),
+        });
+      if (!d) {
+        d = {
+          ...stamp(),
+          id: crypto.randomUUID(),
+          userId: fx.me.id,
+          tourPlanId: null,
+          submittedAt: null,
+          status: 'draft',
+          date: b.data.date,
+          workTypeId: b.data.workTypeId,
+          territoryIds: [],
+          deviationReason: null,
+          calls: [],
+          lockAt: lockAt(b.data.date),
+          unlockedUntil: null,
+          band: null,
+          details: null,
+          workWithUserIds: [],
+          sfcRoutes: [],
+          submittedBy: null,
+        };
+        dcrs.push(d);
+      } else d.version += 1;
+      Object.assign(d, {
+        workTypeId: b.data.workTypeId,
+        territoryIds: b.data.territoryIds,
+        deviationReason: b.data.deviationReason ?? null,
+        band,
+        details: b.data.details ?? null,
+        workWithUserIds: b.data.workWithUserIds,
+        calls: b.data.calls.map(({ clientId, ...c }) => ({
+          ...c,
+          id: clientId,
+          pob: c.pob.map((l) => ({ ...l, value: null })),
+        })),
+        ...(b.data.sfcRoutes
+          ? { sfcRoutes: band ? b.data.sfcRoutes.map((r) => ({ ...r, snapshot: null })) : [] }
+          : {}),
+        updatedAt: serverTime(),
+      });
+      return HttpResponse.json(Dcr.parse(withLock(d)));
+    }),
+    http.post(`${baseUrl}/v1/dcrs/:id/submit`, async ({ params, request }) => {
+      const d = dcrs.find((x) => x.id === params.id && x.userId === fx.me.id);
+      if (!d) return notFound();
+      const key = request.headers.get('idempotency-key');
+      if (!key) return validation('Idempotency-Key header is required');
+      const b = DcrSubmit.safeParse(await request.json());
+      if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
+      if (d.status === 'submitted')
+        return submitKeys.get(d.id) === key
+          ? HttpResponse.json(Dcr.parse(withLock(d)))
+          : dcrError(409, 'ALREADY_SUBMITTED', 'Already submitted');
+      if (b.data.version !== d.version) return dcrError(409, 'VERSION_CONFLICT', 'Stale version');
+      if (isLocked(d.date)) return dcrError(409, 'DAY_LOCKED', 'Day locked');
+      const wt = fx.workTypes.find((w) => w.id === d.workTypeId)!;
+      const band = mockBand(wt);
+      const want = dcrDetailsKind(wt);
+      if (want && (!d.details || d.details.kind !== want))
+        return validation(`details (kind '${want}') are required`, { field: 'details' });
+      if (band && !d.territoryIds.length) return validation('Pick at least one territory');
+      if (band && !d.calls.length) return validation('Field work needs at least one call');
+      const hqIds = [...new Set(d.territoryIds.map(hqOf))] as string[];
+      const frozenAt = serverTime();
+      const routes = band
+        ? hqIds.map((h) => {
+            const c = mockCandidate(h);
+            const { id, version, ...rest } = c;
+            return {
+              hqTerritoryId: h,
+              sfcRouteId: id,
+              snapshot: {
+                ...rest,
+                sfcRouteId: id,
+                routeVersion: version,
+                hqTerritoryId: h,
+                ratePerKm: 2.95,
+                frozenAt,
+              },
+            };
+          })
+        : [];
+      submitKeys.set(d.id, key);
+      Object.assign(d, {
+        status: 'submitted',
+        submittedAt: frozenAt,
+        submittedBy: fx.me.id,
+        sfcRoutes: routes,
+        version: d.version + 1,
+        updatedAt: frozenAt,
+      });
+      return HttpResponse.json(Dcr.parse(withLock(d)));
+    }),
+  ];
   // #86: per-day status. Submitted/approved days are locked; the month status is an aggregate.
   const LOCKED = ['submitted', 'approved'];
   const dayLock = (p: TourPlan) =>
@@ -976,12 +1200,18 @@ function fieldHandlers(baseUrl: string) {
         .slice(0, 20);
       return HttpResponse.json({ items });
     }),
+    ...dcrFlowHandlers(),
     http.get(`${baseUrl}/v1/dcrs/:id`, ({ params }) => {
       const d = dcrs.find((x) => x.id === params.id);
       return d ? HttpResponse.json(withLock(d)) : notFound();
     }),
     http.put(`${baseUrl}/v1/dcrs`, async ({ request }) => {
       const b = DcrUpsert.safeParse(await request.json());
+      const prior = b.success
+        ? dcrs.find((x) => x.date === b.data.date && x.userId === fx.me.id)
+        : undefined;
+      if (prior?.submittedBy)
+        return dcrError(409, 'ALREADY_SUBMITTED', 'Submitted DCRs are read-only');
       if (!b.success) return validation('Invalid DCR', z.treeifyError(b.error));
       if (b.data.date > today()) return validation('DCR date is in the future');
       let d = dcrs.find((x) => x.date === b.data.date && x.userId === fx.me.id);
@@ -1054,6 +1284,11 @@ function fieldHandlers(baseUrl: string) {
           calls: [],
           lockAt: lockAt(b.data.date),
           unlockedUntil: null,
+          band: null,
+          details: null,
+          workWithUserIds: [],
+          sfcRoutes: [],
+          submittedBy: null,
         };
         dcrs.push(d);
       } else d.version += 1;
