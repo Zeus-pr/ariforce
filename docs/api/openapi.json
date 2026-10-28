@@ -6868,6 +6868,489 @@
         }
       }
     },
+    "/v1/dcrs/options": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "DCR"
+        ],
+        "operationId": "getDcrOptions",
+        "summary": "Work types (band, SFC use, details kind) and your DCR for a date",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+              "description": "Calendar date (YYYY-MM-DD, IST)"
+            },
+            "required": true,
+            "description": "Calendar date (YYYY-MM-DD, IST)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DcrOptions"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/dcrs/territories": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "DCR"
+        ],
+        "operationId": "listDcrTerritories",
+        "summary": "HQs in your scope, each with its 'territory' children (pick any mix, several HQs allowed)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DcrHqOptionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/dcrs/work-with": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "DCR"
+        ],
+        "operationId": "listDcrWorkWith",
+        "summary": "Active users of the company for Work With (anyone may work with anyone)",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DcrWorkWithList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/dcrs/sfc-match": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "DCR"
+        ],
+        "operationId": "matchDcrSfc",
+        "summary": "SFC route candidates per HQ of the day (field work types only)",
+        "description": "Each territory resolves to its HQ (itself or its parent). Per HQ: your live routes on that HQ whose category maps to the work type band (ex -> ex_hq, hq -> hq, os -> outstation). Other categories (MEETING, EX / OS, legacy text) never match.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+              "description": "Calendar date (YYYY-MM-DD, IST)"
+            },
+            "required": true,
+            "description": "Calendar date (YYYY-MM-DD, IST)"
+          },
+          {
+            "in": "query",
+            "name": "workTypeId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          },
+          {
+            "in": "query",
+            "name": "territoryIds",
+            "schema": {
+              "description": "Comma-separated territory ids (HQ and/or territory level)",
+              "type": "string"
+            },
+            "required": true,
+            "description": "Comma-separated territory ids (HQ and/or territory level)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DcrSfcMatch"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SFC_NO_MATCH: some HQ has no route; details = { band, hqs, missingHqIds }",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION (not a field work type, unknown or out-of-scope territory)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "SFC_UNAVAILABLE: lookup failed, retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/dcrs/draft": {
+      "put": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "DCR"
+        ],
+        "operationId": "putDcrDraft",
+        "summary": "Create or update your draft DCR for a date (idempotent per user + date)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DcrDraftPut"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dcr"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ALREADY_SUBMITTED, DAY_LOCKED, VERSION_CONFLICT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/dcrs/{id}/submit": {
+      "post": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "DCR"
+        ],
+        "operationId": "submitDcr",
+        "summary": "Submit a draft: full re-check, freezes one TA/DA snapshot per HQ route; read-only after",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Required. Same key after success returns the submitted DCR (200)"
+            },
+            "required": true,
+            "description": "Required. Same key after success returns the submitted DCR (200)"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DcrSubmit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Submitted (also returned for a retry with the same key)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dcr"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (not your DCR)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ALREADY_SUBMITTED (other key), IDEMPOTENCY_CONFLICT (key used on another DCR), VERSION_CONFLICT, DAY_LOCKED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION, SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/dcrs/{id}": {
       "get": {
         "security": [
@@ -16080,6 +16563,409 @@
           "reason"
         ]
       },
+      "DcrDraftPut": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Calendar date (YYYY-MM-DD, IST)"
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "band": {
+            "description": "Optional; must equal the work type band",
+            "$ref": "#/components/schemas/DcrBand"
+          },
+          "territoryIds": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "workWithUserIds": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "sfcRoutes": {
+            "description": "One per HQ of the day (field only). Omit to keep the saved choices",
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrSfcRouteChoice"
+            }
+          },
+          "details": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DcrDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deviationReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "calls": {
+            "maxItems": 60,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrCallInput"
+            }
+          },
+          "version": {
+            "description": "Row version from the last read",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "date",
+          "workTypeId"
+        ]
+      },
+      "DcrBand": {
+        "type": "string",
+        "enum": [
+          "hq",
+          "ex_hq",
+          "outstation"
+        ]
+      },
+      "DcrSfcRouteChoice": {
+        "type": "object",
+        "properties": {
+          "hqTerritoryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "sfcRouteId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          }
+        },
+        "required": [
+          "hqTerritoryId",
+          "sfcRouteId"
+        ]
+      },
+      "DcrDetails": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/DcrMeetingDetails"
+          },
+          {
+            "$ref": "#/components/schemas/DcrTrainingDetails"
+          },
+          {
+            "$ref": "#/components/schemas/DcrOfficeDetails"
+          },
+          {
+            "$ref": "#/components/schemas/DcrLeaveDetails"
+          }
+        ],
+        "description": "Non-field day details; kind must match the work type (DcrWorkTypeOption.detailsKind)",
+        "type": "object",
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "meeting": "#/components/schemas/DcrMeetingDetails",
+            "training": "#/components/schemas/DcrTrainingDetails",
+            "office": "#/components/schemas/DcrOfficeDetails",
+            "leave": "#/components/schemas/DcrLeaveDetails"
+          }
+        }
+      },
+      "DcrMeetingDetails": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "meeting"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "Meeting / training type or name"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "in_person",
+              "online"
+            ]
+          },
+          "location": {
+            "description": "Free text; required when mode = in_person (link or text when online)",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startTime": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "description": "Local time HH:mm (IST)",
+            "example": "10:30"
+          },
+          "durationMin": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720,
+            "description": "Minutes, 1-720"
+          },
+          "attendees": {
+            "description": "Free text",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "mode",
+          "startTime",
+          "durationMin"
+        ]
+      },
+      "DcrTrainingDetails": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "training"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "Meeting / training type or name"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "in_person",
+              "online"
+            ]
+          },
+          "location": {
+            "description": "Free text; required when mode = in_person (link or text when online)",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startTime": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "description": "Local time HH:mm (IST)",
+            "example": "10:30"
+          },
+          "durationMin": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720,
+            "description": "Minutes, 1-720"
+          },
+          "attendees": {
+            "description": "Free text",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trainer": {
+            "description": "Free text",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "mode",
+          "startTime",
+          "durationMin"
+        ]
+      },
+      "DcrOfficeDetails": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "office"
+          },
+          "taskType": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "startTime": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                "description": "Local time HH:mm (IST)",
+                "example": "10:30"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "durationMin": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720,
+            "description": "Minutes, 1-720"
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "taskType",
+          "description",
+          "durationMin"
+        ],
+        "description": "Admin / office work"
+      },
+      "DcrLeaveDetails": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "leave"
+          },
+          "leaveRequestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Your leave request covering the date (pending or approved)",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          }
+        },
+        "required": [
+          "kind",
+          "leaveRequestId"
+        ]
+      },
+      "DcrSubmit": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "version"
+        ]
+      },
       "ManagerAssign": {
         "type": "object",
         "properties": {
@@ -21835,6 +22721,64 @@
               }
             ],
             "description": "Set while an approved correction request keeps a locked day editable (48 h)"
+          },
+          "band": {
+            "default": null,
+            "description": "Field-day band (from the work type); null for non-field days",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DcrBand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "details": {
+            "default": null,
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DcrDetailsOutput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workWithUserIds": {
+            "default": [],
+            "description": "Day-level Work With (anyone)",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "sfcRoutes": {
+            "default": [],
+            "description": "One chosen SFC route per HQ of the day; snapshots set at submit",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrSfcRoute"
+            }
+          },
+          "submittedBy": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -21854,7 +22798,12 @@
           "calls",
           "submittedAt",
           "lockAt",
-          "unlockedUntil"
+          "unlockedUntil",
+          "band",
+          "details",
+          "workWithUserIds",
+          "sfcRoutes",
+          "submittedBy"
         ],
         "additionalProperties": false
       },
@@ -21957,6 +22906,146 @@
           "rcpa",
           "remarks",
           "calledAt"
+        ],
+        "additionalProperties": false
+      },
+      "DcrSfcRoute": {
+        "type": "object",
+        "properties": {
+          "hqTerritoryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "sfcRouteId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DcrSfcSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set at submit; null on drafts"
+          }
+        },
+        "required": [
+          "hqTerritoryId",
+          "sfcRouteId",
+          "snapshot"
+        ],
+        "additionalProperties": false
+      },
+      "DcrSfcSnapshot": {
+        "type": "object",
+        "properties": {
+          "sfcRouteId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "routeVersion": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "hqTerritoryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "fromPlace": {
+            "type": "string"
+          },
+          "toPlace": {
+            "type": "string"
+          },
+          "oneWayKm": {
+            "type": "number"
+          },
+          "bothWayKm": {
+            "type": "number"
+          },
+          "oneWayAmount": {
+            "description": "null = actual fare",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "bothWayAmount": {
+            "description": "null = actual fare",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "actualFare": {
+            "type": "boolean"
+          },
+          "travelMode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SfcTravelMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/SfcCategory"
+          },
+          "band": {
+            "$ref": "#/components/schemas/DcrBand"
+          },
+          "da": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "ratePerKm": {
+            "type": "number",
+            "description": "Company TA rate per km at submit"
+          },
+          "frozenAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "ISO-8601 timestamp (UTC)"
+          }
+        },
+        "required": [
+          "sfcRouteId",
+          "routeVersion",
+          "hqTerritoryId",
+          "fromPlace",
+          "toPlace",
+          "oneWayKm",
+          "bothWayKm",
+          "oneWayAmount",
+          "bothWayAmount",
+          "actualFare",
+          "travelMode",
+          "category",
+          "band",
+          "da",
+          "ratePerKm",
+          "frozenAt"
         ],
         "additionalProperties": false
       },
@@ -22136,6 +23225,374 @@
           "createdAt",
           "decidedAt",
           "decidedBy"
+        ],
+        "additionalProperties": false
+      },
+      "DcrOptions": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Calendar date (YYYY-MM-DD, IST)"
+          },
+          "workTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrWorkTypeOption"
+            }
+          },
+          "dcr": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Dcr"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Your DCR for the date (draft or submitted), if any"
+          }
+        },
+        "required": [
+          "date",
+          "workTypes",
+          "dcr"
+        ],
+        "additionalProperties": false
+      },
+      "DcrWorkTypeOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "field",
+              "non_field",
+              "leave",
+              "holiday"
+            ]
+          },
+          "band": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DcrBand"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Field work types only"
+          },
+          "usesSfc": {
+            "type": "boolean",
+            "description": "true for field work types; Meeting never"
+          },
+          "detailsKind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "meeting",
+                  "training",
+                  "office",
+                  "leave"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Required details.kind on submit; null = no details"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "kind",
+          "band",
+          "usesSfc",
+          "detailsKind"
+        ],
+        "additionalProperties": false
+      },
+      "DcrHqOptionList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrHqOption"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "DcrHqOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "territories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrTerritoryOption"
+            },
+            "description": "Level 'territory' under this HQ"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "territories"
+        ],
+        "additionalProperties": false
+      },
+      "DcrTerritoryOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "DcrWorkWithList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrWorkWithUser"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "DcrWorkWithUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "name": {
+            "type": "string"
+          },
+          "employeeCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "designation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "employeeCode",
+          "designation"
+        ],
+        "additionalProperties": false
+      },
+      "DcrSfcMatch": {
+        "type": "object",
+        "properties": {
+          "band": {
+            "$ref": "#/components/schemas/DcrBand"
+          },
+          "hqs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrSfcHqMatch"
+            }
+          }
+        },
+        "required": [
+          "band",
+          "hqs"
+        ],
+        "additionalProperties": false,
+        "description": "Candidates per HQ of the day (employee + HQ + band). 404 SFC_NO_MATCH lists the same per-HQ result in details when any HQ has none."
+      },
+      "DcrSfcHqMatch": {
+        "type": "object",
+        "properties": {
+          "hqTerritoryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "hqName": {
+            "type": "string"
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrSfcCandidate"
+            }
+          },
+          "autoSelectedId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when exactly one candidate matches"
+          }
+        },
+        "required": [
+          "hqTerritoryId",
+          "hqName",
+          "candidates",
+          "autoSelectedId"
+        ],
+        "additionalProperties": false
+      },
+      "DcrSfcCandidate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "fromPlace": {
+            "type": "string"
+          },
+          "toPlace": {
+            "type": "string"
+          },
+          "oneWayKm": {
+            "type": "number"
+          },
+          "bothWayKm": {
+            "type": "number"
+          },
+          "oneWayAmount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "bothWayAmount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "actualFare": {
+            "type": "boolean"
+          },
+          "travelMode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SfcTravelMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/SfcCategory"
+          },
+          "band": {
+            "$ref": "#/components/schemas/DcrBand"
+          },
+          "da": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "fromPlace",
+          "toPlace",
+          "oneWayKm",
+          "bothWayKm",
+          "oneWayAmount",
+          "bothWayAmount",
+          "actualFare",
+          "travelMode",
+          "category",
+          "band",
+          "da",
+          "version"
         ],
         "additionalProperties": false
       },
@@ -28074,6 +29531,277 @@
         ],
         "additionalProperties": false,
         "description": "Retail chemist prescription audit line (chemist calls, #40)"
+      },
+      "DcrDetailsOutput": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/DcrMeetingDetailsOutput"
+          },
+          {
+            "$ref": "#/components/schemas/DcrTrainingDetailsOutput"
+          },
+          {
+            "$ref": "#/components/schemas/DcrOfficeDetailsOutput"
+          },
+          {
+            "$ref": "#/components/schemas/DcrLeaveDetailsOutput"
+          }
+        ],
+        "description": "Non-field day details; kind must match the work type (DcrWorkTypeOption.detailsKind)",
+        "type": "object",
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "meeting": "#/components/schemas/DcrMeetingDetailsOutput",
+            "training": "#/components/schemas/DcrTrainingDetailsOutput",
+            "office": "#/components/schemas/DcrOfficeDetailsOutput",
+            "leave": "#/components/schemas/DcrLeaveDetailsOutput"
+          }
+        }
+      },
+      "DcrMeetingDetailsOutput": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "meeting"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "Meeting / training type or name"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "in_person",
+              "online"
+            ]
+          },
+          "location": {
+            "description": "Free text; required when mode = in_person (link or text when online)",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startTime": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "description": "Local time HH:mm (IST)",
+            "example": "10:30"
+          },
+          "durationMin": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720,
+            "description": "Minutes, 1-720"
+          },
+          "attendees": {
+            "description": "Free text",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "mode",
+          "startTime",
+          "durationMin"
+        ],
+        "additionalProperties": false
+      },
+      "DcrTrainingDetailsOutput": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "training"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "Meeting / training type or name"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "in_person",
+              "online"
+            ]
+          },
+          "location": {
+            "description": "Free text; required when mode = in_person (link or text when online)",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startTime": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "description": "Local time HH:mm (IST)",
+            "example": "10:30"
+          },
+          "durationMin": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720,
+            "description": "Minutes, 1-720"
+          },
+          "attendees": {
+            "description": "Free text",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trainer": {
+            "description": "Free text",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "mode",
+          "startTime",
+          "durationMin"
+        ],
+        "additionalProperties": false
+      },
+      "DcrOfficeDetailsOutput": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "office"
+          },
+          "taskType": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "startTime": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                "description": "Local time HH:mm (IST)",
+                "example": "10:30"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "durationMin": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720,
+            "description": "Minutes, 1-720"
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "taskType",
+          "description",
+          "durationMin"
+        ],
+        "additionalProperties": false,
+        "description": "Admin / office work"
+      },
+      "DcrLeaveDetailsOutput": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "leave"
+          },
+          "leaveRequestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Your leave request covering the date (pending or approved)",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          }
+        },
+        "required": [
+          "kind",
+          "leaveRequestId"
+        ],
+        "additionalProperties": false
       },
       "SfcSettingsOutput": {
         "type": "object",

@@ -1,4 +1,16 @@
 import {
+  DcrDraftPut,
+  DcrHqOptionList,
+  DcrOptions,
+  DcrOptionsQuery,
+  DcrSfcMatch,
+  DcrSfcMatchQuery,
+  DcrSubmit,
+  DcrSubmitHeaders,
+  DcrWorkWithList,
+  DcrWorkWithQuery,
+} from './schemas/dcr';
+import {
   ExceptionEvaluateRequest,
   ExceptionEvaluateResult,
   ExceptionItem,
@@ -873,6 +885,90 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '201': { description: 'Approval request created', ...json(Approval) },
             '409': err('Day is not locked, or already unlocked'),
+          },
+        }),
+      },
+      '/v1/dcrs/options': {
+        get: op({
+          tags: ['DCR'],
+          operationId: 'getDcrOptions',
+          summary: 'Work types (band, SFC use, details kind) and your DCR for a date',
+          requestParams: { query: DcrOptionsQuery },
+          responses: {
+            '200': { description: 'OK', ...json(DcrOptions) },
+            '422': err('VALIDATION'),
+          },
+        }),
+      },
+      '/v1/dcrs/territories': {
+        get: op({
+          tags: ['DCR'],
+          operationId: 'listDcrTerritories',
+          summary:
+            "HQs in your scope, each with its 'territory' children (pick any mix, several HQs allowed)",
+          responses: { '200': { description: 'OK', ...json(DcrHqOptionList) } },
+        }),
+      },
+      '/v1/dcrs/work-with': {
+        get: op({
+          tags: ['DCR'],
+          operationId: 'listDcrWorkWith',
+          summary: 'Active users of the company for Work With (anyone may work with anyone)',
+          requestParams: { query: DcrWorkWithQuery },
+          responses: { '200': { description: 'OK', ...json(DcrWorkWithList) } },
+        }),
+      },
+      '/v1/dcrs/sfc-match': {
+        get: op({
+          tags: ['DCR'],
+          operationId: 'matchDcrSfc',
+          summary: 'SFC route candidates per HQ of the day (field work types only)',
+          description:
+            'Each territory resolves to its HQ (itself or its parent). Per HQ: your live routes on that HQ whose category maps to the work type band (ex -> ex_hq, hq -> hq, os -> outstation). Other categories (MEETING, EX / OS, legacy text) never match.',
+          requestParams: { query: DcrSfcMatchQuery },
+          responses: {
+            '200': { description: 'OK', ...json(DcrSfcMatch) },
+            '404': err('SFC_NO_MATCH: some HQ has no route; details = { band, hqs, missingHqIds }'),
+            '422': err('VALIDATION (not a field work type, unknown or out-of-scope territory)'),
+            '503': err('SFC_UNAVAILABLE: lookup failed, retry'),
+          },
+        }),
+      },
+      '/v1/dcrs/draft': {
+        put: op({
+          tags: ['DCR'],
+          operationId: 'putDcrDraft',
+          summary: 'Create or update your draft DCR for a date (idempotent per user + date)',
+          requestBody: json(DcrDraftPut),
+          responses: {
+            '200': { description: 'Saved draft', ...json(Dcr) },
+            '409': err('ALREADY_SUBMITTED, DAY_LOCKED, VERSION_CONFLICT'),
+            '422': err(
+              'VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds)',
+            ),
+          },
+        }),
+      },
+      '/v1/dcrs/{id}/submit': {
+        post: op({
+          tags: ['DCR'],
+          operationId: 'submitDcr',
+          summary:
+            'Submit a draft: full re-check, freezes one TA/DA snapshot per HQ route; read-only after',
+          requestParams: { path: IdParam, header: DcrSubmitHeaders },
+          requestBody: json(DcrSubmit),
+          responses: {
+            '200': {
+              description: 'Submitted (also returned for a retry with the same key)',
+              ...json(Dcr),
+            },
+            '404': err('Not found (not your DCR)'),
+            '409': err(
+              'ALREADY_SUBMITTED (other key), IDEMPOTENCY_CONFLICT (key used on another DCR), VERSION_CONFLICT, DAY_LOCKED',
+            ),
+            '422': err(
+              'VALIDATION, SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND',
+            ),
           },
         }),
       },

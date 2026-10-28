@@ -9,6 +9,7 @@ export * from './schemas/products';
 export * from './schemas/product-prices';
 export * from './schemas/imports';
 export * from './schemas/field';
+export * from './schemas/dcr';
 export * from './schemas/kpis';
 export { buildOpenApiDocument, type OpenApiDocument } from './openapi';
 export { createApiClient, type ApiClient } from './client';
