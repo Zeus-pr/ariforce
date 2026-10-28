@@ -23783,6 +23783,10 @@
             "format": "date-time",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
             "description": "ISO-8601 timestamp (UTC)"
+          },
+          "source": {
+            "description": "own | hq (fallback). Absent on snapshots frozen before the fallback existed",
+            "$ref": "#/components/schemas/DcrSfcSource"
           }
         },
         "required": [
@@ -23804,6 +23808,14 @@
           "frozenAt"
         ],
         "additionalProperties": false
+      },
+      "DcrSfcSource": {
+        "type": "string",
+        "enum": [
+          "own",
+          "hq"
+        ],
+        "description": "own = the filer's route; hq = the filer has no live route on that HQ, so the HQ's routes (any owner) are offered"
       },
       "CompetitorBrandList": {
         "type": "object",
@@ -24225,7 +24237,7 @@
           "hqs"
         ],
         "additionalProperties": false,
-        "description": "Candidates per HQ of the day (employee + HQ + band). 404 SFC_NO_MATCH lists the same per-HQ result in details when any HQ has none."
+        "description": "Candidates per HQ of the day (HQ + band): the filer's own routes on an HQ where they have any, else that HQ's routes from any owner (source 'hq', de-duplicated). 404 SFC_NO_MATCH lists the same per-HQ result in details when any HQ has none."
       },
       "DcrSfcHqMatch": {
         "type": "object",
@@ -24333,6 +24345,10 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "source": {
+            "description": "own = the filer's route; hq = HQ fallback (filer has no live route on that HQ)",
+            "$ref": "#/components/schemas/DcrSfcSource"
           }
         },
         "required": [

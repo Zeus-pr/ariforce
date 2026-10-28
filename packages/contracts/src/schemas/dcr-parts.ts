@@ -6,6 +6,13 @@ import { SfcCategory, SfcTravelMode } from './sfc';
 
 /** Field-day band; fixed by the work type (work_types.allowance_band). */
 export const DcrBand = z.enum(['hq', 'ex_hq', 'outstation']).meta({ id: 'DcrBand' });
+/** Where an SFC candidate came from: the filer's own route, or the HQ fallback (no own route on that HQ). */
+export const DcrSfcSource = z.enum(['own', 'hq']).meta({
+  id: 'DcrSfcSource',
+  description:
+    "own = the filer's route; hq = the filer has no live route on that HQ, so the HQ's routes (any owner) are offered",
+});
+export type DcrSfcSource = z.infer<typeof DcrSfcSource>;
 export type DcrBand = z.infer<typeof DcrBand>;
 
 const HHmm = z
@@ -112,6 +119,9 @@ export const DcrSfcSnapshot = z
     da: z.number().nullable(),
     ratePerKm: z.number().meta({ description: 'Company TA rate per km at submit' }),
     frozenAt: Timestamp,
+    source: DcrSfcSource.optional().meta({
+      description: 'own | hq (fallback). Absent on snapshots frozen before the fallback existed',
+    }),
   })
   .meta({ id: 'DcrSfcSnapshot' });
 export type DcrSfcSnapshot = z.infer<typeof DcrSfcSnapshot>;

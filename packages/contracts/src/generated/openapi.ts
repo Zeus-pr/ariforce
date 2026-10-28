@@ -5107,7 +5107,14 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       frozenAt: string;
+      /** @description own | hq (fallback). Absent on snapshots frozen before the fallback existed */
+      source?: components['schemas']['DcrSfcSource'];
     };
+    /**
+     * @description own = the filer's route; hq = the filer has no live route on that HQ, so the HQ's routes (any owner) are offered
+     * @enum {string}
+     */
+    DcrSfcSource: 'own' | 'hq';
     CompetitorBrandList: {
       items: components['schemas']['CompetitorBrand'][];
     };
@@ -5236,7 +5243,7 @@ export interface components {
       employeeCode: string | null;
       designation: string | null;
     };
-    /** @description Candidates per HQ of the day (employee + HQ + band). 404 SFC_NO_MATCH lists the same per-HQ result in details when any HQ has none. */
+    /** @description Candidates per HQ of the day (HQ + band): the filer's own routes on an HQ where they have any, else that HQ's routes from any owner (source 'hq', de-duplicated). 404 SFC_NO_MATCH lists the same per-HQ result in details when any HQ has none. */
     DcrSfcMatch: {
       band: components['schemas']['DcrBand'];
       hqs: components['schemas']['DcrSfcHqMatch'][];
@@ -5272,6 +5279,8 @@ export interface components {
       band: components['schemas']['DcrBand'];
       da: number | null;
       version: number;
+      /** @description own = the filer's route; hq = HQ fallback (filer has no live route on that HQ) */
+      source?: components['schemas']['DcrSfcSource'];
     };
     ApprovalPage: {
       items: components['schemas']['Approval'][];
