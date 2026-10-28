@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "AriForce",
+    "slug": "ariforce",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "ariforce",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F4F8FD",
+    "ios": {
+      "bundleIdentifier": "in.arighna.ariforce",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "in.arighna.ariforce",
+      "adaptiveIcon": {
+        "backgroundColor": "#F4F8FD",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F4F8FD",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 112
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "apiUrl": "https://ariforce-api.prajeshchoudhury.in"
+    }
+  }
+}
