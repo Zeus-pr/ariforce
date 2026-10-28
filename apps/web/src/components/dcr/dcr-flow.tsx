@@ -10,7 +10,8 @@ import { Skeleton } from '@ariforce/ui/components/skeleton';
 import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
 import { dateLabel, todayIST } from '@/components/attendance/format';
-import { api, apiReady, MOCKING, toApiError } from '@/lib/api';
+import Link from 'next/link';
+import { api, apiReady, MOCKING, toApiError, type ApiError } from '@/lib/api';
 import {
   BANDS,
   KIND_LABEL,
@@ -31,8 +32,9 @@ import {
   type Person,
   type SfcHq,
   type WorkTypeOption,
+  SAVED_CUSTOMER,
 } from '@/lib/dcr/model';
-import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
+import { failureMessage, thrownMessage } from '@/lib/dcr/errors';
 import { ChoiceSelect } from './choice-select';
 import { CallCard, type CustomerScope, FieldError, LeaveFields, MeetingFields, OfficeFields, SfcPanel } from './dcr-sections';
 import { SearchSelect, type SelectOption } from './search-select';
@@ -69,6 +71,7 @@ const fresh = (date: string): FlowState => ({
   meeting: emptyMeeting(),
   office: emptyOffice(),
   leaveRequestId: '',
+  deviationReason: '',
 });
 
 function Step({ title, hint, children, testId, id }: { title: string; hint?: string; children: React.ReactNode; testId: string; id?: string }) {
@@ -94,6 +97,13 @@ function Flow({ today }: { today: string }) {
   const [peopleQ, setPeopleQ] = useState('');
   const [peopleError, setPeopleError] = useState<string | null>(null);
   const [products, setProducts] = useState<SelectOption[]>([]);
+  const [productsError, setProductsError] = useState<string | null>(null);
+  const [productsTick, setProductsTick] = useState(0);
+  const [askDeviation, setAskDeviation] = useState(false);
+  /** The server copy moved on (other tab, submitted, locked): offer a reload instead of more failed saves. */
+  const [stale, setStale] = useState(false);
+  /** The API has no /v1/dcrs/options yet (older deploy): point to the classic DCR screen. */
+  const [apiMissing, setApiMissing] = useState(false);
   const [missingHqIds, setMissingHqIds] = useState<string[]>([]);
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState<'draft' | 'submit' | null>(null);
@@ -134,12 +144,18 @@ function Flow({ today }: { today: string }) {
     setWorkTypes(null);
     setLoadError(null);
     setShowErrors(false);
+    setStale(false);
     submitKey.current = null;
     void (async () => {
       await apiReady();
       const r = await api.GET('/v1/dcrs/options', { params: { query: { date: s.date } } });
       if (!live) return;
-      if (!r.data) return setLoadError(toApiError(r).message || 'Could not load the report.');
+      if (!r.data) {
+        // An API without the redesign answers GET /v1/dcrs/options as GET /v1/dcrs/{id}: 404.
+        if (r.response?.status === 404) setApiMissing(true);
+        return setLoadError(failureMessage(r, 'Could not load the report for this date.'));
+      }
+      setApiMissing(false);
       const wts = r.data.workTypes as WorkTypeOption[];
       setWorkTypes(wts);
       const d = r.data.dcr;
@@ -160,9 +176,11 @@ function Flow({ today }: { today: string }) {
           next.meeting = { title: det.title, mode: det.mode, location: det.location ?? '', startTime: det.startTime, durationMin: String(det.durationMin), attendees: det.kind === 'meeting' ? det.attendees ?? '' : '', remarks: det.remarks ?? '', trainer: det.kind === 'training' ? det.trainer ?? '' : '' };
         if (det?.kind === 'office') next.office = { taskType: det.taskType, description: det.description, startTime: det.startTime ?? '', durationMin: String(det.durationMin), remarks: det.remarks ?? '' };
         if (det?.kind === 'leave') next.leaveRequestId = det.leaveRequestId;
-      }
+        next.deviationReason = d.deviationReason ?? '';
+        setAskDeviation(!!d.deviationReason);
+      } else setAskDeviation(false);
       setS(next);
-    })().catch(() => live && setLoadError('Could not reach the server.'));
+    })().catch((e: unknown) => live && setLoadError(thrownMessage(e)));
     return () => {
       live = false;
     };
@@ -174,8 +192,8 @@ function Flow({ today }: { today: string }) {
     setHqs(null);
     void apiReady()
       .then(() => api.GET('/v1/dcrs/territories', {}))
-      .then((r) => (r.data ? setHqs(r.data.items) : setHqError(toApiError(r).message || 'Could not load territories.')))
-      .catch(() => setHqError('Could not reach the server.'));
+      .then((r) => (r.data ? setHqs(r.data.items) : setHqError(failureMessage(r, 'Could not load your territories.'))))
+      .catch((e: unknown) => setHqError(thrownMessage(e)));
   }, []);
   useEffect(() => {
     if (field && hqs === null && !hqError) loadHqs();
@@ -190,25 +208,74 @@ function Flow({ today }: { today: string }) {
       .then(() => api.GET('/v1/dcrs/work-with', { params: { query: { limit: 50, ...(peopleQ ? { q: peopleQ } : {}) } } }))
       .then((r) => {
         if (!live) return;
-        if (!r.data) return setPeopleError(toApiError(r).message || 'Could not load people.');
+        if (!r.data) return setPeopleError(failureMessage(r, 'Could not load people.'));
         const items = r.data.items;
         setPersonNames((m) => new Map([...m, ...items.map((p) => [p.id, p.name] as [string, string])]));
         setPeople(items);
       })
-      .catch(() => live && setPeopleError('Could not reach the server.'));
+      .catch((e: unknown) => live && setPeopleError(thrownMessage(e)));
     return () => {
       live = false;
     };
   }, [field, s.territoryIds.length, peopleQ, peopleTick]);
 
-  // Products for detailing (mock: Arighna's real product names; live: GET /v1/products).
+  // Products for detailing. Mock: Arighna's real product names (loaded lazily, never in the real bundle path).
   useEffect(() => {
     if (!field) return;
-    if (MOCKING) return setProducts(MOCK_PRODUCT_SEED.map((p) => ({ id: p.id, label: p.name, hint: p.composition })));
-    void api.GET('/v1/products', { params: { query: { limit: 200 } } }).then((r) => {
-      if (r.data) setProducts(r.data.items.filter((p) => p.active).map((p) => ({ id: p.id, label: p.name, hint: p.composition })));
+    let live = true;
+    setProductsError(null);
+    void (async () => {
+      if (MOCKING) {
+        const { MOCK_PRODUCT_SEED } = await import('@/mocks/product-seed');
+        if (live) setProducts(MOCK_PRODUCT_SEED.map((p) => ({ id: p.id, label: p.name, hint: p.composition })));
+        return;
+      }
+      const r = await api.GET('/v1/products', { params: { query: { limit: 200 } } });
+      if (!live) return;
+      if (!r.data) return setProductsError(failureMessage(r, 'Could not load products.'));
+      setProducts(r.data.items.filter((p) => p.active).map((p) => ({ id: p.id, label: p.name, hint: p.composition })));
+    })().catch((e: unknown) => live && setProductsError(thrownMessage(e)));
+    return () => {
+      live = false;
+    };
+  }, [field, productsTick]);
+
+  // Saved calls name their customer by id only: look the names up once per DCR (doctors in one batch).
+  useEffect(() => {
+    const missing = s.calls.filter((c) => c.outletId && (!c.outletName || c.outletName === SAVED_CUSTOMER));
+    if (!missing.length) return;
+    let live = true;
+    void (async () => {
+      await apiReady();
+      const found = new Map<string, string>();
+      const doctorIds = [...new Set(missing.filter((c) => c.kind === 'doctor').map((c) => c.outletId))].slice(0, 100);
+      const jobs: Promise<void>[] = [];
+      if (doctorIds.length)
+        jobs.push(
+          api.GET('/v1/doctors', { params: { query: { ids: doctorIds.join(','), limit: 100 } } }).then((r) => {
+            r.data?.items.forEach((d) => found.set(d.id, d.name));
+          }),
+        );
+      for (const c of missing.filter((x) => x.kind !== 'doctor')) {
+        const path = c.kind === 'chemist' ? '/v1/chemists/{id}' : '/v1/stockists/{id}';
+        jobs.push(
+          api.GET(path, { params: { path: { id: c.outletId } } }).then((r) => {
+            if (r.data) found.set(r.data.id, r.data.name);
+          }),
+        );
+      }
+      await Promise.allSettled(jobs);
+      if (!live || !found.size) return;
+      found.forEach((n, id) => names.current.set(id, n));
+      setS((x) => ({ ...x, calls: x.calls.map((c) => (found.has(c.outletId) ? { ...c, outletName: found.get(c.outletId)! } : c)) }));
+    })().catch(() => {
+      /* names stay "Saved customer"; the call itself is intact */
     });
-  }, [field]);
+    return () => {
+      live = false;
+    };
+    // Once per loaded DCR (its id and version), not on every edit.
+  }, [dcr?.id, dcr?.version]);
 
   // SFC match: after Work With; refreshed whenever date, band, territory or Work With change.
   const sfcKey = field && s.workTypeId && s.territoryIds.length && s.workWithDone && !readOnly ? `${s.date}|${s.workTypeId}|${s.territoryIds.join(',')}|${s.workWith.join(',')}|${sfcTick}` : '';
@@ -231,6 +298,7 @@ function Flow({ today }: { today: string }) {
       }
       setS((x) => ({ ...x, sfc: { state: 'error', hqs: [] } }));
     })().catch(() => live && setS((x) => ({ ...x, sfc: { state: 'error', hqs: [] } })));
+    // A slow or dropped SFC lookup ends in the error state with Retry (lib/api times out after 8s).
     return () => {
       live = false;
     };
@@ -280,33 +348,51 @@ function Flow({ today }: { today: string }) {
       return;
     }
     setSaving(submit ? 'submit' : 'draft');
-    const r = await api.PUT('/v1/dcrs/draft', { body: draftBody(s, dcr?.version) });
-    if (!r.data) {
-      setSaving(null);
-      return toast.error(dcrErrorMessage(toApiError(r)), { duration: 10000 });
-    }
-    let saved = r.data;
-    if (submit) {
-      // One key per submit attempt: a retry after a dropped response returns the same submitted DCR.
-      submitKey.current ??= crypto.randomUUID();
-      const sub = await api.POST('/v1/dcrs/{id}/submit', {
-        params: { path: { id: saved.id }, header: { 'idempotency-key': submitKey.current } },
-        body: { version: saved.version },
-      });
-      if (!sub.data) {
-        setSaving(null);
-        setDcr(saved);
-        const e = toApiError(sub);
-        if (e.code !== 'NETWORK') submitKey.current = null;
-        return toast.error(dcrErrorMessage(e), { duration: 10000 });
+    try {
+      const r = await api.PUT('/v1/dcrs/draft', { body: draftBody(s, dcr?.version) });
+      if (!r.data) return failed(toApiError(r), r.response?.status);
+      let saved = r.data;
+      setDcr(saved);
+      if (submit) {
+        // One key per submit attempt: a retry after a dropped response returns the same submitted DCR.
+        submitKey.current ??= crypto.randomUUID();
+        let sub;
+        try {
+          sub = await api.POST('/v1/dcrs/{id}/submit', {
+            params: { path: { id: saved.id }, header: { 'idempotency-key': submitKey.current } },
+            body: { version: saved.version },
+          });
+        } catch (e) {
+          // Keep the key: the submit may have gone through; retrying with it is safe.
+          return toast.error(`${thrownMessage(e)} Your draft is saved; press Submit again.`, { duration: 10000 });
+        }
+        if (!sub.data) {
+          submitKey.current = null;
+          return failed(toApiError(sub), sub.response?.status);
+        }
+        saved = sub.data;
       }
-      saved = sub.data;
+      setDcr(saved);
+      setDirty(false);
+      setShowErrors(false);
+      toast.success(submit ? `Report for ${dateLabel(s.date)} submitted` : 'Draft saved. You can come back and finish it later.');
+    } catch (e) {
+      toast.error(`${thrownMessage(e)} Nothing was saved.`, { duration: 10000 });
+    } finally {
+      setSaving(null);
     }
-    setSaving(null);
-    setDcr(saved);
-    setDirty(false);
-    setShowErrors(false);
-    toast.success(submit ? `Report for ${dateLabel(s.date)} submitted` : 'Draft saved. You can come back and finish it later.');
+  }
+
+  /** Server said no: plain words, and open the field that fixes it where there is one. */
+  function failed(e: ApiError, status?: number) {
+    if (e.code === 'DEVIATION_REASON_REQUIRED') {
+      setAskDeviation(true);
+      setTimeout(() => document.getElementById('dcr-deviation')?.focus(), 50);
+    }
+    if (e.code === 'VERSION_CONFLICT' || e.code === 'ALREADY_SUBMITTED' || e.code === 'DAY_LOCKED') setStale(true);
+    const msg = e.code === 'NETWORK' && status && status >= 500 ? `The server had a problem (HTTP ${status}). Your changes are still on this page; try again.` : dcrErrorMessage(e);
+    const field = (e.details as { field?: string } | undefined)?.field;
+    toast.error(e.code === 'VALIDATION' && field ? `${msg} (${field})` : msg, { duration: 10000 });
   }
 
   const status = !dcr ? 'Not started' : dcr.status === 'draft' ? 'Draft' : dcr.status === 'submitted' ? 'Submitted' : 'Locked';
@@ -344,10 +430,24 @@ function Flow({ today }: { today: string }) {
         </div>
       )}
 
-      {loadError && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-danger-soft p-4 text-sm" role="alert">
+      {loadError && apiMissing ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-warning/40 bg-warning-soft p-4 text-sm sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="dcr-api-missing">
+          <span>The new daily report isn’t available on this server yet. Use the classic report for now.</span>
+          <Button type="button" size="sm" variant="outline" asChild>
+            <Link href="/dcr/classic">Open classic report</Link>
+          </Button>
+        </div>
+      ) : loadError && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-danger-soft p-4 text-sm" role="alert" data-testid="dcr-load-error">
           {loadError}
           <Button type="button" size="sm" variant="outline" onClick={() => setReload((n) => n + 1)}><RotateCw aria-hidden /> Retry</Button>
+        </div>
+      )}
+
+      {stale && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning-soft p-4 text-sm" role="status" data-testid="dcr-stale">
+          This report changed on the server since you opened it.
+          <Button type="button" size="sm" variant="outline" onClick={() => setReload((n) => n + 1)}><RotateCw aria-hidden /> Reload</Button>
         </div>
       )}
 
@@ -507,6 +607,8 @@ function Flow({ today }: { today: string }) {
                   scope={customerScope}
                   names={placeNames}
                   products={products}
+                  productsError={productsError}
+                  onProductsRetry={() => setProductsTick((n) => n + 1)}
                   readOnly={readOnly}
                   errors={errorsFor(`call-${c.clientId}`)}
                   onChange={(p) => patchCall(c.clientId, p)}
@@ -541,6 +643,23 @@ function Flow({ today }: { today: string }) {
       {branch === 'leave' && (
         <Step title="Leave" hint="Link the leave request that covers this date." testId="dcr-step-details">
           <LeaveFields date={s.date} value={s.leaveRequestId} onChange={(id) => update({ leaveRequestId: id })} readOnly={readOnly} errors={errorsFor('leave')} />
+        </Step>
+      )}
+
+      {s.workOn && (askDeviation || !!s.deviationReason) && (
+        <Step title="Change from your tour plan" hint="Your approved tour plan says something else for this day. Say why, then submit again." testId="dcr-step-deviation">
+          <Label htmlFor="dcr-deviation" className="sr-only">Reason for the change</Label>
+          <textarea
+            id="dcr-deviation"
+            value={s.deviationReason}
+            maxLength={500}
+            rows={2}
+            disabled={readOnly}
+            onChange={(e) => update({ deviationReason: e.target.value })}
+            placeholder="e.g. Doctor on leave, covered Arambagh instead"
+            className="w-full rounded-md border bg-card px-3 py-2 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm"
+            data-testid="dcr-deviation"
+          />
         </Step>
       )}
 

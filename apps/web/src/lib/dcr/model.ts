@@ -96,6 +96,8 @@ export type FlowState = {
   meeting: MeetingForm;
   office: OfficeForm;
   leaveRequestId: string;
+  /** Why the day differs from the approved tour plan; asked for when submit says DEVIATION_REASON_REQUIRED. */
+  deviationReason: string;
 };
 
 const minutes = (v: string) => {
@@ -176,6 +178,7 @@ export function draftBody(s: FlowState, version?: number): DcrDraftPut {
     ...(field ? { sfcRoutes: routes } : {}),
     // A partial non-field form is kept on the page, not sent: the API only takes complete details.
     details,
+    deviationReason: s.deviationReason.trim() || null,
     calls: field
       ? s.calls
           .filter((c) => c.outletId && HHMM.test(c.time))
@@ -197,12 +200,14 @@ export function draftBody(s: FlowState, version?: number): DcrDraftPut {
   };
 }
 
+/** Placeholder until the customer's name is looked up (dcr-flow). */
+export const SAVED_CUSTOMER = 'Saved customer';
 export function callsFromDcr(d: Dcr, names: Map<string, string>): CallDraft[] {
   return d.calls.map((c) => ({
     clientId: c.id,
     kind: c.outletKind,
     outletId: c.outletId,
-    outletName: names.get(c.outletId) ?? 'Saved customer',
+    outletName: names.get(c.outletId) ?? SAVED_CUSTOMER,
     hqId: '',
     time: timeOfIso(c.calledAt),
     productIds: c.productsDetailed.sort((a, b) => a.order - b.order).map((p) => p.productId),

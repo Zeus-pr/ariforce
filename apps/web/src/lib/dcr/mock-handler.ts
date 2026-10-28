@@ -144,6 +144,13 @@ export function mockDcrFlow(base: string) {
       const sp = new URL(request.url).searchParams;
       const tid = sp.get('territoryId');
       const t = tid ? DCR_TERRITORIES.find((x) => x.id === tid) : undefined;
+      // Batch lookup by ids (saved calls' names): answer for our outlets only.
+      const ids = sp.get('ids')?.toLowerCase().split(',');
+      if (ids && !tid) {
+        const mine = DCR_OUTLETS.filter((o) => o.kind === kind && ids.includes(o.id.toLowerCase()));
+        if (!mine.length) return undefined;
+        return HttpResponse.json({ items: mine.map(asRow), nextCursor: null });
+      }
       if (!t) return undefined; // not ours: the contracts mock answers
       // localTerritoryId (doctors, chemists): exact territory id, or 'none' for rows not linked yet.
       const local = kind === 'stockist' ? null : sp.get('localTerritoryId');
@@ -160,24 +167,34 @@ export function mockDcrFlow(base: string) {
           (!q || o.name.toLowerCase().includes(q)),
       ).sort((a, b) => a.name.localeCompare(b.name));
       const page = rows.slice(from, from + limit);
-      const now = '2026-10-01T05:30:00.000Z';
-      const tmpl = (kind === 'doctor' ? fx.doctors : kind === 'chemist' ? fx.chemists : fx.stockists)[0]!;
       return HttpResponse.json({
-        items: page.map((o) => ({
-          ...tmpl,
-          id: o.id,
-          name: o.name,
-          // Customers are filed under their HQ; the importer links some to a territory under it.
-          territoryId: o.hqId,
-          ...(kind === 'stockist' ? {} : { localTerritoryId: linkOf(o) }),
-          city: null,
-          createdAt: now,
-          updatedAt: now,
-          ...(kind === 'doctor' ? { approvalStatus: 'approved' } : {}),
-        })),
+        items: page.map(asRow),
         nextCursor: from + limit < rows.length ? String(from + limit) : null,
       });
     });
+  const outletById = (kind: 'doctor' | 'chemist' | 'stockist') =>
+    http.get(`${base}/v1/${kind}s/:id`, ({ params }) => {
+      const o = DCR_OUTLETS.find((x) => x.kind === kind && x.id === params.id);
+      return o ? HttpResponse.json(asRow(o)) : undefined;
+    });
+  function asRow(o: (typeof DCR_OUTLETS)[number]) {
+    const kind = o.kind;
+    const linkOf = (x: typeof o) => (x.territoryId === x.hqId ? null : x.territoryId);
+    const now = '2026-10-01T05:30:00.000Z';
+    const tmpl = (kind === 'doctor' ? fx.doctors : kind === 'chemist' ? fx.chemists : fx.stockists)[0]!;
+    return {
+      ...tmpl,
+      id: o.id,
+      name: o.name,
+      // Customers are filed under their HQ; the importer links some to a territory under it.
+      territoryId: o.hqId,
+      ...(kind === 'stockist' ? {} : { localTerritoryId: linkOf(o) }),
+      city: null,
+      createdAt: now,
+      updatedAt: now,
+      ...(kind === 'doctor' ? { approvalStatus: 'approved' } : {}),
+    };
+  }
 
   return [
     http.get(`${base}/v1/dcrs/options`, ({ request }) => {
@@ -349,5 +366,8 @@ export function mockDcrFlow(base: string) {
     outlets('doctor'),
     outlets('chemist'),
     outlets('stockist'),
+    outletById('doctor'),
+    outletById('chemist'),
+    outletById('stockist'),
   ];
 }

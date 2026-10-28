@@ -9,7 +9,7 @@ import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
 import { Skeleton } from '@ariforce/ui/components/skeleton';
 import { cn } from '@ariforce/ui/lib/utils';
-import { api, apiReady, toApiError } from '@/lib/api';
+import { api, apiReady } from '@/lib/api';
 import {
   BAND_LABEL,
   KIND_LABEL,
@@ -23,6 +23,7 @@ import {
 } from '@/lib/dcr/model';
 import { ChoiceSelect } from './choice-select';
 import { SearchSelect, type SelectOption } from './search-select';
+import { failureMessage, thrownMessage } from '@/lib/dcr/errors';
 
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
 const km = (n: number) => `${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 }).format(n)} km`;
@@ -213,7 +214,7 @@ function useCustomers(kind: CallKind, scope: CustomerScope[], names: Map<string,
       );
       if (!live) return;
       const bad = rs.find((r) => !r.data);
-      if (bad) return setError(toApiError(bad).message || 'Could not load the list.');
+      if (bad) return setError(failureMessage(bad, 'Could not load the list.'));
       const seen = new Set<string>();
       const out: SelectOption[] = [];
       for (const r of rs)
@@ -226,7 +227,7 @@ function useCustomers(kind: CallKind, scope: CustomerScope[], names: Map<string,
           out.push({ id: x.id, label: x.name, hint: [x.city, where, hq].filter(Boolean).join(' · ') || null, badge: kind === 'doctor' && x.approvalStatus === 'pending' ? 'Awaiting approval' : null, meta: x.territoryId ?? undefined });
         }
       setOpts(out);
-    })().catch(() => live && setError('Could not reach the server.'));
+    })().catch((e: unknown) => live && setError(thrownMessage(e)));
     return () => {
       live = false;
     };
@@ -240,6 +241,8 @@ export function CallCard({
   scope,
   names,
   products,
+  productsError = null,
+  onProductsRetry,
   readOnly,
   errors,
   onChange,
@@ -251,6 +254,8 @@ export function CallCard({
   /** Names of the day's HQs and territories by id. */
   names: Map<string, string>;
   products: SelectOption[];
+  productsError?: string | null;
+  onProductsRetry?: () => void;
   readOnly: boolean;
   errors: string[];
   onChange: (patch: Partial<CallDraft>) => void;
@@ -316,7 +321,7 @@ export function CallCard({
       {call.kind === 'doctor' && (
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium">Products detailed <span className="font-normal text-muted-foreground">(optional, in order)</span></span>
-          <SearchSelect label="Products" options={products} value={call.productIds} onChange={(ids) => onChange({ productIds: ids })} multiple placeholder="Choose products" disabled={readOnly} testId="dcr-call-products" />
+          <SearchSelect label="Products" options={products} error={productsError} onRetry={onProductsRetry} emptyText="No active products yet. Ask your administrator." labels={new Map(call.productIds.map((id) => [id, 'Saved product']))} value={call.productIds} onChange={(ids) => onChange({ productIds: ids })} multiple placeholder="Choose products" disabled={readOnly} testId="dcr-call-products" />
         </div>
       )}
       <div className="flex flex-col gap-1.5">
@@ -505,16 +510,16 @@ export function LeaveFields({ date, value, onChange, readOnly, errors }: { date:
     void (async () => {
       await apiReady();
       const [r, t] = await Promise.all([
-        api.GET('/v1/leave/requests', { params: { query: { mine: true } as never } }),
+        api.GET('/v1/leave/requests', { params: { query: { mine: 'true' } } }),
         api.GET('/v1/leave/types', {}),
       ]);
       if (!live) return;
-      if (!r.data) return setLoadError(toApiError(r).message || 'Could not load your leave.');
+      if (!r.data) return setLoadError(failureMessage(r, 'Could not load your leave.'));
       const items = (r.data as { items: LeaveReq[] }).items.filter((l) => ['pending', 'approved'].includes(l.status) && l.fromDate <= date && l.toDate >= date);
       setReqs(items);
       setTypes(((t.data as { items?: LeaveType[] } | undefined)?.items ?? []).filter((x) => x.active !== false));
       if (!value && items.length === 1 && !readOnly) onChange(items[0]!.id);
-    })().catch(() => live && setLoadError('Could not reach the server.'));
+    })().catch((e: unknown) => live && setLoadError(thrownMessage(e)));
     return () => {
       live = false;
     };
@@ -524,9 +529,15 @@ export function LeaveFields({ date, value, onChange, readOnly, errors }: { date:
   async function apply() {
     setBusy(true);
     setApplyError(null);
-    const r = await api.POST('/v1/leave/requests', { body: { typeCode: form.typeCode, fromDate: date, toDate: date, half: form.half || null, reason: form.reason.trim() || null } });
+    let r;
+    try {
+      r = await api.POST('/v1/leave/requests', { body: { typeCode: form.typeCode, fromDate: date, toDate: date, half: form.half || null, reason: form.reason.trim() || null } });
+    } catch (e) {
+      setBusy(false);
+      return setApplyError(thrownMessage(e));
+    }
     setBusy(false);
-    if (r.error || !r.data) return setApplyError(toApiError(r).message || 'Could not apply for leave.');
+    if (r.error || !r.data) return setApplyError(failureMessage(r, 'Could not apply for leave.'));
     const created = r.data as unknown as LeaveReq;
     setReqs((x) => [...(x ?? []), created]);
     onChange(created.id);
