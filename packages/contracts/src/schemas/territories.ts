@@ -13,8 +13,8 @@ export const TERRITORY_LEVELS = TerritoryLevel.options;
 /**
  * Which territory levels a role may hold (Part 3). A Business Manager holds headquarter-level
  * territories only; ABM and above may hold a headquarter or anything higher. Roles outside the
- * hierarchy (system admin) may hold any level above 'territory'. A 'territory' (city under an HQ,
- * migration 0042) groups doctors/chemists and is never assigned to people. Enforced on writes as
+ * hierarchy (system admin) may hold any level above 'territory'. A 'territory' (unit under an HQ,
+ * migration 0042) groups doctors/chemists/stockists and is never assigned to people. Enforced on writes as
  * 422 TERRITORY_LEVEL_INVALID.
  */
 export const PEOPLE_TERRITORY_LEVELS = TERRITORY_LEVELS.filter((l) => l !== 'territory');
