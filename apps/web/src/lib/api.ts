@@ -99,6 +99,7 @@ export function apiReady(): Promise<void> {
         { mockSfc },
         { mockPasswordReset },
         { mockDcrFlow },
+        { mockProductImages },
       ] = await Promise.all([
         import('msw/browser'),
         import('@ariforce/contracts/mocks'),
@@ -108,15 +109,18 @@ export function apiReady(): Promise<void> {
         import('./sfc/mock-handler'),
         import('./password-reset/mock-handler'),
         import('./dcr/mock-handler'),
+        import('./products/mock-handler'),
       ]);
+      const contract = createHandlers(API_URL);
       await setupWorker(
+        ...mockProductImages(API_URL, contract),
         ...mockInviteAccept(API_URL),
         ...mockLeaveDayBlock(API_URL),
         ...mockSfc(API_URL),
         ...mockPasswordReset(API_URL),
         ...mockDcrFlow(API_URL),
         ...mastersWriteGuard(API_URL),
-        ...createHandlers(API_URL),
+        ...contract,
       ).start({
         quiet: true,
       });

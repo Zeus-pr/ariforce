@@ -35,3 +35,10 @@ export const canPayExpenses = (role: Role, permissions?: readonly string[]) =>
   permissions
     ? permissions.includes('expenses:pay')
     : (DEFAULT_ROLE_PERMISSIONS[role] ?? []).includes('expenses:pay') || EXPENSE_PAYERS.includes(role);
+
+/**
+ * Who may edit product prices and the product image on the Product prices page: the
+ * `products:prices` permission (System Admin by default). Same map the page's API checks.
+ */
+export const canEditProductPrices = (role: Role, permissions?: readonly string[]) =>
+  (permissions ?? DEFAULT_ROLE_PERMISSIONS[role] ?? []).includes('products:prices');

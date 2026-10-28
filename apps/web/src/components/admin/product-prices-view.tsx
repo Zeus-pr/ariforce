@@ -9,7 +9,11 @@ import { Label } from '@ariforce/ui/components/label';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@ariforce/ui/components/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@ariforce/ui/components/table';
 import { toast } from '@ariforce/ui/components/sonner';
+import { useRole } from '@/components/shell/role-context';
 import { api, apiReady, toApiError } from '@/lib/api';
+import { canEditProductPrices } from '@/lib/permissions';
+import type { ProductImageResult } from '@/lib/products/product-image';
+import { ProductImageCell, ProductImageDialog } from './product-image';
 import {
   PRICE_KEYS,
   chunks,
@@ -40,6 +44,11 @@ export function ProductPricesView() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkSummary, setBulkSummary] = useState<{ total: number; updated: number; unchanged: number; failed: number; failures: BulkResult[] } | null>(null);
   const [historyFor, setHistoryFor] = useState<AdminProduct | null>(null);
+  const [imageFor, setImageFor] = useState<AdminProduct | null>(null);
+  const [imageOpen, setImageOpen] = useState(false);
+  const { role } = useRole();
+  // Same permission as price edits (`products:prices`); the API enforces it too.
+  const canEdit = canEditProductPrices(role);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(q.trim()), 250);
@@ -142,6 +151,13 @@ export function ProductPricesView() {
     void load(null);
   }
 
+  // Keep the row's image (and version, if the API bumped it) in step without a reload.
+  const imageSaved = (id: string, r: ProductImageResult) => {
+    const merge = (x: AdminProduct) => (x.id === id ? { ...x, imageUrl: r.imageUrl, ...(r.version ? { version: r.version } : {}) } : x);
+    setRows((rs) => rs?.map(merge) ?? rs);
+    setImageFor((x) => (x ? merge(x) : x));
+  };
+
   const nameOf = (id: string | null | undefined) => rows?.find((p) => p.id === id)?.name ?? id ?? '';
 
   return (
@@ -201,12 +217,24 @@ export function ProductPricesView() {
                 return (
                   <TableRow key={p.id} data-testid="pp-row" data-code={p.code} data-dirty={dirty ? '' : undefined}>
                     <TableCell className="align-top">
-                      <div className="font-medium">{p.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {p.code}{p.brand ? ` · ${p.brand}` : ''}{!p.active && ' · inactive'}
+                      <div className="flex items-start gap-3">
+                        <ProductImageCell
+                          product={p}
+                          canEdit={canEdit}
+                          onOpen={() => {
+                            setImageFor(p);
+                            setImageOpen(true);
+                          }}
+                        />
+                        <div className="min-w-0">
+                          <div className="font-medium">{p.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {p.code}{p.brand ? ` · ${p.brand}` : ''}{!p.active && ' · inactive'}
+                          </div>
+                          {p.ptr == null && <Badge variant="outline" className="mt-1 border-amber-500 text-amber-700" data-testid="pp-no-ptr">No PTR</Badge>}
+                          {rowErr[p.id] && <p className="mt-1 text-xs text-destructive" role="alert" data-testid="pp-row-error">{rowErr[p.id]}</p>}
+                        </div>
                       </div>
-                      {p.ptr == null && <Badge variant="outline" className="mt-1 border-amber-500 text-amber-700" data-testid="pp-no-ptr">No PTR</Badge>}
-                      {rowErr[p.id] && <p className="mt-1 text-xs text-destructive" role="alert" data-testid="pp-row-error">{rowErr[p.id]}</p>}
                     </TableCell>
                     {PRICE_KEYS.map((k) => (
                       <TableCell key={k} className="align-top">
@@ -249,6 +277,7 @@ export function ProductPricesView() {
         </div>
       )}
       <HistorySheet product={historyFor} onClose={() => setHistoryFor(null)} />
+      {canEdit && <ProductImageDialog product={imageFor} open={imageOpen} onOpenChange={setImageOpen} onSaved={imageSaved} />}
     </div>
   );
 }

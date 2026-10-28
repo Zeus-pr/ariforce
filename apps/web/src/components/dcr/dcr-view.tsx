@@ -22,16 +22,17 @@ import { dateLabel, timeIST, todayIST } from '@/components/attendance/format';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
 import { api, apiReady, MOCKING, toApiError } from '@/lib/api';
 import { saveMessage } from '@/lib/leave/model';
+import { productImageUrl } from '@/lib/products/product-image';
 import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
 import { OutletPicker, TerritoryFilter } from '@/components/pickers/pickers';
 import { territoryLabel, workTerritories } from '@/lib/territories';
 import { PobEditor, RcpaEditor, pobPayload, pobRcpaMessage, pobSummary, rcpaPayload, stripPobValue, type Opt, type PobDraft, type RcpaDraft } from './pob-rcpa';
 
 /** What the call form needs from a product. */
-type PickProduct = { id: string; name: string; detail: string | null; isSample: boolean };
+type PickProduct = { id: string; name: string; detail: string | null; isSample: boolean; imageUrl: string | null };
 
 /** In mock mode the picker uses Arighna's real product names (local mock seed); live mode uses GET /v1/products. */
-const SEED_PRODUCTS: PickProduct[] = MOCK_PRODUCT_SEED.map((p) => ({ id: p.id, name: p.name, detail: p.composition, isSample: true }));
+const SEED_PRODUCTS: PickProduct[] = MOCK_PRODUCT_SEED.map((p) => ({ id: p.id, name: p.name, detail: p.composition, isSample: true, imageUrl: null }));
 
 type Call = Omit<Dcr['calls'][number], 'id'> & { clientId: string };
 type Kind = Call['outletKind'];
@@ -85,7 +86,7 @@ function DcrDay({ today }: { today: string }) {
       if (w.data) setWorkTypes(w.data.items.filter((x) => x.active));
       if (d.data) setDoctors(d.data.items);
       if (MOCKING) setProducts(SEED_PRODUCTS);
-      else if (p.data) setProducts(p.data.items.filter((x) => x.active).map((x) => ({ id: x.id, name: x.name, detail: x.composition, isSample: x.isSample })));
+      else if (p.data) setProducts(p.data.items.filter((x) => x.active).map((x) => ({ id: x.id, name: x.name, detail: x.composition, isSample: x.isSample, imageUrl: productImageUrl(x) })));
     })().catch(() => {});
   }, []);
 
@@ -385,10 +386,12 @@ function CallDialog({
                     data-testid="call-product"
                     title={p.detail ?? undefined}
                     className={cn(
-                      'rounded-full border px-3 py-1 text-sm transition-[transform,background-color] duration-150 active:scale-[0.97]',
+                      'inline-flex items-center rounded-full border px-3 py-1 text-sm transition-[transform,background-color] duration-150 active:scale-[0.97]',
+                      p.imageUrl && 'gap-1.5 pl-1',
                       n >= 0 ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted',
                     )}
                   >
+                    {p.imageUrl && <img src={p.imageUrl} alt="" className="size-6 shrink-0 rounded-full bg-muted object-cover" loading="lazy" decoding="async" data-testid="call-product-image" />}
                     {n >= 0 && <span className="mr-1 tabular-nums">{n + 1}.</span>}
                     {p.name}
                   </button>
