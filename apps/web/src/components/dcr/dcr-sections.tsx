@@ -1,0 +1,502 @@
+'use client';
+
+import { CalendarPlus, Lock, MapPin, RotateCw, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { useCallback, useEffect, useState } from 'react';
+import type { Dcr } from '@ariforce/contracts';
+import { Button } from '@ariforce/ui/components/button';
+import { Input } from '@ariforce/ui/components/input';
+import { Label } from '@ariforce/ui/components/label';
+import { Skeleton } from '@ariforce/ui/components/skeleton';
+import { cn } from '@ariforce/ui/lib/utils';
+import { api, apiReady, toApiError } from '@/lib/api';
+import {
+  BAND_LABEL,
+  KIND_LABEL,
+  MODE_LABEL,
+  type CallDraft,
+  type CallKind,
+  type Candidate,
+  type MeetingForm,
+  type OfficeForm,
+  type SfcHq,
+} from '@/lib/dcr/model';
+import { SearchSelect, type SelectOption } from './search-select';
+
+const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
+const km = (n: number) => `${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 }).format(n)} km`;
+const money = (n: number | null, actualFare = false) => (actualFare ? 'Actual fare' : n == null ? 'Not set in SFC' : inr.format(n));
+
+export function FieldError({ messages, id }: { messages: string[]; id?: string }) {
+  if (!messages.length) return null;
+  return (
+    <ul id={id} className="flex flex-col gap-0.5 text-sm text-destructive" role="alert">
+      {messages.map((m) => <li key={m}>{m}</li>)}
+    </ul>
+  );
+}
+
+/** Read-only SFC plan and TA/DA, one block per HQ of the day. Never shows rates of an older selection. */
+export function SfcPanel({
+  state,
+  hqs,
+  choice,
+  onChoose,
+  onRetry,
+  onChangeTerritory,
+  missingHqNames,
+  snapshots,
+  readOnly,
+}: {
+  state: 'idle' | 'loading' | 'ok' | 'no_match' | 'error';
+  hqs: SfcHq[];
+  choice: Record<string, string>;
+  onChoose: (hqId: string, routeId: string) => void;
+  onRetry: () => void;
+  onChangeTerritory: () => void;
+  missingHqNames: string[];
+  snapshots?: Dcr['sfcRoutes'];
+  readOnly: boolean;
+}) {
+  if (snapshots?.length && readOnly) {
+    return (
+      <div className="flex flex-col gap-3" data-testid="dcr-sfc">
+        {snapshots.map((s) =>
+          s.snapshot ? (
+            <RouteFacts
+              key={s.hqTerritoryId}
+              title={`${s.snapshot.fromPlace} to ${s.snapshot.toPlace}`}
+              c={{ ...s.snapshot, id: s.sfcRouteId, version: s.snapshot.routeVersion }}
+              note={`Frozen at submit · TA rate ${inr.format(s.snapshot.ratePerKm)}/km`}
+            />
+          ) : null,
+        )}
+      </div>
+    );
+  }
+  if (state === 'loading')
+    return (
+      <div className="flex flex-col gap-2 rounded-xl border p-4" aria-busy="true" data-testid="dcr-sfc-loading">
+        <p className="text-sm text-muted-foreground">Finding your SFC record…</p>
+        <Skeleton className="h-5 w-2/3" />
+        <Skeleton className="h-16 w-full" />
+      </div>
+    );
+  if (state === 'error')
+    return (
+      <div className="flex flex-col gap-3 rounded-xl border border-destructive/40 bg-danger-soft p-4 sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="dcr-sfc-error">
+        <p className="text-sm">SFC could not be loaded, so no TA/DA is shown. Your entries are safe.</p>
+        <Button type="button" variant="outline" size="sm" onClick={onRetry} data-testid="dcr-sfc-retry">
+          <RotateCw aria-hidden /> Retry
+        </Button>
+      </div>
+    );
+  if (state === 'no_match')
+    return (
+      <div className="flex flex-col gap-3 rounded-xl border border-warning/50 bg-warning-soft p-4" role="alert" data-testid="dcr-sfc-nomatch">
+        <div className="flex flex-col gap-1">
+          <p className="text-sm font-medium text-warning-text">No matching SFC record</p>
+          <p className="text-sm">
+            Your SFC has no route for {missingHqNames.length ? missingHqNames.join(' and ') : 'this territory'} in this band. Pick another territory or band, or ask
+            your manager to add the route on the SFC screen. No TA/DA is applied.
+          </p>
+        </div>
+        <Button type="button" variant="outline" size="sm" className="self-start" onClick={onChangeTerritory} data-testid="dcr-sfc-change">
+          <MapPin aria-hidden /> Change territory
+        </Button>
+      </div>
+    );
+  if (state !== 'ok') return null;
+  return (
+    <div className="flex flex-col gap-3" data-testid="dcr-sfc">
+      {hqs.map((h) => {
+        const chosen = choice[h.hqTerritoryId] ?? h.autoSelectedId ?? '';
+        const c = h.candidates.find((x) => x.id === chosen);
+        return (
+          <div key={h.hqTerritoryId} className="flex flex-col gap-2">
+            {h.candidates.length > 1 && (
+              <fieldset className="flex flex-col gap-1.5" disabled={readOnly}>
+                <legend className="mb-1 text-sm font-medium">{h.hqName}: which route did you travel?</legend>
+                {h.candidates.map((r) => (
+                  <label key={r.id} className={cn('flex min-h-11 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm transition-colors', chosen === r.id ? 'border-primary bg-brand-50' : 'hover:bg-muted')}>
+                    <input type="radio" name={`route-${h.hqTerritoryId}`} className="accent-[var(--brand-navy)]" checked={chosen === r.id} onChange={() => onChoose(h.hqTerritoryId, r.id)} data-testid="dcr-sfc-route" />
+                    <span className="min-w-0 flex-1 truncate">{r.fromPlace} to {r.toPlace}</span>
+                    <span className="shrink-0 text-muted-foreground tabular-nums">{km(r.oneWayKm)}</span>
+                  </label>
+                ))}
+              </fieldset>
+            )}
+            {c ? (
+              <RouteFacts title={`${h.hqName} · ${c.fromPlace} to ${c.toPlace}`} c={c} note="From your SFC. Read-only; changes are made on the SFC screen." />
+            ) : (
+              <p className="text-sm text-muted-foreground">Pick a route to see its TA/DA.</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RouteFacts({ title, c, note }: { title: string; c: Candidate; note: string }) {
+  const facts: [string, string][] = [
+    ['Band', `${BAND_LABEL[c.band]} (${c.category.toUpperCase()})`],
+    ['Travel', c.travelMode ? MODE_LABEL[c.travelMode] ?? c.travelMode : 'Not set'],
+    ['Distance', `${km(c.oneWayKm)} one way · ${km(c.bothWayKm)} both`],
+    ['TA (both ways)', money(c.bothWayAmount, c.actualFare)],
+    ['DA', money(c.da)],
+  ];
+  return (
+    <section className="rounded-xl border bg-muted/40 p-4" aria-label="SFC details and TA/DA" data-testid="dcr-sfc-card">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <h3 className="text-sm font-semibold text-balance">{title}</h3>
+        <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+          <Lock className="size-3" aria-hidden /> Read-only
+        </span>
+      </div>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+        {facts.map(([k, v]) => (
+          <div key={k} className="flex flex-col gap-0.5">
+            <dt className="text-xs text-muted-foreground">{k}</dt>
+            <dd className="text-sm font-medium tabular-nums" data-testid={`dcr-sfc-${k.split(' ')[0]!.toLowerCase()}`}>{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-3 text-xs text-muted-foreground">{note}</p>
+    </section>
+  );
+}
+
+type OutletRow = { id: string; name: string; city?: string | null; territoryId?: string | null; approvalStatus?: string };
+/** Customers of the day's HQs from the right master (doctors, chemists or stockists), server search. */
+function useCustomers(kind: CallKind, hqIds: string[], hqNames: Map<string, string>) {
+  const [q, setQ] = useState('');
+  const [opts, setOpts] = useState<SelectOption[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  const key = hqIds.join(',');
+  useEffect(() => {
+    let live = true;
+    setOpts(null);
+    setError(null);
+    void (async () => {
+      await apiReady();
+      const rs = await Promise.all(
+        key.split(',').filter(Boolean).map((territoryId) => {
+          const query = { limit: 100, sort: 'name' as const, territoryId, ...(q ? { q } : {}) };
+          return kind === 'doctor' ? api.GET('/v1/doctors', { params: { query } }) : kind === 'chemist' ? api.GET('/v1/chemists', { params: { query } }) : api.GET('/v1/stockists', { params: { query } });
+        }),
+      );
+      if (!live) return;
+      const bad = rs.find((r) => !r.data);
+      if (bad) return setError(toApiError(bad).message || 'Could not load the list.');
+      const seen = new Set<string>();
+      const out: SelectOption[] = [];
+      for (const r of rs)
+        for (const x of (r.data?.items ?? []) as OutletRow[]) {
+          if (seen.has(x.id)) continue;
+          seen.add(x.id);
+          if (kind === 'doctor' && x.approvalStatus === 'rejected') continue;
+          out.push({ id: x.id, label: x.name, hint: [x.city, x.territoryId ? hqNames.get(x.territoryId) : null].filter(Boolean).join(' · ') || null, badge: kind === 'doctor' && x.approvalStatus === 'pending' ? 'Awaiting approval' : null, meta: x.territoryId ?? undefined });
+        }
+      setOpts(out);
+    })().catch(() => live && setError('Could not reach the server.'));
+    return () => {
+      live = false;
+    };
+  }, [kind, key, q, tick, hqNames]);
+  return { opts, error, setQ, retry: () => setTick((t) => t + 1) };
+}
+
+export function CallCard({
+  call,
+  index,
+  hqIds,
+  hqNames,
+  products,
+  readOnly,
+  errors,
+  onChange,
+  onRemove,
+}: {
+  call: CallDraft;
+  index: number;
+  hqIds: string[];
+  hqNames: Map<string, string>;
+  products: SelectOption[];
+  readOnly: boolean;
+  errors: string[];
+  onChange: (patch: Partial<CallDraft>) => void;
+  onRemove: () => void;
+}) {
+  const { opts, error, setQ, retry } = useCustomers(call.kind, hqIds, hqNames);
+  const onQuery = useCallback((q: string) => setQ(q), [setQ]);
+  const noun = KIND_LABEL[call.kind];
+  const labels = new Map(call.outletId ? [[call.outletId, call.outletName]] : []);
+  return (
+    <li className={cn('af-enter flex flex-col gap-4 rounded-xl border bg-card p-4', errors.length && 'border-destructive/60')} data-testid="dcr-call" data-kind={call.kind}>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold">
+          {noun} call <span className="font-normal text-muted-foreground tabular-nums">#{index + 1}</span>
+        </h3>
+        {!readOnly && (
+          <Button type="button" variant="ghost" size="sm" onClick={onRemove} aria-label={`Remove ${noun.toLowerCase()} call ${index + 1}`} data-testid="dcr-call-remove">
+            <Trash2 aria-hidden /> Remove
+          </Button>
+        )}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-[1fr_9rem]">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium" id={`cust-${call.clientId}`}>{noun}</span>
+          <SearchSelect
+            label={`${noun}s`}
+            options={opts ?? []}
+            loading={opts === null && !error}
+            error={error}
+            onRetry={retry}
+            onQuery={onQuery}
+            value={call.outletId ? [call.outletId] : []}
+            labels={labels}
+            onChange={(ids) => {
+              const o = opts?.find((x) => x.id === ids[0]);
+              onChange({ outletId: ids[0] ?? '', outletName: o?.label ?? '', hqId: o?.meta ?? '' });
+            }}
+            placeholder={`Choose a ${noun.toLowerCase()}`}
+            emptyText={`No ${noun.toLowerCase()}s found in the territories of the day.`}
+            disabled={readOnly}
+            invalid={errors.some((e) => e.includes('choose'))}
+            testId="dcr-call-customer"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`time-${call.clientId}`}>Visit time</Label>
+          <Input id={`time-${call.clientId}`} type="time" value={call.time} disabled={readOnly} onChange={(e) => onChange({ time: e.target.value })} aria-invalid={errors.some((e) => e.includes('time')) || undefined} className="min-h-11 md:text-base" data-testid="dcr-call-time" />
+        </div>
+      </div>
+      {call.kind === 'doctor' && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">Products detailed <span className="font-normal text-muted-foreground">(optional, in order)</span></span>
+          <SearchSelect label="Products" options={products} value={call.productIds} onChange={(ids) => onChange({ productIds: ids })} multiple placeholder="Choose products" disabled={readOnly} testId="dcr-call-products" />
+        </div>
+      )}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`rem-${call.clientId}`}>Remarks <span className="font-normal text-muted-foreground">(optional)</span></Label>
+        <Input id={`rem-${call.clientId}`} value={call.remarks} maxLength={1000} disabled={readOnly} onChange={(e) => onChange({ remarks: e.target.value })} className="md:text-base" data-testid="dcr-call-remarks" />
+      </div>
+      <FieldError messages={errors} />
+    </li>
+  );
+}
+
+function Field({ label, optional, children, htmlFor, errors = [] }: { label: string; optional?: boolean; children: React.ReactNode; htmlFor?: string; errors?: string[] }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={htmlFor}>
+        {label} {optional && <span className="font-normal text-muted-foreground">(optional)</span>}
+      </Label>
+      {children}
+      <FieldError messages={errors} />
+    </div>
+  );
+}
+
+/** Meeting and Training: type/name, in person or online, where, when, how long, who, remarks. */
+export function MeetingFields({ kind, value, onChange, readOnly, errors }: { kind: 'meeting' | 'training'; value: MeetingForm; onChange: (v: MeetingForm) => void; readOnly: boolean; errors: Record<string, string[]> }) {
+  const set = (p: Partial<MeetingForm>) => onChange({ ...value, ...p });
+  const what = kind === 'meeting' ? 'Meeting' : 'Training';
+  return (
+    <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-2" data-testid={`dcr-${kind}`}>
+      <div className="sm:col-span-2">
+        <Field label={`${what} type or name`} htmlFor="m-title" errors={errors.title}>
+          <Input id="m-title" value={value.title} maxLength={120} onChange={(e) => set({ title: e.target.value })} placeholder={kind === 'meeting' ? 'e.g. Monthly area review' : 'e.g. New product launch training'} className="md:text-base" />
+        </Field>
+      </div>
+      <div className="flex flex-col gap-1.5 sm:col-span-2">
+        <span className="text-sm font-medium">Mode</span>
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Mode">
+          {(['in_person', 'online'] as const).map((m) => (
+            <button key={m} type="button" role="radio" aria-checked={value.mode === m} onClick={() => set({ mode: m })} className={cn('min-h-11 rounded-md border px-3 text-sm transition-colors', value.mode === m ? 'border-primary bg-brand-50 font-medium' : 'hover:bg-muted')} data-testid={`dcr-mode-${m}`}>
+              {m === 'in_person' ? 'In person' : 'Online'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="sm:col-span-2">
+        <Field label={value.mode === 'online' ? 'Link or platform' : 'Location'} optional={value.mode === 'online'} htmlFor="m-loc" errors={errors.location}>
+          <Input id="m-loc" value={value.location} maxLength={200} onChange={(e) => set({ location: e.target.value })} className="md:text-base" />
+        </Field>
+      </div>
+      <Field label="Start time" htmlFor="m-start" errors={errors.startTime}>
+        <Input id="m-start" type="time" value={value.startTime} onChange={(e) => set({ startTime: e.target.value })} className="min-h-11 md:text-base" />
+      </Field>
+      <Field label="Duration (minutes)" htmlFor="m-dur" errors={errors.durationMin}>
+        <Input id="m-dur" inputMode="numeric" value={value.durationMin} onChange={(e) => set({ durationMin: e.target.value.replace(/\D/g, '').slice(0, 3) })} placeholder="60" className="md:text-base" />
+      </Field>
+      {kind === 'training' && (
+        <div className="sm:col-span-2">
+          <Field label="Trainer" optional htmlFor="m-trainer">
+            <Input id="m-trainer" value={value.trainer} maxLength={120} onChange={(e) => set({ trainer: e.target.value })} className="md:text-base" />
+          </Field>
+        </div>
+      )}
+      {kind === 'meeting' && (
+        <div className="sm:col-span-2">
+          <Field label="Attendees" optional htmlFor="m-att">
+            <Input id="m-att" value={value.attendees} maxLength={500} onChange={(e) => set({ attendees: e.target.value })} className="md:text-base" />
+          </Field>
+        </div>
+      )}
+      <div className="sm:col-span-2">
+        <Field label="Remarks" optional htmlFor="m-rem">
+          <Input id="m-rem" value={value.remarks} maxLength={1000} onChange={(e) => set({ remarks: e.target.value })} className="md:text-base" />
+        </Field>
+      </div>
+    </fieldset>
+  );
+}
+
+export function OfficeFields({ value, onChange, readOnly, errors }: { value: OfficeForm; onChange: (v: OfficeForm) => void; readOnly: boolean; errors: Record<string, string[]> }) {
+  const set = (p: Partial<OfficeForm>) => onChange({ ...value, ...p });
+  return (
+    <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-2" data-testid="dcr-office">
+      <div className="sm:col-span-2">
+        <Field label="Task type" htmlFor="o-type" errors={errors.taskType}>
+          <Input id="o-type" value={value.taskType} maxLength={60} onChange={(e) => set({ taskType: e.target.value })} placeholder="e.g. Expense filing, stock reconciliation" className="md:text-base" />
+        </Field>
+      </div>
+      <div className="sm:col-span-2">
+        <Field label="What you did" htmlFor="o-desc" errors={errors.description}>
+          <textarea id="o-desc" value={value.description} maxLength={1000} rows={3} onChange={(e) => set({ description: e.target.value })} className="w-full rounded-md border bg-card px-3 py-2 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm" />
+        </Field>
+      </div>
+      <Field label="Start time" optional htmlFor="o-start">
+        <Input id="o-start" type="time" value={value.startTime} onChange={(e) => set({ startTime: e.target.value })} className="min-h-11 md:text-base" />
+      </Field>
+      <Field label="Duration (minutes)" htmlFor="o-dur" errors={errors.durationMin}>
+        <Input id="o-dur" inputMode="numeric" value={value.durationMin} onChange={(e) => set({ durationMin: e.target.value.replace(/\D/g, '').slice(0, 3) })} placeholder="120" className="md:text-base" />
+      </Field>
+      <div className="sm:col-span-2">
+        <Field label="Remarks" optional htmlFor="o-rem">
+          <Input id="o-rem" value={value.remarks} maxLength={1000} onChange={(e) => set({ remarks: e.target.value })} className="md:text-base" />
+        </Field>
+      </div>
+    </fieldset>
+  );
+}
+
+type LeaveReq = { id: string; typeCode: string; typeName: string; fromDate: string; toDate: string; half: 'am' | 'pm' | null; days: number; reason: string | null; status: string };
+type LeaveType = { code: string; name: string; active?: boolean };
+const HALF_LABEL = { am: 'First half', pm: 'Second half' } as const;
+
+/** Leave: the leave request that covers the date (pending or approved), or apply for one here. */
+export function LeaveFields({ date, value, onChange, readOnly, errors }: { date: string; value: string; onChange: (id: string) => void; readOnly: boolean; errors: string[] }) {
+  const [reqs, setReqs] = useState<LeaveReq[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [types, setTypes] = useState<LeaveType[]>([]);
+  const [applying, setApplying] = useState(false);
+  const [form, setForm] = useState({ typeCode: '', half: '' as '' | 'am' | 'pm', reason: '' });
+  const [busy, setBusy] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    setReqs(null);
+    setLoadError(null);
+    void (async () => {
+      await apiReady();
+      const [r, t] = await Promise.all([
+        api.GET('/v1/leave/requests', { params: { query: { mine: true } as never } }),
+        api.GET('/v1/leave/types', {}),
+      ]);
+      if (!live) return;
+      if (!r.data) return setLoadError(toApiError(r).message || 'Could not load your leave.');
+      const items = (r.data as { items: LeaveReq[] }).items.filter((l) => ['pending', 'approved'].includes(l.status) && l.fromDate <= date && l.toDate >= date);
+      setReqs(items);
+      setTypes(((t.data as { items?: LeaveType[] } | undefined)?.items ?? []).filter((x) => x.active !== false));
+      if (!value && items.length === 1 && !readOnly) onChange(items[0]!.id);
+    })().catch(() => live && setLoadError('Could not reach the server.'));
+    return () => {
+      live = false;
+    };
+    // Reload on date or retry only; value/readOnly/onChange are read once per load.
+  }, [date, tick]);
+
+  async function apply() {
+    setBusy(true);
+    setApplyError(null);
+    const r = await api.POST('/v1/leave/requests', { body: { typeCode: form.typeCode, fromDate: date, toDate: date, half: form.half || null, reason: form.reason.trim() || null } });
+    setBusy(false);
+    if (r.error || !r.data) return setApplyError(toApiError(r).message || 'Could not apply for leave.');
+    const created = r.data as unknown as LeaveReq;
+    setReqs((x) => [...(x ?? []), created]);
+    onChange(created.id);
+    setApplying(false);
+  }
+
+  if (loadError)
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-danger-soft p-4 text-sm" role="alert">
+        {loadError}
+        <Button type="button" size="sm" variant="outline" onClick={() => setTick((t) => t + 1)}><RotateCw aria-hidden /> Retry</Button>
+      </div>
+    );
+  if (!reqs) return <Skeleton className="h-20 w-full" />;
+  return (
+    <div className="flex flex-col gap-4" data-testid="dcr-leave">
+      {reqs.length > 0 ? (
+        <fieldset className="flex flex-col gap-2" disabled={readOnly}>
+          <legend className="mb-1 text-sm font-medium">Leave covering this date</legend>
+          {reqs.map((l) => (
+            <label key={l.id} className={cn('flex min-h-11 cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 text-sm transition-colors', value === l.id ? 'border-primary bg-brand-50' : 'hover:bg-muted')} data-testid="dcr-leave-option">
+              <input type="radio" name="leave" className="mt-1 accent-[var(--brand-navy)]" checked={value === l.id} onChange={() => onChange(l.id)} />
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="font-medium">{l.typeName} · {l.half ? HALF_LABEL[l.half] : l.fromDate === l.toDate ? 'Full day' : `${l.fromDate} to ${l.toDate} (${l.days} days)`}</span>
+                <span className="text-xs text-muted-foreground">{l.status === 'approved' ? 'Approved' : 'Awaiting approval'}{l.reason ? ` · ${l.reason}` : ''}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      ) : (
+        !applying && <p className="text-sm text-muted-foreground">No leave request covers this date yet.</p>
+      )}
+      <FieldError messages={errors} />
+      {!readOnly && !applying && (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => setApplying(true)} data-testid="dcr-leave-apply">
+            <CalendarPlus aria-hidden /> Apply for leave on this date
+          </Button>
+          <Button type="button" variant="link" size="sm" asChild>
+            <Link href="/leave">Longer leave on the Leave page</Link>
+          </Button>
+        </div>
+      )}
+      {applying && (
+        <div className="af-enter grid gap-4 rounded-xl border bg-card p-4 sm:grid-cols-2" data-testid="dcr-leave-form">
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <span className="text-sm font-medium">Leave type</span>
+            <SearchSelect label="Leave types" options={types.map((t) => ({ id: t.code, label: t.name, badge: t.code }))} value={form.typeCode ? [form.typeCode] : []} onChange={(ids) => setForm((f) => ({ ...f, typeCode: ids[0] ?? '' }))} placeholder="Choose a leave type" emptyText="No leave types are set up. Ask your administrator." testId="dcr-leave-type" />
+          </div>
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <span className="text-sm font-medium">Duration</span>
+            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Duration">
+              {([['', 'Full day'], ['am', 'First half'], ['pm', 'Second half']] as const).map(([k, l]) => (
+                <button key={k || 'full'} type="button" role="radio" aria-checked={form.half === k} onClick={() => setForm((f) => ({ ...f, half: k }))} className={cn('min-h-11 rounded-md border px-2 text-sm transition-colors', form.half === k ? 'border-primary bg-brand-50 font-medium' : 'hover:bg-muted')}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <Label htmlFor="l-reason">Reason <span className="font-normal text-muted-foreground">(optional)</span></Label>
+            <Input id="l-reason" value={form.reason} maxLength={1000} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} className="md:text-base" />
+          </div>
+          {applyError && <p className="text-sm text-destructive sm:col-span-2" role="alert">{applyError}</p>}
+          <div className="flex gap-2 sm:col-span-2">
+            <Button type="button" disabled={busy || !form.typeCode} onClick={() => void apply()} data-testid="dcr-leave-submit">{busy ? 'Applying…' : 'Apply for leave'}</Button>
+            <Button type="button" variant="ghost" onClick={() => setApplying(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
