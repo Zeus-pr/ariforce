@@ -100,3 +100,32 @@
     font-feature-settings: 'tnum' 0;
   }
 }
+
+/* Dropdown surfaces (Select, Popover, Combobox): grow from the trigger (Radix sets the origin),
+   ease-out in, quicker fade out. Reduced motion zeroes the durations in tokens.css. */
+@keyframes af-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes af-pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+[data-slot='select-content'][data-state='open'],
+[data-slot='popover-content'][data-state='open'] {
+  animation: af-pop-in var(--duration-fast) var(--ease-out);
+}
+[data-slot='select-content'][data-state='closed'],
+[data-slot='popover-content'][data-state='closed'] {
+  animation: af-pop-out var(--duration-instant) var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot='select-content'],
+  [data-slot='popover-content'] {
+    animation: none !important;
+  }
+}
