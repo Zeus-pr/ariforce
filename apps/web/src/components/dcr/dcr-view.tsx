@@ -24,6 +24,7 @@ import { api, apiReady, MOCKING, toApiError } from '@/lib/api';
 import { saveMessage } from '@/lib/leave/model';
 import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
 import { OutletPicker, TerritoryFilter } from '@/components/pickers/pickers';
+import { territoryLabel, workTerritories } from '@/lib/territories';
 import { PobEditor, RcpaEditor, pobPayload, pobRcpaMessage, pobSummary, rcpaPayload, stripPobValue, type Opt, type PobDraft, type RcpaDraft } from './pob-rcpa';
 
 /** What the call form needs from a product. */
@@ -120,7 +121,7 @@ function DcrDay({ today }: { today: string }) {
     () => new Map([...[...doctors, ...chemists, ...stockists].map((o) => [o.id, o.name] as [string, string]), ...pickedNames]),
     [doctors, chemists, stockists, pickedNames],
   );
-  const leaves = territories.filter((t) => !territories.some((c) => c.parentId === t.id));
+  const leaves = workTerritories(territories);
 
   const problems = [
     !wt && 'Choose what you worked on.',
@@ -191,7 +192,7 @@ function DcrDay({ today }: { today: string }) {
             <Label htmlFor="dcr-terr">Territory</Label>
             <Select value={terr} onValueChange={setTerr} disabled={locked}>
               <SelectTrigger id="dcr-terr" className="w-full" data-testid="dcr-terr"><SelectValue placeholder="Choose" /></SelectTrigger>
-              <SelectContent>{leaves.length === 0 && <EmptyOptions>No territories are assigned to you yet. Ask your administrator.</EmptyOptions>}{leaves.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+              <SelectContent>{leaves.length === 0 && <EmptyOptions>No territories are assigned to you yet. Ask your administrator.</EmptyOptions>}{leaves.map((t) => <SelectItem key={t.id} value={t.id}>{territoryLabel(t, byId)}</SelectItem>)}</SelectContent>
             </Select>
           </div>
         )}

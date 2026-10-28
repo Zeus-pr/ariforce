@@ -389,7 +389,8 @@ function TerritoryPick({
 }) {
   const [q, setQ] = useState('');
   const pool = (terrs ?? []).filter((t) =>
-    hqOnly ? t.level === 'headquarter' : t.level !== 'headquarter',
+    // A level 'territory' row groups doctors/chemists and is never assigned to people.
+    hqOnly ? t.level === 'headquarter' : t.level !== 'headquarter' && t.level !== 'territory',
   );
   const shown = pool
     .filter((t) => !q || `${t.name} ${t.code}`.toLowerCase().includes(q.toLowerCase()))

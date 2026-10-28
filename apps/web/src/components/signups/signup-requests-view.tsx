@@ -275,7 +275,7 @@ function ApproveDialog({
         }),
       )
       .then((r) => {
-        const items = (r.data?.items ?? []).filter((t) => !bmOnly || t.level === 'headquarter');
+        const items = (r.data?.items ?? []).filter((t) => t.level !== 'territory' && (!bmOnly || t.level === 'headquarter'));
         if (live) setTerritories(items.map((t) => ({ id: t.id, name: t.name })));
       })
       .catch(() => live && setTerritories([]));

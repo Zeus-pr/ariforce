@@ -478,7 +478,7 @@ function ManualInvite({ hqs, onSent }: { hqs: Terr[] | null; onSent: () => void 
                       </p>
                     )}
                     {hqs
-                      ?.filter((h) => r.role !== 'business_manager' || h.level === 'headquarter')
+                      ?.filter((h) => h.level !== 'territory' && (r.role !== 'business_manager' || h.level === 'headquarter'))
                       .map((h) => (
                         <SelectItem key={h.id} value={h.id}>
                           {h.name} ({h.code})

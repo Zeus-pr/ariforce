@@ -31,6 +31,7 @@ const LEVEL: Record<Territory['level'], string> = {
   region: 'Region',
   area: 'Area',
   headquarter: 'HQ',
+  territory: 'Territory',
 };
 const COLS = [...TEAM_COLUMNS, 'dcr_compliance_pct', 'pob_value'] as const;
 const noop = () => () => {};

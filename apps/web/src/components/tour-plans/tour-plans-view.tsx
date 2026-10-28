@@ -41,6 +41,7 @@ import { ApprovalReview } from '@/components/approvals/approval-review';
 import { RejectDialog } from '@/components/approvals/reject-dialog';
 import { RejectionNote } from '@/components/approvals/rejection-note';
 import { datesOf, dayLabel, monthLabel, shiftMonth, thisMonthIST, weekdayMon } from './month';
+import { territoryLabel, workTerritories } from '@/lib/territories';
 
 type Day = TourPlan['days'][number];
 type Entry = Day['entries'][number];
@@ -504,7 +505,7 @@ function DayEditor({
   onClose: () => void;
   onSave: (date: string, entries: Entry[]) => Promise<void>;
 }) {
-  const { territories } = useLookups();
+  const { territories, byId } = useLookups();
   const [wt, setWt] = useState('');
   const [terr, setTerr] = useState('');
   const [docs, setDocs] = useState<string[]>([]);
@@ -518,7 +519,7 @@ function DayEditor({
   }, [entry, date]);
   const kind = workTypes.find((w) => w.id === wt)?.kind;
   const needsTerritory = kind === 'field';
-  const leaves = territories.filter((t) => !territories.some((c) => c.parentId === t.id));
+  const leaves = workTerritories(territories);
 
   async function save(entries: Entry[]) {
     if (!date) return;
@@ -576,7 +577,7 @@ function DayEditor({
                   )}
                   {leaves.map((t) => (
                     <SelectItem key={t.id} value={t.id}>
-                      {t.name}
+                      {territoryLabel(t, byId)}
                     </SelectItem>
                   ))}
                 </SelectContent>
