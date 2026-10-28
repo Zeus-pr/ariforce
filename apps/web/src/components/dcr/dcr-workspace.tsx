@@ -15,6 +15,7 @@ import {
 } from '@ariforce/ui/components/alert-dialog';
 import { Button } from '@ariforce/ui/components/button';
 import { Skeleton } from '@ariforce/ui/components/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@ariforce/ui/components/tooltip';
 import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
 import { dateLabel, todayIST } from '@/components/attendance/format';
@@ -57,7 +58,8 @@ function Workspace({ today }: { today: string }) {
   const [hqs, setHqs] = useState<HqOption[]>([]);
   /** Dates that already have a submitted report (drafts of those days can only be deleted). */
   const [submittedDays, setSubmittedDays] = useState<Map<string, string | null>>(new Map());
-  const [open, setOpen] = useState<Open | null>({ key: 'new-0', date: today, draftId: null, isNew: true });
+  // Everything starts collapsed: a draft opens only on click / Enter / Space (or a ?draft= / ?new=1 link).
+  const [open, setOpen] = useState<Open | null>(null);
   const [closing, setClosing] = useState(false);
   const [removing, setRemoving] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState<Dcr | null>(null);
@@ -100,6 +102,23 @@ function Workspace({ today }: { today: string }) {
       live = false;
     };
   }, [reload]);
+
+  // Deep links: /dcr?draft=<id> opens that draft once the list is in; /dcr?new=1 opens a new report.
+  const linked = useRef(false);
+  useEffect(() => {
+    if (linked.current || drafts === null) return;
+    linked.current = true;
+    const q = new URLSearchParams(window.location.search);
+    const id = q.get('draft');
+    const d = id ? drafts.find((x) => x.id === id) : undefined;
+    if (d) {
+      setOpen({ key: d.id, date: d.date, draftId: d.id, isNew: false });
+      focusTarget.current = 'header';
+    } else if (q.get('new') === '1') {
+      setOpen({ key: 'new-link', date: today, draftId: null, isNew: true });
+      focusTarget.current = 'header';
+    }
+  }, [drafts, today]);
 
   // Names for the cards: work types (one options call) and territories. Cards fall back to plain words.
   useEffect(() => {
@@ -357,6 +376,13 @@ function Workspace({ today }: { today: string }) {
       ) : drafts === null ? (
         <div className="flex flex-col gap-2" aria-busy="true"><Skeleton className="h-20 w-full rounded-xl" /></div>
       ) : (
+        <>
+        {!live.length && !open && (
+          <div className="af-fade flex flex-col items-start gap-1 rounded-xl border border-dashed p-5 text-sm" data-testid="dcr-drafts-empty">
+            <p className="font-medium">No saved drafts</p>
+            <p className="text-muted-foreground">Start today’s report with New DCR. Save it as a draft to come back to it later.</p>
+          </div>
+        )}
         <ul className="flex flex-col" aria-labelledby="dcr-drafts-h" data-testid="dcr-drafts">
           {sorted.map((d, i) =>
             open?.draftId === d.id ? (
@@ -381,6 +407,7 @@ function Workspace({ today }: { today: string }) {
           )}
           {open && !open.isNew && !sorted.some((d) => d.id === open.draftId) && <li className="pb-3">{editor}</li>}
         </ul>
+        </>
       )}
 
       <AlertDialog open={!!confirm} onOpenChange={(o) => !o && !deleting && setConfirm(null)}>
@@ -452,8 +479,15 @@ function DraftCard({
       : null;
   const what = workType ?? (band ? 'Field work' : d.details?.kind ? d.details.kind[0]!.toUpperCase() + d.details.kind.slice(1) : 'Report');
   const n = d.callCount ?? d.calls.length;
+  const day = dateLabel(d.date);
+  // One row: the report itself expands (chevron is part of that target); delete sits apart, past a divider.
   return (
-    <div className="relative">
+    <div
+      className={cn(
+        'group/card flex items-stretch gap-2 rounded-xl border bg-card p-1.5 shadow-xs',
+        'transition-[border-color,box-shadow] duration-(--duration-fast) ease-(--ease-out) hover:border-foreground/20',
+      )}
+    >
       <button
         type="button"
         aria-expanded={false}
@@ -462,15 +496,15 @@ function DraftCard({
         data-draft-card={d.id}
         data-testid="dcr-draft-card"
         className={cn(
-          'group flex w-full items-start gap-3 rounded-xl border bg-card p-4 pr-16 text-left shadow-xs outline-none',
-          'transition-[border-color,box-shadow,transform] duration-(--duration-fast) ease-(--ease-out)',
-          'hover:border-foreground/20 focus-visible:ring-[3px] focus-visible:ring-ring/50 active:scale-[0.99] motion-reduce:active:scale-100',
+          'group flex min-w-0 flex-1 items-start gap-3 rounded-lg py-2.5 pr-1.5 pl-2.5 text-left outline-none',
+          'transition-[background-color,transform] duration-(--duration-fast) ease-(--ease-out)',
+          'hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/50 active:scale-[0.99] motion-reduce:active:scale-100',
         )}
       >
         <FileText className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold tracking-tight">{dateLabel(d.date)}</span>
+            <span className="font-semibold tracking-tight">{day}</span>
             <span className="rounded-md bg-info-soft px-2 py-0.5 text-xs font-medium text-info">Draft</span>
             {daySubmitted && (
               <span className="rounded-md bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning" data-testid="dcr-card-day-submitted">
@@ -486,19 +520,30 @@ function DraftCard({
             {daySubmitted ? ' · Can’t be submitted; delete it if you no longer need it' : ''}
           </span>
         </span>
-        <ChevronDown className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform duration-(--duration-fast) group-hover:translate-y-0.5 motion-reduce:transition-none" aria-hidden />
+        <span
+          className="flex size-10 shrink-0 items-center justify-center self-center rounded-md text-muted-foreground transition-colors duration-(--duration-fast) group-hover:bg-muted group-hover:text-foreground"
+          aria-hidden
+        >
+          <ChevronDown className="size-4" />
+        </span>
       </button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="absolute top-2 right-9 size-11 text-muted-foreground hover:text-destructive"
-        onClick={onDelete}
-        aria-label={`Delete draft for ${dateLabel(d.date)}`}
-        data-testid="dcr-card-delete"
-      >
-        <Trash2 aria-hidden />
-      </Button>
+      <span className="my-3 w-px shrink-0 bg-border" aria-hidden />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-10 shrink-0 self-center text-muted-foreground hover:bg-danger-soft hover:text-destructive focus-visible:text-destructive"
+            onClick={onDelete}
+            aria-label={`Delete draft for ${day}`}
+            data-testid="dcr-card-delete"
+          >
+            <Trash2 aria-hidden />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">Delete draft</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
