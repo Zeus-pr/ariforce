@@ -43,7 +43,7 @@ import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { companySettings, localDate } from '../field/field.util';
-import { approvedLeaveDays, assertNotOnLeave } from '../leave/leave.util';
+import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leave.util';
 import {
   SUBMITTED_STATUSES,
   draftsNewestFirst,
@@ -543,6 +543,9 @@ export class DcrFlowService {
         .where(and(eq(dcrs.id, id), eq(dcrs.userId, p.userId), isNull(dcrs.deletedAt)))
         .for('update');
       if (!cur) throw new NotFoundException('DCR not found');
+      // Serialise with leave approval (LEAVE_DCR_CONFLICT): the approved-leave check below then sees
+      // any leave approved before us, and an approval after us sees this submitted DCR.
+      await lockDcrLeave(tx, p.userId);
       if (cur.status === 'submitted') {
         if (cur.submitIdempotencyKey === key) return (await this.dcr.toDto(tx, s, [cur]))[0]!;
         throw err(409, 'ALREADY_SUBMITTED', 'Already submitted; request a correction', { id });

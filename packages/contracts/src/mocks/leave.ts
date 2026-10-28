@@ -69,6 +69,17 @@ const counted = (from: string, to: string) => {
 export const mockWeeklyOffDays = () => [...settings.weeklyOffDays];
 
 /** Approved mock leave for attendance mocks. */
+/** Live submitted DCRs of a user in [from, to] (set by the field mocks), for LEAVE_DCR_CONFLICT. */
+type SubmittedDcrLookup = (
+  userId: string,
+  from: string,
+  to: string,
+) => { id: string; date: string }[];
+let submittedDcrs: SubmittedDcrLookup = () => [];
+export function setMockSubmittedDcrLookup(fn: SubmittedDcrLookup) {
+  submittedDcrs = fn;
+}
+
 export function mockLeaveOn(userId: string, date: string) {
   const r = requests.find(
     (x) =>
@@ -250,6 +261,24 @@ export function leaveHandlers(baseUrl: string, who: (r: Request) => Me | undefin
       const rej = d.data.decision === 'reject';
       if (rej && !d.data.comment)
         return e(422, 'REJECTION_REASON_REQUIRED', 'A reason is required to reject');
+      if (!rej) {
+        const hit = submittedDcrs(r.userId, r.fromDate, r.toDate);
+        if (hit.length)
+          return HttpResponse.json(
+            {
+              error: {
+                code: 'LEAVE_DCR_CONFLICT',
+                message:
+                  'A submitted DCR exists on these leave dates; sort the DCR out (correction) before approving',
+                details: {
+                  dates: [...new Set(hit.map((x) => x.date))].sort(),
+                  dcrIds: [...new Set(hit.map((x) => x.id))].sort(),
+                },
+              },
+            },
+            { status: 409 },
+          );
+      }
       const at = now();
       Object.assign(r, {
         status: rej ? 'rejected' : 'approved',

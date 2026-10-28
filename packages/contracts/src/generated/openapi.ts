@@ -13188,7 +13188,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Not pending */
+      /** @description Not pending; LEAVE_DCR_CONFLICT on approve: a submitted DCR exists on a leave date (details.dates, details.dcrIds) */
       409: {
         headers: {
           [name: string]: unknown;
@@ -15650,7 +15650,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Already decided */
+      /** @description Already decided; LEAVE_DCR_CONFLICT when the final approval of a leave hits a submitted DCR (details.dates, details.dcrIds) */
       409: {
         headers: {
           [name: string]: unknown;

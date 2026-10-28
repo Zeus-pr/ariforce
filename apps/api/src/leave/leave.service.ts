@@ -33,7 +33,7 @@ import { err } from '../field/checkins.service';
 import { companySettings, localDate } from '../field/field.util';
 import { ApprovalsService } from '../plans/approvals.service';
 import { nameRejecters, rejectionFields } from '../common/rejection';
-import { addDay, countedDates } from './leave.util';
+import { addDay, assertNoSubmittedDcr, countedDates } from './leave.util';
 import { submittedReportSql } from '../dcr/day-report';
 
 type ReqRow = typeof leaveRequests.$inferSelect;
@@ -115,6 +115,20 @@ export class LeaveService implements OnModuleInit {
     this.approvals.register(
       'leave',
       async (tx, p, req, approved, comment) => {
+        // Final approval only (intermediate steps never reach this hook): refuse while a submitted
+        // DCR sits on any leave date. Runs in the decision transaction; rolls the decision back.
+        if (approved) {
+          const [lr] = await tx
+            .select({
+              userId: leaveRequests.userId,
+              fromDate: leaveRequests.fromDate,
+              toDate: leaveRequests.toDate,
+            })
+            .from(leaveRequests)
+            .where(and(eq(leaveRequests.id, req.entityId), eq(leaveRequests.status, 'pending')))
+            .for('update');
+          if (lr) await assertNoSubmittedDcr(tx, lr.userId, lr.fromDate, lr.toDate);
+        }
         await tx
           .update(leaveRequests)
           .set({

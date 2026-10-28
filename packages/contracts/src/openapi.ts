@@ -1406,7 +1406,9 @@ function buildDocument(): OpenApiDocument {
             '200': { description: 'Request after the decision', ...json(LeaveRequest) },
             '403': err('Own request, APPROVAL_NOT_YOUR_STEP or APPROVAL_ALREADY_DECIDED_BY_YOU'),
             '404': err('Not found'),
-            '409': err('Not pending'),
+            '409': err(
+              'Not pending; LEAVE_DCR_CONFLICT on approve: a submitted DCR exists on a leave date (details.dates, details.dcrIds)',
+            ),
             '422': err('REJECTION_REASON_REQUIRED: reject without a non-blank comment'),
           },
         }),
@@ -2009,7 +2011,9 @@ function buildDocument(): OpenApiDocument {
             '200': { description: 'Decided', ...json(Approval) },
             '403': err('Own request, or requester not below you in the reporting line'),
             '404': err('Not found'),
-            '409': err('Already decided'),
+            '409': err(
+              'Already decided; LEAVE_DCR_CONFLICT when the final approval of a leave hits a submitted DCR (details.dates, details.dcrIds)',
+            ),
             '422': err('REJECTION_REASON_REQUIRED: reject without a non-blank comment'),
           },
         }),

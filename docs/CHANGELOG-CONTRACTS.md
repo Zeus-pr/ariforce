@@ -51,6 +51,16 @@ Additive (no migration; uses 0042). Web impact noted per item.
   `territoryCodeFor`, `readTerritoryLinkRow`. MSW mock implements the endpoint (an `area` counts as an
   HQ in fixtures) and the filter; doctor/chemist fixtures carry `localTerritoryId: null`.
 
+## Leave approval blocked by a submitted DCR (`fix/leave-approval-dcr-conflict`)
+
+Additive error code. The final approval of a leave request (`POST /v1/leave/requests/{id}/decision`
+or `POST /v1/approvals/{id}/decision` with `decision: approve`) returns `409 LEAVE_DCR_CONFLICT` when
+the leave's user has a live submitted/approved DCR on any date from `fromDate` to `toDate` (half days
+included): `details { dates: string[], dcrIds: string[] }`. Nothing is decided (the step stays
+pending). Drafts never block; intermediate approval steps, reject and cancel are unaffected. Fix the
+DCR (correction request) first. Submitting a DCR on an approved-leave day still returns
+`422 LEAVE_DAY_BLOCKED`; both checks are serialised per user, so they cannot both pass.
+
 ## Drafts ignored by team calendar, leave clash, team attendance (`fix/drafts-ignored-calendar-leave`)
 
 No contract or DB change. `GET` team calendar (attendance days), the full-day leave apply clash
