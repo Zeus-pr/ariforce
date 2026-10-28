@@ -309,6 +309,13 @@
       "when": 1793270000000,
       "tag": "0043_dcr_redesign",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793290000000,
+      "tag": "0044_manager_field_write",
+      "breakpoints": true
     }
   ]
 }

@@ -151,10 +151,12 @@ export const MASTERS_WRITE_MIN_RANK = 3;
 const EXPENSES_OWN: Permission[] = ['expenses:read', 'expenses:write'];
 /** Own leave (everyone in the sales hierarchy). */
 const LEAVE_OWN: Permission[] = ['leave:read', 'leave:write'];
+/** ABM and up (incl. director): managers also file their own DCRs (field:write, 0044). */
 const MANAGER: Permission[] = [
   ...BASE,
   'users:read',
   'field:read',
+  'field:write',
   'approvals:decide',
   'reports:read',
   ...EXPENSES_OWN,
