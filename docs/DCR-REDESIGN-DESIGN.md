@@ -1,112 +1,66 @@
-# DCR redesign: DB and API plan
+# DCR redesign: as-built reference
 
-Status: agreed design (2026-10-28), not built (except the SFC category contract enum). No 0043 SQL
-yet. Terms: HQ = `headquarter` territory; territory = level `territory` under an HQ
-(`docs/TERRITORY-MODEL.md`).
+Branch `feat/territory-city-split`. Migration `0043_dcr_redesign`. Permissions: `field:read` for GETs,
+`field:write` for draft/submit (no new permission). The old `PUT /v1/dcrs` still works; it returns
+`409 ALREADY_SUBMITTED` once a DCR was submitted through `POST /v1/dcrs/{id}/submit`.
 
-## Agreed rules
+## Data model
 
-- SFC category is a fixed enum `ex` | `hq` | `os` (contracts `SfcCategory`); DCR band = `SFC_CATEGORY_BAND`: `ex` -> `ex_hq`, `hq` -> `hq`, `os` -> `outstation`. No band column on routes. A field work type fixes the band (`work_types.allowance_band`: FIELD_HQ, FIELD_EXHQ, FIELD_OUT).
-- SFC match = employee + HQ + band. Work With is recorded, never matched. Several matches: the user picks one; its id is stored.
-- Meeting (and every non-field work type) never uses SFC: no match, no route, no snapshot. MEETING-category routes never apply.
-- Work With = anyone (no restriction).
-- TA/DA snapshot frozen on the DCR at submit; later SFC edits never change a submitted DCR.
-- Leave on a DCR only references an existing leave request.
-- Non-field details in jsonb, validated per work type; location and attendees are free text.
-- Explicit `draft` / `submitted` status; `Idempotency-Key` on submit; read-only after submit; changes via the existing correction request (`POST /v1/dcrs/correction-requests`).
-- Tour-plan deviation is checked against the chosen band and territories.
-- Stockists' territory link: later (column exists from 0042, unused). BMs filter by HQ only. Importer auto-creates new territories (next build item).
+`dcrs` new columns: `band` (`hq | ex_hq | outstation`, null for non-field), `details` (jsonb object),
+`work_with_user_ids uuid[]`, `submitted_by`, `submit_idempotency_key` (unique per company + user).
 
-## Several territories on one field day
+`dcr_sfc_routes` (child table, one row per HQ of the day): `dcr_id`, `hq_territory_id`, `sfc_route_id`,
+`snapshot` (jsonb, filled at submit). Unique live `(company_id, dcr_id, hq_territory_id)`. RLS forced,
+tenant policy, `set_row_meta` trigger.
 
-Today `dcrs.territory_ids uuid[]` accepts any ids in the user's scope (any level). It stays an array;
-each id must now be an HQ or a `territory` in scope (`422 VALIDATION` otherwise).
+`sfc_routes.category` has **no DB CHECK**. The rule is app-level: zod `SfcCategory` (`hq | ex | os`),
+the importer mapping, and DCR matching ignores any other value. Reason: the 2 `EX / OS` and 16 `MEETING`
+routes stay by decision, so a validated CHECK could never pass.
 
-- Each id resolves to its HQ (itself, or the parent of a `territory`). All ids must resolve to ONE HQ,
-  stored as `hq_territory_id`; otherwise `422 MULTIPLE_HQ` (`details.hqIds`). Territories under one HQ
-  share one SFC route set, so the day stores one `sfc_route_id`.
-- The route must belong to the user, have `hq_territory_id` = that HQ, be live, and its category must
-  map to the day's band, else `422 SFC_MISMATCH`. Match endpoint with nothing found: `404 SFC_NO_MATCH`;
-  submit of a field day without a route: `422 SFC_ROUTE_REQUIRED`.
-- Why one HQ: SFC and TA/DA are per employee + HQ today. A per-HQ list (`sfcRoutes[]`) can be added
-  later without breaking clients if a real cross-HQ day appears.
+## Multi-HQ days
 
-## Non-field details (`details` jsonb, validated per work type)
+- Each picked territory resolves to its HQ (an HQ itself or a `territory` child). Several HQs are allowed.
+- Work type band -> categories: `hq` -> `hq`; `ex_hq` -> `ex`; `outstation` -> `os`.
+- Candidates per HQ: live SFC routes of the employee for that HQ with a matching category.
+- One route per HQ. Draft may set `sfcRoutes`; omitting it keeps saved choices. At submit an HQ with no
+  choice and one candidate is auto-picked; none -> `422 SFC_NO_MATCH`; several -> `422 SFC_ROUTE_REQUIRED`.
+- A choice for an HQ not on the day, or a route that is not a candidate -> `422 SFC_MISMATCH`.
+- Non-field work types (Meeting, Training, Office, Leave) have no band and no SFC; `sfcRoutes` is rejected.
 
-Day date = the DCR date; times `HH:mm` (IST); strings trimmed. Required/optional split is our proposal.
+## Details (`details.kind` must equal the work type's `detailsKind`)
 
-| Work type (`kind`)             | Field                  | Rule                                                                                |
-| ------------------------------ | ---------------------- | ----------------------------------------------------------------------------------- |
-| MEETING (`meeting`)            | `title`                | required, 1-120 (meeting type/name)                                                 |
-|                                | `mode`                 | required, `in_person` or `online`                                                   |
-|                                | `location`             | required when `in_person` (max 200); optional when `online` (link or text)          |
-|                                | `startTime`            | required, `HH:mm`                                                                   |
-|                                | `durationMin`          | required, int 1-720                                                                 |
-|                                | `attendees`            | optional free text, max 500                                                         |
-|                                | `remarks`              | optional, max 1000                                                                  |
-| TRAINING (`training`)          | as meeting + `trainer` | `trainer` optional free text, max 120                                               |
-| OFFICE / Admin work (`office`) | `taskType`             | required, 1-60                                                                      |
-|                                | `description`          | required, 1-1000                                                                    |
-|                                | `startTime`            | optional, `HH:mm`                                                                   |
-|                                | `durationMin`          | required, int 1-720                                                                 |
-|                                | `remarks`              | optional, max 1000                                                                  |
-| LEAVE (`leave`)                | `leaveRequestId`       | required; a leave request of the user covering the date, else `422 LEAVE_NOT_FOUND` |
-| HOLIDAY, field types           |                        | `details` must be null                                                              |
+| kind       | Fields                                                                                                                                                            |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `meeting`  | `title` 1-120, `mode` `in_person \| online`, `location` <=200 (required in person), `startTime` HH:mm, `durationMin` 1-720, `attendees?` <=500, `remarks?` <=1000 |
+| `training` | as meeting + `trainer?` <=120                                                                                                                                     |
+| `office`   | `taskType` 1-60, `description` 1-1000, `startTime?`, `durationMin`, `remarks?`                                                                                    |
+| `leave`    | `leaveRequestId`; submit needs a pending/approved leave request covering the date (`LEAVE_NOT_FOUND`)                                                             |
 
-Contracts (zod): `DcrMeetingDetails`, `DcrTrainingDetails` (meeting + trainer), `DcrOfficeDetails`,
-`DcrLeaveDetails`; `DcrDetails` = discriminated union on `kind`. The server checks `kind` against the
-work type code (`422 VALIDATION`).
+`detailsKind`: leave work type -> `leave`; non-field code containing `MEET` -> `meeting`, `TRAIN` ->
+`training`, other non-field -> `office`; field -> none.
 
-## Migration 0043 (outline only)
+## Snapshot (frozen at submit, per HQ)
 
-`dcrs` (additive; existing rows: `status = 'submitted'` where `submitted_at` is set, else `draft`):
+`{sfcRouteId, routeVersion, hqTerritoryId, fromPlace, toPlace, oneWayKm, bothWayKm, oneWayAmount,
+bothWayAmount, actualFare, travelMode, category, band, da, ratePerKm, frozenAt}`. Later SFC edits never
+change a submitted DCR.
 
-| Column                   | Type                                      | Notes                                                                                          |
-| ------------------------ | ----------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `status`                 | text `draft`/`submitted`, default `draft` | backfilled from `submitted_at`                                                                 |
-| `band`                   | text `hq`/`ex_hq`/`outstation`, null      | field days only                                                                                |
-| `hq_territory_id`        | uuid FK `territories`, null               | the day's single HQ (field days)                                                               |
-| `sfc_route_id`           | uuid FK `sfc_routes`, null                | chosen route                                                                                   |
-| `sfc_snapshot`           | jsonb, null                               | frozen at submit: route id, from/to, km, amounts, actual fare, mode, category, DA, rate per km |
-| `details`                | jsonb, null                               | non-field details (shapes above)                                                               |
-| `work_with_user_ids`     | uuid[] default `{}`                       | day-level Work With                                                                            |
-| `submitted_by`           | uuid FK `users`, null                     |                                                                                                |
-| `submit_idempotency_key` | text, null                                | unique per (company, user)                                                                     |
+## Endpoints (`/v1/dcrs`)
 
-Checks: `status = 'submitted'` requires `submitted_at`; a route requires `band`; non-field days have no
-`sfc_route_id`; `details IS NULL OR jsonb_typeof(details) = 'object'` (shape validated by zod).
-`sfc_routes`: `CHECK (category IS NULL OR category IN ('ex','hq','os')) NOT VALID` (guards new and
-edited rows); `VALIDATE CONSTRAINT` in a later migration after the category data fix, once no misfits
-remain. `dcr_calls` unchanged.
+| Endpoint                                            | Request                                                                                                                                                | Response                                                                             | Errors                                                                                                                                                                                             |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /options?date=`                                |                                                                                                                                                        | `{date, workTypes[{id, code, name, kind, band, usesSfc, detailsKind}], dcr \| null}` | 422                                                                                                                                                                                                |
+| `GET /territories`                                  |                                                                                                                                                        | `{items[{id, code, name, territories[{id, code, name}]}]}` (HQs in scope)            |                                                                                                                                                                                                    |
+| `GET /work-with?q=&limit=`                          |                                                                                                                                                        | `{items[{id, name, employeeCode, designation}]}`                                     |                                                                                                                                                                                                    |
+| `GET /sfc-match?date=&workTypeId=&territoryIds=a,b` |                                                                                                                                                        | `{band, hqs[{hqTerritoryId, hqName, candidates[], autoSelectedId}]}`                 | 404 SFC_NO_MATCH (`{band, hqs, missingHqIds}`), 422, 503 SFC_UNAVAILABLE                                                                                                                           |
+| `PUT /draft`                                        | `{date, workTypeId, band?, territoryIds[], workWithUserIds[], sfcRoutes?[{hqTerritoryId, sfcRouteId}], details?, deviationReason?, calls[], version?}` | `Dcr` (status `draft`)                                                               | 409 ALREADY_SUBMITTED / DAY_LOCKED / VERSION_CONFLICT; 422 VALIDATION / SFC_MISMATCH                                                                                                               |
+| `POST /{id}/submit` + `Idempotency-Key`             | `{version}`                                                                                                                                            | `Dcr` (status `submitted`, `sfcRoutes[].snapshot`)                                   | 404; 409 ALREADY_SUBMITTED / IDEMPOTENCY_CONFLICT / VERSION_CONFLICT / DAY_LOCKED; 422 VALIDATION / SFC_NO_MATCH / SFC_ROUTE_REQUIRED / SFC_MISMATCH / DEVIATION_REASON_REQUIRED / LEAVE_NOT_FOUND |
+| `GET /{id}`                                         |                                                                                                                                                        | `Dcr`                                                                                | 404                                                                                                                                                                                                |
 
-## Endpoints (`/v1/dcrs`, own DCRs; writes need `field:write`)
+Same key retried after success returns the same DCR with 200. Field days need territories and at least one call.
 
-| Method / path                                   | Request                                                                                                                                                   | Response                                                                                               | Errors                                                                                                                                                                                                                         |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /options?date=`                            |                                                                                                                                                           | work types (`id, code, kind, band`), the draft for that date or null                                   | 422 VALIDATION                                                                                                                                                                                                                 |
-| `GET /territories?date=&band=`                  |                                                                                                                                                           | user's HQs, each with its `territory` children (`id, code, name, level`)                               | 422                                                                                                                                                                                                                            |
-| `GET /work-with?q=`                             |                                                                                                                                                           | active users (`id, name, role, hq`), search, paged                                                     |                                                                                                                                                                                                                                |
-| `GET /sfc-match?date=&band=&hqId=` (field only) |                                                                                                                                                           | `routes[]` (id, from, to, km, amounts, actualFare, mode, category, da) whose category maps to the band | 404 SFC_NO_MATCH, 503 SFC_UNAVAILABLE (retryable), 422                                                                                                                                                                         |
-| `PUT /draft`                                    | `{date, workTypeId, band?, territoryIds[], workWithUserIds[], sfcRouteId?, details?, calls[]: {outletKind, outletId, calledAt, ...existing call fields}}` | `{id, status:'draft', version, hqTerritoryId, ...}`                                                    | 409 ALREADY_SUBMITTED, 409 DAY_LOCKED, 422 VALIDATION, 422 MULTIPLE_HQ, 422 SFC_MISMATCH                                                                                                                                       |
-| `POST /{id}/submit` + `Idempotency-Key`         | `{version}`                                                                                                                                               | full DCR, `status:'submitted'`, `sfcSnapshot`                                                          | 409 ALREADY_SUBMITTED (same key returns the first result), 409 VERSION_CONFLICT, 409 DAY_LOCKED, 422 VALIDATION, 422 MULTIPLE_HQ, 422 SFC_MISMATCH, 422 SFC_ROUTE_REQUIRED, 422 DEVIATION_REASON_REQUIRED, 422 LEAVE_NOT_FOUND |
-| `GET /{id}`                                     |                                                                                                                                                           | DCR with calls, snapshot, details                                                                      | 404                                                                                                                                                                                                                            |
+## Data fix
 
-Drafts may be partial; submit re-checks everything server-side: permission and tenant; one HQ; route
-owner/HQ/band/live; outlets in scope; details per work type; leave reference; tour-plan deviation
-reason. The existing `PUT /v1/dcrs` stays for current clients until web/app move over.
-
-## SFC category enum (built on this branch: contracts only)
-
-- `SfcRouteInput.category` = `SfcCategory | null`; anything else on the SFC table PUT is `422 VALIDATION` (API and MSW validate with the schema). OpenAPI regenerated.
-- Transition (simplest backward-compatible): response `SfcRoute.category` stays `string | null` until the data fix has run, so legacy rows still read. Edit UI: a value outside `ex`/`hq`/`os` is shown and must be re-chosen before save (the PUT sends the full table, so it cannot be re-sent unchanged). After the fix, a later contract change narrows the response to `SfcCategory | null`.
-- To do (Dev): the SFC importer (`apps/api/src/sfc/sfc-import.ts`, `normCategory`) still stores raw text; map to the enum with the data-fix key rules, report misfits, adjust the upsert key.
-- Data fix `packages/db/scripts/data-fixes/2026-10-28-sfc-category-normalise.sql` (not applied anywhere). Would change, from the 6 SFC sheets as imported:
-
-| Current value (rows)      | Result                                                                                                                                     |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `EX` (31), `EX HQ` (6)    | `ex` (37)                                                                                                                                  |
-| `HQ` (6)                  | `hq` (6)                                                                                                                                   |
-| `OS` (1), `OUT EX HQ` (1) | `os` (2)                                                                                                                                   |
-| `EX / OS` (2)             | misfit, unchanged by default. Proposal: Prajesh picks; `-v exos=ex` or `-v exos=os` sets both, or split by re-entering in the SFC UI       |
-| `MEETING` (16)            | misfit, unchanged by default. Proposal: archive (soft delete, audited, reversible) with `-v meeting=archive`, since Meeting never uses SFC |
-| anything else / null      | listed, unchanged                                                                                                                          |
+`packages/db/scripts/data-fixes/2026-10-28-sfc-category-normalise.sql`: dry run by default, `-v apply=1`
+to write. `EX`, `EX HQ` -> `ex`; `HQ` -> `hq`; `OS`, `OUT EX HQ` -> `os`. `EX / OS` and `MEETING` are
+kept as is and listed. Re-runnable.
