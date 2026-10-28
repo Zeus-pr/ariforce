@@ -29,7 +29,7 @@ System Admin screen for product MRP / PTR / PTS. POB value stays **quantity × P
 | `POST /v1/admin/products/prices/bulk`       | `{rows: [{productId \| code, mrp?, ptr?, pts?}]}` (1..300) | 200 `ProductPricesBulkResponse`  |
 | `GET /v1/admin/products/{id}/price-history` | -                                                          | 200 `ProductPriceHistory` (≤200) |
 
-`AdminProduct`: `id, code, name, brand, divisionId, active, mrp, ptr, pts, updatedAt, updatedBy{id,name}|null,
+`AdminProduct`: `id, code, name, brand, composition, packSize, divisionId, active, mrp, ptr, pts, updatedAt, updatedBy{id,name}|null,
 pricesUpdatedAt|null, version` (`updatedBy` = last price change from history).
 
 Validation: each price 0..1,000,000, at most 2 decimals; PTR ≤ MRP on the merged row (422 `PTR_ABOVE_MRP`);

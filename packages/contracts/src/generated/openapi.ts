@@ -6858,6 +6858,9 @@ export interface components {
       code: string;
       name: string;
       brand: string | null;
+      composition: string | null;
+      /** @example 10 x 10 tablets */
+      packSize: string | null;
       /**
        * Format: uuid
        * @description UUIDv7 identifier

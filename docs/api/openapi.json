@@ -29941,6 +29941,19 @@
               "null"
             ]
           },
+          "composition": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "packSize": {
+            "example": "10 x 10 tablets",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "divisionId": {
             "type": "string",
             "format": "uuid",
@@ -30053,6 +30066,8 @@
           "code",
           "name",
           "brand",
+          "composition",
+          "packSize",
           "divisionId",
           "active",
           "mrp",

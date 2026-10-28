@@ -87,6 +87,8 @@ export class ProductPricesService {
       code: string;
       name: string;
       brand: string | null;
+      composition: string | null;
+      pack_size: string | null;
       division_id: string;
       active: boolean;
       mrp: string | null;
@@ -98,7 +100,7 @@ export class ProductPricesService {
       by_id: string | null;
       by_name: string | null;
       changed_at: Date | string | null;
-    }>(sql`select p.id, p.code, p.name, p.brand, p.division_id, p.active, p.mrp, p.ptr, p.pts,
+    }>(sql`select p.id, p.code, p.name, p.brand, p.composition, p.pack_size, p.division_id, p.active, p.mrp, p.ptr, p.pts,
         p.image_file_key, p.updated_at, p.version, h.changed_by as by_id, u.name as by_name, h.changed_at
       from products p
       left join lateral (select changed_by, changed_at from product_price_history h
@@ -112,6 +114,8 @@ export class ProductPricesService {
       code: x.code,
       name: x.name,
       brand: x.brand,
+      composition: x.composition,
+      packSize: x.pack_size,
       divisionId: x.division_id,
       active: x.active,
       mrp: n(x.mrp),

@@ -44,6 +44,8 @@ const dto = (p: (typeof fx.products)[number]): AdminProduct => {
     code: p.code,
     name: p.name,
     brand: p.brand,
+    composition: p.composition,
+    packSize: p.packSize,
     divisionId: p.divisionId,
     active: p.active,
     mrp: p.mrp,

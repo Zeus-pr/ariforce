@@ -41,6 +41,8 @@ Additive. Products get a picture, uploaded from the product prices admin and sho
   price PATCH response) gain `imageFileKey: string|null` and `imageUrl: string|null`. `imageUrl` is a presigned
   R2 GET for `<img src>`, signed for 60 min from the start of a 30-min window (valid >= 30 min, same URL within
   the window). Null if no picture or storage is off. Not settable through product create/update/import.
+- `AdminProduct` also gains `composition: string|null` and `packSize: string|null` (existing
+  `products.composition` / `products.pack_size` columns; no migration).
 - New `PUT /v1/products/{id}/image` `{fileKey, version?}` -> 200 `AdminProduct` (new `version`, fresh `imageUrl`).
   The object is HEAD-checked in R2 (exists, <= 5 MB, allowed type matching the key extension) and its magic bytes
   sniffed; a rejected upload is deleted. Errors: 404 `PRODUCT_NOT_FOUND`, 403 `FORBIDDEN`, 409 `VERSION_CONFLICT`

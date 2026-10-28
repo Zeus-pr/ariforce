@@ -90,7 +90,7 @@ describe('product image', () => {
       expect.arrayContaining(['imageFileKey', 'imageUrl']),
     );
     expect(Object.keys(AdminProduct.shape)).toEqual(
-      expect.arrayContaining(['imageFileKey', 'imageUrl']),
+      expect.arrayContaining(['imageFileKey', 'imageUrl', 'composition', 'packSize']),
     );
   });
 });

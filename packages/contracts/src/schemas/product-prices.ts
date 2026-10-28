@@ -44,6 +44,8 @@ export const AdminProduct = z
     code: z.string(),
     name: z.string(),
     brand: z.string().nullable(),
+    composition: z.string().nullable(),
+    packSize: z.string().nullable().meta({ example: '10 x 10 tablets' }),
     divisionId: Id,
     active: z.boolean(),
     mrp: z.number().nullable(),
