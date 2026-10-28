@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { ScrollView } from '@/components/scroll';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { ListRow } from '@/components/list-row';
@@ -17,7 +18,6 @@ export default function BusinessTab() {
     <TabScene>
       <ScrollView
         style={styles.flex}
-        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
       >
         <Card>

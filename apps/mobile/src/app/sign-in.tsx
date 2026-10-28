@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { useRef, useState } from 'react';
 import { StyleSheet, View, type TextInputInstance } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView } from '@/components/scroll';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';

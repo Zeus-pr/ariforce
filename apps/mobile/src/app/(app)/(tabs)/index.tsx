@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet, View } from 'react-native';
+import { ScrollView } from '@/components/scroll';
 import { AppText } from '@/components/app-text';
 import { Chip } from '@/components/chip';
 import { ApprovalsCard } from '@/components/home/approvals-card';
@@ -54,7 +55,6 @@ export default function HomeScreen() {
     <TabScene>
       <ScrollView
         style={styles.flex}
-        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
         refreshControl={
           <RefreshControl

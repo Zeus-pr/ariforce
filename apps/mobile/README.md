@@ -177,6 +177,22 @@ cd apps/mobile
   so a real Android blur needs a dev / debug build that includes expo-blur. Solid white under iOS
   Reduce Transparency. The active pill is sized to its measured label (Tour Plan shows "Plans",
   full name kept for screen readers and the title); the other tabs share the rest, 48 dp min.
+- **2026-10-29** One JS header for every screen (`src/components/app-header.tsx`), set once in
+  the `(app)` Stack `screenOptions.header` and the Tabs `screenOptions.header`. The native-stack
+  header on Android (react-native-screens 4.30, edge-to-edge, our nested root Stack → `(app)`
+  Stack) applied the status-bar inset twice: the toolbar pads itself from the decor-view inset
+  and native-stack also adds `insets.top` to the header height, so pushed screens got a ~150 dp
+  header with the arrow and title sitting low. The JS header applies `insets.top` once
+  (safe-area-context) above a 56 dp row: 48 dp back target 4 dp from the edge (arrow on the
+  16 dp gutter), title 16 dp after the arrow, or on the gutter with no back; ground background,
+  no border. Left-aligned titles on both platforms for one consistent look. The navigation theme
+  (`NAV_THEME` in the root layout) uses the app colours so nothing falls back to React
+  Navigation's grey. No `contentInsetAdjustmentBehavior="automatic"`: with a JS header and our
+  own bottom padding it would add the iOS insets a second time.
+- **2026-10-29** No scroll indicators anywhere: screens import `ScrollView`,
+  `KeyboardAwareScrollView`, `List` (FlatList) and `Sections` (SectionList) from
+  `src/components/scroll.tsx`, which turn both indicators off by default. ESLint
+  (`no-restricted-imports` in `eslint.config.mjs`) blocks importing the raw ones elsewhere.
 - From CUTLY: never `Alert.alert` (inline errors and in-app banners); never put
   `lottie-react-native` in `app.json` plugins (breaks Expo Go); `expo-status-bar` takes no
   `backgroundColor`; use `StyleSheet.absoluteFill`; set weight with `fontFamily`, never

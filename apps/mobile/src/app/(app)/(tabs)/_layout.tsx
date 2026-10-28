@@ -1,10 +1,11 @@
 import { Tabs } from 'expo-router';
+import { AppHeader } from '@/components/app-header';
 import { HeaderActions } from '@/components/header-actions';
 import { FloatingTabBar, TabBarProvider, type TabMeta } from '@/components/floating-tab-bar';
 import { LogoLockup } from '@/components/logo-lockup';
 import { useAuth } from '@/lib/auth-context';
 import { getHomeMock } from '@/mocks/home';
-import { colors, fonts } from '@/theme';
+import { colors } from '@/theme';
 
 function HomeHeaderRight() {
   const { user } = useAuth();
@@ -58,10 +59,10 @@ export default function TabsLayout() {
       <Tabs
         tabBar={(props) => <FloatingTabBar {...props} meta={TABS} />}
         screenOptions={{
-          headerStyle: { backgroundColor: colors.ground },
-          headerShadowVisible: false,
-          headerTitleAlign: 'left',
-          headerTitleStyle: { fontFamily: fonts.semibold, color: colors.ink },
+          // Same AppHeader as pushed screens: one inset, one 56dp row, title on the gutter.
+          header: ({ options, route }) => (
+            <AppHeader title={typeof options.title === 'string' ? options.title : route.name} />
+          ),
           sceneStyle: { backgroundColor: colors.ground },
         }}
       >
@@ -69,8 +70,9 @@ export default function TabsLayout() {
           name="index"
           options={{
             title: 'Home',
-            headerTitle: () => <LogoLockup />,
-            headerRight: () => <HomeHeaderRight />,
+            header: () => (
+              <AppHeader title="Home" titleNode={<LogoLockup />} right={<HomeHeaderRight />} />
+            ),
           }}
         />
         <Tabs.Screen name="business" options={{ title: 'Business' }} />

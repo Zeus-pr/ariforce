@@ -33,7 +33,7 @@ export function HeaderActions({ name, unread }: { name: string; unread: number }
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', marginRight: spacing.sm },
+  row: { flexDirection: 'row', alignItems: 'center' },
   target: {
     width: touch.min,
     height: touch.min,

@@ -1,6 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
@@ -21,6 +21,22 @@ import { colors, fonts, motion } from '@/theme';
 // in-app splash, which stays until the stored session has been checked.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 SplashScreen.setOptions({ duration: 200, fade: true });
+
+/**
+ * Navigation theme on the app's colours, so nothing navigation draws (screen and card
+ * backgrounds, borders) falls back to React Navigation's grey #F2F2F2.
+ */
+const NAV_THEME = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: colors.navy,
+    background: colors.ground,
+    card: colors.ground,
+    text: colors.ink,
+    border: colors.separator,
+  },
+};
 
 export default function RootLayout() {
   return (
@@ -74,16 +90,18 @@ function RootNavigator() {
   return (
     <>
       <StatusBar style="dark" />
-      <Stack
-        screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground } }}
-      >
-        <Stack.Protected guard={signedIn}>
-          <Stack.Screen name="(app)" />
-        </Stack.Protected>
-        <Stack.Protected guard={!signedIn}>
-          <Stack.Screen name="sign-in" options={{ animation: 'fade' }} />
-        </Stack.Protected>
-      </Stack>
+      <ThemeProvider value={NAV_THEME}>
+        <Stack
+          screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground } }}
+        >
+          <Stack.Protected guard={signedIn}>
+            <Stack.Screen name="(app)" />
+          </Stack.Protected>
+          <Stack.Protected guard={!signedIn}>
+            <Stack.Screen name="sign-in" options={{ animation: 'fade' }} />
+          </Stack.Protected>
+        </Stack>
+      </ThemeProvider>
       {!splashGone && (
         <BrandSplash done={minElapsed && status !== 'loading'} onHidden={onSplashHidden} />
       )}

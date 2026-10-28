@@ -85,6 +85,8 @@ export const sizes = {
   row: 72, // every list row: icon tile + one-line title + one-line subtitle
   tile: 96, // quick-action tiles
   tabBar: 64, // floating tab bar height
+  header: 56, // header row under the status bar (Material top app bar)
+  readable: 320, // max width of centred copy (empty and coming-soon states)
 } as const;
 
 /** Screen rhythm: one gutter for every screen edge, one gap between sections, one inside them. */

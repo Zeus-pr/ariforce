@@ -1,19 +1,22 @@
 import { Stack } from 'expo-router';
-import { colors, fonts } from '@/theme';
+import { AppHeader } from '@/components/app-header';
+import { colors } from '@/theme';
 
 /**
- * Signed-in area: the tab navigator, plus feature screens pushed over it with a native header and
- * back button. The tabs draw their own headers, so the stack hides its header for "(tabs)".
+ * Signed-in area: the tab navigator, plus feature screens pushed over it. Pushed screens share
+ * one header (AppHeader: back arrow + title, inset applied once), set here so they all match.
+ * The tabs draw their own headers (same component), so the stack hides its header for "(tabs)".
  */
 export default function AppLayout() {
   return (
     <Stack
       screenOptions={{
-        headerShadowVisible: false,
-        headerStyle: { backgroundColor: colors.ground },
-        headerTintColor: colors.navy,
-        headerTitleStyle: { fontFamily: fonts.semibold, color: colors.ink },
-        headerBackButtonDisplayMode: 'minimal',
+        header: ({ options, route, back, navigation }) => (
+          <AppHeader
+            title={typeof options.title === 'string' ? options.title : route.name}
+            onBack={back ? () => navigation.goBack() : undefined}
+          />
+        ),
         contentStyle: { backgroundColor: colors.ground },
       }}
     >

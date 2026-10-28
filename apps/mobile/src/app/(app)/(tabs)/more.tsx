@@ -1,7 +1,8 @@
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { ScrollView } from '@/components/scroll';
 import { AppText } from '@/components/app-text';
 import { Avatar } from '@/components/avatar';
 import { Button } from '@/components/button';
@@ -40,7 +41,6 @@ export default function MoreTab() {
     <TabScene>
       <ScrollView
         style={styles.flex}
-        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
       >
         <View style={styles.profile} accessible accessibilityRole="summary">
