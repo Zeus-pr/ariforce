@@ -1315,6 +1315,27 @@
           },
           {
             "in": "query",
+            "name": "localTerritoryId",
+            "schema": {
+              "description": "Only rows linked to this territory (level `territory`, exact match), or `none` for rows not linked to any territory",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUIDv7 identifier",
+                  "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                },
+                {
+                  "type": "string",
+                  "const": "none"
+                }
+              ]
+            },
+            "description": "Only rows linked to this territory (level `territory`, exact match), or `none` for rows not linked to any territory"
+          },
+          {
+            "in": "query",
             "name": "specialtyId",
             "schema": {
               "type": "string",
@@ -1994,6 +2015,27 @@
               "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
             },
             "description": "Only rows in this territory or any descendant (within the caller scope)"
+          },
+          {
+            "in": "query",
+            "name": "localTerritoryId",
+            "schema": {
+              "description": "Only rows linked to this territory (level `territory`, exact match), or `none` for rows not linked to any territory",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUIDv7 identifier",
+                  "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                },
+                {
+                  "type": "string",
+                  "const": "none"
+                }
+              ]
+            },
+            "description": "Only rows linked to this territory (level `territory`, exact match), or `none` for rows not linked to any territory"
           }
         ],
         "responses": {
@@ -4569,6 +4611,98 @@
           "masters:write"
         ],
         "description": "Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403."
+      }
+    },
+    "/v1/imports/territory-links": {
+      "post": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Territories",
+          "Imports"
+        ],
+        "operationId": "importTerritoryLinks",
+        "summary": "Link doctors/chemists to territories under their HQ from (hq_code, entity, name_key, territory_text) rows; creates missing territories (dry-run first)",
+        "description": "Company-wide roles only (Director, System Admin). Each row: HQ resolved by code (must be a headquarter), territory text normalised (ariforce_territory_key), the territory under that HQ is reused or created (level territory, code <HQ>-<KEY>; idempotent), and the ONE live doctor/chemist under that HQ whose name matches (lower case, \"Dr.\" dropped, punctuation -> space) gets localTerritoryId. Unknown HQ, no match and ambiguous names are reported per row (status unmatched), never guessed. Re-running the same file changes nothing (already_linked). With dryRun=true (default) nothing is written. Not stored as an import job; the apply is audited (territory_links.apply). See docs/TERRITORY-MODEL.md.\n\nRequires: imports:write + territories:write + masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TerritoryLinkImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dry-run plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerritoryLinkImportResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerritoryLinkImportResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "More than 5,000 rows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request malformed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-required-permissions": [
+          "imports:write",
+          "territories:write",
+          "masters:write"
+        ]
       }
     },
     "/v1/imports/{id}": {
@@ -15930,6 +16064,57 @@
           "productId"
         ]
       },
+      "TerritoryLinkImportRequest": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "default": true,
+            "description": "true (default) = plan only: resolve HQs, match doctors/chemists, list territories that would be created; nothing is written",
+            "type": "boolean"
+          },
+          "fileKey": {
+            "description": "fileKey from POST /v1/files/upload-url with purpose import_source (audit)",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fileName": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "onLinked": {
+            "default": "keep",
+            "description": "A matched row already linked to a DIFFERENT territory: keep (default, reported as skipped/linked_elsewhere) or replace the link",
+            "type": "string",
+            "enum": [
+              "keep",
+              "replace"
+            ]
+          },
+          "rows": {
+            "minItems": 1,
+            "maxItems": 5000,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "description": "Rows keyed hq_code, entity (doctor|chemist), name_key, territory_text (camelCase and header spacing/case accepted; aliases: hq, name, territory)"
+          }
+        },
+        "required": [
+          "rows"
+        ]
+      },
       "CheckInKind": {
         "type": "string",
         "enum": [
@@ -19982,6 +20167,22 @@
             "description": "UUIDv7 identifier",
             "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
           },
+          "localTerritoryId": {
+            "default": null,
+            "description": "Territory (level `territory`) under the HQ `territoryId`, or null when not linked yet. Read-only: set by POST /v1/imports/territory-links; cleared when territoryId (the HQ) changes. docs/TERRITORY-MODEL.md",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -20152,6 +20353,7 @@
           "deletedAt",
           "version",
           "territoryId",
+          "localTerritoryId",
           "name",
           "qualification",
           "specialtyId",
@@ -20343,6 +20545,22 @@
             "description": "UUIDv7 identifier",
             "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
           },
+          "localTerritoryId": {
+            "default": null,
+            "description": "Territory (level `territory`) under the HQ `territoryId`, or null when not linked yet. Read-only: set by POST /v1/imports/territory-links; cleared when territoryId (the HQ) changes. docs/TERRITORY-MODEL.md",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -20444,6 +20662,7 @@
           "deletedAt",
           "version",
           "territoryId",
+          "localTerritoryId",
           "name",
           "gstin",
           "drugLicenseNo",
@@ -21240,6 +21459,384 @@
           "productId"
         ],
         "additionalProperties": false
+      },
+      "TerritoryLinkImportResult": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": "boolean"
+          },
+          "fileName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fileKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "onLinked": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "replace"
+            ]
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "rows": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "linked": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "alreadyLinked": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "skipped": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "unmatched": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "error": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "territoriesCreated": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "doctorsLinked": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "chemistsLinked": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "unknownHq": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "unmatched: unknown_hq + not_headquarter"
+              },
+              "noMatch": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "ambiguous": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "rows",
+              "linked",
+              "alreadyLinked",
+              "skipped",
+              "unmatched",
+              "error",
+              "territoriesCreated",
+              "doctorsLinked",
+              "chemistsLinked",
+              "unknownHq",
+              "noMatch",
+              "ambiguous"
+            ],
+            "additionalProperties": false
+          },
+          "territoriesCreated": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TerritoryLinkCreated"
+            }
+          },
+          "nearDuplicates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "hqCode": {
+                  "type": "string"
+                },
+                "a": {
+                  "type": "string"
+                },
+                "b": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "hqCode",
+                "a",
+                "b"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Territory keys under one HQ that look alike (same consonants, or same first 4 letters). Listed for review, never merged"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TerritoryLinkRowResult"
+            }
+          }
+        },
+        "required": [
+          "dryRun",
+          "fileName",
+          "fileKey",
+          "onLinked",
+          "totals",
+          "territoriesCreated",
+          "nearDuplicates",
+          "results"
+        ],
+        "additionalProperties": false
+      },
+      "TerritoryLinkCreated": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null in a dry run"
+          },
+          "hqId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "hqCode": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "territoryKey": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Rows linked to it in this run"
+          }
+        },
+        "required": [
+          "id",
+          "hqId",
+          "hqCode",
+          "code",
+          "name",
+          "territoryKey",
+          "rows"
+        ],
+        "additionalProperties": false
+      },
+      "TerritoryLinkRowResult": {
+        "type": "object",
+        "properties": {
+          "row": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "description": "1-based row number in the request"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TerritoryLinkRowStatus"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TerritoryLinkReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "doctor",
+                  "chemist"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hqCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "territoryKey": {
+            "description": "Normalised territory text (lower case, non-alphanumerics -> one space)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entityId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Matched doctor/chemist"
+          },
+          "territoryId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Target territory (null in a dry run when it would be created)"
+          },
+          "territoryCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "territoryCreated": {
+            "type": "boolean",
+            "description": "Target territory is new in this run"
+          },
+          "previousTerritoryId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Existing local_territory_id when it differs from the target"
+          },
+          "candidateIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "description": "ambiguous: every matching record"
+          }
+        },
+        "required": [
+          "row",
+          "status",
+          "reason",
+          "message",
+          "entity",
+          "hqCode",
+          "territoryKey",
+          "entityId",
+          "territoryId",
+          "territoryCode",
+          "territoryCreated",
+          "previousTerritoryId",
+          "candidateIds"
+        ],
+        "additionalProperties": false
+      },
+      "TerritoryLinkRowStatus": {
+        "type": "string",
+        "enum": [
+          "linked",
+          "already_linked",
+          "skipped",
+          "unmatched",
+          "error"
+        ],
+        "description": "linked = local_territory_id set (dry run: would be set); already_linked = no change; skipped / unmatched / error: see reason"
+      },
+      "TerritoryLinkReason": {
+        "type": "string",
+        "enum": [
+          "unknown_hq",
+          "not_headquarter",
+          "no_match",
+          "ambiguous",
+          "blank_territory",
+          "linked_elsewhere",
+          "duplicate_in_file",
+          "conflict_in_file",
+          "invalid_entity",
+          "blank_name",
+          "blank_hq",
+          "save_failed"
+        ],
+        "description": "unmatched: unknown_hq (code not found), not_headquarter (code is not an HQ), no_match (no doctor/chemist with that name under the HQ), ambiguous (several; see candidateIds). skipped: blank_territory, linked_elsewhere (onLinked keep), duplicate_in_file. error: conflict_in_file (same HQ + entity + name with different territories), invalid_entity, blank_name, blank_hq, save_failed"
       },
       "UserSummaryPage": {
         "type": "object",
