@@ -14,15 +14,15 @@ Status: proposal + additive schema (migration 0042, `feat/territory-city-split`)
 
 Names: the tree level is `territory` (a unit under an HQ). HQ stays HQ (`headquarter`).
 
-| Thing                 | Name                                                                                                                                       |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Level value           | `territory_level` = `'territory'` (child of `headquarter`)                                                                                 |
-| Normalised key column | `territories.territory_key`                                                                                                                |
-| Key function          | `ariforce_territory_key(text)`: lower case, non-alphanumerics -> one space, trimmed, blank -> null                                         |
-| Unique business key   | `territories_hq_territory_key_uq` on `(company_id, parent_id, territory_key)`, live rows                                                   |
-| Link on masters       | `doctors.local_territory_id`, `chemists.local_territory_id`, `stockists.local_territory_id` (nullable FK, indexes `*_local_territory_idx`) |
-| HQ link (unchanged)   | `doctors/chemists/stockists.territory_id`                                                                                                  |
-| Raw source text       | `doctors.city`, `chemists.city`: raw imported data, names kept as is                                                                       |
+| Thing                 | Name                                                                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Level value           | `territory_level` = `'territory'` (child of `headquarter`)                                                                  |
+| Normalised key column | `territories.territory_key`                                                                                                 |
+| Key function          | `ariforce_territory_key(text)`: lower case, non-alphanumerics -> one space, trimmed, blank -> null                          |
+| Unique business key   | `territories_hq_territory_key_uq` on `(company_id, parent_id, territory_key)`, live rows                                    |
+| Link on masters       | `doctors.local_territory_id`, `chemists.local_territory_id` (nullable FK, indexes `*_local_territory_idx`); stockists later |
+| HQ link (unchanged)   | `doctors/chemists/stockists.territory_id`                                                                                   |
+| Raw source text       | `doctors.city`, `chemists.city`: raw imported data, names kept as is                                                        |
 
 - `local_territory_id` was chosen because `territory_id` already means the HQ; renaming that would touch scope, KPIs, SFC and the importer.
 - Territory code: `<HQ code>-<KEY>` (32 max, id suffix on clash). Never matched by name alone.
@@ -34,16 +34,32 @@ Names: the tree level is `territory` (a unit under an HQ). HQ stays HQ (`headqua
 2. Durgapur only: `2026-10-28-durgapur-territory-text.sql` fills blank `city` from a session staging relation loaded from a CSV kept outside the repo.
 3. `2026-10-28-territory-backfill.sql` (dry run first): creates territories per HQ from `city` (or an optional per-row mapping relation `-v map=`), links `local_territory_id`, lists blanks (e.g. Bankura) and near duplicates for review. Fuzzy matches are never merged.
 
+## Decisions (Prajesh, 2026-10-28)
+
+- Doctors/chemists stay keyed to the HQ (`territory_id`); the territory is the extra link `local_territory_id`.
+- No alias list (data is clean); a territory under one HQ may carry another town's name (e.g. one under Bankura) and stays there.
+- Near-duplicate report kept for later imports; never auto-merge.
+- Blank source text stays unlinked (counted in the report).
+- BMs filter by HQ only.
+- Stockists: later.
+
+## Next build item
+
+Importer: doctor/chemist rows resolve `territory` (HQ code) + territory text; an unknown territory text
+under that HQ is auto-created (level `territory`, `territory_key` business key) and listed in the import
+report (`created territories`); existing ones are linked via `local_territory_id`. Near-duplicate
+listing as in the backfill.
+
 ## Impact
 
-| Area                        | Impact                                                                                                                                                  |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Visibility (BM/ABM)         | None: still the HQ subtree / reporting line. Optional later: filter lists by city.                                                                      |
-| Territory pickers           | `GET /v1/territories` can now return `level: 'territory'` rows (widened enum: web must handle or filter); `assignableForRole` never returns them.       |
-| Masters                     | Not yet exposed: next step adds `localTerritoryId` to doctor/chemist/stockist DTOs, filters and import, and creates/links the territory on create/edit. |
-| SFC                         | Unchanged (per employee + HQ, From/To text). The DCR redesign may key routes by city (see Part 2).                                                      |
-| KPIs, approvals, allowances | Unchanged (keyed on HQ).                                                                                                                                |
-| Stockists                   | Not included (stockists usually serve an HQ); question open.                                                                                            |
+| Area                        | Impact                                                                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Visibility (BM/ABM)         | None: still the HQ subtree / reporting line. Optional later: filter lists by city.                                                                |
+| Territory pickers           | `GET /v1/territories` can now return `level: 'territory'` rows (widened enum: web must handle or filter); `assignableForRole` never returns them. |
+| Masters                     | Not yet exposed: next step adds `localTerritoryId` to doctor/chemist DTOs, filters and import, and creates/links the territory on create/edit.    |
+| SFC                         | Unchanged (per employee + HQ, From/To text). The DCR redesign may key routes by city (see Part 2).                                                |
+| KPIs, approvals, allowances | Unchanged (keyed on HQ).                                                                                                                          |
+| Stockists                   | Not included (stockists usually serve an HQ); question open.                                                                                      |
 
 ## DCR band and Work With (design note, no schema change)
 

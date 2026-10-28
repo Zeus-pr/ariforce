@@ -2,12 +2,12 @@
 -- Needs migration 0042_territory_level. See docs/TERRITORY-MODEL.md.
 --
 -- Creates one 'territory' under each HQ for every distinct normalised territory name of the live
--- doctors/chemists/stockists of that HQ (business key company + HQ + ariforce_territory_key(name))
+-- doctors/chemists of that HQ (business key company + HQ + ariforce_territory_key(name))
 -- and sets local_territory_id. territory_id (the HQ) is never changed; nothing is deleted or merged.
 -- Territory name source, per row: the supplied mapping relation if given and it has the row, else
--- the raw `city` column (stockists have none). Mapping (for HQs whose Excel territory column was not
+-- the raw `city` column (stockists: later, not covered). Mapping (for HQs whose Excel territory column was not
 -- imported, e.g. Durgapur): a relation the lead creates in the SAME psql session before running,
--- never committed, with columns (kind text: doctor|chemist|stockist, entity_id uuid, territory text),
+-- never committed, with columns (kind text: doctor|chemist, entity_id uuid, territory text),
 -- e.g.  CREATE TEMP TABLE territory_map (kind text, entity_id uuid, territory text);
 --       \copy territory_map FROM 'durgapur.csv' CSV HEADER
 -- then pass -v map=territory_map. Without -v map only the city column is used.
@@ -46,7 +46,7 @@ SELECT (count(*) = 1) AS company_ok FROM companies WHERE id = :'company_id' AND 
 
 CREATE TEMP TABLE _no_map (kind text, entity_id uuid, territory text) ON COMMIT DROP;
 \if :use_map
-SELECT count(*) AS map_rows, count(*) FILTER (WHERE kind NOT IN ('doctor', 'chemist', 'stockist')) AS map_bad_kind,
+SELECT count(*) AS map_rows, count(*) FILTER (WHERE kind NOT IN ('doctor', 'chemist')) AS map_bad_kind,
        count(*) - count(DISTINCT (kind, entity_id)) AS map_dupes FROM :map \gset
 \echo 'mapping rows:' :map_rows ' bad kind:' :map_bad_kind ' duplicate ids:' :map_dupes
 SELECT (:map_bad_kind = 0 AND :map_dupes = 0) AS map_ok \gset
@@ -58,7 +58,7 @@ SELECT (:map_bad_kind = 0 AND :map_dupes = 0) AS map_ok \gset
 \endif
 \endif
 
--- Source rows: live doctors/chemists/stockists, their HQ and territory name (mapping first, else city).
+-- Source rows: live doctors/chemists, their HQ and territory name (mapping first, else city).
 CREATE TEMP TABLE _src ON COMMIT DROP AS
 SELECT x.kind, x.id, x.hq_id, coalesce(m.territory, x.city) AS name,
        ariforce_territory_key(coalesce(m.territory, x.city)) AS key, (m.entity_id IS NOT NULL) AS from_map,
@@ -67,8 +67,6 @@ FROM (
   SELECT 'doctor'::text AS kind, id, territory_id AS hq_id, city, local_territory_id FROM doctors
   WHERE company_id = :'company_id' AND deleted_at IS NULL
   UNION ALL SELECT 'chemist', id, territory_id, city, local_territory_id FROM chemists
-  WHERE company_id = :'company_id' AND deleted_at IS NULL
-  UNION ALL SELECT 'stockist', id, territory_id, NULL, local_territory_id FROM stockists
   WHERE company_id = :'company_id' AND deleted_at IS NULL) x
 LEFT JOIN :map m ON m.kind = x.kind AND m.entity_id = x.id;
 
@@ -140,24 +138,15 @@ WITH m AS (
        AND t.deleted_at IS NULL
   WHERE s.kind = 'chemist' AND s.local_territory_id IS NULL)
 UPDATE chemists x SET local_territory_id = m.tid FROM m WHERE x.id = m.id;
-WITH m AS (
-  SELECT s.id, t.id AS tid FROM _src s
-  JOIN territories t ON t.company_id = :'company_id' AND t.parent_id = s.hq_id AND t.territory_key = s.key
-       AND t.deleted_at IS NULL
-  WHERE s.kind = 'stockist' AND s.local_territory_id IS NULL)
-UPDATE stockists x SET local_territory_id = m.tid FROM m WHERE x.id = m.id;
 
 \echo '== 6. After: linked / unlinked, and checks (each territory sits under the row''s HQ)'
 SELECT 'doctors' AS t, count(local_territory_id) AS linked, count(*) - count(local_territory_id) AS unlinked
 FROM doctors WHERE company_id = :'company_id' AND deleted_at IS NULL
 UNION ALL SELECT 'chemists', count(local_territory_id), count(*) - count(local_territory_id)
-FROM chemists WHERE company_id = :'company_id' AND deleted_at IS NULL
-UNION ALL SELECT 'stockists', count(local_territory_id), count(*) - count(local_territory_id)
-FROM stockists WHERE company_id = :'company_id' AND deleted_at IS NULL;
+FROM chemists WHERE company_id = :'company_id' AND deleted_at IS NULL;
 SELECT count(*) AS bad_links FROM (
   SELECT d.id FROM doctors d JOIN territories t ON t.id = d.local_territory_id WHERE t.parent_id <> d.territory_id
-  UNION ALL SELECT c.id FROM chemists c JOIN territories t ON t.id = c.local_territory_id WHERE t.parent_id <> c.territory_id
-  UNION ALL SELECT k.id FROM stockists k JOIN territories t ON t.id = k.local_territory_id WHERE t.parent_id <> k.territory_id) x;
+  UNION ALL SELECT c.id FROM chemists c JOIN territories t ON t.id = c.local_territory_id WHERE t.parent_id <> c.territory_id) x;
 
 \if :apply
   COMMIT;
@@ -170,6 +159,5 @@ SELECT count(*) AS bad_links FROM (
 -- BEGIN; SELECT set_config('app.current_company_id', '<uuid>', true);
 -- UPDATE doctors SET local_territory_id = NULL WHERE company_id = '<uuid>' AND local_territory_id IS NOT NULL;
 -- UPDATE chemists SET local_territory_id = NULL WHERE company_id = '<uuid>' AND local_territory_id IS NOT NULL;
--- UPDATE stockists SET local_territory_id = NULL WHERE company_id = '<uuid>' AND local_territory_id IS NOT NULL;
 -- DELETE FROM territories WHERE company_id = '<uuid>' AND level = 'territory' AND territory_key IS NOT NULL;
 -- COMMIT;
