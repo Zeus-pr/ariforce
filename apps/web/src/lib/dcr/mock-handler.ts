@@ -145,13 +145,18 @@ export function mockDcrFlow(base: string) {
       const tid = sp.get('territoryId');
       const t = tid ? DCR_TERRITORIES.find((x) => x.id === tid) : undefined;
       if (!t) return undefined; // not ours: the contracts mock answers
+      // localTerritoryId (doctors, chemists): exact territory id, or 'none' for rows not linked yet.
+      const local = kind === 'stockist' ? null : sp.get('localTerritoryId');
+      const linkOf = (o: (typeof DCR_OUTLETS)[number]) => (o.territoryId === o.hqId ? null : o.territoryId);
       const q = (sp.get('q') ?? '').trim().toLowerCase();
       const limit = Math.min(Number(sp.get('limit') ?? 25) || 25, 200);
       const from = Number(sp.get('cursor') ?? 0) || 0;
       const rows = DCR_OUTLETS.filter(
         (o) =>
           o.kind === kind &&
+          // territoryId means "this territory or any descendant": the HQ, or one territory under it.
           (t.level === 'headquarter' ? o.hqId === t.id : o.territoryId === t.id) &&
+          (!local || (local === 'none' ? linkOf(o) === null : linkOf(o) === local)) &&
           (!q || o.name.toLowerCase().includes(q)),
       ).sort((a, b) => a.name.localeCompare(b.name));
       const page = rows.slice(from, from + limit);
@@ -162,9 +167,10 @@ export function mockDcrFlow(base: string) {
           ...tmpl,
           id: o.id,
           name: o.name,
-          // Customers are filed under their HQ today; the city territory is shown as context.
+          // Customers are filed under their HQ; the importer links some to a territory under it.
           territoryId: o.hqId,
-          city: DCR_TERRITORIES.find((x) => x.id === o.territoryId)?.name ?? null,
+          ...(kind === 'stockist' ? {} : { localTerritoryId: linkOf(o) }),
+          city: null,
           createdAt: now,
           updatedAt: now,
           ...(kind === 'doctor' ? { approvalStatus: 'approved' } : {}),

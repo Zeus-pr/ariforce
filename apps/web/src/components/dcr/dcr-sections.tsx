@@ -167,25 +167,45 @@ function RouteFacts({ title, c, note }: { title: string; c: Candidate; note: str
   );
 }
 
-type OutletRow = { id: string; name: string; city?: string | null; territoryId?: string | null; approvalStatus?: string };
-/** Customers of the day's HQs from the right master (doctors, chemists or stockists), server search. */
-function useCustomers(kind: CallKind, hqIds: string[], hqNames: Map<string, string>) {
+type OutletRow = { id: string; name: string; city?: string | null; territoryId?: string | null; localTerritoryId?: string | null; approvalStatus?: string };
+/** Where a call's customers come from: an HQ, narrowed to the picked territories under it (empty = the whole HQ). */
+export type CustomerScope = { hqId: string; localIds: string[] };
+type Query = { limit: number; sort: 'name'; territoryId: string; localTerritoryId?: string; q?: string };
+/**
+ * Customers of the day's territories from the right master (doctors, chemists or stockists), server search.
+ * Doctors and chemists are narrowed by localTerritoryId to the picked territories unless `wide`;
+ * stockists are not linked to territories, so they always list the whole HQ.
+ */
+function useCustomers(kind: CallKind, scope: CustomerScope[], names: Map<string, string>, wide: boolean) {
   const [q, setQ] = useState('');
   const [opts, setOpts] = useState<SelectOption[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
-  const key = hqIds.join(',');
+  const narrow = kind !== 'stockist' && !wide;
+  const key = scope.map((x) => `${x.hqId}:${narrow ? x.localIds.join('+') : ''}`).join(',');
   useEffect(() => {
     let live = true;
     setOpts(null);
     setError(null);
     void (async () => {
       await apiReady();
+      const queries: Query[] = key
+        .split(',')
+        .filter(Boolean)
+        .flatMap((part) => {
+          const [territoryId, locals = ''] = part.split(':') as [string, string?];
+          const base: Query = { limit: 100, sort: 'name', territoryId, ...(q ? { q } : {}) };
+          const ids = locals.split('+').filter(Boolean);
+          return ids.length ? ids.map((localTerritoryId) => ({ ...base, localTerritoryId })) : [base];
+        });
       const rs = await Promise.all(
-        key.split(',').filter(Boolean).map((territoryId) => {
-          const query = { limit: 100, sort: 'name' as const, territoryId, ...(q ? { q } : {}) };
-          return kind === 'doctor' ? api.GET('/v1/doctors', { params: { query } }) : kind === 'chemist' ? api.GET('/v1/chemists', { params: { query } }) : api.GET('/v1/stockists', { params: { query } });
-        }),
+        queries.map((query) =>
+          kind === 'doctor'
+            ? api.GET('/v1/doctors', { params: { query } })
+            : kind === 'chemist'
+              ? api.GET('/v1/chemists', { params: { query } })
+              : api.GET('/v1/stockists', { params: { query: { limit: query.limit, sort: query.sort, territoryId: query.territoryId, q: query.q } } }),
+        ),
       );
       if (!live) return;
       const bad = rs.find((r) => !r.data);
@@ -197,22 +217,24 @@ function useCustomers(kind: CallKind, hqIds: string[], hqNames: Map<string, stri
           if (seen.has(x.id)) continue;
           seen.add(x.id);
           if (kind === 'doctor' && x.approvalStatus === 'rejected') continue;
-          out.push({ id: x.id, label: x.name, hint: [x.city, x.territoryId ? hqNames.get(x.territoryId) : null].filter(Boolean).join(' · ') || null, badge: kind === 'doctor' && x.approvalStatus === 'pending' ? 'Awaiting approval' : null, meta: x.territoryId ?? undefined });
+          const where = x.localTerritoryId ? names.get(x.localTerritoryId) : null;
+          const hq = x.territoryId ? names.get(x.territoryId) : null;
+          out.push({ id: x.id, label: x.name, hint: [x.city, where, hq].filter(Boolean).join(' · ') || null, badge: kind === 'doctor' && x.approvalStatus === 'pending' ? 'Awaiting approval' : null, meta: x.territoryId ?? undefined });
         }
       setOpts(out);
     })().catch(() => live && setError('Could not reach the server.'));
     return () => {
       live = false;
     };
-  }, [kind, key, q, tick, hqNames]);
+  }, [kind, key, q, tick, names]);
   return { opts, error, setQ, retry: () => setTick((t) => t + 1) };
 }
 
 export function CallCard({
   call,
   index,
-  hqIds,
-  hqNames,
+  scope,
+  names,
   products,
   readOnly,
   errors,
@@ -221,15 +243,21 @@ export function CallCard({
 }: {
   call: CallDraft;
   index: number;
-  hqIds: string[];
-  hqNames: Map<string, string>;
+  scope: CustomerScope[];
+  /** Names of the day's HQs and territories by id. */
+  names: Map<string, string>;
   products: SelectOption[];
   readOnly: boolean;
   errors: string[];
   onChange: (patch: Partial<CallDraft>) => void;
   onRemove: () => void;
 }) {
-  const { opts, error, setQ, retry } = useCustomers(call.kind, hqIds, hqNames);
+  const [wide, setWide] = useState(false);
+  const { opts, error, setQ, retry } = useCustomers(call.kind, scope, names, wide);
+  // Doctors and chemists can be narrowed to the picked territories; stockists always list the whole HQ.
+  const narrowable = call.kind !== 'stockist' && scope.some((x) => x.localIds.length > 0);
+  const scopeLabel = scope.flatMap((x) => (x.localIds.length ? x.localIds.map((id) => names.get(id) ?? 'a territory') : [])).join(', ');
+  const hqLabel = scope.map((x) => names.get(x.hqId) ?? 'your HQ').join(', ');
   const onQuery = useCallback((q: string) => setQ(q), [setQ]);
   const noun = KIND_LABEL[call.kind];
   const labels = new Map(call.outletId ? [[call.outletId, call.outletName]] : []);
@@ -262,11 +290,19 @@ export function CallCard({
               onChange({ outletId: ids[0] ?? '', outletName: o?.label ?? '', hqId: o?.meta ?? '' });
             }}
             placeholder={`Choose a ${noun.toLowerCase()}`}
-            emptyText={`No ${noun.toLowerCase()}s found in the territories of the day.`}
+            emptyText={narrowable && !wide ? `No ${noun.toLowerCase()}s linked to ${scopeLabel}. Try all of ${hqLabel}.` : `No ${noun.toLowerCase()}s found in the territories of the day.`}
             disabled={readOnly}
             invalid={errors.some((e) => e.includes('choose'))}
             testId="dcr-call-customer"
           />
+          {narrowable && !readOnly && (
+            <p className="text-xs text-muted-foreground" data-testid="dcr-call-scope">
+              {wide ? `Showing all ${noun.toLowerCase()}s in ${hqLabel}. ` : `Showing ${noun.toLowerCase()}s linked to ${scopeLabel}. `}
+              <button type="button" className="font-medium text-foreground underline underline-offset-2" onClick={() => setWide((w) => !w)} data-testid="dcr-call-scope-toggle">
+                {wide ? `Only ${scopeLabel}` : `Show all of ${hqLabel}`}
+              </button>
+            </p>
+          )}
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={`time-${call.clientId}`}>Visit time</Label>

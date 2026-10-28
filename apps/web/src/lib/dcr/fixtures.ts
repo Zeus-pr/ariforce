@@ -45,12 +45,16 @@ export const SFC_SHEET_FOR_HQ: Record<string, string> = { [DGP]: 'sfc-u-dgp', [B
 const terrByText = (hq: string, text: string) =>
   DCR_TERRITORIES.find((t) => t.parentId === hq && t.name.toUpperCase() === text)?.id ?? hq;
 
+/** territoryId is the local territory the importer linked (localTerritoryId), or the HQ id when not linked yet. */
 export type MockOutlet = { id: string; kind: 'doctor' | 'chemist' | 'stockist'; name: string; hqId: string; territoryId: string };
 export const DCR_OUTLETS: MockOutlet[] = [
   ...DGP_DOCTOR_ROWS.map(([name, t], i): MockOutlet => ({ id: uid(3, i + 1), kind: 'doctor', name, hqId: DGP, territoryId: terrByText(DGP, t) })),
   ...DGP_CHEMIST_ROWS.map(([name, t], i): MockOutlet => ({ id: uid(4, i + 1), kind: 'chemist', name, hqId: DGP, territoryId: terrByText(DGP, t) })),
   { id: uid(5, 1), kind: 'stockist', name: 'Durgapur Medical Agencies', hqId: DGP, territoryId: terrByText(DGP, 'DURGAPUR') },
   { id: uid(5, 2), kind: 'stockist', name: 'City Centre Pharma Distributors', hqId: DGP, territoryId: terrByText(DGP, 'DURGAPUR') },
+  // Not linked to a territory yet (localTerritoryId null): only listed under "All of <HQ>".
+  { id: uid(3, 801), kind: 'doctor', name: 'Dr. Unlinked Demo Surgeon', hqId: DGP, territoryId: DGP },
+  { id: uid(4, 801), kind: 'chemist', name: 'Unlinked Demo Pharmacy', hqId: DGP, territoryId: DGP },
   { id: uid(3, 901), kind: 'doctor', name: 'Dr. Bankura Demo Physician', hqId: BNK, territoryId: terrByText(BNK, 'BANKURA') },
   { id: uid(4, 901), kind: 'chemist', name: 'Bishnupur Demo Medical Hall', hqId: BNK, territoryId: terrByText(BNK, 'BISHNUPUR') },
   { id: uid(5, 901), kind: 'stockist', name: 'Bankura Demo Distributors', hqId: BNK, territoryId: terrByText(BNK, 'BANKURA') },

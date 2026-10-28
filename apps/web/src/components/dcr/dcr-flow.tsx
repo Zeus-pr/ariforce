@@ -33,7 +33,7 @@ import {
   type WorkTypeOption,
 } from '@/lib/dcr/model';
 import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
-import { CallCard, FieldError, LeaveFields, MeetingFields, OfficeFields, SfcPanel } from './dcr-sections';
+import { CallCard, type CustomerScope, FieldError, LeaveFields, MeetingFields, OfficeFields, SfcPanel } from './dcr-sections';
 import { SearchSelect, type SelectOption } from './search-select';
 
 const noop = () => () => {};
@@ -104,6 +104,16 @@ function Flow({ today }: { today: string }) {
   const field = branch === 'field';
   const readOnly = dcr?.status === 'submitted' || dcr?.status === 'locked';
   const dayHqIds = useMemo(() => hqIdsOf(rows, s.territoryIds), [rows, s.territoryIds]);
+  // Per HQ of the day: the picked level-'territory' rows under it, or none when the HQ itself was picked (whole HQ).
+  const customerScope = useMemo<CustomerScope[]>(
+    () =>
+      dayHqIds.map((hqId) => ({
+        hqId,
+        localIds: s.territoryIds.includes(hqId) ? [] : rows.filter((r) => r.level === 'territory' && r.hqId === hqId && s.territoryIds.includes(r.id)).map((r) => r.id),
+      })),
+    [dayHqIds, rows, s.territoryIds],
+  );
+  const placeNames = useMemo(() => new Map(rows.map((r) => [r.id, r.name])), [rows]);
   const update = (patch: Partial<FlowState> | ((x: FlowState) => Partial<FlowState>)) => {
     setDirty(true);
     setS((x) => ({ ...x, ...(typeof patch === 'function' ? patch(x) : patch) }));
@@ -498,8 +508,8 @@ function Flow({ today }: { today: string }) {
                   key={c.clientId}
                   call={c}
                   index={i}
-                  hqIds={dayHqIds}
-                  hqNames={hqNames}
+                  scope={customerScope}
+                  names={placeNames}
                   products={products}
                   readOnly={readOnly}
                   errors={errorsFor(`call-${c.clientId}`)}
