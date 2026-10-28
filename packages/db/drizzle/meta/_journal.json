@@ -295,6 +295,20 @@
       "when": 1793125464632,
       "tag": "0041_kpi_view_path_prefix",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793184899757,
+      "tag": "0042_territory_level",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1793270000000,
+      "tag": "0043_dcr_redesign",
+      "breakpoints": true
     }
   ]
 }

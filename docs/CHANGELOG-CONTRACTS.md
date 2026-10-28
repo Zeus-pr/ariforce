@@ -29,6 +29,20 @@ response enums, or changed server behaviour for the same request).
 | Health (`a72e145`)                                             | `HealthWarning` dropped `companyId` / `companySlug` and became aggregate (`NO_WORK_TYPES` with `count`). Only clients of `0c97952` are affected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | TP submit (`36c29f5`, superseded by `0bb7b40`)                 | `POST /v1/tour-plans/{month}/submit` 422 rule changed: weekly offs and past days of the current month (IST) are no longer required                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
+## DCR redesign: multi-HQ, details, SFC snapshots (`feat/territory-city-split`)
+
+Additive. Old `PUT /v1/dcrs` keeps working, except it now returns `409 ALREADY_SUBMITTED` for a DCR
+submitted through the new flow.
+
+- New: `GET /v1/dcrs/options`, `/territories`, `/work-with`, `/sfc-match`; `PUT /v1/dcrs/draft`;
+  `POST /v1/dcrs/{id}/submit` (header `Idempotency-Key`, 1-128 chars).
+- `Dcr` gains `band`, `details`, `workWithUserIds`, `sfcRoutes[] {hqTerritoryId, sfcRouteId, snapshot}`,
+  `submittedBy` (all defaulted, so old payloads still parse).
+- New error codes: `SFC_NO_MATCH` (404 on match, 422 on submit), `SFC_ROUTE_REQUIRED`, `SFC_MISMATCH`,
+  `SFC_UNAVAILABLE` (503), `LEAVE_NOT_FOUND`, `IDEMPOTENCY_CONFLICT`, `ALREADY_SUBMITTED`.
+- `SfcCategory` import mapping: `EX`/`EX HQ` -> `ex`, `HQ` -> `hq`, `OS`/`OUT EX HQ`/`OUTSTATION` -> `os`;
+  other values skip the row with a report line. Migration 0043. Reference: `docs/DCR-REDESIGN-DESIGN.md`.
+
 ## Forgot password + invite email (`feat/auth-email-otp`, item F)
 
 Additive. New public `POST /v1/auth/password/forgot` (`PasswordForgot` -> `200 PasswordForgotAccepted`,
