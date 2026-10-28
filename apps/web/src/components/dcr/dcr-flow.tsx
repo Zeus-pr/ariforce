@@ -44,6 +44,7 @@ import { SearchSelect, type SelectOption } from './search-select';
 
 const noop = () => () => {};
 const nowHHmm = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+const istDay = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
 const timeLabel = (iso: string) => `${new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(iso))} IST`;
 
 /** DCR redesign: one scrollable page, sections appear as the previous choice is made. */
@@ -521,12 +522,14 @@ function Flow({ today, initialDate, dateLocked = false, reportId, onSaved, onDel
         </div>
       </div>
 
-      {dcr?.status === 'submitted' && dcr.submittedAt && (
+      {(dcr?.status === 'submitted' || dcr?.status === 'locked') && dcr.submittedAt && (
         <div className="af-enter flex items-start gap-3 rounded-xl border border-success/40 bg-success-soft p-4" role="status" data-testid="dcr-success">
           <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden />
           <div className="flex flex-col gap-0.5 text-sm">
-            <p className="font-medium">Report submitted at {timeLabel(dcr.submittedAt)}</p>
-            <p className="text-muted-foreground">It is read-only now. Ask your manager if something needs correcting.</p>
+            <p className="font-medium">Report submitted {dcr.status === 'locked' ? `on ${dateLabel(istDay(dcr.submittedAt))}, ` : ''}at {timeLabel(dcr.submittedAt)}</p>
+            <p className="text-muted-foreground">
+              {dcr.status === 'locked' ? 'The day is locked, so it is read-only.' : 'It is read-only now.'} Ask your manager if something needs correcting.
+            </p>
           </div>
         </div>
       )}

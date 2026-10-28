@@ -134,11 +134,75 @@ export function mockDcrFlow(base: string) {
   const wtOf = (id: string) => DCR_WORK_TYPES.find((w) => w.id === id);
   const out = (d: Dcr) => HttpResponse.json(Dcr.parse({ ...d, lockAt: lockAt(d.date) }));
 
+  /**
+   * Submitted history per persona for the History tab: about 30 working days from 2 to ~75 days back
+   * (so the 60-day window, Load more and "Show older" all have something), mostly field days.
+   */
+  const seedHistory = (userId: string) => {
+    const doctors = DCR_OUTLETS.filter((o) => o.kind === 'doctor').slice(0, 12);
+    const day = (back: number) =>
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() - back * 86_400_000));
+    let n = 0;
+    for (let back = 2; back <= 75; back += back % 3 === 0 ? 3 : 2) {
+      const date = day(back);
+      if (new Date(`${date}T12:00:00Z`).getUTCDay() === 0) continue;
+      const at = new Date(Date.parse(`${date}T19:15:00+05:30`) + (n % 4) * 9 * 60_000).toISOString();
+      const kind = n % 6 === 4 ? 'meeting' : n % 9 === 7 ? 'office' : 'field';
+      const wt = kind === 'meeting' ? DCR_WORK_TYPES[3]! : kind === 'office' ? DCR_WORK_TYPES[5]! : DCR_WORK_TYPES[n % 3 === 1 ? 1 : 0]!;
+      const callN = kind === 'field' ? 2 + (n % 4) : 0;
+      dcrs.push(
+        Dcr.parse({
+          id: crypto.randomUUID(),
+          companyId: fx.COMPANY_ID,
+          createdAt: at,
+          updatedAt: at,
+          deletedAt: null,
+          version: 2,
+          userId,
+          date,
+          workTypeId: wt.id,
+          band: wt.band,
+          territoryIds: kind === 'field' ? [DCR_TERRITORIES[1 + (n % 3)]!.id] : [],
+          workWithUserIds: [],
+          tourPlanId: null,
+          deviationReason: null,
+          details:
+            kind === 'meeting'
+              ? { kind: 'meeting', title: 'Cycle meeting', mode: 'in_person', location: 'Durgapur office', startTime: '10:00', durationMin: 120 }
+              : kind === 'office'
+                ? { kind: 'office', taskType: 'Reports', description: 'Weekly sales statement', startTime: '16:00', durationMin: 60 }
+                : null,
+          status: 'submitted',
+          calls: Array.from({ length: callN }, (_, i) => ({
+            id: crypto.randomUUID(),
+            outletKind: 'doctor' as const,
+            outletId: doctors[(n + i) % doctors.length]!.id,
+            checkInId: null,
+            jointWorkUserIds: [],
+            productsDetailed: [],
+            samples: [],
+            pob: [],
+            rcpa: [],
+            remarks: null,
+            calledAt: new Date(Date.parse(`${date}T10:30:00+05:30`) + i * 50 * 60_000).toISOString(),
+          })),
+          sfcRoutes: [],
+          submittedAt: at,
+          submittedBy: userId,
+          lockAt: lockAt(date),
+          unlockedUntil: null,
+        }),
+      );
+      n++;
+    }
+  };
+
   /** One saved draft per persona (yesterday's meeting) so the drafts list has a card on first load. */
   const seeded = new Set<string>();
   const seed = (userId: string) => {
     if (seeded.has(userId)) return;
     seeded.add(userId);
+    seedHistory(userId);
     const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(
       new Date(Date.now() - 86_400_000),
     );
@@ -476,8 +540,10 @@ export function mockDcrFlow(base: string) {
       return out(d);
     }),
     /**
-     * The signed-in persona's drafts (the drafts workspace): GET /v1/dcrs?status=draft[&from&to&sort].
-     * Other list queries (team views, submitted history) fall through to the contracts mock.
+     * The signed-in persona's own reports: GET /v1/dcrs?mine=true (or status=draft)[&status&from&to&sort
+     * &limit&cursor], for the drafts workspace and the History tab. Status works as on the API: a day past
+     * its lock cut-off is 'locked' (drafts and submitted alike) and leaves 'draft' / 'submitted'. Cursor
+     * is an offset. Other list queries (team views) fall through to the contracts mock.
      */
     http.get(`${base}/v1/dcrs`, ({ request }) => {
       const q = new URL(request.url).searchParams;
@@ -490,20 +556,24 @@ export function mockDcrFlow(base: string) {
       const sort = q.get('sort') ?? '-date';
       const key = sort.replace(/^-/, '') as 'date' | 'createdAt' | 'updatedAt';
       const dir = sort.startsWith('-') ? -1 : 1;
-      const items = dcrs
+      const rows = dcrs
         .filter((d) => d.userId === me.id)
         .filter((d) => {
-          const locked = d.status === 'draft' && isLocked(d.date);
+          const locked = isLocked(d.date);
           if (status === 'locked') return locked;
           if (status === 'draft') return d.status === 'draft' && !locked;
-          if (status === 'submitted') return d.status === 'submitted';
+          if (status === 'submitted') return d.status === 'submitted' && !locked;
           return true;
         })
         .filter((d) => (!from || d.date >= from) && (!to || d.date <= to))
-        .sort((a, b) => (a[key] < b[key] ? -dir : a[key] > b[key] ? dir : 0))
-        .slice(0, Number(q.get('limit') ?? 50))
-        .map((d) => Dcr.parse({ ...d, lockAt: lockAt(d.date), callCount: d.calls.length }));
-      return HttpResponse.json({ items, nextCursor: null, serverTime: new Date().toISOString() });
+        .sort((a, b) => (a[key] < b[key] ? -dir : a[key] > b[key] ? dir : 0));
+      const limit = Math.min(Number(q.get('limit') ?? 50) || 50, 200);
+      const off = Math.max(0, Number(q.get('cursor') ?? 0) || 0);
+      const items = rows
+        .slice(off, off + limit)
+        .map((d) => Dcr.parse({ ...d, status: isLocked(d.date) ? 'locked' : d.status, lockAt: lockAt(d.date), callCount: d.calls.length }));
+      const nextCursor = off + limit < rows.length ? String(off + limit) : null;
+      return HttpResponse.json({ items, nextCursor, serverTime: new Date().toISOString() });
     }),
     // Approving leave while a submitted DCR is on a leave date (mock switch, see the header).
     ...[`${base}/v1/leave/requests/:id/decision`, `${base}/v1/approvals/:id/decision`].map((url) =>

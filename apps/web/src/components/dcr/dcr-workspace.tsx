@@ -1,7 +1,7 @@
 'use client';
 
-import { ChevronDown, ChevronUp, FileText, Plus, RotateCw, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { ChevronDown, ChevronUp, FilePen, FileText, History, Plus, RotateCw, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Dcr } from '@ariforce/contracts';
 import {
   AlertDialog,
@@ -15,29 +15,29 @@ import {
 } from '@ariforce/ui/components/alert-dialog';
 import { Button } from '@ariforce/ui/components/button';
 import { Skeleton } from '@ariforce/ui/components/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ariforce/ui/components/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@ariforce/ui/components/tooltip';
 import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
 import { dateLabel, todayIST } from '@/components/attendance/format';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { useSession } from '@/lib/mock-auth';
-import { useReducedMotion } from '@/lib/use-reduced-motion';
-import { BANDS, normaliseWorkTypes, type HqOption, type WorkTypeOption } from '@/lib/dcr/model';
+import { normaliseWorkTypes, type HqOption, type WorkTypeOption } from '@/lib/dcr/model';
 import { failureMessage, thrownMessage } from '@/lib/dcr/errors';
 import { DcrFlow, type FlowController } from './dcr-flow';
+import { DcrHistory } from './dcr-history';
+import { Reveal, dcrSummary, istLabel } from './dcr-card-parts';
 
 /**
- * The DCR page: saved drafts as compact cards, at most one report open at a time.
+ * The DCR page, two tabs. "Today & drafts": saved drafts as compact cards, at most one report open at a time.
  * Save draft collapses the open report into its card; a card (click, Enter or Space) expands back into the
  * report exactly as saved. Several drafts per day are allowed; one report per day can be submitted
  * (API 0045). Drafts come from GET /v1/dcrs?mine=true&status=draft&sort=-updatedAt (callCount per item).
+ * "History": the rep's submitted reports (./dcr-history). A submit moves the report there, highlighted.
+ * Links: /dcr?draft=<id>, /dcr?new=1, /dcr?tab=history, /dcr?view=<id> (a submitted report, opened).
  */
 
 const noop = () => () => {};
-const MOTION_MS = 240;
-const savedLabel = (iso: string) =>
-  `${new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(iso))} IST`;
-const calls = (n: number) => `${n} call${n === 1 ? '' : 's'}`;
 const newestFirst = (a: Dcr, b: Dcr) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0);
 const DISCARD = 'This report has unsaved changes that can’t be saved as a draft yet. Discard them?';
 
@@ -50,12 +50,92 @@ export function DcrWorkspace() {
   return <Workspace today={today} />;
 }
 
+type Tab = 'drafts' | 'history';
+
+/** Tabs plus the names both lists use (work types, territories). */
 function Workspace({ today }: { today: string }) {
+  const [workTypes, setWorkTypes] = useState<WorkTypeOption[]>([]);
+  const [hqs, setHqs] = useState<HqOption[]>([]);
+  // Mounted only on the client (see DcrWorkspace), so the URL is readable here.
+  const [link] = useState(() => new URLSearchParams(window.location.search));
+  const viewId = link.get('view');
+  const [tab, setTab] = useState<Tab>(link.get('tab') === 'history' || viewId ? 'history' : 'drafts');
+  const [justSubmitted, setJustSubmitted] = useState<Dcr | null>(null);
+
+  // Names for the cards: work types (one options call) and territories. Cards fall back to plain words.
+  useEffect(() => {
+    void apiReady()
+      .then(() =>
+        Promise.all([
+          api.GET('/v1/dcrs/options', { params: { query: { date: today } } }),
+          api.GET('/v1/dcrs/territories', {}),
+        ]),
+      )
+      .then(([o, t]) => {
+        if (o.data) setWorkTypes(normaliseWorkTypes(o.data.workTypes as WorkTypeOption[]));
+        if (t.data) setHqs(t.data.items);
+      })
+      .catch(() => {});
+  }, [today]);
+
+  const placeName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const h of hqs) {
+      m.set(h.id, h.name);
+      for (const t of h.territories) m.set(t.id, t.name);
+    }
+    return m;
+  }, [hqs]);
+  const wtName = useCallback((id: string) => workTypes.find((w) => w.id === id)?.name, [workTypes]);
+
+  const changeTab = (t: Tab) => {
+    setTab(t);
+    const u = new URL(window.location.href);
+    for (const k of ['tab', 'view', 'draft', 'new']) u.searchParams.delete(k);
+    if (t === 'history') u.searchParams.set('tab', 'history');
+    window.history.replaceState(window.history.state, '', u);
+  };
+  const onSubmitted = (d: Dcr) => {
+    setJustSubmitted(d);
+    changeTab('history');
+  };
+
+  // Both panels stay mounted (hidden when inactive) so an open draft keeps its unsaved edits.
+  return (
+    <Tabs value={tab} onValueChange={(v) => changeTab(v as Tab)} className="gap-4">
+      <TabsList className="w-full sm:w-fit" data-testid="dcr-tabs">
+        <TabsTrigger value="drafts" className="px-3" data-testid="dcr-tab-drafts">
+          <FilePen aria-hidden /> Today &amp; drafts
+        </TabsTrigger>
+        <TabsTrigger value="history" className="px-3" data-testid="dcr-tab-history">
+          <History aria-hidden /> History
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="drafts" forceMount className="data-[state=inactive]:hidden">
+        <DraftsPanel today={today} wtName={wtName} placeName={placeName} onSubmitted={onSubmitted} />
+      </TabsContent>
+      <TabsContent value="history" forceMount className="data-[state=inactive]:hidden">
+        <DcrHistory today={today} active={tab === 'history'} wtName={wtName} placeName={placeName} submitted={justSubmitted} viewId={viewId} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+function DraftsPanel({
+  today,
+  wtName,
+  placeName,
+  onSubmitted,
+}: {
+  today: string;
+  wtName: (id: string) => string | undefined;
+  placeName: Map<string, string>;
+  /** A report was submitted: the page moves to History. */
+  onSubmitted: (d: Dcr) => void;
+}) {
   const [drafts, setDrafts] = useState<Dcr[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
-  const [workTypes, setWorkTypes] = useState<WorkTypeOption[]>([]);
-  const [hqs, setHqs] = useState<HqOption[]>([]);
   /** Dates that already have a submitted report (drafts of those days can only be deleted). */
   const [submittedDays, setSubmittedDays] = useState<Map<string, string | null>>(new Map());
   // Everything starts collapsed: a draft opens only on click / Enter / Space (or a ?draft= / ?new=1 link).
@@ -119,31 +199,6 @@ function Workspace({ today }: { today: string }) {
       focusTarget.current = 'header';
     }
   }, [drafts, today]);
-
-  // Names for the cards: work types (one options call) and territories. Cards fall back to plain words.
-  useEffect(() => {
-    void apiReady()
-      .then(() =>
-        Promise.all([
-          api.GET('/v1/dcrs/options', { params: { query: { date: today } } }),
-          api.GET('/v1/dcrs/territories', {}),
-        ]),
-      )
-      .then(([o, t]) => {
-        if (o.data) setWorkTypes(normaliseWorkTypes(o.data.workTypes as WorkTypeOption[]));
-        if (t.data) setHqs(t.data.items);
-      })
-      .catch(() => {});
-  }, [today]);
-
-  const placeName = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const h of hqs) {
-      m.set(h.id, h.name);
-      for (const t of h.territories) m.set(t.id, t.name);
-    }
-    return m;
-  }, [hqs]);
 
   const live = useMemo(() => (drafts ?? []).filter((d) => d.status === 'draft' && !removing.has(d.id)), [drafts, removing]);
   // A report that was just submitted keeps its place while it stays open.
@@ -214,13 +269,18 @@ function Workspace({ today }: { today: string }) {
   };
 
   const onSaved = (d: Dcr, submitted: boolean) => {
-    // A submitted report stays in state (its card is hidden) so the open report keeps its place.
-    setDrafts((xs) => [d, ...(xs ?? []).filter((x) => x.id !== d.id)]);
-    setOpen((o) => (o ? { ...o, draftId: d.id, date: d.date } : o));
     if (submitted) {
+      // It is not a draft any more: close it here and show it in History (the page switches tabs).
       setSubmittedDays((m) => new Map(m).set(d.date, d.id));
+      setDrafts((xs) => (xs ?? []).filter((x) => x.id !== d.id));
+      focusTarget.current = null;
+      setOpen(null);
+      setClosing(false);
+      onSubmitted(d);
       return;
     }
+    setDrafts((xs) => [d, ...(xs ?? []).filter((x) => x.id !== d.id)]);
+    setOpen((o) => (o ? { ...o, draftId: d.id, date: d.date } : o));
     if (switching.current) return;
     setAnnounce(`Draft for ${dateLabel(d.date)} saved and collapsed. Use New DCR to start another report.`);
     focusTarget.current = `card:${d.id}`;
@@ -310,7 +370,6 @@ function Workspace({ today }: { today: string }) {
   };
 
   const editorId = 'dcr-open-report';
-  const wtName = (id: string) => workTypes.find((w) => w.id === id)?.name;
   const openDcr = open?.draftId ? drafts?.find((x) => x.id === open.draftId) : undefined;
   const openTitle = !open
     ? ''
@@ -470,15 +529,6 @@ function DraftCard({
   onOpen: () => void;
   onDelete: () => void;
 }) {
-  const band = BANDS.find((b) => b.band === d.band);
-  const places = d.territoryIds.map((id) => placeName.get(id)).filter(Boolean) as string[];
-  const territory = places.length
-    ? places.join(', ')
-    : d.territoryIds.length
-      ? `${d.territoryIds.length} ${d.territoryIds.length === 1 ? 'territory' : 'territories'}`
-      : null;
-  const what = workType ?? (band ? 'Field work' : d.details?.kind ? d.details.kind[0]!.toUpperCase() + d.details.kind.slice(1) : 'Report');
-  const n = d.callCount ?? d.calls.length;
   const day = dateLabel(d.date);
   // One row: the report itself expands (chevron is part of that target); delete sits apart, past a divider.
   return (
@@ -513,10 +563,10 @@ function DraftCard({
             )}
           </span>
           <span className="text-sm text-muted-foreground">
-            {[what, band ? band.label : null, territory, band || n ? calls(n) : null].filter(Boolean).join(' · ')}
+            {dcrSummary(d, workType, placeName)}
           </span>
           <span className="text-xs text-muted-foreground tabular-nums">
-            Saved {savedLabel(d.updatedAt)}
+            Saved {istLabel(d.updatedAt)}
             {daySubmitted ? ' · Can’t be submitted; delete it if you no longer need it' : ''}
           </span>
         </span>
@@ -544,54 +594,6 @@ function DraftCard({
         </TooltipTrigger>
         <TooltipContent side="top">Delete draft</TooltipContent>
       </Tooltip>
-    </div>
-  );
-}
-
-/**
- * Height + opacity reveal (grid rows 0fr → 1fr), ease-out; instant when the OS asks for reduced motion.
- * `appear` animates the first render; `closing` collapses it, then `onClosed` runs.
- */
-function Reveal({
-  closing,
-  onClosed,
-  appear = true,
-  children,
-}: {
-  closing: boolean;
-  onClosed: () => void;
-  appear?: boolean;
-  children: ReactNode;
-}) {
-  const reduced = useReducedMotion();
-  const [on, setOn] = useState(!appear);
-  const [settled, setSettled] = useState(!appear);
-  const closedRef = useRef(onClosed);
-  useEffect(() => {
-    closedRef.current = onClosed;
-  });
-  useEffect(() => {
-    if (on) return;
-    const r = requestAnimationFrame(() => setOn(true));
-    return () => cancelAnimationFrame(r);
-  }, [on]);
-  useEffect(() => {
-    if (!closing) return;
-    setSettled(false);
-    const t = window.setTimeout(() => closedRef.current(), reduced ? 0 : MOTION_MS);
-    return () => window.clearTimeout(t);
-  }, [closing, reduced]);
-  const expanded = on && !closing;
-  return (
-    <div
-      className="af-reveal"
-      data-open={expanded}
-      data-settled={(expanded && (settled || reduced)) || undefined}
-      onTransitionEnd={(e) => {
-        if (e.target === e.currentTarget && e.propertyName === 'grid-template-rows' && expanded) setSettled(true);
-      }}
-    >
-      <div>{children}</div>
     </div>
   );
 }
