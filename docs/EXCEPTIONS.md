@@ -51,7 +51,7 @@ How the inputs are defined:
 - **Working day:** not a weekly off from `leave_settings.weekly_off_days` (default Sunday). The schema has no holiday calendar, so a holiday shows up only as a `holiday`-kind DCR.
 - **Out of fence:** the visit's `distance_m` is greater than the doctor's `geofence_radius_m`, or the company's `default_geofence_m` otherwise (chemists and stockists always use the company default). Mock location means `is_mock`.
 
-Who gets evaluated: active users who hold `field:write` (by default, BMs only) on dates on or after their `joined_on`.
+Who gets evaluated: active users who hold `field:write` (by default BM and, since 0044, ABM and up incl. Director) on dates on or after their `joined_on`. A user with no manager (e.g. the Director) gets exceptions with no assignee.
 
 Not built, so the lead should confirm:
 
@@ -155,7 +155,7 @@ It is `null` when the viewer lacks `field:read`.
 
 1. The rule list and defaults above, especially the 8 doctor calls per day and the 20 % coverage gap.
 2. Rules are edited with `settings:write` (Director and System Admin). The alternative is RBM and above, which would need a new permission and a role-permissions migration.
-3. Only `field:write` holders (BMs) are evaluated. Managers' own field days are not.
+3. Only `field:write` holders are evaluated. Since 0044 that includes managers (ABM and up), so their own days are evaluated too; the lead should confirm this is wanted or exclude roles in the engine.
 4. Digests go to the direct manager only, not up the chain.
 5. Unusual expense, late punch-in and A-class-only coverage are not built (see above).
 6. The suggested action is static text per rule and can be edited per company. Nothing from #68 is built.

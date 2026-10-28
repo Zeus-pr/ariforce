@@ -1,12 +1,12 @@
 /**
- * Builds the latest role-permissions migration (0019 baseline, 0022 expenses, 0025 leave, 0033 product prices, 0039 SFC, now 0040 expenses:pay) from DEFAULT_ROLE_PERMISSIONS in
+ * Builds the latest role-permissions migration (0019 baseline, 0022 expenses, 0025 leave, 0033 product prices, 0039 SFC, 0040 expenses:pay, now 0044 manager field:write) from DEFAULT_ROLE_PERMISSIONS in
  * @ariforce/contracts, the same constant the seed uses, so the SQL and the code cannot drift.
  * Regenerate: pnpm -F @ariforce/db db:role-perms   Check: pnpm -F @ariforce/db db:role-perms:check
  */
 import { DEFAULT_ROLE_PERMISSIONS, ROLE_KEYS } from '../../contracts/src/schemas/roles';
 
 /** Applied 0019 stays frozen; each permission change gets a NEW generated migration (set, not append). */
-export const ROLE_PERMISSIONS_MIGRATION = '0040_role_permissions_expenses_pay';
+export const ROLE_PERMISSIONS_MIGRATION = '0044_manager_field_write';
 
 /** Sorted, de-duplicated permission list per role (the exact array written to roles.permissions). */
 export function rolePermissionMatrix(): Record<string, string[]> {
@@ -28,6 +28,7 @@ export function rolePermissionsSql(): string {
 -- expenses:pay (mark paid; approved/paid claims and reports company-wide) for director and
 -- system_admin (0040). finance:read/write stay on the retired accountant row only, unchecked.
 -- Leave (#51): leave:read/write for the sales hierarchy, leave:approve for ABM and up.
+-- Field: field:read for the sales hierarchy; field:write (own DCR) for BM and, since 0044, ABM and up.
 -- Product prices admin: products:prices for system_admin only.
 -- SFC: sfc:read for the sales hierarchy and system_admin; sfc:write for ABM and up + system_admin.
 -- Masters: BM/ABM read-only; RBM and above + system_admin write. distribution_head / accountant
