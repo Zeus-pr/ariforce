@@ -14,7 +14,7 @@ import { featureHref, type FeatureKey } from '@/lib/features';
 import { formatDate, greeting } from '@/lib/format';
 import { isApprover } from '@/lib/roles';
 import { getHomeMock, HOME_IS_PLACEHOLDER } from '@/mocks/home';
-import { useBottomSpace } from '@/components/floating-tab-bar';
+import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
 import { colors, layout, spacing } from '@/theme';
 
 /**
@@ -51,58 +51,60 @@ export default function HomeScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.flex}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={colors.navy}
-          colors={[colors.navy]}
-        />
-      }
-    >
-      <View>
-        <AppText variant="greeting">{greeting(now)},</AppText>
-        <AppText variant="name" accessibilityRole="header" numberOfLines={2}>
-          {name}
-        </AppText>
-        <View style={styles.dateRow}>
-          <AppText variant="caption">{formatDate(now)}</AppText>
-          {HOME_IS_PLACEHOLDER ? <Chip label="Sample data" tone="orange" /> : null}
+    <TabScene>
+      <ScrollView
+        style={styles.flex}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.navy}
+            colors={[colors.navy]}
+          />
+        }
+      >
+        <View>
+          <AppText variant="greeting">{greeting(now)},</AppText>
+          <AppText variant="name" accessibilityRole="header" numberOfLines={2}>
+            {name}
+          </AppText>
+          <View style={styles.dateRow}>
+            <AppText variant="caption">{formatDate(now)}</AppText>
+            {HOME_IS_PLACEHOLDER ? <Chip label="Sample data" tone="orange" /> : null}
+          </View>
         </View>
-      </View>
 
-      <View style={styles.section}>
-        <TodayCard key={day} data={data} onOpen={open} />
-      </View>
-
-      {data.attention.length > 0 ? (
         <View style={styles.section}>
-          <AttentionList items={data.attention} onOpen={open} />
+          <TodayCard key={day} data={data} onOpen={open} />
         </View>
-      ) : null}
 
-      <View style={styles.section}>
-        <QuickActions onOpen={open} />
-      </View>
+        {data.attention.length > 0 ? (
+          <View style={styles.section}>
+            <AttentionList items={data.attention} onOpen={open} />
+          </View>
+        ) : null}
 
-      {approver ? (
         <View style={styles.section}>
-          <ApprovalsCard counts={data.approvals} onOpen={() => open('approvals')} />
+          <QuickActions onOpen={open} />
         </View>
-      ) : null}
 
-      <View style={styles.section}>
-        <DoctorsToday doctors={data.doctorsToday} onOpenDoctors={() => open('doctors')} />
-      </View>
+        {approver ? (
+          <View style={styles.section}>
+            <ApprovalsCard counts={data.approvals} onOpen={() => open('approvals')} />
+          </View>
+        ) : null}
 
-      <View style={styles.section}>
-        <KpiGrid kpis={data.kpis} />
-      </View>
-    </ScrollView>
+        <View style={styles.section}>
+          <DoctorsToday doctors={data.doctorsToday} onOpenDoctors={() => open('doctors')} />
+        </View>
+
+        <View style={styles.section}>
+          <KpiGrid kpis={data.kpis} />
+        </View>
+      </ScrollView>
+    </TabScene>
   );
 }
 

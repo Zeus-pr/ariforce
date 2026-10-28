@@ -1,5 +1,10 @@
 import { ComingSoon } from '@/components/coming-soon';
+import { TabScene } from '@/components/floating-tab-bar';
 
 export default function TourPlanTab() {
-  return <ComingSoon feature="tour-plan" />;
+  return (
+    <TabScene>
+      <ComingSoon feature="tour-plan" />
+    </TabScene>
+  );
 }

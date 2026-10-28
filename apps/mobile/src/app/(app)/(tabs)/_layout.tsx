@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { HeaderActions } from '@/components/header-actions';
-import { FloatingTabBar, InTabsContext, type TabMeta } from '@/components/floating-tab-bar';
+import { FloatingTabBar, TabBarProvider, type TabMeta } from '@/components/floating-tab-bar';
 import { LogoLockup } from '@/components/logo-lockup';
 import { useAuth } from '@/lib/auth-context';
 import { getHomeMock } from '@/mocks/home';
@@ -15,17 +15,46 @@ function HomeHeaderRight() {
 }
 
 const TABS: Record<string, TabMeta> = {
-  index: { label: 'Home', icon: 'home-variant-outline', iconActive: 'home-variant' },
-  business: { label: 'Business', icon: 'briefcase-outline', iconActive: 'briefcase' },
-  dcr: { label: 'DCR', icon: 'clipboard-text-outline', iconActive: 'clipboard-text' },
-  'tour-plan': { label: 'Tour Plan', icon: 'calendar-month-outline', iconActive: 'calendar-month' },
-  more: { label: 'More', icon: 'dots-horizontal', iconActive: 'dots-horizontal' },
+  index: {
+    label: 'Home',
+    a11yLabel: 'Home',
+    icon: 'home-variant-outline',
+    iconActive: 'home-variant',
+  },
+  business: {
+    label: 'Business',
+    a11yLabel: 'Business',
+    icon: 'briefcase-outline',
+    iconActive: 'briefcase',
+  },
+  dcr: {
+    label: 'DCR',
+    a11yLabel: 'DCR',
+    icon: 'clipboard-text-outline',
+    iconActive: 'clipboard-text',
+  },
+  // Short word in the bar; screen readers and the screen title keep "Tour Plan".
+  'tour-plan': {
+    label: 'Plans',
+    a11yLabel: 'Tour Plan',
+    icon: 'calendar-month-outline',
+    iconActive: 'calendar-month',
+  },
+  more: {
+    label: 'More',
+    a11yLabel: 'More',
+    icon: 'dots-horizontal',
+    iconActive: 'dots-horizontal',
+  },
 };
 
-/** Bottom tabs on a floating capsule bar. Non-Home tabs are stubs for now. */
+/**
+ * Bottom tabs on a floating frosted capsule bar. Each tab screen wraps its content in <TabScene>
+ * so it scrolls behind the glass (and, on Android, is what the blur samples).
+ */
 export default function TabsLayout() {
   return (
-    <InTabsContext.Provider value>
+    <TabBarProvider>
       <Tabs
         tabBar={(props) => <FloatingTabBar {...props} meta={TABS} />}
         screenOptions={{
@@ -49,6 +78,6 @@ export default function TabsLayout() {
         <Tabs.Screen name="tour-plan" options={{ title: 'Tour Plan' }} />
         <Tabs.Screen name="more" options={{ title: 'More' }} />
       </Tabs>
-    </InTabsContext.Provider>
+    </TabBarProvider>
   );
 }

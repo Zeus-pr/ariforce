@@ -147,8 +147,13 @@ cd apps/mobile
 - **2026-10-28** Home uses expo-router JS `Tabs`, not `NativeTabs` (the expo-router skill's
   default): the tab bar keeps Google Sans labels and the same look on Android and iOS, and needs
   no SF Symbols / Material Symbols setup. Revisit when the app gets a dev build.
-- **2026-10-29** Floating capsule tab bar (custom `tabBar`). Solid white with a hairline and a
-  soft `boxShadow`, no blur: `expo-blur` would be a new native module. In this expo-router build
+- **2026-10-29** Floating capsule tab bar (custom `tabBar`), frosted with `expo-blur` (in Expo
+  Go): iOS native blur, `tint: light`; Android `blurMethod: 'dimezisBlurView'`, which since
+  SDK 54 only blurs a `BlurTargetView`, so each tab screen wraps its content in `<TabScene>`
+  and the focused one registers as the target (`blurMethod` replaces the deprecated
+  `experimentalBlurMethod`). Near-solid white until a target exists; solid white when iOS Reduce
+  Transparency is on. The active pill is sized to its measured label (Tour Plan shows "Plans",
+  full name kept for screen readers and the title); the other tabs share the rest, 48 dp min. In this expo-router build
   the custom bar gets `emitter` + `navigateToTab`, not `navigation` (see `BottomTabBarProps`).
 - **2026-10-28** Punch-in GPS is a stub. Real punch-in needs `expo-location` (in Expo Go, but a
   new native module): add it together with the attendance API.

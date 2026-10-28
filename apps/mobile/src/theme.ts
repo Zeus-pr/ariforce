@@ -36,6 +36,9 @@ export const colors = {
   warn: '#C2410C', // 4.8:1 on warnWash
   warnWash: '#FFF1E8',
   onNavy: '#FFFFFF',
+  glassTint: 'rgba(255, 255, 255, 0.45)', // white wash over the blur, keeps icons readable
+  glassFallback: 'rgba(255, 255, 255, 0.94)', // no blur available: near-solid white
+  glassBorder: 'rgba(15, 42, 74, 0.10)', // hairline that separates the glass from white cards
 } as const;
 
 /** Icon tints: foreground on its own wash. Every pair is at least 3:1 (icons) or 4.5:1 (text). */
@@ -92,6 +95,9 @@ export const layout = {
   tabBarInset: spacing.lg, // floating bar distance from the screen sides
   tabBarLift: spacing.sm, // floating bar distance above the safe area / gesture bar
 } as const;
+
+/** Frosted tab bar: expo-blur settings (Android intensity is divided by blurReductionFactor 4). */
+export const glass = { tint: 'light', intensity: 60 } as const;
 
 export const iconSize = { sm: 18, md: 22, lg: 24 } as const;
 
