@@ -1,22 +1,20 @@
-import { Image, StyleSheet, Text, View } from 'react-native';
-import { colors, fonts } from '@/theme';
+import { Image } from 'expo-image';
+import { StyleSheet, View } from 'react-native';
 import markPng from '../../assets/images/logo-mark.png';
+import { AppText } from './app-text';
+import { spacing } from '@/theme';
 
 /** Small mark + wordmark, as in the app header of the mockups. */
-export function LogoLockup({ size = 28 }: { size?: number }) {
+export function LogoLockup() {
   return (
-    <View style={styles.row} accessibilityRole="image" accessibilityLabel="AriForce">
-      <Image
-        source={markPng}
-        style={{ width: size, height: (size * 100) / 112 }}
-        resizeMode="contain"
-      />
-      <Text style={[styles.word, { fontSize: size * 0.68 }]}>AriForce</Text>
+    <View style={styles.row} accessible accessibilityRole="image" accessibilityLabel="AriForce">
+      <Image source={markPng} style={styles.mark} contentFit="contain" />
+      <AppText variant="wordmarkSm">AriForce</AppText>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  word: { fontFamily: fonts.bold, color: colors.brandNavy, letterSpacing: -0.3 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  mark: { width: 28, height: 25 },
 });

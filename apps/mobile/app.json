@@ -27,7 +27,17 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-font",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/GoogleSans-Regular.ttf",
+            "./assets/fonts/GoogleSans-Medium.ttf",
+            "./assets/fonts/GoogleSans-SemiBold.ttf",
+            "./assets/fonts/GoogleSans-Bold.ttf"
+          ]
+        }
+      ],
       [
         "expo-splash-screen",
         {

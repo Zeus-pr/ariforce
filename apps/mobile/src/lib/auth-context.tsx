@@ -1,3 +1,9 @@
+/**
+ * Session state. The bearer token lives in SecureStore; the profile (GET /v1/me) is a TanStack
+ * Query keyed by the token, seeded from the last profile saved in SecureStore so a signed-in
+ * launch opens home at once and revalidates in the background (CUTLY "hydrate fast-path").
+ */
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createContext,
   useCallback,
@@ -10,12 +16,14 @@ import {
 import { AuthError, fetchMe, signInEmail, signOutRemote, type AuthUser } from './auth-api';
 import { tokenStore } from './token-store';
 
-type AuthState =
-  | { status: 'loading'; user: null }
-  | { status: 'signed-out'; user: null }
-  | { status: 'signed-in'; user: AuthUser };
+type Status = 'loading' | 'signed-out' | 'signed-in';
 
-type AuthContextValue = AuthState & {
+type AuthContextValue = {
+  status: Status;
+  user: AuthUser | null;
+  /** Why the app signed the user out on its own (e.g. role without access); shown on sign-in. */
+  notice: string | null;
+  clearNotice: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -23,78 +31,111 @@ type AuthContextValue = AuthState & {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>({ status: 'loading', user: null });
+const meKey = (token: string | null) => ['me', token] as const;
 
-  // Restore the session on launch: token from secure-store, then GET /v1/me.
-  // Offline: keep the cached profile so the app still opens signed in.
+/** Read once at module load so hydration starts before the first render (CUTLY). */
+const hydration = Promise.all([
+  tokenStore.getToken().catch(() => null),
+  tokenStore.getUser<AuthUser>().catch(() => null),
+]);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
+  // undefined = still reading SecureStore.
+  const [token, setToken] = useState<string | null | undefined>(undefined);
+  const [notice, setNotice] = useState<string | null>(null);
+
   useEffect(() => {
     let alive = true;
-    (async () => {
-      const token = await tokenStore.getToken().catch(() => null);
-      if (!token) {
-        if (alive) setState({ status: 'signed-out', user: null });
-        return;
-      }
-      try {
-        const user = await fetchMe(token);
-        await tokenStore.setUser(user);
-        if (alive) setState({ status: 'signed-in', user });
-      } catch (e) {
-        const cached = await tokenStore.getUser<AuthUser>();
-        if (e instanceof AuthError && e.kind === 'network' && cached) {
-          if (alive) setState({ status: 'signed-in', user: cached });
-          return;
-        }
-        await tokenStore.clear();
-        if (alive) setState({ status: 'signed-out', user: null });
-      }
-    })();
+    hydration.then(([t, cached]) => {
+      if (!alive) return;
+      if (t && cached) queryClient.setQueryData(meKey(t), cached, { updatedAt: 0 });
+      setToken(t);
+    });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [queryClient]);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const token = await signInEmail(email, password);
-    let user: AuthUser;
-    try {
-      user = await fetchMe(token);
-    } catch (e) {
-      // Signed in to better-auth but no AriForce access (e.g. pending): drop that session again.
-      await signOutRemote(token);
-      throw e;
-    }
-    await tokenStore.setToken(token);
-    await tokenStore.setUser(user);
-    setState({ status: 'signed-in', user });
-  }, []);
+  const me = useQuery({
+    queryKey: meKey(token ?? null),
+    queryFn: () => fetchMe(token as string),
+    enabled: !!token,
+  });
 
-  const signOut = useCallback(async () => {
-    const token = await tokenStore.getToken().catch(() => null);
-    if (token) await signOutRemote(token);
-    await tokenStore.clear();
-    setState({ status: 'signed-out', user: null });
-  }, []);
+  const endSession = useCallback(
+    async (message: string | null, remote = true) => {
+      const t = await tokenStore.getToken().catch(() => null);
+      if (t && remote) await signOutRemote(t);
+      await tokenStore.clear();
+      queryClient.clear();
+      setNotice(message);
+      setToken(null);
+    },
+    [queryClient],
+  );
+
+  // A restored session that the server rejects, or whose role has no access, ends here.
+  useEffect(() => {
+    const err = me.error;
+    if (!(err instanceof AuthError)) return;
+    if (err.kind === 'unauthorized')
+      void endSession('Your session has ended. Sign in again.', false);
+    else if (err.kind === 'no-role' || err.kind === 'account') void endSession(err.message);
+  }, [me.error, endSession]);
+
+  useEffect(() => {
+    if (me.data) void tokenStore.setUser(me.data);
+  }, [me.data]);
+
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      setNotice(null);
+      const t = await signInEmail(email, password);
+      let user: AuthUser;
+      try {
+        user = await fetchMe(t);
+      } catch (e) {
+        // Signed in to better-auth but no AriForce access (pending, no portal role…): end it again.
+        await signOutRemote(t);
+        throw e;
+      }
+      await tokenStore.setToken(t);
+      await tokenStore.setUser(user);
+      queryClient.setQueryData(meKey(t), user);
+      setToken(t);
+    },
+    [queryClient],
+  );
+
+  const signOut = useCallback(() => endSession(null), [endSession]);
 
   const refresh = useCallback(async () => {
-    const token = await tokenStore.getToken();
-    if (!token) return;
-    try {
-      const user = await fetchMe(token);
-      await tokenStore.setUser(user);
-      setState({ status: 'signed-in', user });
-    } catch (e) {
-      if (e instanceof AuthError && e.kind === 'unauthorized') {
-        await tokenStore.clear();
-        setState({ status: 'signed-out', user: null });
-      }
-    }
-  }, []);
+    await me.refetch();
+  }, [me]);
 
-  const value = useMemo(
-    () => ({ ...state, signIn, signOut, refresh }),
-    [state, signIn, signOut, refresh],
+  const status: Status =
+    token === undefined
+      ? 'loading'
+      : !token
+        ? 'signed-out'
+        : me.data
+          ? 'signed-in'
+          : me.isError
+            ? 'signed-out'
+            : 'loading';
+
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      status,
+      user: me.data ?? null,
+      notice,
+      clearNotice: () => setNotice(null),
+      signIn,
+      signOut,
+      refresh,
+    }),
+    [status, me.data, notice, signIn, signOut, refresh],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

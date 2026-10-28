@@ -1,68 +1,54 @@
-import { useEffect, useRef } from 'react';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
-import { useReducedMotion } from '@/lib/use-reduced-motion';
-import { colors } from '@/theme';
+import { StyleSheet, View } from 'react-native';
+import Animated, { useReducedMotion } from 'react-native-reanimated';
+import { colors, spacing } from '@/theme';
 
 const DOTS = 3;
 const STEP_MS = 280;
 
-/** Three-dot loader from the splash mockup: the teal dot walks left to right. */
+/**
+ * Three-dot loader from the splash mockup: the teal dot walks left to right. A Reanimated CSS
+ * animation (loop, no state change, runs on the UI thread). Reduced motion: one static teal dot.
+ */
 export function DotLoader() {
   const reduced = useReducedMotion();
-  const t = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (reduced) return;
-    const loop = Animated.loop(
-      Animated.timing(t, {
-        toValue: DOTS,
-        duration: STEP_MS * DOTS,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [reduced, t]);
-
   return (
     <View style={styles.row} accessibilityRole="progressbar" accessibilityLabel="Loading">
-      {Array.from({ length: DOTS }, (_, i) => {
-        const active = reduced
-          ? i === 0
-            ? 1
-            : 0
-          : t.interpolate({
-              inputRange: [i - 0.5, i, i + 0.5, i + 1],
-              outputRange: [0, 1, 1, 0],
-              extrapolate: 'clamp',
-            });
-        return (
-          <View key={i} style={styles.slot}>
-            <View style={[styles.dot, styles.idle]} />
-            <Animated.View
-              style={[
-                styles.dot,
-                styles.active,
-                {
-                  opacity: active,
-                  transform: [
-                    { scale: reduced ? 1 : Animated.add(0.85, Animated.multiply(active, 0.15)) },
-                  ],
-                },
-              ]}
-            />
-          </View>
-        );
-      })}
+      {Array.from({ length: DOTS }, (_, i) => (
+        <View key={i} style={styles.slot}>
+          <View style={[styles.dot, styles.idle]} />
+          <Animated.View
+            style={[
+              styles.dot,
+              styles.active,
+              reduced
+                ? { opacity: i === 0 ? 1 : 0 }
+                : {
+                    opacity: 0,
+                    animationName: {
+                      '0%': { opacity: 0, transform: [{ scale: 0.85 }] },
+                      '12%': { opacity: 1, transform: [{ scale: 1 }] },
+                      '33%': { opacity: 1, transform: [{ scale: 1 }] },
+                      '45%': { opacity: 0, transform: [{ scale: 0.85 }] },
+                      '100%': { opacity: 0, transform: [{ scale: 0.85 }] },
+                    },
+                    animationDuration: STEP_MS * DOTS,
+                    animationDelay: STEP_MS * i,
+                    animationIterationCount: 'infinite',
+                    animationTimingFunction: 'linear',
+                  },
+            ]}
+          />
+        </View>
+      ))}
     </View>
   );
 }
 
+const DOT = 8;
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  slot: { width: 8, height: 8 },
-  dot: { position: 'absolute', width: 8, height: 8, borderRadius: 4 },
+  row: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  slot: { width: DOT, height: DOT },
+  dot: { position: 'absolute', width: DOT, height: DOT, borderRadius: DOT / 2 },
   idle: { backgroundColor: colors.tealSoft },
   active: { backgroundColor: colors.teal },
 });

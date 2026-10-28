@@ -7,15 +7,47 @@
  * every request uses `credentials: 'omit'` (also keeps the OS cookie jar out of it) and
  * `Authorization: Bearer <token>`. This works against the live API with no server change.
  */
-import type { AUTH_STATE_CODES, Me } from '@ariforce/contracts';
+import type { AUTH_STATE_CODES, Me, RETIRED_ROLE_KEYS, RoleKey } from '@ariforce/contracts';
 import { API_URL, AUTH_URL } from './config';
 
 export type AuthUser = Pick<Me, 'id' | 'name' | 'email' | 'companyName' | 'roles'>;
 
+/**
+ * Roles that may use AriForce: every contract role except the retired ones, same rule as the
+ * website (apps/web/src/lib/roles.ts isPortalRole). Kept as a type-checked literal instead of a
+ * runtime import so the app bundle does not pull zod and the OpenAPI client: `satisfies` fails
+ * the typecheck if packages/contracts adds, removes or retires a role.
+ */
+type PortalRole = Exclude<RoleKey, (typeof RETIRED_ROLE_KEYS)[number]>;
+const PORTAL_ROLES = {
+  business_manager: true,
+  area_business_manager: true,
+  regional_business_manager: true,
+  zonal_business_manager: true,
+  sales_manager: true,
+  general_manager: true,
+  vice_president: true,
+  director: true,
+  system_admin: true,
+} as const satisfies Record<PortalRole, true>;
+
+export const hasPortalRole = (roles: readonly string[]) =>
+  roles.some((r) => Object.hasOwn(PORTAL_ROLES, r));
+
+/** Same words as the website (apps/web/src/lib/mock-auth.ts NO_PORTAL_MESSAGE). */
+export const NO_PORTAL_MESSAGE = 'Your role does not have access to this portal.';
+
 type StateCode = (typeof AUTH_STATE_CODES)[keyof typeof AUTH_STATE_CODES];
 
 export type AuthErrorKind =
-  'credentials' | 'account' | 'rate-limited' | 'origin' | 'network' | 'server' | 'unauthorized';
+  | 'credentials'
+  | 'account'
+  | 'rate-limited'
+  | 'origin'
+  | 'network'
+  | 'server'
+  | 'unauthorized'
+  | 'no-role';
 
 export class AuthError extends Error {
   constructor(
@@ -145,6 +177,8 @@ export async function fetchMe(token: string): Promise<AuthUser> {
     throw new AuthError('unauthorized', 'Your session has ended. Sign in again.');
   if (!res.ok) throw toError(res, body);
   const me = body as unknown as Me;
+  if (!hasPortalRole(me.roles ?? []))
+    throw new AuthError('no-role', NO_PORTAL_MESSAGE, 'NO_PORTAL_ROLE');
   return {
     id: me.id,
     name: me.name,

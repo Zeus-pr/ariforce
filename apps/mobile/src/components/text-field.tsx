@@ -2,13 +2,13 @@ import { forwardRef, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
-  Text,
   TextInput,
   View,
   type TextInputInstance,
   type TextInputProps,
 } from 'react-native';
-import { colors, fonts, radius } from '@/theme';
+import { AppText } from './app-text';
+import { colors, fonts, radius, spacing, touch, type } from '@/theme';
 
 type Props = TextInputProps & {
   label: string;
@@ -17,6 +17,7 @@ type Props = TextInputProps & {
   secret?: boolean;
 };
 
+/** Labelled input with inline error (field errors never go to a dialog). */
 export const TextField = forwardRef<TextInputInstance, Props>(function TextField(
   { label, error, secret, style, onFocus, onBlur, ...rest },
   ref,
@@ -26,7 +27,7 @@ export const TextField = forwardRef<TextInputInstance, Props>(function TextField
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.label}>{label}</Text>
+      <AppText variant="label">{label}</AppText>
       <View style={[styles.box, focused && styles.boxFocused, !!error && styles.boxError]}>
         <TextInput
           ref={ref}
@@ -36,6 +37,7 @@ export const TextField = forwardRef<TextInputInstance, Props>(function TextField
           selectionColor={colors.tealDeep}
           cursorColor={colors.navy}
           accessibilityLabel={label}
+          accessibilityHint={error ?? undefined}
           onFocus={(e) => {
             setFocused(true);
             onFocus?.(e);
@@ -49,37 +51,52 @@ export const TextField = forwardRef<TextInputInstance, Props>(function TextField
         {secret && (
           <Pressable
             onPress={() => setHidden((h) => !h)}
-            hitSlop={8}
+            hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel={hidden ? 'Show password' : 'Hide password'}
-            style={styles.toggle}
+            style={({ pressed }) => [styles.toggle, pressed && styles.togglePressed]}
           >
-            <Text style={styles.toggleText}>{hidden ? 'Show' : 'Hide'}</Text>
+            <AppText variant="label" style={styles.toggleText}>
+              {hidden ? 'Show' : 'Hide'}
+            </AppText>
           </Pressable>
         )}
       </View>
-      {!!error && <Text style={styles.error}>{error}</Text>}
+      {!!error && (
+        <AppText variant="caption" style={styles.error} accessibilityLiveRegion="polite">
+          {error}
+        </AppText>
+      )}
     </View>
   );
 });
 
 const styles = StyleSheet.create({
-  wrap: { gap: 6 },
-  label: { fontFamily: fonts.medium, fontSize: 14, color: colors.ink },
+  wrap: { gap: spacing.sm },
   box: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 52,
+    minHeight: touch.control,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.separator,
     backgroundColor: colors.surface,
-    paddingHorizontal: 14,
+    paddingLeft: spacing.lg,
   },
-  boxFocused: { borderColor: colors.tealDeep, borderWidth: 1.5, paddingHorizontal: 13.5 },
+  boxFocused: { borderColor: colors.tealDeep },
   boxError: { borderColor: colors.danger },
-  input: { flex: 1, height: '100%', fontFamily: fonts.regular, fontSize: 16, color: colors.ink },
-  toggle: { paddingLeft: 12, paddingVertical: 6 },
-  toggleText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.tealDeep },
-  error: { fontFamily: fonts.regular, fontSize: 13, color: colors.danger },
+  // 16px minimum input text (mobile-native): readable, and iOS never zooms.
+  input: {
+    ...type.body,
+    lineHeight: undefined,
+    fontFamily: fonts.regular,
+    flex: 1,
+    minHeight: touch.control,
+    paddingVertical: spacing.md,
+  },
+  toggle: { minHeight: touch.min, justifyContent: 'center', paddingHorizontal: spacing.lg },
+  togglePressed: { opacity: 0.6 },
+  toggleText: { color: colors.tealDeep },
+  error: { color: colors.danger },
 });

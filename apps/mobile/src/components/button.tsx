@@ -1,82 +1,104 @@
-import { useRef } from 'react';
 import {
   ActivityIndicator,
-  Animated,
-  Easing,
   Pressable,
   StyleSheet,
-  Text,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
-import { colors, EASE_OUT, fonts, radius } from '@/theme';
+import Animated, { useReducedMotion } from 'react-native-reanimated';
+import { AppText } from './app-text';
+import { colors, motion, radius, spacing, touch } from '@/theme';
+
+const variants = {
+  primary: {
+    bg: colors.navy,
+    bgPressed: colors.navyPressed,
+    fg: colors.onNavy,
+    border: 'transparent',
+  },
+  secondary: {
+    bg: colors.surface,
+    bgPressed: colors.ground,
+    fg: colors.navy,
+    border: colors.borderStrong,
+  },
+} as const;
 
 type Props = {
   label: string;
   onPress: () => void;
+  variant?: keyof typeof variants;
   loading?: boolean;
   loadingLabel?: string;
   disabled?: boolean;
-  variant?: 'primary' | 'secondary';
+  style?: StyleProp<ViewStyle>;
 };
 
-const ease = Easing.bezier(...EASE_OUT);
-
-/** Full-width button; scales to 0.97 on press, shows a spinner while loading. */
+/**
+ * Full-width button. Press feedback on press-in: scale 0.97 + darker fill, as a Reanimated CSS
+ * transition (120ms strong ease-out). Loading keeps the label readable ("Signing in…") next to a
+ * small spinner, and the accessibility label stays the action name.
+ */
 export function Button({
   label,
   onPress,
+  variant = 'primary',
   loading,
   loadingLabel,
   disabled,
-  variant = 'primary',
+  style,
 }: Props) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const to = (v: number) =>
-    Animated.timing(scale, {
-      toValue: v,
-      duration: 140,
-      easing: ease,
-      useNativeDriver: true,
-    }).start();
-  const inactive = disabled || loading;
-  const primary = variant === 'primary';
+  const reduced = useReducedMotion();
+  const v = variants[variant];
+  const inactive = !!(disabled || loading);
 
   return (
-    <Animated.View style={{ transform: [{ scale }] }}>
-      <Pressable
-        onPress={onPress}
-        onPressIn={() => to(0.97)}
-        onPressOut={() => to(1)}
-        disabled={inactive}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: !!inactive, busy: !!loading }}
-        style={({ pressed }) => [
-          styles.base,
-          primary ? styles.primary : styles.secondary,
-          pressed && (primary ? styles.primaryPressed : styles.secondaryPressed),
-          disabled && !loading && styles.disabled,
-        ]}
-      >
-        <View style={styles.content}>
-          {loading && (
-            <ActivityIndicator size="small" color={primary ? colors.onNavy : colors.navy} />
-          )}
-          <Text style={[styles.label, { color: primary ? colors.onNavy : colors.navy }]}>
-            {loading ? (loadingLabel ?? label) : label}
-          </Text>
-        </View>
-      </Pressable>
-    </Animated.View>
+    <Pressable
+      onPress={onPress}
+      disabled={inactive}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: inactive, busy: !!loading }}
+      pressRetentionOffset={16}
+      style={style}
+    >
+      {({ pressed }) => (
+        <Animated.View
+          style={[
+            styles.base,
+            {
+              backgroundColor: pressed ? v.bgPressed : v.bg,
+              borderColor: v.border,
+              opacity: disabled && !loading ? 0.5 : 1,
+              transform: [{ scale: pressed && !reduced ? 0.97 : 1 }],
+              transitionProperty: ['transform', 'backgroundColor'],
+              transitionDuration: motion.press,
+              transitionTimingFunction: motion.cssEaseOut,
+            },
+          ]}
+        >
+          <View style={styles.content}>
+            {loading && <ActivityIndicator size="small" color={v.fg} />}
+            <AppText variant="button" style={{ color: v.fg }}>
+              {loading ? (loadingLabel ?? label) : label}
+            </AppText>
+          </View>
+        </Animated.View>
+      )}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  base: { height: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  primary: { backgroundColor: colors.navy },
-  primaryPressed: { backgroundColor: colors.navyPressed },
-  secondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderStrong },
-  secondaryPressed: { backgroundColor: colors.ground },
-  disabled: { opacity: 0.5 },
-  content: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  label: { fontFamily: fonts.semibold, fontSize: 16, letterSpacing: -0.1 },
+  base: {
+    minHeight: touch.control,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.md,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  content: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
 });
