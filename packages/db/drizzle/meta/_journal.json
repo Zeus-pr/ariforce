@@ -302,6 +302,13 @@
       "when": 1793184899757,
       "tag": "0042_territory_level",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1793270000000,
+      "tag": "0043_dcr_redesign",
+      "breakpoints": true
     }
   ]
 }
