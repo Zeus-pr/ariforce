@@ -2248,7 +2248,7 @@ export interface components {
       rememberMe?: boolean;
     };
     /** @enum {string} */
-    TerritoryLevel: 'national' | 'zone' | 'region' | 'area' | 'headquarter';
+    TerritoryLevel: 'national' | 'zone' | 'region' | 'area' | 'headquarter' | 'territory';
     /** @enum {string} */
     RoleKey:
       | 'business_manager'

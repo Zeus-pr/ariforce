@@ -133,9 +133,10 @@ export const territoryLevel = pgEnum('territory_level', [
   'region',
   'area',
   'headquarter',
+  'territory',
 ]);
 
-/** Territory tree: National > Zone > Region > Area > HQ. `path` = dot-joined ancestor ids incl. self. */
+/** Territory tree: National > Zone > Region > Area > HQ > Territory (city, 0042). `path` = dot-joined ancestor ids incl. self. */
 export const territories = pgTable(
   'territories',
   {
@@ -147,6 +148,8 @@ export const territories = pgTable(
     name: text('name').notNull(),
     path: text('path').notNull(),
     city: text('city'),
+    /** ariforce_city_key(city) for level 'territory'; unique per company + HQ (0042). */
+    cityKey: text('city_key'),
     state: text('state'),
     centroid: geometry('centroid', { type: 'point', mode: 'xy', srid: 4326 }),
     boundary: multiPolygon('boundary'),
@@ -154,6 +157,9 @@ export const territories = pgTable(
   },
   (t) => [
     uniqueIndex('territories_company_code_uq').on(t.companyId, t.code),
+    uniqueIndex('territories_hq_city_uq')
+      .on(t.companyId, t.parentId, t.cityKey)
+      .where(sql`${t.cityKey} is not null and ${t.deletedAt} is null`),
     index('territories_path_idx').on(t.companyId, t.path.op('text_pattern_ops')),
     index('territories_boundary_gix').using('gist', t.boundary),
   ],
