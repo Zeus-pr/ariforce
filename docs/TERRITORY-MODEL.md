@@ -95,4 +95,4 @@ column yet; load masters first, then run the link import.
 
 SFC category is a fixed enum `ex` | `hq` | `os` mapped to the DCR band `ex_hq` / `hq` / `outstation`;
 legacy text is converted by a data fix. Change list and misfit proposals: `docs/DCR-REDESIGN-DESIGN.md`.
-Meeting never uses SFC. Work With: anyone; recorded, not part of the SFC match (employee + HQ + band).
+Meeting never uses SFC. Work With: anyone; recorded, not part of the SFC match (HQ + band: the filer's own routes on that HQ, else the HQ's routes; see DCR-REDESIGN-DESIGN.md).

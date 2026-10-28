@@ -1,6 +1,6 @@
 import * as z from 'zod';
 import { DateOnly, Id } from './common';
-import { DcrBand, DcrDetails, DcrSfcRouteChoice } from './dcr-parts';
+import { DcrBand, DcrDetails, DcrSfcRouteChoice, DcrSfcSource } from './dcr-parts';
 import { Dcr, DcrCallInput } from './field';
 import { SfcCategory, SfcTravelMode } from './sfc';
 
@@ -95,6 +95,9 @@ export const DcrSfcCandidate = z
     band: DcrBand,
     da: z.number().nullable(),
     version: z.int(),
+    source: DcrSfcSource.optional().meta({
+      description: "own = the filer's route; hq = HQ fallback (filer has no live route on that HQ)",
+    }),
   })
   .meta({ id: 'DcrSfcCandidate' });
 export const DcrSfcHqMatch = z
@@ -108,7 +111,7 @@ export const DcrSfcHqMatch = z
 export const DcrSfcMatch = z.object({ band: DcrBand, hqs: z.array(DcrSfcHqMatch) }).meta({
   id: 'DcrSfcMatch',
   description:
-    'Candidates per HQ of the day (employee + HQ + band). 404 SFC_NO_MATCH lists the same per-HQ result in details when any HQ has none.',
+    "Candidates per HQ of the day (HQ + band): the filer's own routes on an HQ where they have any, else that HQ's routes from any owner (source 'hq', de-duplicated). 404 SFC_NO_MATCH lists the same per-HQ result in details when any HQ has none.",
 });
 export type DcrSfcMatch = z.infer<typeof DcrSfcMatch>;
 

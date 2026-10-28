@@ -585,6 +585,7 @@ function fieldHandlers(baseUrl: string) {
     band: 'hq' as const,
     da: 150,
     version: 1,
+    source: 'own' as const,
   });
   const dcrFlowHandlers = () => [
     http.get(`${baseUrl}/v1/dcrs/options`, ({ request }) => {

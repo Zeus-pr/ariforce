@@ -59,6 +59,24 @@ change a submitted DCR.
 
 Same key retried after success returns the same DCR with 200. Field days need territories and at least one call.
 
+## SFC candidates: own routes, else the HQ's routes (fallback)
+
+`sfc_routes` are owned per user. The candidate set for each HQ of the day (one function,
+`apps/api/src/dcr/sfc-resolve.ts`, used by `sfc-match`, draft/submit validation and the submit
+snapshot, so TA/DA always come from the same route):
+
+- **Own wins, per HQ**: if the filer has any live (`deleted_at` null) route on that HQ, of any
+  category, only the filer's routes on that HQ in the day's band count (`sort_order`, then id).
+  So a filer with own HQ-only routes who picks EX on that HQ gets `SFC_NO_MATCH`, not the fallback.
+- **HQ fallback**: no own route on that HQ -> every owner's live routes on that HQ in the band,
+  de-duplicated on (normalised `from_place`, normalised `to_place`, `category`); normalised = upper
+  case, non-alphanumerics removed. Winner: lowest `sort_order`, then oldest `created_at`, then lowest
+  id. Ordered by the same key.
+- Decided per HQ, so a multi-HQ day can mix own and fallback HQs.
+- Reads go through the tenant transaction: RLS keeps them inside the company; no service role.
+- Candidates and snapshots carry optional `source: 'own' | 'hq'`; the snapshot freezes the chosen
+  route (`sfcRouteId`, `routeVersion`) whoever owns it.
+
 ## Data fix
 
 `packages/db/scripts/data-fixes/2026-10-28-sfc-category-normalise.sql`: dry run by default, `-v apply=1`

@@ -43,9 +43,11 @@ import { err } from '../field/checkins.service';
 import { companySettings, localDate } from '../field/field.util';
 import { approvedLeaveDays, assertNotOnLeave } from '../leave/leave.util';
 import { DcrService } from './dcr.service';
+import { resolveSfcCandidates, type SfcSource } from './sfc-resolve';
 
 type WorkTypeRow = typeof workTypes.$inferSelect;
-type RouteRow = typeof sfcRoutes.$inferSelect;
+/** A resolved candidate row: the sfc_routes row plus where it came from (own | hq fallback). */
+type RouteRow = typeof sfcRoutes.$inferSelect & { source: SfcSource };
 type DcrRow = typeof dcrs.$inferSelect;
 interface Hq {
   id: string;
@@ -53,9 +55,6 @@ interface Hq {
 }
 
 const num = (v: string | null) => (v === null ? null : Number(v));
-/** Categories whose band is `band` (ex -> ex_hq, hq -> hq, os -> outstation). */
-const categoriesFor = (band: DcrBand) =>
-  (Object.keys(SFC_CATEGORY_BAND) as SfcCategory[]).filter((c) => SFC_CATEGORY_BAND[c] === band);
 /** Band of a work type: field types with an allowance band only (Meeting and other non-field: none). */
 export const workTypeBand = (wt: Pick<WorkTypeRow, 'kind' | 'allowanceBand'>): DcrBand | null =>
   wt.kind === 'field' && wt.allowanceBand !== 'none' ? wt.allowanceBand : null;
@@ -74,6 +73,7 @@ const candidate = (r: RouteRow) => ({
   band: SFC_CATEGORY_BAND[r.category as SfcCategory],
   da: num(r.da),
   version: r.version,
+  source: r.source,
 });
 
 /**
@@ -132,21 +132,24 @@ export class DcrFlowService {
     return hqIds.map((id) => ({ id, name: names.find((n) => n.id === id)?.name ?? '' }));
   }
 
-  /** The caller's live routes on these HQs whose category maps to `band`. */
-  private async candidates(tx: Tx, userId: string, hqIds: string[], band: DcrBand) {
+  /**
+   * SFC candidates on these HQs in `band`: the caller's own routes on an HQ where they have any,
+   * else that HQ's routes from any owner (de-duplicated). Single source of truth for sfc-match,
+   * draft/submit validation and the submit snapshot; rules in ./sfc-resolve.ts. Reads go through
+   * the tenant transaction, so RLS keeps them to the caller's company.
+   */
+  private async candidates(
+    tx: Tx,
+    userId: string,
+    hqIds: string[],
+    band: DcrBand,
+  ): Promise<RouteRow[]> {
     if (!hqIds.length) return [];
-    return tx
+    const rows = await tx
       .select()
       .from(sfcRoutes)
-      .where(
-        and(
-          eq(sfcRoutes.userId, userId),
-          inArray(sfcRoutes.hqTerritoryId, hqIds),
-          isNull(sfcRoutes.deletedAt),
-          inArray(sfcRoutes.category, categoriesFor(band)),
-        ),
-      )
-      .orderBy(asc(sfcRoutes.sortOrder), asc(sfcRoutes.id));
+      .where(and(inArray(sfcRoutes.hqTerritoryId, hqIds), isNull(sfcRoutes.deletedAt)));
+    return resolveSfcCandidates(rows, userId, hqIds, band);
   }
 
   options(p: Principal, date: string) {
@@ -292,7 +295,7 @@ export class DcrFlowService {
     });
   }
 
-  /** Chosen routes must be the caller's, on that HQ, live, and in the band. */
+  /** Chosen routes must be candidates: on that HQ, live, in the band, own or HQ fallback. */
   private async checkChoices(
     tx: Tx,
     p: Principal,
@@ -326,7 +329,7 @@ export class DcrFlowService {
       throw err(
         422,
         'SFC_MISMATCH',
-        'Route is not yours, not on that HQ, deleted, or not in the band',
+        'Route is not a candidate: not yours (or HQ fallback), not on that HQ, deleted, or not in the band',
         {
           sfcRouteIds: bad.map((c) => c.sfcRouteId),
           band,
