@@ -452,6 +452,11 @@ export const Dcr = Syncable.extend({
     .default([])
     .meta({ description: 'One chosen SFC route per HQ of the day; snapshots set at submit' }),
   submittedBy: Id.nullable().default(null),
+  callCount: z
+    .int()
+    .min(0)
+    .optional()
+    .meta({ description: 'Live calls on this DCR (GET /v1/dcrs list only)' }),
 }).meta({ id: 'Dcr' });
 export type Dcr = z.infer<typeof Dcr>;
 export const DcrUpsert = z
@@ -472,6 +477,10 @@ export const DcrCorrectionRequest = z
 export const DCR_UNLOCK_HOURS = 48;
 export const DcrListQuery = FieldListQuery.extend({
   status: z.enum(['draft', 'submitted', 'locked']).optional(),
+  mine: z
+    .enum(['true', 'false'])
+    .optional()
+    .meta({ description: "true: only the caller's own DCRs (ignores userId)" }),
 });
 
 // ---- Approvals (#17) ----

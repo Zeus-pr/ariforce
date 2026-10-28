@@ -1,13 +1,24 @@
 'use client';
 
-import { ChevronDown, ChevronUp, FileText, Plus, RotateCw } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileText, Plus, RotateCw, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { Dcr } from '@ariforce/contracts';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@ariforce/ui/components/alert-dialog';
 import { Button } from '@ariforce/ui/components/button';
 import { Skeleton } from '@ariforce/ui/components/skeleton';
+import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
 import { dateLabel, todayIST } from '@/components/attendance/format';
-import { api, apiReady } from '@/lib/api';
+import { api, apiReady, toApiError } from '@/lib/api';
 import { useSession } from '@/lib/mock-auth';
 import { useReducedMotion } from '@/lib/use-reduced-motion';
 import { BANDS, normaliseWorkTypes, type HqOption, type WorkTypeOption } from '@/lib/dcr/model';
@@ -17,42 +28,46 @@ import { DcrFlow, type FlowController } from './dcr-flow';
 /**
  * The DCR page: saved drafts as compact cards, at most one report open at a time.
  * Save draft collapses the open report into its card; a card (click, Enter or Space) expands back into the
- * report exactly as saved. Drafts come from GET /v1/dcrs?userId=<me>&status=draft&sort=-updatedAt.
- * The API keeps one report per user and date, so "another separate draft" means another date.
+ * report exactly as saved. Several drafts per day are allowed; one report per day can be submitted
+ * (API 0045). Drafts come from GET /v1/dcrs?mine=true&status=draft&sort=-updatedAt (callCount per item).
  */
 
 const noop = () => () => {};
 const MOTION_MS = 240;
 const savedLabel = (iso: string) =>
   `${new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(iso))} IST`;
-const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
-const shiftDay = (ymd: string, days: number) => {
-  const d = new Date(`${ymd}T12:00:00+05:30`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-};
+const calls = (n: number) => `${n} call${n === 1 ? '' : 's'}`;
+const newestFirst = (a: Dcr, b: Dcr) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0);
+const DISCARD = 'This report has unsaved changes that can’t be saved as a draft yet. Discard them?';
 
-type Open = { key: string; date: string; draftId: string | null; isNew: boolean; existing?: boolean };
+type Open = { key: string; date: string; draftId: string | null; isNew: boolean; submitted?: boolean };
 
 export function DcrWorkspace() {
   const today = useSyncExternalStore(noop, todayIST, () => null);
   const session = useSession();
   if (!today || session === undefined) return <div className="h-[560px]" aria-busy="true" />;
-  return <Workspace today={today} userId={session?.user.id ?? null} />;
+  return <Workspace today={today} />;
 }
 
-function Workspace({ today, userId }: { today: string; userId: string | null }) {
+function Workspace({ today }: { today: string }) {
   const [drafts, setDrafts] = useState<Dcr[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   const [workTypes, setWorkTypes] = useState<WorkTypeOption[]>([]);
   const [hqs, setHqs] = useState<HqOption[]>([]);
+  /** Dates that already have a submitted report (drafts of those days can only be deleted). */
+  const [submittedDays, setSubmittedDays] = useState<Map<string, string | null>>(new Map());
   const [open, setOpen] = useState<Open | null>({ key: 'new-0', date: today, draftId: null, isNew: true });
   const [closing, setClosing] = useState(false);
+  const [removing, setRemoving] = useState<Set<string>>(new Set());
+  const [confirm, setConfirm] = useState<Dcr | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [announce, setAnnounce] = useState('');
   const ctrl = useRef<FlowController>(null);
   const seq = useRef(0);
   const focusTarget = useRef<string | null>(null);
+  const afterDeleteFocus = useRef<string | null>(null);
+  const deleteOnClose = useRef<string | null>(null);
   const headerRef = useRef<HTMLButtonElement>(null);
   const newBtn = useRef<HTMLButtonElement>(null);
   const busy = useRef(false);
@@ -65,12 +80,18 @@ function Workspace({ today, userId }: { today: string; userId: string | null }) 
     void (async () => {
       try {
         await apiReady();
-        const r = await api.GET('/v1/dcrs', {
-          params: { query: { status: 'draft', sort: '-updatedAt', limit: 50, ...(userId ? { userId } : {}) } },
-        });
+        const r = await api.GET('/v1/dcrs', { params: { query: { mine: 'true', status: 'draft', sort: '-updatedAt', limit: 50 } } });
         if (!live) return;
         if (!r.data) return setListError(failureMessage(r, 'Could not load your saved drafts.'));
-        setDrafts(r.data.items.filter((d) => d.status === 'draft' && (!userId || d.userId === userId)));
+        const items = r.data.items.filter((d) => d.status === 'draft');
+        setDrafts(items);
+        // Which of those days already have a submitted report (one call over the drafts' date range).
+        const dates = items.map((d) => d.date).sort();
+        if (!dates.length) return;
+        const s = await api.GET('/v1/dcrs', {
+          params: { query: { mine: 'true', status: 'submitted', from: dates[0], to: dates[dates.length - 1], limit: 100 } },
+        });
+        if (live && s.data) setSubmittedDays(new Map(s.data.items.filter((d) => d.status === 'submitted').map((d) => [d.date, d.id])));
       } catch (e) {
         if (live) setListError(thrownMessage(e));
       }
@@ -78,7 +99,7 @@ function Workspace({ today, userId }: { today: string; userId: string | null }) 
     return () => {
       live = false;
     };
-  }, [userId, reload]);
+  }, [reload]);
 
   // Names for the cards: work types (one options call) and territories. Cards fall back to plain words.
   useEffect(() => {
@@ -105,25 +126,20 @@ function Workspace({ today, userId }: { today: string; userId: string | null }) 
     return m;
   }, [hqs]);
 
-  const live = useMemo(() => (drafts ?? []).filter((d) => d.status === 'draft'), [drafts]);
+  const live = useMemo(() => (drafts ?? []).filter((d) => d.status === 'draft' && !removing.has(d.id)), [drafts, removing]);
+  // A report that was just submitted keeps its place while it stays open.
   const sorted = useMemo(
-    () => (drafts ?? []).filter((d) => d.status === 'draft' || d.id === open?.draftId).slice().sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0)),
+    () => (drafts ?? []).filter((d) => d.status === 'draft' || d.id === open?.draftId).sort(newestFirst),
     [drafts, open?.draftId],
   );
 
   /** Settle the open report before another opens: autosave when it can, otherwise ask. */
   const settleOpen = useCallback(async (): Promise<boolean> => {
     const c = ctrl.current;
-    if (!open || !c || !c.isDirty()) return true;
+    if (!open || closing || !c || !c.isDirty()) return true;
     if (c.canSave()) return c.saveDraft();
-    return window.confirm('This report has unsaved changes that can’t be saved as a draft yet. Discard them?');
-  }, [open]);
-
-  const show = useCallback((next: Open) => {
-    setClosing(false);
-    setOpen(next);
-    focusTarget.current = 'header';
-  }, []);
+    return window.confirm(DISCARD);
+  }, [open, closing]);
 
   const switchTo = useCallback(
     async (next: Open) => {
@@ -133,13 +149,16 @@ function Workspace({ today, userId }: { today: string; userId: string | null }) 
         switching.current = true;
         const ok = await settleOpen();
         switching.current = false;
-        if (ok) show(next);
+        if (!ok) return;
+        setClosing(false);
+        setOpen(next);
+        focusTarget.current = 'header';
       } finally {
         switching.current = false;
         busy.current = false;
       }
     },
-    [settleOpen, show],
+    [settleOpen],
   );
 
   const openDraft = (d: Dcr) => {
@@ -147,12 +166,12 @@ function Workspace({ today, userId }: { today: string; userId: string | null }) 
     void switchTo({ key: d.id, date: d.date, draftId: d.id, isNew: false });
   };
 
+  const openReport = (id: string, date: string) =>
+    void switchTo({ key: `report-${id}`, date, draftId: id, isNew: false, submitted: true });
+
   const newDcr = () => {
-    const taken = new Set((drafts ?? []).map((d) => d.date));
-    if (open && !closing && open.draftId) taken.add(open.date);
-    const date = !taken.has(today) ? today : !taken.has(shiftDay(today, -1)) ? shiftDay(today, -1) : today;
     seq.current += 1;
-    void switchTo({ key: `new-${seq.current}`, date, draftId: null, isNew: true });
+    void switchTo({ key: `new-${seq.current}`, date: today, draftId: null, isNew: true });
   };
 
   const collapse = async () => {
@@ -169,9 +188,9 @@ function Workspace({ today, userId }: { today: string; userId: string | null }) 
         }
         return;
       }
-      if (!window.confirm('This report has unsaved changes that can’t be saved as a draft yet. Discard them?')) return;
+      if (!window.confirm(DISCARD)) return;
     }
-    focusTarget.current = open.draftId ? `card:${open.draftId}` : 'new';
+    focusTarget.current = open.draftId && !open.submitted ? `card:${open.draftId}` : 'new';
     setClosing(true);
   };
 
@@ -179,24 +198,78 @@ function Workspace({ today, userId }: { today: string; userId: string | null }) 
     // A submitted report stays in state (its card is hidden) so the open report keeps its place.
     setDrafts((xs) => [d, ...(xs ?? []).filter((x) => x.id !== d.id)]);
     setOpen((o) => (o ? { ...o, draftId: d.id, date: d.date } : o));
-    if (submitted || switching.current) return;
+    if (submitted) {
+      setSubmittedDays((m) => new Map(m).set(d.date, d.id));
+      return;
+    }
+    if (switching.current) return;
     setAnnounce(`Draft for ${dateLabel(d.date)} saved and collapsed. Use New DCR to start another report.`);
     focusTarget.current = `card:${d.id}`;
     setClosing(true);
   };
 
-  const onLoaded = (d: Dcr | null, date: string) => {
-    setOpen((o) => {
-      if (!o || !o.isNew) return o;
-      const id = d?.status === 'draft' ? d.id : null;
-      return o.draftId === id && o.date === date ? o : { ...o, draftId: id, date, existing: !!id };
-    });
-  };
+  const onDaySubmitted = useCallback((date: string, id: string | null) => {
+    setSubmittedDays((m) => (m.has(date) && m.get(date) === id ? m : new Map(m).set(date, id)));
+  }, []);
 
   const onClosed = useCallback(() => {
+    const gone = deleteOnClose.current;
+    deleteOnClose.current = null;
+    if (gone) setDrafts((xs) => (xs ?? []).filter((x) => x.id !== gone));
     setOpen(null);
     setClosing(false);
   }, []);
+
+  const dropCard = useCallback((id: string) => {
+    setDrafts((xs) => (xs ?? []).filter((x) => x.id !== id));
+    setRemoving((s) => {
+      const n = new Set(s);
+      n.delete(id);
+      return n;
+    });
+  }, []);
+
+  /** Where focus goes after a draft is deleted: the next card, else the previous one, else New DCR. */
+  const focusAfterDelete = (id: string) => {
+    const cards = sorted.filter((d) => d.status === 'draft' && !removing.has(d.id) && d.id !== open?.draftId);
+    const i = cards.findIndex((d) => d.id === id);
+    const rest = cards.filter((d) => d.id !== id);
+    const next = i < 0 ? rest[0] : (cards[i + 1] ?? cards[i - 1]);
+    return next ? `card:${next.id}` : 'new';
+  };
+
+  const doDelete = async () => {
+    const d = confirm;
+    if (!d || deleting) return;
+    setDeleting(true);
+    try {
+      const r = await api.DELETE('/v1/dcrs/{id}', { params: { path: { id: d.id } } });
+      const status = r.response?.status;
+      if (r.error !== undefined && status !== 404) {
+        const e = toApiError(r);
+        if (e.code === 'ALREADY_SUBMITTED') {
+          toast.error('This report is already submitted, so it can’t be deleted.', { duration: 10000 });
+          setReload((n) => n + 1);
+        } else if (e.code === 'DAY_LOCKED') toast.error('This day is locked, so the draft can’t be deleted. Ask your manager to reopen it.', { duration: 10000 });
+        else toast.error(failureMessage(r, 'Could not delete the draft. Try again.'), { duration: 10000 });
+        setConfirm(null);
+        return;
+      }
+      toast.success(status === 404 ? 'That draft was already deleted.' : `Draft for ${dateLabel(d.date)} deleted.`);
+      setAnnounce(`Draft for ${dateLabel(d.date)} deleted.`);
+      afterDeleteFocus.current = focusAfterDelete(d.id);
+      if (open?.draftId === d.id) {
+        deleteOnClose.current = d.id;
+        setClosing(true);
+      } else setRemoving((s) => new Set(s).add(d.id));
+      setConfirm(null);
+    } catch (e) {
+      toast.error(`${thrownMessage(e)} The draft was not deleted.`, { duration: 10000 });
+      setConfirm(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   // Focus follows the expand/collapse: into the report's header when it opens, back to its card when it closes.
   useLayoutEffect(() => {
@@ -208,13 +281,23 @@ function Workspace({ today, userId }: { today: string; userId: string | null }) 
       headerRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     } else if (!open && t !== 'header') {
       focusTarget.current = null;
-      const el = t.startsWith('card:') ? document.querySelector<HTMLElement>(`[data-draft-card="${t.slice(5)}"]`) : null;
-      (el ?? newBtn.current)?.focus({ preventScroll: true });
+      focusCard(t);
     }
   });
 
+  const focusCard = (t: string) => {
+    const el = t.startsWith('card:') ? document.querySelector<HTMLElement>(`[data-draft-card="${t.slice(5)}"]`) : null;
+    (el ?? newBtn.current)?.focus({ preventScroll: true });
+  };
+
   const editorId = 'dcr-open-report';
   const wtName = (id: string) => workTypes.find((w) => w.id === id)?.name;
+  const openDcr = open?.draftId ? drafts?.find((x) => x.id === open.draftId) : undefined;
+  const openTitle = !open
+    ? ''
+    : open.isNew && !open.draftId
+      ? 'New report'
+      : `${open.submitted || openDcr?.status === 'submitted' ? 'Submitted' : 'Draft'} · ${dateLabel(open.date)}`;
 
   const editor = open && (
     <Reveal key={open.key} closing={closing} onClosed={onClosed}>
@@ -229,28 +312,22 @@ function Workspace({ today, userId }: { today: string; userId: string | null }) 
             className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
             data-testid="dcr-open-toggle"
           >
-            <span className="truncate text-base font-semibold tracking-tight">
-              {open.isNew && !open.draftId
-                ? 'New report'
-                : `${drafts?.find((x) => x.id === open.draftId)?.status === 'submitted' ? 'Submitted' : 'Draft'} · ${dateLabel(open.date)}`}
-            </span>
+            <span className="truncate text-base font-semibold tracking-tight">{openTitle}</span>
             <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-sm text-muted-foreground">
               Collapse <ChevronUp className="size-4" aria-hidden />
             </span>
           </button>
         </div>
-        {open.isNew && open.draftId && open.existing && (
-          <p className="af-fade rounded-lg bg-info-soft px-3 py-2 text-sm text-info" data-testid="dcr-date-has-draft">
-            {dateLabel(open.date)} already has a saved draft, so it’s open here. Pick another date for a separate report.
-          </p>
-        )}
         <div id={editorId}>
           <DcrFlow
-            key={open.isNew ? open.key : open.draftId ?? open.key}
+            key={open.key}
             initialDate={open.date}
             dateLocked={!open.isNew}
+            reportId={open.draftId}
             onSaved={onSaved}
-            onLoaded={onLoaded}
+            onDelete={setConfirm}
+            onOpenReport={openReport}
+            onDaySubmitted={onDaySubmitted}
             controller={ctrl}
           />
         </div>
@@ -280,19 +357,71 @@ function Workspace({ today, userId }: { today: string; userId: string | null }) 
       ) : drafts === null ? (
         <div className="flex flex-col gap-2" aria-busy="true"><Skeleton className="h-20 w-full rounded-xl" /></div>
       ) : (
-        <ul className="flex flex-col gap-3" aria-labelledby="dcr-drafts-h" data-testid="dcr-drafts">
+        <ul className="flex flex-col" aria-labelledby="dcr-drafts-h" data-testid="dcr-drafts">
           {sorted.map((d, i) =>
             open?.draftId === d.id ? (
-              open.isNew ? null : <li key={d.id}>{editor}</li>
+              open.isNew ? null : <li key={d.id} className="pb-3">{editor}</li>
             ) : d.status !== 'draft' ? null : (
               <li key={d.id} className="af-enter" style={{ ['--i' as string]: i }}>
-                <DraftCard d={d} workType={wtName(d.workTypeId)} placeName={placeName} controls={editorId} onOpen={() => openDraft(d)} />
+                <Reveal appear={false} closing={removing.has(d.id)} onClosed={() => dropCard(d.id)}>
+                  <div className="pb-3">
+                    <DraftCard
+                      d={d}
+                      workType={wtName(d.workTypeId)}
+                      placeName={placeName}
+                      controls={editorId}
+                      daySubmitted={submittedDays.has(d.date)}
+                      onOpen={() => openDraft(d)}
+                      onDelete={() => setConfirm(d)}
+                    />
+                  </div>
+                </Reveal>
               </li>
             ),
           )}
-          {open && !open.isNew && !sorted.some((d) => d.id === open.draftId) && <li>{editor}</li>}
+          {open && !open.isNew && !sorted.some((d) => d.id === open.draftId) && <li className="pb-3">{editor}</li>}
         </ul>
       )}
+
+      <AlertDialog open={!!confirm} onOpenChange={(o) => !o && !deleting && setConfirm(null)}>
+        <AlertDialogContent
+          data-testid="dcr-delete-dialog"
+          onCloseAutoFocus={(e) => {
+            const t = afterDeleteFocus.current;
+            if (!t) return;
+            afterDeleteFocus.current = null;
+            e.preventDefault();
+            if (deleteOnClose.current) focusTarget.current = t;
+            else focusCard(t);
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirm && (
+                <>
+                  The draft for {dateLabel(confirm.date)}
+                  {wtName(confirm.workTypeId) ? ` (${wtName(confirm.workTypeId)})` : ''} and its calls will be deleted. This can’t be undone.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Keep draft</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                void doDelete();
+              }}
+              data-testid="dcr-delete-confirm"
+            >
+              {deleting ? 'Deleting…' : 'Delete draft'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -302,63 +431,111 @@ function DraftCard({
   workType,
   placeName,
   controls,
+  daySubmitted,
   onOpen,
+  onDelete,
 }: {
   d: Dcr;
   workType: string | undefined;
   placeName: Map<string, string>;
   controls: string;
+  daySubmitted: boolean;
   onOpen: () => void;
+  onDelete: () => void;
 }) {
   const band = BANDS.find((b) => b.band === d.band);
   const places = d.territoryIds.map((id) => placeName.get(id)).filter(Boolean) as string[];
-  const territory = places.length ? places.join(', ') : d.territoryIds.length ? plural(d.territoryIds.length, 'territory').replace('territorys', 'territories') : null;
+  const territory = places.length
+    ? places.join(', ')
+    : d.territoryIds.length
+      ? `${d.territoryIds.length} ${d.territoryIds.length === 1 ? 'territory' : 'territories'}`
+      : null;
   const what = workType ?? (band ? 'Field work' : d.details?.kind ? d.details.kind[0]!.toUpperCase() + d.details.kind.slice(1) : 'Report');
+  const n = d.callCount ?? d.calls.length;
   return (
-    <button
-      type="button"
-      aria-expanded={false}
-      aria-controls={controls}
-      onClick={onOpen}
-      data-draft-card={d.id}
-      data-testid="dcr-draft-card"
-      className={cn(
-        'group flex w-full items-start gap-3 rounded-xl border bg-card p-4 text-left shadow-xs outline-none',
-        'transition-[border-color,box-shadow,transform] duration-(--duration-fast) ease-(--ease-out)',
-        'hover:border-foreground/20 focus-visible:ring-[3px] focus-visible:ring-ring/50 active:scale-[0.99] motion-reduce:active:scale-100',
-      )}
-    >
-      <FileText className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
-      <span className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="flex flex-wrap items-center gap-2">
-          <span className="font-semibold tracking-tight">{dateLabel(d.date)}</span>
-          <span className="rounded-md bg-info-soft px-2 py-0.5 text-xs font-medium text-info">Draft</span>
+    <div className="relative">
+      <button
+        type="button"
+        aria-expanded={false}
+        aria-controls={controls}
+        onClick={onOpen}
+        data-draft-card={d.id}
+        data-testid="dcr-draft-card"
+        className={cn(
+          'group flex w-full items-start gap-3 rounded-xl border bg-card p-4 pr-16 text-left shadow-xs outline-none',
+          'transition-[border-color,box-shadow,transform] duration-(--duration-fast) ease-(--ease-out)',
+          'hover:border-foreground/20 focus-visible:ring-[3px] focus-visible:ring-ring/50 active:scale-[0.99] motion-reduce:active:scale-100',
+        )}
+      >
+        <FileText className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold tracking-tight">{dateLabel(d.date)}</span>
+            <span className="rounded-md bg-info-soft px-2 py-0.5 text-xs font-medium text-info">Draft</span>
+            {daySubmitted && (
+              <span className="rounded-md bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning" data-testid="dcr-card-day-submitted">
+                Day already submitted
+              </span>
+            )}
+          </span>
+          <span className="text-sm text-muted-foreground">
+            {[what, band ? band.label : null, territory, band || n ? calls(n) : null].filter(Boolean).join(' · ')}
+          </span>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            Saved {savedLabel(d.updatedAt)}
+            {daySubmitted ? ' · Can’t be submitted; delete it if you no longer need it' : ''}
+          </span>
         </span>
-        <span className="text-sm text-muted-foreground">
-          {[what, band ? band.label : null, territory, band || d.calls.length ? plural(d.calls.length, 'call') : null].filter(Boolean).join(' · ')}
-        </span>
-        <span className="text-xs text-muted-foreground tabular-nums">Saved {savedLabel(d.updatedAt)}</span>
-      </span>
-      <ChevronDown className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform duration-(--duration-fast) group-hover:translate-y-0.5 motion-reduce:transition-none" aria-hidden />
-    </button>
+        <ChevronDown className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform duration-(--duration-fast) group-hover:translate-y-0.5 motion-reduce:transition-none" aria-hidden />
+      </button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="absolute top-2 right-9 size-11 text-muted-foreground hover:text-destructive"
+        onClick={onDelete}
+        aria-label={`Delete draft for ${dateLabel(d.date)}`}
+        data-testid="dcr-card-delete"
+      >
+        <Trash2 aria-hidden />
+      </Button>
+    </div>
   );
 }
 
-/** Height + opacity reveal (grid rows 0fr → 1fr), ease-out; instant when the OS asks for reduced motion. */
-function Reveal({ closing, onClosed, children }: { closing: boolean; onClosed: () => void; children: ReactNode }) {
+/**
+ * Height + opacity reveal (grid rows 0fr → 1fr), ease-out; instant when the OS asks for reduced motion.
+ * `appear` animates the first render; `closing` collapses it, then `onClosed` runs.
+ */
+function Reveal({
+  closing,
+  onClosed,
+  appear = true,
+  children,
+}: {
+  closing: boolean;
+  onClosed: () => void;
+  appear?: boolean;
+  children: ReactNode;
+}) {
   const reduced = useReducedMotion();
-  const [on, setOn] = useState(false);
-  const [settled, setSettled] = useState(false);
+  const [on, setOn] = useState(!appear);
+  const [settled, setSettled] = useState(!appear);
+  const closedRef = useRef(onClosed);
   useEffect(() => {
+    closedRef.current = onClosed;
+  });
+  useEffect(() => {
+    if (on) return;
     const r = requestAnimationFrame(() => setOn(true));
     return () => cancelAnimationFrame(r);
-  }, []);
+  }, [on]);
   useEffect(() => {
     if (!closing) return;
     setSettled(false);
-    const t = window.setTimeout(onClosed, reduced ? 0 : MOTION_MS);
+    const t = window.setTimeout(() => closedRef.current(), reduced ? 0 : MOTION_MS);
     return () => window.clearTimeout(t);
-  }, [closing, onClosed, reduced]);
+  }, [closing, reduced]);
   const expanded = on && !closing;
   return (
     <div

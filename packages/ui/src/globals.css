@@ -129,3 +129,45 @@
     animation: none !important;
   }
 }
+
+/* Confirm dialogs (AlertDialog): overlay fades, panel rises a little from centre; out is quicker. */
+@keyframes af-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes af-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes af-dialog-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.97);
+  }
+}
+@keyframes af-dialog-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.98);
+  }
+}
+[data-slot='alert-dialog-overlay'][data-state='open'] {
+  animation: af-fade-in var(--duration-fast) var(--ease-out);
+}
+[data-slot='alert-dialog-overlay'][data-state='closed'] {
+  animation: af-fade-out var(--duration-instant) var(--ease-out);
+}
+[data-slot='alert-dialog-content'][data-state='open'] {
+  animation: af-dialog-in 200ms var(--ease-out);
+}
+[data-slot='alert-dialog-content'][data-state='closed'] {
+  animation: af-dialog-out var(--duration-fast) var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot='alert-dialog-overlay'],
+  [data-slot='alert-dialog-content'] {
+    animation: none !important;
+  }
+}

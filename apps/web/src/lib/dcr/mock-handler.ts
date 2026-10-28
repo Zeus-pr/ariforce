@@ -1,8 +1,10 @@
 /**
  * Mock mode only: the DCR redesign endpoints (docs/DCR-REDESIGN-DESIGN.md) with Durgapur/Bankura
  * fixtures (./fixtures). Registered before the contracts mock, so it answers /v1/dcrs/options,
- * /territories, /work-with, /sfc-match, /draft and /{id}/submit, plus GET /v1/dcrs/{id} for DCRs it
- * holds and the doctor/chemist/stockist lists for its own territories. Everything else falls through.
+ * /territories, /work-with, /sfc-match, /draft, /{id}/submit and DELETE /{id}, GET /v1/dcrs?mine=true
+ * (or status=draft), GET /v1/dcrs/{id} for DCRs it holds and the doctor/chemist/stockist lists for its
+ * own territories. Everything else falls through. Several drafts per day, at most one submitted report
+ * per day (0045): PUT /draft with id updates that draft, without id and version creates a new one.
  * State lives in the page (lost on reload). Rules follow the API: band comes from the work type,
  * SFC candidates are the rep's SFC routes for each HQ of the day in the band's category, one route per
  * HQ, snapshots frozen at submit, idempotent submit. Set localStorage `af:mock-sfc-down` = '1' to make
@@ -89,6 +91,7 @@ const hqOf = (id: string) => {
 const lockAt = (date: string) =>
   new Date(Date.parse(`${date}T00:00:00+05:30`) + 86_400_000 + fx.dcrLockAfterHours * 36e5).toISOString();
 const isLocked = (date: string) => Date.now() > Date.parse(lockAt(date));
+const newest = (a: Dcr, b: Dcr) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0);
 const todayIST = () =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
@@ -126,7 +129,31 @@ export function mockDcrFlow(base: string) {
     );
     if (dcrs.some((x) => x.userId === userId && x.date === date)) return;
     const at = new Date(Date.now() - 3 * 36e5).toISOString();
+    const at2 = new Date(Date.now() - 2 * 36e5).toISOString();
     dcrs.push(
+      Dcr.parse({
+        id: crypto.randomUUID(),
+        companyId: fx.COMPANY_ID,
+        createdAt: at2,
+        updatedAt: at2,
+        deletedAt: null,
+        version: 1,
+        userId,
+        date,
+        workTypeId: DCR_WORK_TYPES[5]!.id,
+        band: null,
+        territoryIds: [],
+        workWithUserIds: [],
+        tourPlanId: null,
+        deviationReason: null,
+        details: { kind: 'office', taskType: 'Reports', description: 'Monthly expense statement', startTime: '16:00', durationMin: 60 },
+        status: 'draft',
+        calls: [],
+        sfcRoutes: [],
+        submittedAt: null,
+        lockAt: lockAt(date),
+        unlockedUntil: null,
+      }),
       Dcr.parse({
         id: crypto.randomUUID(),
         companyId: fx.COMPANY_ID,
@@ -246,7 +273,10 @@ export function mockDcrFlow(base: string) {
       const date = new URL(request.url).searchParams.get('date') ?? '';
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return validation('date is required (YYYY-MM-DD)');
       const { me } = persona(request);
-      const d = dcrs.find((x) => x.date === date && x.userId === me.id) ?? null;
+      const day = dcrs.filter((x) => x.date === date && x.userId === me.id);
+      const submitted = day.find((x) => x.status === 'submitted') ?? null;
+      const drafts = day.filter((x) => x.status === 'draft').sort(newest);
+      const d = submitted ?? drafts[0] ?? null;
       const body = DcrOptions.parse({
         date,
         workTypes: DCR_WORK_TYPES.map((w) => ({
@@ -255,6 +285,8 @@ export function mockDcrFlow(base: string) {
           detailsKind: dcrDetailsKind(w),
         })),
         dcr: d ? { ...d, lockAt: lockAt(d.date) } : null,
+        submitted: submitted ? { ...submitted, lockAt: lockAt(submitted.date) } : null,
+        drafts: drafts.map((x) => ({ ...x, lockAt: lockAt(x.date) })),
       });
       // Legacy band values from un-migrated work types, added after parsing on purpose: the UI maps
       // 'Ex' to EX case-insensitively (a duplicate band, so the first wins) and drops 'EX / OS'.
@@ -309,9 +341,22 @@ export function mockDcrFlow(base: string) {
       seed(me.id);
       if (b.data.date > todayIST()) return validation('DCR date is in the future');
       if (isLocked(b.data.date)) return err(409, 'DAY_LOCKED', 'Day locked; request a correction');
-      let d = dcrs.find((x) => x.date === b.data.date && x.userId === me.id);
-      if (d?.status === 'submitted') return err(409, 'ALREADY_SUBMITTED', 'Read-only after submit');
-      if (d && b.data.version && b.data.version !== d.version) return err(409, 'VERSION_CONFLICT', 'Stale version');
+      const day = dcrs.filter((x) => x.date === b.data.date && x.userId === me.id);
+      let d: Dcr | undefined;
+      if (b.data.id) {
+        d = dcrs.find((x) => x.id === b.data.id && x.userId === me.id);
+        if (!d) return err(404, 'NOT_FOUND', 'Draft not found');
+        if (d.status !== 'draft') return err(409, 'ALREADY_SUBMITTED', 'Submitted DCRs are read-only; request a correction', { id: d.id });
+        if (d.date !== b.data.date) return validation('date must equal the date of the draft', { field: 'date', expected: d.date });
+      }
+      const sub = day.find((x) => x.status === 'submitted');
+      if (sub) return err(409, 'DAY_ALREADY_SUBMITTED', 'This day already has a submitted report', { existingId: sub.id });
+      // Older clients: version without id updates the latest draft of the date.
+      if (!b.data.id && b.data.version) {
+        d = day.filter((x) => x.status === 'draft').sort(newest)[0];
+        if (!d) return err(404, 'NOT_FOUND', 'Draft not found');
+      }
+      if (d && b.data.version && b.data.version !== d.version) return err(409, 'VERSION_CONFLICT', 'Stale version', Dcr.parse({ ...d, lockAt: lockAt(d.date) }));
       const wt = wtOf(b.data.workTypeId);
       if (!wt) return validation('Unknown work type');
       if (b.data.band && b.data.band !== wt.band) return validation('band must equal the work type band', { field: 'band' });
@@ -375,6 +420,8 @@ export function mockDcrFlow(base: string) {
       if (!b.success) return validation('Invalid body');
       if (d.status === 'submitted')
         return submitKeys.get(d.id) === key ? out(d) : err(409, 'ALREADY_SUBMITTED', 'Already submitted');
+      const other = dcrs.find((x) => x.id !== d.id && x.userId === me.id && x.date === d.date && x.status === 'submitted');
+      if (other) return err(409, 'DAY_ALREADY_SUBMITTED', 'This day already has a submitted report', { existingId: other.id });
       if (b.data.version !== d.version) return err(409, 'VERSION_CONFLICT', 'Stale version');
       if (isLocked(d.date)) return err(409, 'DAY_LOCKED', 'Day locked');
       const wt = wtOf(d.workTypeId)!;
@@ -419,7 +466,8 @@ export function mockDcrFlow(base: string) {
      */
     http.get(`${base}/v1/dcrs`, ({ request }) => {
       const q = new URL(request.url).searchParams;
-      if (q.get('status') !== 'draft') return undefined;
+      const status = q.get('status');
+      if (q.get('mine') !== 'true' && status !== 'draft') return undefined;
       const { me } = persona(request);
       seed(me.id);
       const from = q.get('from');
@@ -428,12 +476,29 @@ export function mockDcrFlow(base: string) {
       const key = sort.replace(/^-/, '') as 'date' | 'createdAt' | 'updatedAt';
       const dir = sort.startsWith('-') ? -1 : 1;
       const items = dcrs
-        .filter((d) => d.userId === me.id && d.status === 'draft' && !isLocked(d.date))
+        .filter((d) => d.userId === me.id)
+        .filter((d) => {
+          const locked = d.status === 'draft' && isLocked(d.date);
+          if (status === 'locked') return locked;
+          if (status === 'draft') return d.status === 'draft' && !locked;
+          if (status === 'submitted') return d.status === 'submitted';
+          return true;
+        })
         .filter((d) => (!from || d.date >= from) && (!to || d.date <= to))
         .sort((a, b) => (a[key] < b[key] ? -dir : a[key] > b[key] ? dir : 0))
         .slice(0, Number(q.get('limit') ?? 50))
-        .map((d) => Dcr.parse({ ...d, lockAt: lockAt(d.date) }));
+        .map((d) => Dcr.parse({ ...d, lockAt: lockAt(d.date), callCount: d.calls.length }));
       return HttpResponse.json({ items, nextCursor: null, serverTime: new Date().toISOString() });
+    }),
+    http.delete(`${base}/v1/dcrs/:id`, ({ params, request }) => {
+      const { me } = persona(request);
+      const i = dcrs.findIndex((x) => x.id === params.id && x.userId === me.id);
+      if (i < 0) return err(404, 'NOT_FOUND', 'DCR not found');
+      const d = dcrs[i]!;
+      if (d.status !== 'draft') return err(409, 'ALREADY_SUBMITTED', 'Submitted DCRs cannot be deleted', { id: d.id });
+      if (isLocked(d.date)) return err(409, 'DAY_LOCKED', 'This day is locked; request a correction', { lockAt: lockAt(d.date) });
+      dcrs.splice(i, 1);
+      return new HttpResponse(null, { status: 204 });
     }),
     http.get(`${base}/v1/dcrs/:id`, ({ params }) => {
       const d = dcrs.find((x) => x.id === params.id);

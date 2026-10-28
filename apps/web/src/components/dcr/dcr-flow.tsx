@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, Plus, RotateCw } from 'lucide-react';
+import { CheckCircle2, Plus, RotateCw, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore, type Ref } from 'react';
 import type { Dcr } from '@ariforce/contracts';
 import { Button } from '@ariforce/ui/components/button';
@@ -72,8 +72,14 @@ export type FlowProps = {
   dateLocked?: boolean;
   /** After a successful save (draft) or submit. */
   onSaved?: (dcr: Dcr, submitted: boolean) => void;
-  /** The report for the date as loaded (null = none yet). */
-  onLoaded?: (dcr: Dcr | null, date: string) => void;
+  /** The draft (or submitted report) to open; omit for a new draft. */
+  reportId?: string | null;
+  /** Ask to delete the open draft (the workspace confirms and calls DELETE). */
+  onDelete?: (dcr: Dcr) => void;
+  /** Open another report of yours, e.g. the day's submitted one. */
+  onOpenReport?: (id: string, date: string) => void;
+  /** The date already has a submitted report (from options or a 409 DAY_ALREADY_SUBMITTED). */
+  onDaySubmitted?: (date: string, existingId: string | null) => void;
   controller?: Ref<FlowController>;
 };
 
@@ -111,7 +117,7 @@ function Step({ title, hint, children, testId, id }: { title: string; hint?: str
   );
 }
 
-function Flow({ today, initialDate, dateLocked = false, onSaved, onLoaded, controller }: FlowProps & { today: string }) {
+function Flow({ today, initialDate, dateLocked = false, reportId, onSaved, onDelete, onOpenReport, onDaySubmitted, controller }: FlowProps & { today: string }) {
   const [s, setS] = useState<FlowState>(() => fresh(initialDate ?? today));
   const [workTypes, setWorkTypes] = useState<WorkTypeOption[] | null>(null);
   const [dcr, setDcr] = useState<Dcr | null>(null);
@@ -135,9 +141,14 @@ function Flow({ today, initialDate, dateLocked = false, onSaved, onLoaded, contr
   const [reload, setReload] = useState(0);
   const [sfcTick, setSfcTick] = useState(0);
   const [dirty, setDirty] = useState(false);
-  const onLoadedRef = useRef(onLoaded);
+  /** The draft this form edits: the one opened, or the one created by the first save. */
+  const idRef = useRef<string | null>(reportId ?? null);
+  const [gone, setGone] = useState(false);
+  /** The day's submitted report when it is not the one open (drafts of that day are delete-only). */
+  const [daySubmitted, setDaySubmitted] = useState<{ id: string | null } | null>(null);
+  const onDaySubmittedRef = useRef(onDaySubmitted);
   useEffect(() => {
-    onLoadedRef.current = onLoaded;
+    onDaySubmittedRef.current = onDaySubmitted;
   });
   const submitKey = useRef<string | null>(null);
   const names = useRef(new Map<string, string>());
@@ -150,7 +161,8 @@ function Flow({ today, initialDate, dateLocked = false, onSaved, onLoaded, contr
   const hqNames = useMemo(() => new Map((hqs ?? []).map((h) => [h.id, h.name])), [hqs]);
   const branch = s.workOn?.branch;
   const field = branch === 'field';
-  const readOnly = dcr?.status === 'submitted' || dcr?.status === 'locked';
+  const blocked = !!daySubmitted && dcr?.status !== 'submitted';
+  const readOnly = dcr?.status === 'submitted' || dcr?.status === 'locked' || blocked || gone;
   const dayHqIds = useMemo(() => hqIdsOf(rows, s.territoryIds), [rows, s.territoryIds]);
   // Per HQ of the day: the picked level-'territory' rows under it, or none when the HQ itself was picked (whole HQ).
   const customerScope = useMemo<CustomerScope[]>(
@@ -174,6 +186,8 @@ function Flow({ today, initialDate, dateLocked = false, onSaved, onLoaded, contr
     setLoadError(null);
     setShowErrors(false);
     setStale(false);
+    setGone(false);
+    setDaySubmitted(null);
     submitKey.current = null;
     void (async () => {
       await apiReady();
@@ -185,10 +199,28 @@ function Flow({ today, initialDate, dateLocked = false, onSaved, onLoaded, contr
         return setLoadError(failureMessage(r, 'Could not load the report for this date.'));
       }
       setApiMissing(false);
-      onLoadedRef.current?.(r.data.dcr, s.date);
+      // Several drafts per day: open the one asked for; a new form starts empty.
+      const want = idRef.current;
+      const sub = r.data.submitted ?? null;
+      let d: Dcr | null = null;
+      if (want) {
+        d = (r.data.drafts ?? []).find((x) => x.id === want) ?? (sub?.id === want ? sub : null);
+        if (!d) {
+          const g = await api.GET('/v1/dcrs/{id}', { params: { path: { id: want } } });
+          if (!live) return;
+          if (g.data && g.data.date === s.date) d = g.data;
+          else if (g.data || g.response?.status === 404) {
+            setGone(true);
+            return setLoadError('This draft no longer exists. It may have been deleted on another device.');
+          } else return setLoadError(failureMessage(g, 'Could not load this report.'));
+        }
+      }
+      if (sub && sub.id !== d?.id) {
+        setDaySubmitted({ id: sub.id });
+        onDaySubmittedRef.current?.(s.date, sub.id);
+      }
       const wts = normaliseWorkTypes(r.data.workTypes as WorkTypeOption[]);
       setWorkTypes(wts);
-      const d = r.data.dcr;
       setDcr(d);
       setDirty(false);
       const next = fresh(s.date);
@@ -392,12 +424,15 @@ function Flow({ today, initialDate, dateLocked = false, onSaved, onLoaded, contr
     }
     setSaving(submit ? 'submit' : 'draft');
     try {
-      const r = await api.PUT('/v1/dcrs/draft', { body: draftBody(s, dcr?.version) });
+      const r = await api.PUT('/v1/dcrs/draft', {
+        body: draftBody(s, dcr?.status === 'draft' ? { id: dcr.id, version: dcr.version } : null),
+      });
       if (!r.data) {
         failed(toApiError(r), r.response?.status);
         return false;
       }
       let saved = r.data;
+      idRef.current = saved.id;
       setDcr(saved);
       if (submit) {
         // One key per submit attempt: a retry after a dropped response returns the same submitted DCR.
@@ -447,6 +482,15 @@ function Flow({ today, initialDate, dateLocked = false, onSaved, onLoaded, contr
       setTimeout(() => document.getElementById('dcr-deviation')?.focus(), 50);
     }
     if (e.code === 'VERSION_CONFLICT' || e.code === 'ALREADY_SUBMITTED' || e.code === 'DAY_LOCKED') setStale(true);
+    if (e.code === 'DAY_ALREADY_SUBMITTED') {
+      const existingId = (e.details as { existingId?: string | null } | undefined)?.existingId ?? null;
+      setDaySubmitted({ id: existingId });
+      onDaySubmitted?.(s.date, existingId);
+    }
+    if (status === 404 || e.code === 'NOT_FOUND') {
+      setGone(true);
+      return void toast.error(dcrErrorMessage({ ...e, code: 'NOT_FOUND' }), { duration: 10000 });
+    }
     const msg = e.code === 'NETWORK' && status && status >= 500 ? `The server had a problem (HTTP ${status}). Your changes are still on this page; try again.` : dcrErrorMessage(e);
     const field = (e.details as { field?: string } | undefined)?.field;
     toast.error(e.code === 'VALIDATION' && field ? `${msg} (${field})` : msg, { duration: 10000 });
@@ -501,6 +545,28 @@ function Flow({ today, initialDate, dateLocked = false, onSaved, onLoaded, contr
         </div>
       )}
 
+      {daySubmitted && dcr?.status !== 'submitted' && (
+        <div className="af-fade flex flex-col gap-3 rounded-xl border border-warning/40 bg-warning-soft p-4 text-sm" role="status" data-testid="dcr-day-submitted">
+          <p>
+            <span className="font-medium">You already submitted a report for {dateLabel(s.date)}.</span>{' '}
+            Only one report per day can be submitted, so this {dcr ? 'draft' : 'form'} can’t be saved or submitted.
+            {dcr?.status === 'draft' ? ' You can delete it.' : ''}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {daySubmitted.id && onOpenReport && (
+              <Button type="button" size="sm" variant="outline" onClick={() => onOpenReport(daySubmitted.id!, s.date)} data-testid="dcr-view-submitted">
+                View submitted report
+              </Button>
+            )}
+            {dcr?.status === 'draft' && onDelete && (
+              <Button type="button" size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => onDelete(dcr)} data-testid="dcr-day-submitted-delete">
+                <Trash2 aria-hidden /> Delete this draft
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {stale && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning-soft p-4 text-sm" role="status" data-testid="dcr-stale">
           This report changed on the server since you opened it.
@@ -508,7 +574,7 @@ function Flow({ today, initialDate, dateLocked = false, onSaved, onLoaded, contr
         </div>
       )}
 
-      {!dateLocked && <Step title="Date" hint="One report per day: a date that already has a draft opens that draft." testId="dcr-step-date">
+      {!dateLocked && !dcr && <Step title="Date" hint="Any day that isn’t locked. You can keep several drafts for the same day and submit one." testId="dcr-step-date">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="dcr-date" className="sr-only">Report date</Label>
           <Input
@@ -727,6 +793,11 @@ function Flow({ today, initialDate, dateLocked = false, onSaved, onLoaded, contr
               {probs.length ? `${probs.length} thing${probs.length > 1 ? 's' : ''} left before you can submit` : field ? `Ready: ${s.calls.length} call${s.calls.length === 1 ? '' : 's'}, ${s.sfc.hqs.length} SFC route${s.sfc.hqs.length === 1 ? '' : 's'}` : 'Ready to submit'}
             </p>
             <div className="grid grid-cols-2 gap-2 sm:flex">
+              {dcr?.status === 'draft' && onDelete && (
+                <Button type="button" variant="ghost" className="col-span-2 min-h-11 text-destructive hover:text-destructive sm:col-span-1" disabled={!!saving} onClick={() => onDelete(dcr)} data-testid="dcr-delete">
+                  <Trash2 aria-hidden /> Delete draft
+                </Button>
+              )}
               <Button type="button" variant="outline" className="min-h-11" disabled={!!saving || !s.workTypeId} onClick={() => void save(false)} data-testid="dcr-save">
                 {saving === 'draft' ? 'Saving…' : 'Save draft'}
               </Button>

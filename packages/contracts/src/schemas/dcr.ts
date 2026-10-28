@@ -27,7 +27,17 @@ export const DcrOptions = z
   .object({
     date: DateOnly,
     workTypes: z.array(DcrWorkTypeOption),
-    dcr: Dcr.nullable().meta({ description: 'Your DCR for the date (draft or submitted), if any' }),
+    dcr: Dcr.nullable().meta({
+      description:
+        'Your report for the date: the submitted one, else the latest draft (kept for older clients)',
+    }),
+    submitted: Dcr.nullable()
+      .default(null)
+      .meta({ description: 'Your submitted report for the date (at most one per day), if any' }),
+    drafts: z
+      .array(Dcr)
+      .default([])
+      .meta({ description: 'Your drafts for the date, newest first (several allowed per day)' }),
   })
   .meta({ id: 'DcrOptions' });
 export type DcrOptions = z.infer<typeof DcrOptions>;
@@ -117,6 +127,10 @@ export type DcrSfcMatch = z.infer<typeof DcrSfcMatch>;
 
 export const DcrDraftPut = z
   .object({
+    id: Id.optional().meta({
+      description:
+        'Draft to update (yours, still a draft, same date). Omit to create a new draft; omitting id but sending version updates the latest draft of the date (older clients)',
+    }),
     date: DateOnly,
     workTypeId: Id,
     band: DcrBand.optional().meta({ description: 'Optional; must equal the work type band' }),

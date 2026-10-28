@@ -191,7 +191,11 @@ export function problems(s: FlowState): { key: string; text: string }[] {
 }
 
 /** PUT /v1/dcrs/draft body. Non-field days never carry territories, Work With, SFC or calls. */
-export function draftBody(s: FlowState, version?: number): DcrDraftPut {
+/**
+ * PUT /v1/dcrs/draft body. Pass the saved draft (id + version) to update it; pass nothing to create a
+ * new draft: id and version are both left out then (version alone would update the day's latest draft).
+ */
+export function draftBody(s: FlowState, saved?: { id: string; version: number } | null): DcrDraftPut {
   const field = s.workOn?.branch === 'field';
   const routes = field && s.sfc.state === 'ok'
     ? s.sfc.hqs
@@ -230,7 +234,7 @@ export function draftBody(s: FlowState, version?: number): DcrDraftPut {
             calledAt: isoOf(s.date, c.time),
           }))
       : [],
-    ...(version ? { version } : {}),
+    ...(saved ? { id: saved.id, version: saved.version } : {}),
   };
 }
 
@@ -268,6 +272,10 @@ export function dcrErrorMessage(e: ApiError): string {
       return 'This report changed in another tab. Reload the page and try again.';
     case 'DAY_LOCKED':
       return 'This day is locked. Ask your manager to reopen it.';
+    case 'DAY_ALREADY_SUBMITTED':
+      return 'You already submitted a report for this day. This draft can’t be saved or submitted; you can delete it.';
+    case 'NOT_FOUND':
+      return 'This draft no longer exists. It may have been deleted on another device.';
     case 'DEVIATION_REASON_REQUIRED':
       return 'Say why the day differs from your approved tour plan.';
     default:
