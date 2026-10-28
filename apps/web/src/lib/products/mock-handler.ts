@@ -1,7 +1,7 @@
 /**
  * Mock mode only: product images, in the shapes lib/products/product-image.ts assumes (see the TODO
  * there). Registered before the contracts mock:
- *  - POST /v1/files/upload-url with purpose 'product-image' (other purposes fall through),
+ *  - POST /v1/files/upload-url with purpose 'product_image' (other purposes fall through),
  *  - PUT  to the fake signed URL (keeps the bytes as a blob: URL in this tab),
  *  - PUT/DELETE /v1/products/:id/image,
  *  - GET /v1/products and /v1/admin/products: answered by the contracts mock, then given `imageUrl`.

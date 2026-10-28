@@ -5,11 +5,11 @@
  * Flow, same as the other R2 uploads: ask for a presigned URL, PUT the bytes straight to storage,
  * then attach the returned fileKey to the product. The API never proxies file bytes.
  *
- *   1. POST   /v1/files/upload-url        { purpose: 'product-image', contentType, sizeBytes, fileName }
+ *   1. POST   /v1/files/upload-url        { purpose: 'product_image', contentType, sizeBytes, fileName }
  *                                          -> { fileKey, uploadUrl, method: 'PUT', headers, expiresAt }
  *   2. PUT    <uploadUrl>                  raw file bytes, with exactly `headers`
  *   3. PUT    /v1/products/{id}/image     { fileKey }  -> the product (or at least { imageUrl, version? })
- *   4. DELETE /v1/products/{id}/image     -> 204, or the product with imageUrl: null
+ *   4. DELETE /v1/products/{id}/image     -> 200 with the AdminProduct (imageUrl null, version bumped if an image was removed)
  *   Read: `imageUrl` (string | null) on GET /v1/products and GET /v1/admin/products items.
  *
  * TODO(product-image): match this to the final Architect contract (API branch off deploy/api-dcr):
@@ -20,7 +20,7 @@
  */
 import { api, MOCKING, toApiError } from '@/lib/api';
 
-export const PRODUCT_IMAGE_PURPOSE = 'product-image';
+export const PRODUCT_IMAGE_PURPOSE = 'product_image';
 /** Client-side size limit. Change here only; the server limit is the real one. */
 export const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 export const PRODUCT_IMAGE_MAX_MB = PRODUCT_IMAGE_MAX_BYTES / 1024 / 1024;
