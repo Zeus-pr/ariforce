@@ -1,6 +1,5 @@
-import { BlurTargetView, BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
-import { useFocusEffect, type Tabs } from 'expo-router';
+import { useFocusEffect, type Tabs as TabsType } from 'expo-router';
 import {
   createContext,
   useCallback,
@@ -26,6 +25,7 @@ import {
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, type IconName } from './icon';
+import { canBlur, getBlurKit } from '@/lib/blur';
 import {
   colors,
   glass,
@@ -40,7 +40,7 @@ import {
   touch,
 } from '@/theme';
 
-type TabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>['tabBar']>>[0];
+type TabBarProps = Parameters<NonNullable<ComponentProps<typeof TabsType>['tabBar']>>[0];
 type TargetRef = RefObject<ComponentRef<typeof View> | null>;
 
 export type TabMeta = {
@@ -52,17 +52,17 @@ export type TabMeta = {
   iconActive: IconName;
 };
 
-/**
- * Inside the tab navigator: tells screens the floating bar covers their bottom edge, and carries
- * the focused screen's BlurTargetView ref (Android's blur samples that view).
- */
-const TabBarContext = createContext<{
+type TabBarState = {
+  /** Android: the focused scene's BlurTargetView (what the blur samples), with a change counter. */
   target: { ref: TargetRef; id: number } | null;
   setTarget: (ref: TargetRef) => void;
-} | null>(null);
+};
+
+/** Non-null inside the tab navigator: screens there pad for the floating bar. */
+const TabBarContext = createContext<TabBarState | null>(null);
 
 export function TabBarProvider({ children }: { children: ReactNode }) {
-  const [target, setTargetState] = useState<{ ref: TargetRef; id: number } | null>(null);
+  const [target, setTargetState] = useState<TabBarState['target']>(null);
   const setTarget = useCallback(
     (ref: TargetRef) => setTargetState((t) => (t?.ref === ref ? t : { ref, id: (t?.id ?? 0) + 1 })),
     [],
@@ -72,21 +72,24 @@ export function TabBarProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * Wrap each tab screen. Content fills the screen and scrolls behind the glass bar; on Android the
- * focused scene registers itself as the blur target.
+ * Wrap each tab screen: full height on the ground colour, so content scrolls behind the bar. On
+ * Android, when the binary has expo-blur's BlurTargetView, the scene is one and registers itself
+ * as the blur target while focused; otherwise it is a plain View (never a missing native view).
  */
 export function TabScene({ children }: { children: ReactNode }) {
+  const Target = getBlurKit()?.BlurTargetView ?? null;
   const ref = useRef<ComponentRef<typeof View>>(null);
   const setTarget = useContext(TabBarContext)?.setTarget;
   useFocusEffect(
     useCallback(() => {
-      setTarget?.(ref);
-    }, [setTarget]),
+      if (Target) setTarget?.(ref);
+    }, [Target, setTarget]),
   );
+  if (!Target) return <View style={styles.scene}>{children}</View>;
   return (
-    <BlurTargetView ref={ref} style={styles.scene}>
+    <Target ref={ref} style={styles.scene}>
       {children}
-    </BlurTargetView>
+    </Target>
   );
 }
 
@@ -123,22 +126,30 @@ function useReduceTransparency() {
 }
 
 /**
- * The frosted background. iOS: native blur. Android: Dimezis blur sampling the focused scene
- * (needs its BlurTargetView); near-solid white until that exists. Reduce Transparency: solid.
+ * The bar's background, never a native view the binary lacks:
+ * - iOS with expo-blur in the binary: native blur + white wash.
+ * - Android with ExpoBlurView + ExpoBlurTargetView: Dimezis blur of the focused scene.
+ * - Otherwise (Expo Go or a build without expo-blur, or Android before the scene registers):
+ *   "frosted" translucent white. iOS Reduce Transparency: solid white.
  */
 function Glass() {
   const target = useContext(TabBarContext)?.target ?? null;
   const solid = useReduceTransparency();
+  const kit = getBlurKit();
   if (solid) return <View style={[styles.fill, styles.solid]} />;
-  if (Platform.OS === 'android' && !target) return <View style={[styles.fill, styles.fallback]} />;
+  const android = Platform.OS === 'android';
+  if (!kit || !canBlur() || (android && !target)) {
+    return <View style={[styles.fill, styles.fallback]} />;
+  }
+  const { BlurView } = kit;
   return (
     <BlurView
-      // Remount when the focused scene changes so Android re-binds to the new target.
-      key={target?.id ?? 0}
+      // Android: remount when the focused scene changes so the blur re-binds to it.
+      key={android ? target?.id : undefined}
       tint={glass.tint}
       intensity={glass.intensity}
-      blurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
-      blurTarget={Platform.OS === 'android' ? target?.ref : undefined}
+      blurMethod={android ? 'dimezisBlurView' : undefined}
+      blurTarget={android ? target?.ref : undefined}
       style={[styles.fill, styles.round]}
     >
       <View style={[styles.fill, styles.tint]} />
@@ -153,7 +164,7 @@ const pillWidth = (label: number, pad: number) => pad * 2 + iconSize.md + spacin
 
 /**
  * Floating capsule tab bar (CUTLY's approved "expanding capsule", in AriForce navy): frosted
- * glass, inset from the sides, soft shadow, above the safe area. The active tab is a navy pill
+ * glass where the binary has a blur, translucent white elsewhere, inset from the sides, soft shadow, above the safe area. The active tab is a navy pill
  * sized to its measured label (never truncated); the other tabs share the rest equally, at
  * least 48 dp each. Widths animate as Reanimated CSS transitions (instant under Reduce Motion).
  * Selection haptic on every press.

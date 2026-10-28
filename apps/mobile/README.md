@@ -71,6 +71,24 @@ never on debug + Metro.
 `eas.json` profiles: `development` (dev client, internal APK), `preview` (internal APK),
 `production`. No EAS project id is committed.
 
+## Rebuild the Android debug build (after adding a native package)
+
+`android/` is prebuild output (git-ignored). A new native package (like `expo-blur`) needs a
+rebuild; JS changes do not. Run on the Mac:
+
+```sh
+export JAVA_HOME="$HOME/Library/Java/JavaVirtualMachines/jbr-21.0.11/Contents/Home"  # JBR 21, not 25
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$PATH"
+cd /Volumes/Prajesh_ext_512/AriForce-wt-mobile && source scripts/env.sh && pnpm install
+cd apps/mobile && npx expo run:android
+```
+
+Add `npx expo prebuild --platform android --clean` before `run:android` only when `app.json` or
+a config plugin changed since `android/` was generated. `expo-dev-client` is not needed for
+`expo run:android` (a debug build that loads JS from Metro); it is needed for the `development`
+profile in `eas.json`.
+
 ## How it works
 
 - **Routes** (`src/app`): root `_layout.tsx` gates on the session with `Stack.Protected`:
@@ -147,16 +165,18 @@ cd apps/mobile
 - **2026-10-28** Home uses expo-router JS `Tabs`, not `NativeTabs` (the expo-router skill's
   default): the tab bar keeps Google Sans labels and the same look on Android and iOS, and needs
   no SF Symbols / Material Symbols setup. Revisit when the app gets a dev build.
-- **2026-10-29** Floating capsule tab bar (custom `tabBar`), frosted with `expo-blur` (in Expo
-  Go): iOS native blur, `tint: light`; Android `blurMethod: 'dimezisBlurView'`, which since
-  SDK 54 only blurs a `BlurTargetView`, so each tab screen wraps its content in `<TabScene>`
-  and the focused one registers as the target (`blurMethod` replaces the deprecated
-  `experimentalBlurMethod`). Near-solid white until a target exists; solid white when iOS Reduce
-  Transparency is on. The active pill is sized to its measured label (Tour Plan shows "Plans",
-  full name kept for screen readers and the title); the other tabs share the rest, 48 dp min. In this expo-router build
-  the custom bar gets `emitter` + `navigateToTab`, not `navigation` (see `BottomTabBarProps`).
-- **2026-10-28** Punch-in GPS is a stub. Real punch-in needs `expo-location` (in Expo Go, but a
-  new native module): add it together with the attendance API.
+- **2026-10-29** Floating capsule tab bar (custom `tabBar`), frosted with `expo-blur` when the
+  binary has it. `src/lib/blur.ts` checks the native views first (`ExpoBlur` module +
+  `ExpoBlurView` / `ExpoBlurTargetView` view configs) and only then `require`s expo-blur, so a
+  binary without them never crashes ("Can't find ViewManager 'ViewManagerAdapter_ExpoBlur_…'",
+  seen on a debug build made before expo-blur was added). Without them the bar is translucent
+  white (0.9) + hairline + shadow. iOS: native blur, `tint: light`. Android: `blurMethod:
+'dimezisBlurView'` (replaces the deprecated `experimentalBlurMethod`), which only blurs a
+  `BlurTargetView`, so each tab screen is a `<TabScene>` (a BlurTargetView when available) and
+  the focused one registers as the target. Expo Go on Android does not ship `ExpoBlurTargetView`,
+  so a real Android blur needs a dev / debug build that includes expo-blur. Solid white under iOS
+  Reduce Transparency. The active pill is sized to its measured label (Tour Plan shows "Plans",
+  full name kept for screen readers and the title); the other tabs share the rest, 48 dp min.
 - From CUTLY: never `Alert.alert` (inline errors and in-app banners); never put
   `lottie-react-native` in `app.json` plugins (breaks Expo Go); `expo-status-bar` takes no
   `backgroundColor`; use `StyleSheet.absoluteFill`; set weight with `fontFamily`, never

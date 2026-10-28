@@ -37,7 +37,7 @@ export const colors = {
   warnWash: '#FFF1E8',
   onNavy: '#FFFFFF',
   glassTint: 'rgba(255, 255, 255, 0.45)', // white wash over the blur, keeps icons readable
-  glassFallback: 'rgba(255, 255, 255, 0.94)', // no blur available: near-solid white
+  glassFallback: 'rgba(255, 255, 255, 0.9)', // no native blur (Android, Expo Go): frosted white
   glassBorder: 'rgba(15, 42, 74, 0.10)', // hairline that separates the glass from white cards
 } as const;
 
