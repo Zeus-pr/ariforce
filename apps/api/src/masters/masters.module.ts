@@ -6,11 +6,12 @@ import { ImportsController } from './imports.controller';
 import { ImportsService } from './imports.service';
 import { MASTER_CONTROLLERS } from './masters.controllers';
 import { MastersService } from './masters.service';
+import { TerritoryLinksService } from './territory-links.service';
 
 @Module({
   imports: [PlansModule],
   controllers: [DoctorsController, ImportsController, ...MASTER_CONTROLLERS],
-  providers: [MastersService, ImportsService, DoctorsService],
+  providers: [MastersService, ImportsService, DoctorsService, TerritoryLinksService],
   exports: [MastersService],
 })
 export class MastersModule {}

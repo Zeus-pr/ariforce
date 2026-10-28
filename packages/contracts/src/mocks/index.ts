@@ -36,6 +36,7 @@ import { exceptionHandlers } from './exceptions';
 import { productPriceHandlers } from './product-prices';
 import { leaveHandlers, mockLeaveOn, mockWeeklyOffDays } from './leave';
 import { mastersGuardHandlers } from './masters-guard';
+import { territoryLinkHandlers } from './territory-links';
 import {
   Approval,
   ApprovalDetail,
@@ -148,6 +149,8 @@ export function list<T extends { id: string }>(schema: z.ZodType<T>, rows: T[], 
       if (FILTER_SKIP.has(k)) continue;
       if (k === 'territoryId' && 'territoryId' in o) {
         if (!inTerritory(o, v)) return false;
+      } else if (k === 'localTerritoryId' && v === 'none') {
+        if (o.localTerritoryId) return false;
       } else if (k === 'ids') {
         if (!v.toLowerCase().split(',').includes(r.id.toLowerCase())) return false;
       } else if (k === 'ancestorId') {
@@ -409,7 +412,11 @@ const unauthenticated = () =>
   );
 
 export function createHandlers(baseUrl = '') {
+  // Shared with the territory link import mock, which sets localTerritoryId on these rows.
+  const doctorRows = structuredClone(fx.doctors);
+  const chemistRows = structuredClone(fx.chemists);
   return [
+    ...territoryLinkHandlers(baseUrl, mockPrincipal, doctorRows, chemistRows),
     ...mastersGuardHandlers(baseUrl, mockPrincipal),
     ...productPriceHandlers(baseUrl, mockPrincipal),
     ...signupHandlers(baseUrl, mockPrincipal),
@@ -510,10 +517,12 @@ export function createHandlers(baseUrl = '') {
     http.get(`${baseUrl}/v1/doctor-categories`, ({ request }) =>
       list(DoctorCategory, fx.doctorCategories, new URL(request.url)),
     ),
-    ...doctorHandlers(baseUrl, (b, rows) =>
-      crud(baseUrl, '/v1/doctors', Doctor, DoctorCreate, rows, b, false),
+    ...doctorHandlers(
+      baseUrl,
+      (b, rows) => crud(baseUrl, '/v1/doctors', Doctor, DoctorCreate, rows, b, false),
+      doctorRows,
     ),
-    ...crud(baseUrl, '/v1/chemists', Chemist, ChemistCreate, fx.chemists),
+    ...crud(baseUrl, '/v1/chemists', Chemist, ChemistCreate, chemistRows, undefined, false),
     ...crud(baseUrl, '/v1/stockists', Stockist, StockistCreate, fx.stockists),
     ...crud(baseUrl, '/v1/products', Product, ProductCreate, fx.products),
     ...crud(baseUrl, '/v1/work-types', WorkType, WorkTypeCreate, fx.workTypes),

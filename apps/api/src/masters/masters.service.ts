@@ -231,6 +231,14 @@ export class MastersService {
     if (def.territoryCol && changes.territoryId && changes.territoryId !== before.territoryId)
       await this.assertTerritory(tx, p, changes.territoryId);
     const set: Row = def.toRow ? def.toRow(changes, p) : { ...changes };
+    // The territory link sits under the HQ: a new HQ drops it (TERRITORY-MODEL.md).
+    if (
+      'localTerritoryId' in before &&
+      before.localTerritoryId &&
+      changes.territoryId &&
+      changes.territoryId !== before.territoryId
+    )
+      set.localTerritoryId = null;
     // A rejected field-added doctor goes back for approval when its owner edits it (#26).
     const resubmit =
       def.entity === 'doctor' && before.approvalStatus === 'rejected' && p.scopePaths !== null;

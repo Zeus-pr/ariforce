@@ -5,6 +5,7 @@ import {
   type TerritoryLevel,
   Chemist,
   ChemistCreate,
+  ChemistListQuery,
   ChemistUpdate,
   CodeNameListQuery,
   Division,
@@ -43,7 +44,7 @@ import {
   territories,
   workTypes,
 } from '@ariforce/db';
-import { eq, exists, inArray, sql, type SQL } from 'drizzle-orm';
+import { eq, exists, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import type { Principal } from '../auth/principal';
 
@@ -101,6 +102,14 @@ const locationToRow = (b: Row) => {
   if ('location' in b) out.location = toXy(b.location);
   return out;
 };
+/** `localTerritoryId` list filter: exact territory, or `none` = not linked (TERRITORY-MODEL.md). */
+const localTerritory = (col: AnyPgColumn, v: unknown) =>
+  v === undefined || v === null || v === ''
+    ? undefined
+    : v === 'none'
+      ? isNull(col)
+      : eq(col, String(v));
+
 /** Subtree of `id` (or `id` itself) by territory path. */
 export const inSubtree = (col: AnyPgColumn, id: string) =>
   exists(
@@ -114,11 +123,12 @@ const outlet = (
   dto: z.ZodType,
   c: z.ZodType,
   u: z.ZodType,
+  linksTerritory = false,
 ): MasterDef => ({
   entity,
   table,
   dto,
-  listQuery: OutletListQuery,
+  listQuery: linksTerritory ? ChemistListQuery : OutletListQuery,
   create: c,
   update: u,
   territoryCol: table.territoryId,
@@ -131,7 +141,10 @@ const outlet = (
     createdAt: table.createdAt,
   },
   search: [table.name, table.gstin, table.drugLicenseNo, table.city, table.pincode],
-  filters: (q) => [q.territoryId ? inSubtree(table.territoryId, String(q.territoryId)) : undefined],
+  filters: (q) => [
+    q.territoryId ? inSubtree(table.territoryId, String(q.territoryId)) : undefined,
+    linksTerritory ? localTerritory(table.localTerritoryId, q.localTerritoryId) : undefined,
+  ],
   fromRow: withLocation,
   toRow: locationToRow,
 });
@@ -156,6 +169,7 @@ export const MASTERS: Record<string, MasterDef> = {
     search: [doctors.name, doctors.registrationNo, doctors.city, doctors.pincode],
     filters: (q) => [
       q.territoryId ? inSubtree(doctors.territoryId, String(q.territoryId)) : undefined,
+      localTerritory(doctors.localTerritoryId, q.localTerritoryId),
       q.specialtyId ? eq(doctors.specialtyId, String(q.specialtyId)) : undefined,
       q.categoryId ? eq(doctors.categoryId, String(q.categoryId)) : undefined,
       q.ids ? inArray(doctors.id, String(q.ids).toLowerCase().split(',')) : undefined,
@@ -166,7 +180,7 @@ export const MASTERS: Record<string, MasterDef> = {
     fromRow: withLocation,
     toRow: locationToRow,
   },
-  chemists: outlet(chemists, 'chemist', Chemist, ChemistCreate, ChemistUpdate),
+  chemists: outlet(chemists, 'chemist', Chemist, ChemistCreate, ChemistUpdate, true),
   stockists: outlet(stockists, 'stockist', Stockist, StockistCreate, StockistUpdate),
   products: {
     entity: 'product',
