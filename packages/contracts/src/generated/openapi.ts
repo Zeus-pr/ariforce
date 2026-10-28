@@ -666,6 +666,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/imports/territory-links': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Link doctors/chemists to territories under their HQ from (hq_code, entity, name_key, territory_text) rows; creates missing territories (dry-run first)
+     * @description Company-wide roles only (Director, System Admin). Each row: HQ resolved by code (must be a headquarter), territory text normalised (ariforce_territory_key), the territory under that HQ is reused or created (level territory, code <HQ>-<KEY>; idempotent), and the ONE live doctor/chemist under that HQ whose name matches (lower case, "Dr." dropped, punctuation -> space) gets localTerritoryId. Unknown HQ, no match and ambiguous names are reported per row (status unmatched), never guessed. Re-running the same file changes nothing (already_linked). With dryRun=true (default) nothing is written. Not stored as an import job; the apply is audited (territory_links.apply). See docs/TERRITORY-MODEL.md.
+     *
+     *     Requires: imports:write + territories:write + masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
+     */
+    post: operations['importTerritoryLinks'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/imports/{id}': {
     parameters: {
       query?: never;
@@ -2637,6 +2659,26 @@ export interface components {
       /** @description Null = whole division */
       productId: string | null;
     };
+    TerritoryLinkImportRequest: {
+      /**
+       * @description true (default) = plan only: resolve HQs, match doctors/chemists, list territories that would be created; nothing is written
+       * @default true
+       */
+      dryRun: boolean;
+      /** @description fileKey from POST /v1/files/upload-url with purpose import_source (audit) */
+      fileKey?: string | null;
+      fileName?: string;
+      /**
+       * @description A matched row already linked to a DIFFERENT territory: keep (default, reported as skipped/linked_elsewhere) or replace the link
+       * @default keep
+       * @enum {string}
+       */
+      onLinked: 'keep' | 'replace';
+      /** @description Rows keyed hq_code, entity (doctor|chemist), name_key, territory_text (camelCase and header spacing/case accepted; aliases: hq, name, territory) */
+      rows: {
+        [key: string]: unknown;
+      }[];
+    };
     /** @enum {string} */
     CheckInKind: 'punch_in' | 'visit' | 'punch_out';
     /** @enum {string} */
@@ -3952,6 +3994,11 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       territoryId: string;
+      /**
+       * @description Territory (level `territory`) under the HQ `territoryId`, or null when not linked yet. Read-only: set by POST /v1/imports/territory-links; cleared when territoryId (the HQ) changes. docs/TERRITORY-MODEL.md
+       * @default null
+       */
+      localTerritoryId: string | null;
       name: string;
       qualification: string | null;
       specialtyId: string | null;
@@ -4054,6 +4101,11 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       territoryId: string;
+      /**
+       * @description Territory (level `territory`) under the HQ `territoryId`, or null when not linked yet. Read-only: set by POST /v1/imports/territory-links; cleared when territoryId (the HQ) changes. docs/TERRITORY-MODEL.md
+       * @default null
+       */
+      localTerritoryId: string | null;
       name: string;
       gstin: string | null;
       drugLicenseNo: string | null;
@@ -4322,6 +4374,96 @@ export interface components {
       /** @description Null = whole division */
       productId: string | null;
     };
+    TerritoryLinkImportResult: {
+      dryRun: boolean;
+      fileName: string | null;
+      fileKey: string | null;
+      /** @enum {string} */
+      onLinked: 'keep' | 'replace';
+      totals: {
+        rows: number;
+        linked: number;
+        alreadyLinked: number;
+        skipped: number;
+        unmatched: number;
+        error: number;
+        territoriesCreated: number;
+        doctorsLinked: number;
+        chemistsLinked: number;
+        /** @description unmatched: unknown_hq + not_headquarter */
+        unknownHq: number;
+        noMatch: number;
+        ambiguous: number;
+      };
+      territoriesCreated: components['schemas']['TerritoryLinkCreated'][];
+      /** @description Territory keys under one HQ that look alike (same consonants, or same first 4 letters). Listed for review, never merged */
+      nearDuplicates: {
+        hqCode: string;
+        a: string;
+        b: string;
+      }[];
+      results: components['schemas']['TerritoryLinkRowResult'][];
+    };
+    TerritoryLinkCreated: {
+      /** @description null in a dry run */
+      id: string | null;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqId: string;
+      hqCode: string;
+      code: string;
+      name: string;
+      territoryKey: string;
+      /** @description Rows linked to it in this run */
+      rows: number;
+    };
+    TerritoryLinkRowResult: {
+      /** @description 1-based row number in the request */
+      row: number;
+      status: components['schemas']['TerritoryLinkRowStatus'];
+      reason: components['schemas']['TerritoryLinkReason'] | null;
+      message: string | null;
+      entity: ('doctor' | 'chemist') | null;
+      hqCode: string | null;
+      /** @description Normalised territory text (lower case, non-alphanumerics -> one space) */
+      territoryKey: string | null;
+      /** @description Matched doctor/chemist */
+      entityId: string | null;
+      /** @description Target territory (null in a dry run when it would be created) */
+      territoryId: string | null;
+      territoryCode: string | null;
+      /** @description Target territory is new in this run */
+      territoryCreated: boolean;
+      /** @description Existing local_territory_id when it differs from the target */
+      previousTerritoryId: string | null;
+      /** @description ambiguous: every matching record */
+      candidateIds: string[];
+    };
+    /**
+     * @description linked = local_territory_id set (dry run: would be set); already_linked = no change; skipped / unmatched / error: see reason
+     * @enum {string}
+     */
+    TerritoryLinkRowStatus: 'linked' | 'already_linked' | 'skipped' | 'unmatched' | 'error';
+    /**
+     * @description unmatched: unknown_hq (code not found), not_headquarter (code is not an HQ), no_match (no doctor/chemist with that name under the HQ), ambiguous (several; see candidateIds). skipped: blank_territory, linked_elsewhere (onLinked keep), duplicate_in_file. error: conflict_in_file (same HQ + entity + name with different territories), invalid_entity, blank_name, blank_hq, save_failed
+     * @enum {string}
+     */
+    TerritoryLinkReason:
+      | 'unknown_hq'
+      | 'not_headquarter'
+      | 'no_match'
+      | 'ambiguous'
+      | 'blank_territory'
+      | 'linked_elsewhere'
+      | 'duplicate_in_file'
+      | 'conflict_in_file'
+      | 'invalid_entity'
+      | 'blank_name'
+      | 'blank_hq'
+      | 'save_failed';
     UserSummaryPage: {
       items: components['schemas']['UserSummary'][];
       nextCursor: string | null;
@@ -7656,6 +7798,8 @@ export interface operations {
         includeTotal?: 'true' | 'false';
         /** @description Only rows in this territory or any descendant (within the caller scope) */
         territoryId?: string;
+        /** @description Only rows linked to this territory (level `territory`, exact match), or `none` for rows not linked to any territory */
+        localTerritoryId?: string | 'none';
         specialtyId?: string;
         categoryId?: string;
         approvalStatus?: 'pending' | 'approved' | 'rejected';
@@ -8077,6 +8221,8 @@ export interface operations {
         includeTotal?: 'true' | 'false';
         /** @description Only rows in this territory or any descendant (within the caller scope) */
         territoryId?: string;
+        /** @description Only rows linked to this territory (level `territory`, exact match), or `none` for rows not linked to any territory */
+        localTerritoryId?: string | 'none';
       };
       header?: never;
       path?: never;
@@ -9670,6 +9816,75 @@ export interface operations {
       };
       /** @description Signed in but not allowed (role, hierarchy or tenant) */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  importTerritoryLinks: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['TerritoryLinkImportRequest'];
+      };
+    };
+    responses: {
+      /** @description Dry-run plan */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TerritoryLinkImportResult'];
+        };
+      };
+      /** @description Applied */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TerritoryLinkImportResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description More than 5,000 rows */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Request malformed */
+      422: {
         headers: {
           [name: string]: unknown;
         };

@@ -42,8 +42,8 @@ export function doctorHandlers(
     ) => Response | Record<string, unknown>,
     rows: Doctor[],
   ) => ReturnType<typeof http.get>[],
+  all: Doctor[] = structuredClone(fx.doctors),
 ) {
-  const all = structuredClone(fx.doctors);
   const handlers = crud((b, req, rows) => {
     const m = matches(rows, b);
     if (m.some((x) => x.rule === 'registration_no'))

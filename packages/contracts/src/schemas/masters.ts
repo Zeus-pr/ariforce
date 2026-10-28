@@ -30,8 +30,14 @@ export const DoctorApprovalStatus = z.enum(['pending', 'approved', 'rejected']).
   description:
     'Field-added doctors start pending until their manager decides (#26); company-wide roles add approved doctors. Read-only.',
 });
+const localTerritoryId = Id.nullable().default(null).meta({
+  description:
+    'Territory (level `territory`) under the HQ `territoryId`, or null when not linked yet. Read-only: set by POST /v1/imports/territory-links; cleared when territoryId (the HQ) changes. docs/TERRITORY-MODEL.md',
+});
+
 export const Doctor = Syncable.extend({
   territoryId: Id,
+  localTerritoryId,
   name: z.string().min(1).max(160),
   qualification: z.string().max(120).nullable(),
   specialtyId: Id.nullable(),
@@ -50,6 +56,7 @@ export type Doctor = z.infer<typeof Doctor>;
 
 export const Chemist = Syncable.extend({
   territoryId: Id,
+  localTerritoryId,
   name: z.string().min(1).max(160),
   gstin: z.string().max(15).nullable(),
   drugLicenseNo: z.string().max(60).nullable(),
@@ -57,7 +64,8 @@ export const Chemist = Syncable.extend({
 }).meta({ id: 'Chemist' });
 export type Chemist = z.infer<typeof Chemist>;
 
-export const Stockist = Chemist.extend({}).meta({ id: 'Stockist' });
+/** Stockists have the DB column (0042) but are not linked yet (TERRITORY-MODEL.md: later). */
+export const Stockist = Chemist.omit({ localTerritoryId: true }).meta({ id: 'Stockist' });
 export type Stockist = z.infer<typeof Stockist>;
 
 const writable = {
@@ -70,6 +78,7 @@ const writable = {
 } as const;
 const DoctorFields = Doctor.omit({
   ...writable,
+  localTerritoryId: true,
   approvalStatus: true,
   rejectionReason: true,
   rejectedBy: true,
@@ -84,7 +93,9 @@ export const DoctorCreate = DoctorFields.extend({
 export const DoctorUpdate = DoctorFields.partial()
   .extend({ version: z.int().min(1) })
   .meta({ id: 'DoctorUpdate' });
-export const ChemistCreate = Chemist.omit(writable).meta({ id: 'ChemistCreate' });
+export const ChemistCreate = Chemist.omit({ ...writable, localTerritoryId: true }).meta({
+  id: 'ChemistCreate',
+});
 export const ChemistUpdate = ChemistCreate.partial()
   .extend({ version: z.int().min(1) })
   .meta({ id: 'ChemistUpdate' });
@@ -102,8 +113,16 @@ export type StockistUpdate = z.infer<typeof StockistUpdate>;
 const territoryFilter = Id.optional().meta({
   description: 'Only rows in this territory or any descendant (within the caller scope)',
 });
+const localTerritoryFilter = z
+  .union([Id, z.literal('none')])
+  .optional()
+  .meta({
+    description:
+      'Only rows linked to this territory (level `territory`, exact match), or `none` for rows not linked to any territory',
+  });
 export const DoctorListQuery = listQuery(['name', 'city', 'updatedAt', 'createdAt'] as const, {
   territoryId: territoryFilter,
+  localTerritoryId: localTerritoryFilter,
   specialtyId: Id.optional(),
   categoryId: Id.optional(),
   approvalStatus: DoctorApprovalStatus.optional(),
@@ -121,6 +140,10 @@ export const DoctorListQuery = listQuery(['name', 'city', 'updatedAt', 'createdA
 });
 export const OutletListQuery = listQuery(['name', 'city', 'updatedAt', 'createdAt'] as const, {
   territoryId: territoryFilter,
+});
+export const ChemistListQuery = listQuery(['name', 'city', 'updatedAt', 'createdAt'] as const, {
+  territoryId: territoryFilter,
+  localTerritoryId: localTerritoryFilter,
 });
 export const CodeNameListQuery = listQuery(['code', 'name', 'updatedAt'] as const, {});
 

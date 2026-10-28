@@ -84,6 +84,23 @@ divisions → products → product_hq → specialties/categories → doctors/che
 
 **employee_code**, **name**, **email**, **role** (`business_manager` … `director`, or `system_admin`), **territory_codes** (`;`-separated), manager_employee_code (blank for Director / System Admin)
 
+## Territory link import
+
+`POST /v1/imports/territory-links` links existing doctors/chemists to territories under their HQ
+(rows `hq_code, entity, name_key, territory_text`), creating missing territories. Same body fields
+as above (`dryRun` default true, `fileKey`, `fileName`, `rows` max 5,000) plus `onLinked`
+(`keep` | `replace`); response `TerritoryLinkImportResult` (200 dry run, 201 applied) with per-row
+`status` (`linked` / `already_linked` / `skipped` / `unmatched` / `error`) and `reason`. Not stored
+as an import job (idempotent by design). CLI for a CSV kept outside the repo:
+
+```
+source scripts/env.sh && cd apps/api
+DATABASE_URL=... node_modules/.bin/tsx scripts/import-territory-links.mts --company <slug> --file /path/x.csv          # dry run
+DATABASE_URL=... node_modules/.bin/tsx scripts/import-territory-links.mts --company <slug> --file /path/x.csv --apply  # write
+```
+
+Rules: docs/TERRITORY-MODEL.md.
+
 ## Data model
 
 `import_jobs` / `import_rows` (migration 0007). Company-wide roles can read any job via

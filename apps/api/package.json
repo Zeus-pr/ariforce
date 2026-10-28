@@ -11,7 +11,8 @@
     "test": "sh ../../scripts/vitest.sh run",
     "db:seed": "tsx scripts/seed-auth.mts",
     "admin:create-first": "tsx scripts/admin-create-first.mts",
-    "sfc:import": "tsx scripts/import-sfc.mts"
+    "sfc:import": "tsx scripts/import-sfc.mts",
+    "territory-links:import": "tsx scripts/import-territory-links.mts"
   },
   "dependencies": {
     "@ariforce/contracts": "workspace:*",

@@ -43,12 +43,40 @@ Names: the tree level is `territory` (a unit under an HQ). HQ stays HQ (`headqua
 - BMs filter by HQ only.
 - Stockists: later.
 
-## Next build item
+## Territory link import (built, `feat/territory-importer`)
 
-Importer: doctor/chemist rows resolve `territory` (HQ code) + territory text; an unknown territory text
-under that HQ is auto-created (level `territory`, `territory_key` business key) and listed in the import
-report (`created territories`); existing ones are linked via `local_territory_id`. Near-duplicate
-listing as in the backfill.
+`POST /v1/imports/territory-links` (Director / System Admin: `imports:write` + `territories:write` +
+`masters:write`, company-wide) and the CLI `apps/api/scripts/import-territory-links.mts` run the same
+code (`apps/api/src/masters/territory-links.ts` + the pure planner
+`packages/contracts/src/import/territory-links.ts`, also used by the MSW mock). Dry run by default.
+
+Row: `hq_code`, `entity` (`doctor` | `chemist`), `name_key`, `territory_text` (camelCase / sheet
+headers accepted). Per row:
+
+1. HQ by code (case-insensitive, live, level `headquarter`); else `unmatched` `unknown_hq` /
+   `not_headquarter`.
+2. Territory text -> key (same rule as `ariforce_territory_key`); blank -> `skipped` `blank_territory`.
+3. Doctor/chemist under exactly that HQ whose name key matches (lower case, leading "Dr." dropped,
+   non-alphanumerics -> one space; the durgapur data-fix rule). 0 -> `unmatched` `no_match`; more than
+   one -> `unmatched` `ambiguous` (`candidateIds`). Never matched across HQs.
+4. Territory under the HQ with that key is reused, else created once per run (level `territory`,
+   code `<HQ code>-<KEY>`, 32 max, id suffix on a code clash; path follows the HQ convention;
+   `ON CONFLICT DO NOTHING` on the business key). Only created when a row will link to it.
+5. `local_territory_id` set (`linked`); same target already -> `already_linked`; a different existing
+   link is kept (`skipped` `linked_elsewhere`) unless `onLinked: replace`.
+
+In-file checks: same HQ + entity + name with different territories -> `error` `conflict_in_file`
+(all such rows); exact repeats -> `skipped` `duplicate_in_file`. Near duplicates (backfill rule) are
+listed, never merged. Re-running a file changes nothing. Audit: `territory.import_create` per
+territory, `territory_links.apply` with the linked ids per entity (rollback marker), dry runs via the
+endpoint `territory_links.dry_run`. Not stored in `import_jobs`.
+
+DTOs: `Doctor.localTerritoryId`, `Chemist.localTerritoryId` (nullable, read-only; cleared when the
+HQ `territoryId` changes on PATCH). List filter `localTerritoryId=<id>` or `none` on
+`GET /v1/doctors` and `GET /v1/chemists`. Stockists: still later (not in the DTO).
+
+Still open: the doctors/chemists Excel import (`POST /v1/doctors/import`) does not take a territory
+column yet; load masters first, then run the link import.
 
 ## Impact
 
@@ -56,7 +84,7 @@ listing as in the backfill.
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Visibility (BM/ABM)         | None: still the HQ subtree / reporting line. Optional later: filter lists by city.                                                                |
 | Territory pickers           | `GET /v1/territories` can now return `level: 'territory'` rows (widened enum: web must handle or filter); `assignableForRole` never returns them. |
-| Masters                     | Not yet exposed: next step adds `localTerritoryId` to doctor/chemist DTOs, filters and import, and creates/links the territory on create/edit.    |
+| Masters                     | `localTerritoryId` on doctor/chemist DTOs + list filter; set by the territory link import (read-only on create/edit; cleared on HQ change).       |
 | SFC                         | Unchanged (per employee + HQ, From/To text). The DCR redesign may key routes by city (see Part 2).                                                |
 | KPIs, approvals, allowances | Unchanged (keyed on HQ).                                                                                                                          |
 | Stockists                   | Column in 0042 (applied), unused; linking later.                                                                                                  |

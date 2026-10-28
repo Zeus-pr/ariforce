@@ -29,6 +29,27 @@ response enums, or changed server behaviour for the same request).
 | Health (`a72e145`)                                             | `HealthWarning` dropped `companyId` / `companySlug` and became aggregate (`NO_WORK_TYPES` with `count`). Only clients of `0c97952` are affected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | TP submit (`36c29f5`, superseded by `0bb7b40`)                 | `POST /v1/tour-plans/{month}/submit` 422 rule changed: weekly offs and past days of the current month (IST) are no longer required                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
+## Territory link import + `localTerritoryId` (`feat/territory-importer`)
+
+Additive (no migration; uses 0042). Web impact noted per item.
+
+- New: `POST /v1/imports/territory-links` (`operationId importTerritoryLinks`), body
+  `TerritoryLinkImportRequest` (`dryRun` default true, `onLinked` `keep`|`replace`, `rows` of
+  `hq_code, entity, name_key, territory_text`), response `TerritoryLinkImportResult` (200 dry run /
+  201 applied): `totals`, `territoriesCreated[]`, `nearDuplicates[]`, `results[]` with
+  `TerritoryLinkRowStatus` and `TerritoryLinkReason`. Company-wide roles only; `x-required-permissions`
+  `imports:write + territories:write + masters:write` (403 otherwise).
+- `Doctor` and `Chemist` gain `localTerritoryId: uuid | null` (read-only, defaulted to null when
+  parsing older payloads). Not accepted on create/update (ignored). Cleared by the server when a PATCH
+  changes `territoryId`. `Stockist` unchanged (now `Chemist` minus `localTerritoryId`).
+- `GET /v1/doctors` and `GET /v1/chemists`: new query `localTerritoryId` = territory id (exact) or
+  `none` (not linked). Chemists use the new `ChemistListQuery`; stockists keep `OutletListQuery`.
+- Applying creates `territories` rows with `level: 'territory'` (already in the enum since 0042):
+  pickers that list `GET /v1/territories` will see them (filter by `level` / `assignableForRole`).
+- Contracts exports: `planTerritoryLinks`, `territoryLinkResult`, `territoryKey`, `masterNameKey`,
+  `territoryCodeFor`, `readTerritoryLinkRow`. MSW mock implements the endpoint (an `area` counts as an
+  HQ in fixtures) and the filter; doctor/chemist fixtures carry `localTerritoryId: null`.
+
 ## DCR redesign: multi-HQ, details, SFC snapshots (`feat/territory-city-split`)
 
 Additive. Old `PUT /v1/dcrs` keeps working, except it now returns `409 ALREADY_SUBMITTED` for a DCR

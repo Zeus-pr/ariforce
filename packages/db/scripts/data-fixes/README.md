@@ -35,3 +35,7 @@ psql "$URL" -v slug=arighna -v company_id=<uuid> -v ON_ERROR_STOP=1
 
 Migrations (0040 etc.) must be applied before 2. All four were test-run on a local fresh DB with
 fake data as `ariforce_app`: first run, idempotent second run, abort paths, rollback, re-apply.
+
+Alternative to 6-7 for a per-row CSV (same header): `apps/api/scripts/import-territory-links.mts`
+(dry run by default, `--apply` to write; app role via `DATABASE_URL`). It matches by name under the
+HQ and creates/links territories directly, without filling `city`. See docs/TERRITORY-MODEL.md.

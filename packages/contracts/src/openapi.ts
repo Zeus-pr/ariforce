@@ -42,7 +42,12 @@ import {
   type ZodOpenApiPathsObject,
 } from 'zod-openapi';
 import { ErrorBody, Id, IdParam, IdempotencyKeyHeader, Month, page } from './schemas/common';
-import { ImportJob, ImportRequest } from './schemas/imports';
+import {
+  ImportJob,
+  ImportRequest,
+  TerritoryLinkImportRequest,
+  TerritoryLinkImportResult,
+} from './schemas/imports';
 import {
   AdminProduct,
   AdminProductList,
@@ -132,6 +137,7 @@ import {
   DoctorListQuery,
   DoctorUpdate,
   OutletListQuery,
+  ChemistListQuery,
   Specialty,
   Stockist,
   StockistCreate,
@@ -333,6 +339,8 @@ const MASTER_SEGMENTS = new Set([
 /** Permission(s) the API requires for masters endpoints (docs/RBAC.md); undefined = not a master route. */
 export function mastersPermissions(path: string, method: string): string[] | undefined {
   const [, , seg, rest] = path.split('/');
+  if (seg === 'imports' && rest === 'territory-links')
+    return ['imports:write', 'territories:write', 'masters:write'];
   if (seg === 'imports') return ['imports:write'];
   if (!seg || !MASTER_SEGMENTS.has(seg)) return undefined;
   const read = masterReadPermission(seg);
@@ -570,7 +578,7 @@ function buildDocument(): OpenApiDocument {
         ChemistCreate,
         ChemistUpdate,
         'Chemist',
-        OutletListQuery,
+        ChemistListQuery,
         true,
       ),
       ...crud(
@@ -619,6 +627,23 @@ function buildDocument(): OpenApiDocument {
           operationId: 'createProductHqMapping',
           requestBody: json(ProductHqMappingCreate),
           responses: { '201': { description: 'Created', ...json(ProductHqMapping) } },
+        }),
+      },
+      '/v1/imports/territory-links': {
+        post: op({
+          tags: ['Territories', 'Imports'],
+          operationId: 'importTerritoryLinks',
+          summary:
+            'Link doctors/chemists to territories under their HQ from (hq_code, entity, name_key, territory_text) rows; creates missing territories (dry-run first)',
+          description:
+            'Company-wide roles only (Director, System Admin). Each row: HQ resolved by code (must be a headquarter), territory text normalised (ariforce_territory_key), the territory under that HQ is reused or created (level territory, code <HQ>-<KEY>; idempotent), and the ONE live doctor/chemist under that HQ whose name matches (lower case, "Dr." dropped, punctuation -> space) gets localTerritoryId. Unknown HQ, no match and ambiguous names are reported per row (status unmatched), never guessed. Re-running the same file changes nothing (already_linked). With dryRun=true (default) nothing is written. Not stored as an import job; the apply is audited (territory_links.apply). See docs/TERRITORY-MODEL.md.',
+          requestBody: json(TerritoryLinkImportRequest),
+          responses: {
+            '200': { description: 'Dry-run plan', ...json(TerritoryLinkImportResult) },
+            '201': { description: 'Applied', ...json(TerritoryLinkImportResult) },
+            '413': err('More than 5,000 rows'),
+            '422': err('Request malformed'),
+          },
         }),
       },
       '/v1/imports/{id}': {

@@ -16,6 +16,7 @@ export { createApiClient, type ApiClient } from './client';
 export type { paths, components } from './generated/openapi';
 export const API_VERSION = 'v1';
 export * from './import/templates';
+export * from './import/territory-links';
 export * from './tour-plan';
 export * from './schemas/team';
 export * from './schemas/signup';
