@@ -51,6 +51,15 @@ Additive (no migration; uses 0042). Web impact noted per item.
   `territoryCodeFor`, `readTerritoryLinkRow`. MSW mock implements the endpoint (an `area` counts as an
   HQ in fixtures) and the filter; doctor/chemist fixtures carry `localTerritoryId: null`.
 
+## KPIs count submitted DCRs only (`fix/kpi-submitted-only`, migration 0046)
+
+No contract change. `kpi_user_day` and `dcr_day_calls` now include only live `submitted`/`approved`
+DCRs (0045 fell back to the latest draft). Drafts never count in KPIs (calls, POB, coverage,
+frequency, product, TP adherence, field/off days), and a drafts-only day has no `kpi_user_day` row,
+so the exceptions engine flags it `dcr_missing` (or `punch_without_dcr` with a punch). TA/DA, expense
+reconcile, correction requests, team calendar/profile day kinds and leave clash keep the 0045
+fallback (submitted, else latest draft).
+
 ## DCR multi-draft (`feat/dcr-multi-draft`, migration 0045)
 
 Several drafts per user and day; at most one submitted report per day (partial unique index
