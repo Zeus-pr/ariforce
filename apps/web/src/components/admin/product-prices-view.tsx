@@ -228,9 +228,7 @@ export function ProductPricesView() {
                         />
                         <div className="min-w-0">
                           <div className="font-medium">{p.name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {p.code}{p.brand ? ` · ${p.brand}` : ''}{!p.active && ' · inactive'}
-                          </div>
+                          <ProductSubline product={p} />
                           {p.ptr == null && <Badge variant="outline" className="mt-1 border-amber-500 text-amber-700" data-testid="pp-no-ptr">No PTR</Badge>}
                           {rowErr[p.id] && <p className="mt-1 text-xs text-destructive" role="alert" data-testid="pp-row-error">{rowErr[p.id]}</p>}
                         </div>
@@ -321,5 +319,22 @@ function HistorySheet({ product, onClose }: { product: AdminProduct | null; onCl
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** Composition and strip size under the name (brand usually repeats the name, so it is not shown). */
+function ProductSubline({ product: p }: { product: AdminProduct & { composition?: string | null; packSize?: string | null } }) {
+  const comp = p.composition?.trim();
+  const pack = p.packSize?.trim();
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="min-w-0 truncate" title={comp ?? p.code}>{comp || p.code}</span>
+      {pack && (
+        <span className="shrink-0 rounded-md border bg-muted/50 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-foreground/80">
+          Strip · {pack}
+        </span>
+      )}
+      {!p.active && <span className="shrink-0">· inactive</span>}
+    </div>
   );
 }
