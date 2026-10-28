@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Headers,
   Get,
   HttpCode,
   NotFoundException,
@@ -12,7 +13,13 @@ import {
 import {
   CompetitorBrandQuery,
   DcrCorrectionRequest,
+  DcrDraftPut,
   DcrListQuery,
+  DcrOptionsQuery,
+  DcrSfcMatchQuery,
+  DcrSubmit,
+  DcrSubmitHeaders,
+  DcrWorkWithQuery,
   DcrUpsert,
   Id,
 } from '@ariforce/contracts';
@@ -20,11 +27,76 @@ import type * as z from 'zod';
 import { CurrentPrincipal, RequirePermissions } from '../auth/decorators';
 import type { Principal } from '../auth/principal';
 import { ZodPipe } from '../common/zod.pipe';
+import { err } from '../field/checkins.service';
+import { DcrFlowService } from './dcr-flow.service';
 import { DcrService, type DcrQuery } from './dcr.service';
 
 @Controller({ path: 'dcrs', version: '1' })
 export class DcrController {
-  constructor(private readonly svc: DcrService) {}
+  constructor(
+    private readonly svc: DcrService,
+    private readonly flow: DcrFlowService,
+  ) {}
+
+  @Get('options')
+  @RequirePermissions('field:read')
+  options(
+    @CurrentPrincipal() p: Principal,
+    @Query(new ZodPipe(DcrOptionsQuery)) q: z.infer<typeof DcrOptionsQuery>,
+  ) {
+    return this.flow.options(p, q.date);
+  }
+
+  @Get('territories')
+  @RequirePermissions('field:read')
+  territories(@CurrentPrincipal() p: Principal) {
+    return this.flow.territories(p);
+  }
+
+  @Get('work-with')
+  @RequirePermissions('field:read')
+  workWith(
+    @CurrentPrincipal() p: Principal,
+    @Query(new ZodPipe(DcrWorkWithQuery)) q: z.infer<typeof DcrWorkWithQuery>,
+  ) {
+    return this.flow.workWith(p, q);
+  }
+
+  @Get('sfc-match')
+  @RequirePermissions('field:read')
+  sfcMatch(
+    @CurrentPrincipal() p: Principal,
+    @Query(new ZodPipe(DcrSfcMatchQuery)) q: z.infer<typeof DcrSfcMatchQuery>,
+  ) {
+    return this.flow.sfcMatch(p, q);
+  }
+
+  @Put('draft')
+  @RequirePermissions('field:write')
+  draft(
+    @CurrentPrincipal() p: Principal,
+    @Body(new ZodPipe(DcrDraftPut)) b: z.infer<typeof DcrDraftPut>,
+  ) {
+    return this.flow.draft(p, b);
+  }
+
+  @Post(':id/submit')
+  @HttpCode(200)
+  @RequirePermissions('field:write')
+  submit(
+    @CurrentPrincipal() p: Principal,
+    @Param('id') id: string,
+    @Headers('idempotency-key') key: string | undefined,
+    @Body(new ZodPipe(DcrSubmit)) b: z.infer<typeof DcrSubmit>,
+  ) {
+    if (!Id.safeParse(id).success) throw new NotFoundException('DCR not found');
+    const h = DcrSubmitHeaders.safeParse({ 'idempotency-key': key });
+    if (!h.success)
+      throw err(422, 'VALIDATION', 'Idempotency-Key header is required (1-128 chars)', {
+        field: 'Idempotency-Key',
+      });
+    return this.flow.submit(p, id, b.version, h.data['idempotency-key']);
+  }
 
   @Get()
   @RequirePermissions('field:read')
