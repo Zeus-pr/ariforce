@@ -69,7 +69,9 @@ In-file checks: same HQ + entity + name with different territories -> `error` `c
 (all such rows); exact repeats -> `skipped` `duplicate_in_file`. Near duplicates (backfill rule) are
 listed, never merged. Re-running a file changes nothing. Audit: `territory.import_create` per
 territory, `territory_links.apply` with the linked ids per entity (rollback marker), dry runs via the
-endpoint `territory_links.dry_run`. Not stored in `import_jobs`.
+endpoint `territory_links.dry_run`. Not stored in `import_jobs`. Against a shared/production DB use the
+CLI's `--read-only` (one `SET TRANSACTION READ ONLY` transaction, verified, always rolled back; works
+through the Supabase transaction pooler, where `PGOPTIONS` is ignored).
 
 DTOs: `Doctor.localTerritoryId`, `Chemist.localTerritoryId` (nullable, read-only; cleared when the
 HQ `territoryId` changes on PATCH). List filter `localTerritoryId=<id>` or `none` on

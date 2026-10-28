@@ -97,6 +97,7 @@ as an import job (idempotent by design). CLI for a CSV kept outside the repo:
 source scripts/env.sh && cd apps/api
 DATABASE_URL=... node_modules/.bin/tsx scripts/import-territory-links.mts --company <slug> --file /path/x.csv          # dry run
 DATABASE_URL=... node_modules/.bin/tsx scripts/import-territory-links.mts --company <slug> --file /path/x.csv --apply  # write
+DATABASE_URL=... node_modules/.bin/tsx scripts/import-territory-links.mts --company <slug> --file /path/x.csv --read-only  # prod-safe dry run
 ```
 
 Rules: docs/TERRITORY-MODEL.md.
