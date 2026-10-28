@@ -14,15 +14,15 @@ Status: proposal + additive schema (migration 0042, `feat/territory-city-split`)
 
 Names: the tree level is `territory` (a unit under an HQ). HQ stays HQ (`headquarter`).
 
-| Thing                 | Name                                                                                                                        |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Level value           | `territory_level` = `'territory'` (child of `headquarter`)                                                                  |
-| Normalised key column | `territories.territory_key`                                                                                                 |
-| Key function          | `ariforce_territory_key(text)`: lower case, non-alphanumerics -> one space, trimmed, blank -> null                          |
-| Unique business key   | `territories_hq_territory_key_uq` on `(company_id, parent_id, territory_key)`, live rows                                    |
-| Link on masters       | `doctors.local_territory_id`, `chemists.local_territory_id` (nullable FK, indexes `*_local_territory_idx`); stockists later |
-| HQ link (unchanged)   | `doctors/chemists/stockists.territory_id`                                                                                   |
-| Raw source text       | `doctors.city`, `chemists.city`: raw imported data, names kept as is                                                        |
+| Thing                 | Name                                                                                                                                                                                                 |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Level value           | `territory_level` = `'territory'` (child of `headquarter`)                                                                                                                                           |
+| Normalised key column | `territories.territory_key`                                                                                                                                                                          |
+| Key function          | `ariforce_territory_key(text)`: lower case, non-alphanumerics -> one space, trimmed, blank -> null                                                                                                   |
+| Unique business key   | `territories_hq_territory_key_uq` on `(company_id, parent_id, territory_key)`, live rows                                                                                                             |
+| Link on masters       | `doctors.local_territory_id`, `chemists.local_territory_id`, `stockists.local_territory_id` (nullable FK, indexes `*_local_territory_idx`); the stockist column exists (0042, applied) but is unused |
+| HQ link (unchanged)   | `doctors/chemists/stockists.territory_id`                                                                                                                                                            |
+| Raw source text       | `doctors.city`, `chemists.city`: raw imported data, names kept as is                                                                                                                                 |
 
 - `local_territory_id` was chosen because `territory_id` already means the HQ; renaming that would touch scope, KPIs, SFC and the importer.
 - Territory code: `<HQ code>-<KEY>` (32 max, id suffix on clash). Never matched by name alone.
@@ -59,27 +59,10 @@ listing as in the backfill.
 | Masters                     | Not yet exposed: next step adds `localTerritoryId` to doctor/chemist DTOs, filters and import, and creates/links the territory on create/edit.    |
 | SFC                         | Unchanged (per employee + HQ, From/To text). The DCR redesign may key routes by city (see Part 2).                                                |
 | KPIs, approvals, allowances | Unchanged (keyed on HQ).                                                                                                                          |
-| Stockists                   | Not included (stockists usually serve an HQ); question open.                                                                                      |
+| Stockists                   | Column in 0042 (applied), unused; linking later.                                                                                                  |
 
-## DCR band and Work With (design note, no schema change)
+## DCR band and Work With
 
-Band = the existing `sfc_routes.category` (no new column). The SFC importer stores it via
-`normCategory()` (`apps/api/src/sfc/sfc-import.ts`: trimmed, upper case, spacing around `/` unified);
-the API accepts free text up to 40 chars. Band is derived by mapping a key = category upper-cased with
-every non-alphanumeric removed:
-
-| Category values seen (6 SFC sheets) and variants      | Key                           | Band                                                                                        |
-| ----------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------- |
-| `HQ`, `H.Q.`, `hq`                                    | `HQ`                          | `hq`                                                                                        |
-| `EX`, `EX HQ`, `EX-HQ`, `EXHQ`, `ex hq`               | `EX`, `EXHQ`                  | `ex_hq`                                                                                     |
-| `OS`, `O/S`, `OUT STATION`, `OUTSTATION`, `OUT EX HQ` | `OS`, `OUTSTATION`, `OUTEXHQ` | `outstation`                                                                                |
-| `EX / OS` (2 rows)                                    | `EXOS`                        | ambiguous: no band; route offered for both ex_hq and outstation, or fixed in SFC (question) |
-| `MEETING` (16 rows)                                   | `MEETING`                     | not a field band: never matched for Field DCR (meeting routes; question)                    |
-| null / blank / anything else                          |                               | unknown: no band, not matched, listed in an SFC data report                                 |
-
-The band of a field DCR comes from its work type (`FIELD_HQ` hq, `FIELD_EXHQ` ex_hq, `FIELD_OUT`
-outstation, `work_types.allowance_band`); an SFC route matches when its mapped band equals it. Unknown
-values never get invented rates.
-
-Work With: anyone can work with anyone (no hierarchy/HQ restriction); stored as today on calls
-(`dcr_calls.joint_work_user_ids`) and not part of the SFC match key.
+SFC category is a fixed enum `ex` | `hq` | `os` mapped to the DCR band `ex_hq` / `hq` / `outstation`;
+legacy text is converted by a data fix. Change list and misfit proposals: `docs/DCR-REDESIGN-DESIGN.md`.
+Meeting never uses SFC. Work With: anyone; recorded, not part of the SFC match (employee + HQ + band).

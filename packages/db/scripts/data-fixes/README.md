@@ -16,6 +16,8 @@ script aborts if id and slug do not match). Each script prints before/after chec
 | 6 | `2026-10-28-durgapur-territory-text.sql` | Dry run unless `apply=1` | Fills blank `doctors/chemists.city` from session relation `tmp_territory_source` (CSV outside the repo) |
 | 7 | `2026-10-28-territory-backfill.sql` | Dry run unless `-v apply=1` | Creates `territory` rows under each HQ from `city` (or `-v map=`), links `local_territory_id`; duplicate/near-duplicate report |
 
+| 8 | `2026-10-28-sfc-category-normalise.sql` | Dry run unless `-v apply=1` | SFC category -> `ex`/`hq`/`os`: EX (31) + EX HQ (6) -> ex; HQ (6) -> hq; OS (1) + OUT EX HQ (1) -> os. Misfits unchanged unless `-v exos=ex` or `os` (EX / OS, 2) / `-v meeting=archive` (MEETING, 16, soft delete) |
+
 Order for 6-7: apply migration 0042 first, then 6, then 7 (dry run first each time). Test-run on a
 local DB with fake data only.
 

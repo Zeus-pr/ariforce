@@ -3107,13 +3107,18 @@ export interface components {
       actualFare: boolean;
       /** @default null */
       travelMode: components['schemas']['SfcTravelMode'] | null;
-      /** @default null */
-      category: string | null;
+      /**
+       * @description ex | hq | os; anything else is 422 VALIDATION
+       * @default null
+       */
+      category: components['schemas']['SfcCategory'] | null;
       /** @default null */
       da: number | null;
     };
     /** @enum {string} */
     SfcTravelMode: 'bike' | 'bus' | 'train' | 'bus_train' | 'car' | 'other';
+    /** @enum {string} */
+    SfcCategory: 'ex' | 'hq' | 'os';
     AllowanceDraftRequest: {
       /** @default false */
       dryRun: boolean;
@@ -5626,6 +5631,7 @@ export interface components {
       bothWayAmount: number | null;
       actualFare: boolean;
       travelMode: components['schemas']['SfcTravelMode'] | null;
+      /** @description 'ex' | 'hq' | 'os' (SfcCategory). Rows not yet migrated by the data fix may still hold legacy text; show it and require a choice on edit. */
       category: string | null;
       da: number | null;
       version: number;

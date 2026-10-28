@@ -17112,10 +17112,10 @@
           },
           "category": {
             "default": null,
+            "description": "ex | hq | os; anything else is 422 VALIDATION",
             "anyOf": [
               {
-                "type": "string",
-                "maxLength": 40
+                "$ref": "#/components/schemas/SfcCategory"
               },
               {
                 "type": "null"
@@ -17152,6 +17152,14 @@
           "bus_train",
           "car",
           "other"
+        ]
+      },
+      "SfcCategory": {
+        "type": "string",
+        "enum": [
+          "ex",
+          "hq",
+          "os"
         ]
       },
       "AllowanceDraftRequest": {
@@ -25457,6 +25465,7 @@
             ]
           },
           "category": {
+            "description": "'ex' | 'hq' | 'os' (SfcCategory). Rows not yet migrated by the data fix may still hold legacy text; show it and require a choice on edit.",
             "type": [
               "string",
               "null"

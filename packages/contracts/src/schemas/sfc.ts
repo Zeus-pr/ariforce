@@ -60,6 +60,11 @@ export const SfcEmployeeList = z
   .object({ items: z.array(SfcEmployee) })
   .meta({ id: 'SfcEmployeeList' });
 
+/** SFC route category = DCR band source (2026-10-28): ex -> ex_hq, hq -> hq, os -> outstation. */
+export const SfcCategory = z.enum(['ex', 'hq', 'os']).meta({ id: 'SfcCategory' });
+export type SfcCategory = z.infer<typeof SfcCategory>;
+export const SFC_CATEGORY_BAND = { ex: 'ex_hq', hq: 'hq', os: 'outstation' } as const;
+
 export const SfcRoute = z
   .object({
     id: Id,
@@ -72,7 +77,10 @@ export const SfcRoute = z
     bothWayAmount: z.number().nullable().meta({ description: 'null = actual fare' }),
     actualFare: z.boolean(),
     travelMode: SfcTravelMode.nullable(),
-    category: z.string().nullable(),
+    category: z.string().nullable().meta({
+      description:
+        "'ex' | 'hq' | 'os' (SfcCategory). Rows not yet migrated by the data fix may still hold legacy text; show it and require a choice on edit.",
+    }),
     da: z.number().nullable(),
     version: z.int(),
     updatedAt: Timestamp,
@@ -106,7 +114,9 @@ export const SfcRouteInput = z
     oneWayKm: Km,
     actualFare: z.boolean().default(false),
     travelMode: SfcTravelMode.nullable().default(null),
-    category: z.string().trim().max(40).nullable().default(null),
+    category: SfcCategory.nullable()
+      .default(null)
+      .meta({ description: 'ex | hq | os; anything else is 422 VALIDATION' }),
     da: Money.nullable().default(null),
   })
   .meta({ id: 'SfcRouteInput' });
