@@ -18,7 +18,7 @@ import { parseArgs } from 'node:util';
 import { Client } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { sfcAmounts } from '@ariforce/contracts';
-import { matchSheet, parseSfcWorkbook, type SfcCandidate } from '../src/sfc/sfc-import';
+import { matchSheet, normCategory, parseSfcWorkbook, type SfcCandidate } from '../src/sfc/sfc-import';
 
 const envFile = resolve(import.meta.dirname, '../.env');
 if (!process.env.DATABASE_URL && existsSync(envFile)) process.loadEnvFile(envFile);
@@ -94,20 +94,29 @@ try {
         actual_fare: boolean;
         travel_mode: string | null;
         sort_order: number;
+        category: string | null;
       }>(
-        `select id, lower(from_place) || '|' || lower(to_place) || '|' || lower(coalesce(category, '')) k,
-           one_way_km, actual_fare, travel_mode, sort_order
+        `select id, lower(from_place) || '|' || lower(to_place) || '|' || coalesce(category, '') k,
+           one_way_km, actual_fare, travel_mode, sort_order, category
          from sfc_routes where user_id = $1 and deleted_at is null`,
         [m.user.id],
       )
     ).rows;
+    // Legacy rows ('EX', 'EX HQ', ...) key on their mapped category so a re-import before the
+    // category data fix updates them instead of adding duplicates; unknown text keys as is.
+    for (const r of existing) {
+      const i = r.k.lastIndexOf('|');
+      const raw = r.k.slice(i + 1);
+      const m = normCategory(raw);
+      r.k = r.k.slice(0, i + 1) + (m === undefined ? raw.toLowerCase() : (m ?? ''));
+    }
     const byKey = new Map(existing.map((r) => [r.k, r]));
     let ins = 0;
     let upd = 0;
     let same = 0;
     const seen = new Set<string>();
     for (const [i, r] of s.rows.entries()) {
-      const k = `${r.fromPlace.toLowerCase()}|${r.toPlace.toLowerCase()}|${(r.category ?? '').toLowerCase()}`;
+      const k = `${r.fromPlace.toLowerCase()}|${r.toPlace.toLowerCase()}|${r.category ?? ''}`;
       if (seen.has(k)) continue;
       seen.add(k);
       const am = sfcAmounts(r.oneWayKm, r.actualFare, rate);
@@ -139,7 +148,8 @@ try {
         Number(old.one_way_km) !== r.oneWayKm ||
         old.actual_fare !== r.actualFare ||
         old.travel_mode !== r.travelMode ||
-        old.sort_order !== i + 1
+        old.sort_order !== i + 1 ||
+        old.category !== r.category
       ) {
         upd++;
         if (a.apply)
