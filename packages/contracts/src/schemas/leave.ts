@@ -234,3 +234,16 @@ export const LeaveCalendarEntry = z
 export const LeaveCalendar = z
   .object({ from: DateOnly, to: DateOnly, items: z.array(LeaveCalendarEntry) })
   .meta({ id: 'LeaveCalendar' });
+
+/**
+ * 409 LEAVE_DCR_CONFLICT (deploy/api-dcr 659eaeb): approving a leave (POST /v1/leave/requests/{id}/decision
+ * or the final POST /v1/approvals/{id}/decision) while the requester has a submitted DCR on a leave
+ * date. Nothing is saved; the approval stays pending. `error.details` carries the clashing dates and
+ * DCR ids (sorted, unique). Web-side type only: the OpenAPI document describes it in the 409 text.
+ */
+export const LEAVE_DCR_CONFLICT = 'LEAVE_DCR_CONFLICT' as const;
+export const LeaveDcrConflictDetails = z.object({
+  dates: z.array(DateOnly),
+  dcrIds: z.array(Id),
+});
+export type LeaveDcrConflictDetails = z.infer<typeof LeaveDcrConflictDetails>;

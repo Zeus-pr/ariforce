@@ -34,7 +34,7 @@ import { sfcHandlers } from './sfc';
 import { expenseHandlers } from './expenses';
 import { exceptionHandlers } from './exceptions';
 import { productPriceHandlers } from './product-prices';
-import { leaveHandlers, mockLeaveOn, mockWeeklyOffDays } from './leave';
+import { leaveHandlers, mockLeaveOn, mockWeeklyOffDays, setMockSubmittedDcrLookup } from './leave';
 import { mastersGuardHandlers } from './masters-guard';
 import { territoryLinkHandlers } from './territory-links';
 import {
@@ -660,6 +660,12 @@ function fieldHandlers(baseUrl: string) {
   ];
   let stp: StandardTourPlan | null = null;
   const dcrs: Dcr[] = [];
+  setMockSubmittedDcrLookup((userId, from, to) =>
+    dcrs
+      .filter((d) => d.userId === userId && d.status === 'submitted' && !d.deletedAt)
+      .filter((d) => d.date >= from && d.date <= to)
+      .map((d) => ({ id: d.id, date: d.date })),
+  );
   const submitKeys = new Map<string, string>();
   const approvals = structuredClone(fx.approvals);
   let geofence = { ...fx.geofence };

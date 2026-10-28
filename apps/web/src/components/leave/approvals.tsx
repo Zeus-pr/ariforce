@@ -100,11 +100,18 @@ function DecisionDialog({ d, onClose, onDone }: { d: Decision | null; onClose: (
     if (!d) return;
     if (reject && !comment.trim()) return setError('Add a comment so they know why.');
     setBusy(true);
-    const r = await api.POST('/v1/leave/requests/{id}/decision', {
-      params: { path: { id: d.req.id } },
-      body: { decision: d.kind, ...(comment.trim() ? { comment: comment.trim() } : {}) },
-    });
-    setBusy(false);
+    let r;
+    try {
+      r = await api.POST('/v1/leave/requests/{id}/decision', {
+        params: { path: { id: d.req.id } },
+        body: { decision: d.kind, ...(comment.trim() ? { comment: comment.trim() } : {}) },
+      });
+    } catch {
+      return setError('Could not reach the server. Nothing was saved; try again.');
+    } finally {
+      setBusy(false);
+    }
+    // LEAVE_DCR_CONFLICT (approve): nothing saved, the request stays pending; the dialog stays open with why.
     if (r.error) return setError(leaveMessage(toApiError(r)));
     toast.success(
       r.data.status === 'pending' ? `Approved; sent to the next approver` : reject ? 'Leave rejected' : 'Leave approved',

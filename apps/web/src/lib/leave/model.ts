@@ -2,6 +2,8 @@
 import {
   DEFAULT_ROLE_PERMISSIONS,
   istDate,
+  LEAVE_DCR_CONFLICT,
+  LeaveDcrConflictDetails,
   type LeaveBalanceItem as LeaveBalanceSchema,
   type LeaveCalendarEntry as LeaveCalendarSchema,
   type LeaveRequest,
@@ -63,10 +65,36 @@ type Err = { code?: string; message?: string; details?: unknown };
 const list = (ds: unknown) =>
   Array.isArray(ds) && ds.length ? ` (${(ds as string[]).slice(0, 5).map(dateLabel).join(', ')}${ds.length > 5 ? '…' : ''})` : '';
 
+/** "29 Oct", "29 Oct and 30 Oct", "29 Oct, 30 Oct and 31 Oct" (first 5, then "and N more"). */
+export function shortDates(ds: string[]): string {
+  const xs = [...new Set(ds)].sort().map((d) => fmtShort.format(new Date(`${d}T00:00:00Z`)));
+  if (xs.length > 5) return `${xs.slice(0, 5).join(', ')} and ${xs.length - 5} more`;
+  return xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : (xs[0] ?? '');
+}
+
+/**
+ * 409 LEAVE_DCR_CONFLICT on approving leave: the requester has a submitted DCR on a leave date.
+ * Nothing was saved; the request stays pending. There is no web view of another person's single DCR,
+ * so the dcrIds are not linked.
+ */
+export function leaveDcrConflictMessage(details: unknown): string {
+  const p = LeaveDcrConflictDetails.safeParse(details);
+  const dates = p.success ? p.data.dates : [];
+  if (!dates.length) return 'Can’t approve: a DCR is already submitted on a leave date. Sort it out with a correction first.';
+  return `Can’t approve: ${dates.length > 1 ? 'DCRs are' : 'a DCR is'} already submitted for ${shortDates(dates)}. Sort ${dates.length > 1 ? 'them' : 'it'} out with a correction first.`;
+}
+
+/** Message for a failed POST /v1/approvals/{id}/decision: LEAVE_DCR_CONFLICT spelled out, others as sent. */
+export function approvalDecisionMessage(e: Err): string {
+  return e.code === LEAVE_DCR_CONFLICT ? leaveDcrConflictMessage(e.details) : e.message || 'Could not save the decision. Try again.';
+}
+
 /** Plain-language message for leave errors, including LEAVE_DAY_BLOCKED from Tour Plans and DCR. */
 export function leaveMessage(e: Err): string {
   const d = (e.details ?? {}) as Record<string, unknown>;
   switch (e.code) {
+    case LEAVE_DCR_CONFLICT:
+      return leaveDcrConflictMessage(e.details);
     case 'LEAVE_DAY_BLOCKED':
       return `You are on approved leave on ${Array.isArray(d.dates) && d.dates.length ? (d.dates as string[]).map(dateLabel).join(', ') : 'this day'}. Use a Leave or Holiday work type for that day, or cancel the leave first.`;
     case 'LEAVE_BACKDATE_WINDOW':

@@ -51,6 +51,33 @@ Additive (no migration; uses 0042). Web impact noted per item.
   `territoryCodeFor`, `readTerritoryLinkRow`. MSW mock implements the endpoint (an `area` counts as an
   HQ in fixtures) and the filter; doctor/chemist fixtures carry `localTerritoryId: null`.
 
+## Leave approval blocked by a submitted DCR (`fix/leave-approval-dcr-conflict`)
+
+Additive error code. The final approval of a leave request (`POST /v1/leave/requests/{id}/decision`
+or `POST /v1/approvals/{id}/decision` with `decision: approve`) returns `409 LEAVE_DCR_CONFLICT` when
+the leave's user has a live submitted/approved DCR on any date from `fromDate` to `toDate` (half days
+included): `details { dates: string[], dcrIds: string[] }`. Nothing is decided (the step stays
+pending). Drafts never block; intermediate approval steps, reject and cancel are unaffected. Fix the
+DCR (correction request) first. Submitting a DCR on an approved-leave day still returns
+`422 LEAVE_DAY_BLOCKED`; both checks are serialised per user, so they cannot both pass.
+
+## Drafts ignored by team calendar, leave clash, team attendance (`fix/drafts-ignored-calendar-leave`)
+
+No contract or DB change. `GET` team calendar (attendance days), the full-day leave apply clash
+(`409 LEAVE_DCR_EXISTS`) and the team-profile attendance buckets use only live submitted/approved
+DCRs. A draft no longer blocks applying for leave; submitting a field/non-field draft on an
+approved-leave day still fails with `422 LEAVE_DAY_BLOCKED` (`details.dates`). TA/DA, expense
+reconcile, correction requests and the team-profile today badge keep the draft fallback.
+
+## KPIs count submitted DCRs only (`fix/kpi-submitted-only`, migration 0046)
+
+No contract change. `kpi_user_day` and `dcr_day_calls` now include only live `submitted`/`approved`
+DCRs (0045 fell back to the latest draft). Drafts never count in KPIs (calls, POB, coverage,
+frequency, product, TP adherence, field/off days), and a drafts-only day has no `kpi_user_day` row,
+so the exceptions engine flags it `dcr_missing` (or `punch_without_dcr` with a punch). TA/DA, expense
+reconcile, correction requests, team calendar/profile day kinds and leave clash keep the 0045
+fallback (submitted, else latest draft).
+
 ## DCR multi-draft (`feat/dcr-multi-draft`, migration 0045)
 
 Several drafts per user and day; at most one submitted report per day (partial unique index

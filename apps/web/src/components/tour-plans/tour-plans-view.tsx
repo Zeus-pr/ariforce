@@ -35,7 +35,7 @@ import { OutletPicker } from '@/components/pickers/pickers';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
 import { useRole } from '@/components/shell/role-context';
 import { api, apiReady, toApiError } from '@/lib/api';
-import { saveMessage } from '@/lib/leave/model';
+import { approvalDecisionMessage, saveMessage } from '@/lib/leave/model';
 import { isApprover } from '@/lib/roles';
 import { ApprovalReview } from '@/components/approvals/approval-review';
 import { RejectDialog } from '@/components/approvals/reject-dialog';
@@ -651,12 +651,23 @@ function ApprovalsPanel({ onDecided }: { onDecided: () => void }) {
     void load();
   }, [load]);
 
+  const [deciding, setDeciding] = useState<string | null>(null);
   async function decide(a: Approval, decision: 'approve' | 'reject', note?: string) {
-    const r = await api.POST('/v1/approvals/{id}/decision', {
-      params: { path: { id: a.id } },
-      body: decision === 'approve' ? { decision } : { decision, comment: note },
-    });
-    if (r.error) return toast.error(toApiError(r).message);
+    if (deciding) return;
+    setDeciding(a.id);
+    let r;
+    try {
+      r = await api.POST('/v1/approvals/{id}/decision', {
+        params: { path: { id: a.id } },
+        body: decision === 'approve' ? { decision } : { decision, comment: note },
+      });
+    } catch {
+      return toast.error('Could not reach the server. Nothing was saved; try again.');
+    } finally {
+      setDeciding(null);
+    }
+    // LEAVE_DCR_CONFLICT: nothing saved, the approval stays pending in the list.
+    if (r.error) return toast.error(approvalDecisionMessage(toApiError(r)), { duration: 10000 });
     toast.success(decision === 'approve' ? `${a.summary} approved` : `${a.summary} rejected`);
     setRejecting(null);
     await load();
@@ -691,11 +702,11 @@ function ApprovalsPanel({ onDecided }: { onDecided: () => void }) {
                 >
                   {openId === a.id ? 'Hide plan' : 'View plan'}
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => setRejecting(a)} data-testid="tp-reject">
+                <Button size="sm" variant="outline" disabled={deciding !== null} onClick={() => setRejecting(a)} data-testid="tp-reject">
                   Reject
                 </Button>
-                <Button size="sm" onClick={() => decide(a, 'approve')} data-testid="tp-approve">
-                  Approve
+                <Button size="sm" disabled={deciding !== null} onClick={() => void decide(a, 'approve')} data-testid="tp-approve">
+                  {deciding === a.id ? 'Approving…' : 'Approve'}
                 </Button>
               </div>
             </div>

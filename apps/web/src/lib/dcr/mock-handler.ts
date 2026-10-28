@@ -5,6 +5,8 @@
  * (or status=draft), GET /v1/dcrs/{id} for DCRs it holds and the doctor/chemist/stockist lists for its
  * own territories. Everything else falls through. Several drafts per day, at most one submitted report
  * per day (0045): PUT /draft with id updates that draft, without id and version creates a new one.
+ * LEAVE_DCR_CONFLICT (659eaeb): set localStorage `af:mock-leave-dcr-conflict` to '1' (yesterday) or
+ * comma-separated YYYY-MM-DD dates to make approving any leave (leave requests or approvals) return 409.
  * State lives in the page (lost on reload). Rules follow the API: band comes from the work type,
  * SFC candidates are the rep's SFC routes for each HQ of the day in the band's category, one route per
  * HQ, snapshots frozen at submit, idempotent submit. Set localStorage `af:mock-sfc-down` = '1' to make
@@ -105,6 +107,19 @@ function persona(request: Request) {
   }
   return { who, me: fx.findMockUser(who) ?? fx.me };
 }
+/** Dates for the mock LEAVE_DCR_CONFLICT, or null when the switch is off. */
+const leaveConflictDates = (): string[] | null => {
+  try {
+    const v = localStorage.getItem('af:mock-leave-dcr-conflict')?.trim();
+    if (!v) return null;
+    if (v === '1')
+      return [new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() - 86_400_000))];
+    const ds = v.split(',').map((x) => x.trim()).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));
+    return ds.length ? [...new Set(ds)].sort() : null;
+  } catch {
+    return null;
+  }
+};
 const sfcDown = () => {
   try {
     return localStorage.getItem('af:mock-sfc-down') === '1';
@@ -490,6 +505,22 @@ export function mockDcrFlow(base: string) {
         .map((d) => Dcr.parse({ ...d, lockAt: lockAt(d.date), callCount: d.calls.length }));
       return HttpResponse.json({ items, nextCursor: null, serverTime: new Date().toISOString() });
     }),
+    // Approving leave while a submitted DCR is on a leave date (mock switch, see the header).
+    ...[`${base}/v1/leave/requests/:id/decision`, `${base}/v1/approvals/:id/decision`].map((url) =>
+      http.post(url, async ({ request }) => {
+        const dates = leaveConflictDates();
+        if (!dates) return undefined;
+        const b = (await request.clone().json().catch(() => null)) as { decision?: string } | null;
+        if (b?.decision !== 'approve') return undefined;
+        const { me } = persona(request);
+        const own = dcrs.filter((d) => d.status === 'submitted' && dates.includes(d.date) && d.userId === me.id).map((d) => d.id);
+        const dcrIds = own.length ? own : dates.map((_, i) => `01930000-0000-7000-8000-0000000dc${String(i).padStart(3, '0')}`);
+        return err(409, 'LEAVE_DCR_CONFLICT', 'A submitted DCR exists on these leave dates; sort the DCR out (correction) before approving', {
+          dates,
+          dcrIds: [...new Set(dcrIds)].sort(),
+        });
+      }),
+    ),
     http.delete(`${base}/v1/dcrs/:id`, ({ params, request }) => {
       const { me } = persona(request);
       const i = dcrs.findIndex((x) => x.id === params.id && x.userId === me.id);
