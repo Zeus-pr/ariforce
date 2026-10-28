@@ -116,6 +116,43 @@ export function mockDcrFlow(base: string) {
   const wtOf = (id: string) => DCR_WORK_TYPES.find((w) => w.id === id);
   const out = (d: Dcr) => HttpResponse.json(Dcr.parse({ ...d, lockAt: lockAt(d.date) }));
 
+  /** One saved draft per persona (yesterday's meeting) so the drafts list has a card on first load. */
+  const seeded = new Set<string>();
+  const seed = (userId: string) => {
+    if (seeded.has(userId)) return;
+    seeded.add(userId);
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(
+      new Date(Date.now() - 86_400_000),
+    );
+    if (dcrs.some((x) => x.userId === userId && x.date === date)) return;
+    const at = new Date(Date.now() - 3 * 36e5).toISOString();
+    dcrs.push(
+      Dcr.parse({
+        id: crypto.randomUUID(),
+        companyId: fx.COMPANY_ID,
+        createdAt: at,
+        updatedAt: at,
+        deletedAt: null,
+        version: 1,
+        userId,
+        date,
+        workTypeId: DCR_WORK_TYPES[3]!.id,
+        band: null,
+        territoryIds: [],
+        workWithUserIds: [],
+        tourPlanId: null,
+        deviationReason: null,
+        details: { kind: 'meeting', title: 'Cycle meeting', mode: 'in_person', location: 'Durgapur office', startTime: '10:00', durationMin: 120 },
+        status: 'draft',
+        calls: [],
+        sfcRoutes: [],
+        submittedAt: null,
+        lockAt: lockAt(date),
+        unlockedUntil: null,
+      }),
+    );
+  };
+
   /** Per-HQ match; null when the band has no SFC (non-field). */
   const match = (band: DcrBand, territoryIds: string[]) => {
     const hqIds = [...new Set(territoryIds.map(hqOf))];
@@ -205,6 +242,7 @@ export function mockDcrFlow(base: string) {
 
   return [
     http.get(`${base}/v1/dcrs/options`, ({ request }) => {
+      seed(persona(request).me.id);
       const date = new URL(request.url).searchParams.get('date') ?? '';
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return validation('date is required (YYYY-MM-DD)');
       const { me } = persona(request);
@@ -268,6 +306,7 @@ export function mockDcrFlow(base: string) {
       const b = DcrDraftPut.safeParse(await request.json());
       if (!b.success) return validation('Invalid DCR', b.error.issues);
       const { me } = persona(request);
+      seed(me.id);
       if (b.data.date > todayIST()) return validation('DCR date is in the future');
       if (isLocked(b.data.date)) return err(409, 'DAY_LOCKED', 'Day locked; request a correction');
       let d = dcrs.find((x) => x.date === b.data.date && x.userId === me.id);
@@ -373,6 +412,28 @@ export function mockDcrFlow(base: string) {
       submitKeys.set(d.id, key);
       Object.assign(d, { status: 'submitted', submittedAt: now, submittedBy: me.id, sfcRoutes: routes, version: d.version + 1, updatedAt: now });
       return out(d);
+    }),
+    /**
+     * The signed-in persona's drafts (the drafts workspace): GET /v1/dcrs?status=draft[&from&to&sort].
+     * Other list queries (team views, submitted history) fall through to the contracts mock.
+     */
+    http.get(`${base}/v1/dcrs`, ({ request }) => {
+      const q = new URL(request.url).searchParams;
+      if (q.get('status') !== 'draft') return undefined;
+      const { me } = persona(request);
+      seed(me.id);
+      const from = q.get('from');
+      const to = q.get('to');
+      const sort = q.get('sort') ?? '-date';
+      const key = sort.replace(/^-/, '') as 'date' | 'createdAt' | 'updatedAt';
+      const dir = sort.startsWith('-') ? -1 : 1;
+      const items = dcrs
+        .filter((d) => d.userId === me.id && d.status === 'draft' && !isLocked(d.date))
+        .filter((d) => (!from || d.date >= from) && (!to || d.date <= to))
+        .sort((a, b) => (a[key] < b[key] ? -dir : a[key] > b[key] ? dir : 0))
+        .slice(0, Number(q.get('limit') ?? 50))
+        .map((d) => Dcr.parse({ ...d, lockAt: lockAt(d.date) }));
+      return HttpResponse.json({ items, nextCursor: null, serverTime: new Date().toISOString() });
     }),
     http.get(`${base}/v1/dcrs/:id`, ({ params }) => {
       const d = dcrs.find((x) => x.id === params.id);

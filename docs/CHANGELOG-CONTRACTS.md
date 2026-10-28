@@ -50,6 +50,13 @@ Additive (no migration; uses 0042). Web impact noted per item.
   `territoryCodeFor`, `readTerritoryLinkRow`. MSW mock implements the endpoint (an `area` counts as an
   HQ in fixtures) and the filter; doctor/chemist fixtures carry `localTerritoryId: null`.
 
+## SFC HQ fallback (`fix/sfc-hq-fallback`)
+
+Additive. `DcrSfcCandidate` and `DcrSfcSnapshot` gain optional `source` (`DcrSfcSource`: `own` | `hq`).
+Behaviour: when the filer has no live SFC route on an HQ of the day, `GET /v1/dcrs/sfc-match`, draft
+and submit use that HQ's routes from any owner (de-duplicated; `source: 'hq'`); own routes still win
+per HQ. Submit accepts and snapshots a fallback route. No migration. See `docs/DCR-REDESIGN-DESIGN.md`.
+
 ## DCR redesign: multi-HQ, details, SFC snapshots (`feat/territory-city-split`)
 
 Additive. Old `PUT /v1/dcrs` keeps working, except it now returns `409 ALREADY_SUBMITTED` for a DCR

@@ -125,7 +125,7 @@ export function SfcPanel({
                   aria-labelledby={`route-${h.hqTerritoryId}`}
                   value={chosen}
                   onValueChange={(id) => onChoose(h.hqTerritoryId, id)}
-                  choices={h.candidates.map((r) => ({ value: r.id, label: `${r.fromPlace} to ${r.toPlace}`, hint: km(r.oneWayKm) }))}
+                  choices={h.candidates.map((r) => ({ value: r.id, label: `${r.fromPlace} to ${r.toPlace}`, hint: r.source === 'hq' ? `${km(r.oneWayKm)} · From HQ` : km(r.oneWayKm) }))}
                   placeholder="Choose your route"
                   disabled={readOnly}
                   className="sm:max-w-md"
@@ -164,7 +164,14 @@ function RouteFacts({ title, c, note }: { title: string; c: Candidate; note: str
   return (
     <section className="rounded-xl border bg-muted/40 p-4" aria-label="SFC details and TA/DA" data-testid="dcr-sfc-card">
       <div className="mb-3 flex items-start justify-between gap-3">
-        <h3 className="text-sm font-semibold text-balance">{title}</h3>
+        <div className="flex flex-col gap-1">
+          <h3 className="text-sm font-semibold text-balance">{title}</h3>
+          {c.source === 'hq' && (
+            <p className="text-xs text-muted-foreground" data-testid="dcr-sfc-from-hq">
+              From HQ: this is your headquarter&rsquo;s shared route, not one set up for you.
+            </p>
+          )}
+        </div>
         <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
           <Lock className="size-3" aria-hidden /> Read-only
         </span>

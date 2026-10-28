@@ -84,3 +84,29 @@ html.af-splash [data-af-header-logo] {
     animation: none;
   }
 }
+
+/* DCR drafts: a report expands from / collapses into its card. Clipped only while moving. */
+.af-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 240ms var(--ease-out),
+    opacity 200ms var(--ease-out);
+}
+.af-reveal[data-open='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.af-reveal > * {
+  min-height: 0;
+  overflow: hidden;
+}
+.af-reveal[data-settled] > * {
+  overflow: visible;
+}
+@media (prefers-reduced-motion: reduce) {
+  .af-reveal {
+    transition: none;
+  }
+}

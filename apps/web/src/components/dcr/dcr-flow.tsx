@@ -1,7 +1,7 @@
 'use client';
 
 import { CheckCircle2, Plus, RotateCw } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore, type Ref } from 'react';
 import type { Dcr } from '@ariforce/contracts';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
@@ -55,10 +55,32 @@ const WORK_ON_HINT: Record<string, string> = {
   office: 'Admin work at the office or home',
   leave: 'Full or half day off',
 };
-export function DcrFlow() {
+/** What the drafts workspace can ask of an open report (collapse safely, autosave). */
+export type FlowController = {
+  /** Unsaved edits on the page. */
+  isDirty: () => boolean;
+  /** A draft can be saved now (a work type is chosen and the report is still editable). */
+  canSave: () => boolean;
+  /** Save as draft without submitting; true when it saved. */
+  saveDraft: () => Promise<boolean>;
+};
+
+export type FlowProps = {
+  /** Date to open (default today). */
+  initialDate?: string;
+  /** An existing draft is opened for its own date: the date can't be changed here. */
+  dateLocked?: boolean;
+  /** After a successful save (draft) or submit. */
+  onSaved?: (dcr: Dcr, submitted: boolean) => void;
+  /** The report for the date as loaded (null = none yet). */
+  onLoaded?: (dcr: Dcr | null, date: string) => void;
+  controller?: Ref<FlowController>;
+};
+
+export function DcrFlow(props: FlowProps) {
   const today = useSyncExternalStore(noop, todayIST, () => null);
   if (!today) return <div className="h-[560px]" aria-busy="true" />;
-  return <Flow today={today} />;
+  return <Flow today={today} {...props} />;
 }
 
 const fresh = (date: string): FlowState => ({
@@ -89,8 +111,8 @@ function Step({ title, hint, children, testId, id }: { title: string; hint?: str
   );
 }
 
-function Flow({ today }: { today: string }) {
-  const [s, setS] = useState<FlowState>(() => fresh(today));
+function Flow({ today, initialDate, dateLocked = false, onSaved, onLoaded, controller }: FlowProps & { today: string }) {
+  const [s, setS] = useState<FlowState>(() => fresh(initialDate ?? today));
   const [workTypes, setWorkTypes] = useState<WorkTypeOption[] | null>(null);
   const [dcr, setDcr] = useState<Dcr | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -113,6 +135,10 @@ function Flow({ today }: { today: string }) {
   const [reload, setReload] = useState(0);
   const [sfcTick, setSfcTick] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const onLoadedRef = useRef(onLoaded);
+  useEffect(() => {
+    onLoadedRef.current = onLoaded;
+  });
   const submitKey = useRef<string | null>(null);
   const names = useRef(new Map<string, string>());
   const lastFieldWt = useRef('');
@@ -159,6 +185,7 @@ function Flow({ today }: { today: string }) {
         return setLoadError(failureMessage(r, 'Could not load the report for this date.'));
       }
       setApiMissing(false);
+      onLoadedRef.current?.(r.data.dcr, s.date);
       const wts = normaliseWorkTypes(r.data.workTypes as WorkTypeOption[]);
       setWorkTypes(wts);
       const d = r.data.dcr;
@@ -356,17 +383,20 @@ function Flow({ today }: { today: string }) {
     update((x) => ({ calls: x.calls.map((c) => (c.clientId === id ? { ...c, ...p } : c)) }));
   };
 
-  async function save(submit: boolean) {
+  async function save(submit: boolean): Promise<boolean> {
     if (submit && probs.length) {
       setShowErrors(true);
       const first = document.querySelector('[role=alert]');
       first?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
+      return false;
     }
     setSaving(submit ? 'submit' : 'draft');
     try {
       const r = await api.PUT('/v1/dcrs/draft', { body: draftBody(s, dcr?.version) });
-      if (!r.data) return failed(toApiError(r), r.response?.status);
+      if (!r.data) {
+        failed(toApiError(r), r.response?.status);
+        return false;
+      }
       let saved = r.data;
       setDcr(saved);
       if (submit) {
@@ -380,11 +410,13 @@ function Flow({ today }: { today: string }) {
           });
         } catch (e) {
           // Keep the key: the submit may have gone through; retrying with it is safe.
-          return toast.error(`${thrownMessage(e)} Your draft is saved; press Submit again.`, { duration: 10000 });
+          toast.error(`${thrownMessage(e)} Your draft is saved; press Submit again.`, { duration: 10000 });
+          return false;
         }
         if (!sub.data) {
           submitKey.current = null;
-          return failed(toApiError(sub), sub.response?.status);
+          failed(toApiError(sub), sub.response?.status);
+          return false;
         }
         saved = sub.data;
       }
@@ -392,12 +424,21 @@ function Flow({ today }: { today: string }) {
       setDirty(false);
       setShowErrors(false);
       toast.success(submit ? `Report for ${dateLabel(s.date)} submitted` : 'Draft saved. You can come back and finish it later.');
+      onSaved?.(saved, submit);
+      return true;
     } catch (e) {
       toast.error(`${thrownMessage(e)} Nothing was saved.`, { duration: 10000 });
+      return false;
     } finally {
       setSaving(null);
     }
   }
+
+  useImperativeHandle(controller, () => ({
+    isDirty: () => dirty,
+    canSave: () => !!s.workTypeId && !readOnly && !saving,
+    saveDraft: () => save(false),
+  }));
 
   /** Server said no: plain words, and open the field that fixes it where there is one. */
   function failed(e: ApiError, status?: number) {
@@ -467,7 +508,7 @@ function Flow({ today }: { today: string }) {
         </div>
       )}
 
-      <Step title="Date" testId="dcr-step-date">
+      {!dateLocked && <Step title="Date" hint="One report per day: a date that already has a draft opens that draft." testId="dcr-step-date">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="dcr-date" className="sr-only">Report date</Label>
           <Input
@@ -485,7 +526,7 @@ function Flow({ today }: { today: string }) {
             data-testid="dcr-date"
           />
         </div>
-      </Step>
+      </Step>}
 
       {workTypes === null && !loadError ? (
         <div className="flex flex-col gap-2" aria-busy="true"><Skeleton className="h-5 w-32" /><Skeleton className="h-24 w-full" /></div>
