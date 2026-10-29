@@ -66,3 +66,6 @@ export const canWriteMasters = (roles: readonly string[]) =>
  * as the website's nav (apps/web/src/lib/nav.ts SALES = every role except System Admin).
  */
 export const isSalesRole = (roles: readonly string[]) => roles.some((r) => level(r) >= 1);
+
+/** Director only (sales level 8). Decides DCR unlock requests (server-enforced). */
+export const isDirector = (roles: readonly string[]) => roles.includes('director');

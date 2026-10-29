@@ -21,7 +21,14 @@ import {
 } from '@/lib/dcr/adapter';
 import { dateLabel, savedLabel } from '@/lib/dcr/dates';
 import { saveMessage } from '@/lib/dcr/errors';
-import { isApprover } from '@/lib/roles';
+import { isApprover, isDirector } from '@/lib/roles';
+import {
+  daysLabel,
+  leaveMessage,
+  rangeLabel as leaveRange,
+  useDecideLeave,
+  useLeaveQueue,
+} from '@/lib/leave';
 import { CONTRACT as TP_CONTRACT, rangeLabel, useTpQueue } from '@/lib/tp/adapter';
 import { colors, layout, spacing } from '@/theme';
 
@@ -29,16 +36,19 @@ import { colors, layout, spacing } from '@/theme';
 export default function ApprovalsScreen() {
   const { user } = useAuth();
   if (!isApprover(user?.roles ?? [])) return <Redirect href="/" />;
-  return <Approvals myId={user?.id} />;
+  return <Approvals myId={user?.id} director={isDirector(user?.roles ?? [])} />;
 }
 
-function Approvals({ myId }: { myId?: string }) {
+function Approvals({ myId, director }: { myId?: string; director: boolean }) {
   const router = useRouter();
   const bottom = useBottomSpace();
   const teamQ = useTeamSubmitted(myId);
   const decisionsQ = useDecisions();
   const namesQ = useTeamNames(true);
-  const unlockQ = useUnlockQueue(true);
+  // Only a Director decides DCR unlock requests (server-enforced); DCR and TP stay ABM and up.
+  const unlockQ = useUnlockQueue(director);
+  const leaveQ = useLeaveQueue(myId, true);
+  const decideLeave = useDecideLeave();
   const tpQ = useTpQueue(myId, true);
   const decide = useDecideApproval();
   const [deciding, setDeciding] = useState<string | null>(null);
@@ -53,9 +63,10 @@ function Approvals({ myId }: { myId?: string }) {
   const refreshing = (teamQ.isRefetching || unlockQ.isRefetching) && !teamQ.isPending;
   const refresh = () => {
     void teamQ.refetch();
-    void unlockQ.refetch();
     void decisionsQ.refetch();
     void tpQ.refetch();
+    void leaveQ.refetch();
+    if (director) void unlockQ.refetch();
   };
 
   return (
@@ -150,36 +161,38 @@ function Approvals({ myId }: { myId?: string }) {
         )}
 
         <AppText variant="small" style={styles.section}>
-          {unlockQ.isPending ? 'Unlock requests' : `Unlock requests (${unlockQ.data?.length ?? 0})`}
+          {leaveQ.isPending ? 'Leave' : `Leave (${leaveQ.data?.length ?? 0})`}
         </AppText>
-        {unlockQ.isPending ? (
+        {leaveQ.isPending ? (
           <SkeletonList count={2} />
-        ) : unlockQ.isError ? (
+        ) : leaveQ.isError ? (
           <Card style={styles.pad}>
-            <AppText variant="bodyMuted">{saveMessage(unlockQ.error)}</AppText>
+            <AppText variant="bodyMuted">{leaveMessage(leaveQ.error)}</AppText>
           </Card>
-        ) : !unlockQ.data?.length ? (
+        ) : !leaveQ.data?.length ? (
           <Card style={styles.pad}>
-            <AppText variant="bodyMuted">No pending unlock requests.</AppText>
+            <AppText variant="bodyMuted">No leave requests waiting for you.</AppText>
           </Card>
         ) : (
-          unlockQ.data.map((a) => (
-            <Card key={a.id} style={styles.pad}>
-              <AppText variant="label">{a.requestedByName}</AppText>
-              <AppText variant="body">{a.summary}</AppText>
-              {a.comment ? <AppText variant="bodyMuted">Reason: {a.comment}</AppText> : null}
-              <AppText variant="small">Requested {savedLabel(a.createdAt)}</AppText>
+          leaveQ.data.map((l) => (
+            <Card key={l.id} style={styles.pad}>
+              <AppText variant="label">{l.userName}</AppText>
+              <AppText variant="body">
+                {l.typeName} · {leaveRange(l)} · {daysLabel(l.days)}
+              </AppText>
+              {l.reason ? <AppText variant="bodyMuted">Reason: {l.reason}</AppText> : null}
               <DecisionBar
-                what={`${a.requestedByName}'s unlock request`}
-                busy={deciding === a.id}
-                error={errors[a.id]}
+                what={`${l.userName}'s ${l.typeName} (${leaveRange(l)})`}
+                busy={deciding === l.id}
+                error={errors[l.id]}
                 onDecide={(decision, reason) => {
-                  setDeciding(a.id);
-                  decide.mutate(
-                    { id: a.id, decision, comment: reason ?? undefined },
+                  setDeciding(l.id);
+                  decideLeave.mutate(
+                    { id: l.id, decision, comment: reason ?? undefined },
                     {
                       onSettled: () => setDeciding(null),
-                      onError: (e) => setErrors((x) => ({ ...x, [a.id]: saveMessage(e) })),
+                      // LEAVE_DCR_CONFLICT: a submitted DCR on a leave date blocks approval.
+                      onError: (e) => setErrors((x) => ({ ...x, [l.id]: leaveMessage(e) })),
                     },
                   );
                 }}
@@ -187,6 +200,51 @@ function Approvals({ myId }: { myId?: string }) {
             </Card>
           ))
         )}
+
+        {director ? (
+          <>
+            <AppText variant="small" style={styles.section}>
+              {unlockQ.isPending
+                ? 'Unlock requests'
+                : `Unlock requests (${unlockQ.data?.length ?? 0})`}
+            </AppText>
+            {unlockQ.isPending ? (
+              <SkeletonList count={2} />
+            ) : unlockQ.isError ? (
+              <Card style={styles.pad}>
+                <AppText variant="bodyMuted">{saveMessage(unlockQ.error)}</AppText>
+              </Card>
+            ) : !unlockQ.data?.length ? (
+              <Card style={styles.pad}>
+                <AppText variant="bodyMuted">No pending unlock requests.</AppText>
+              </Card>
+            ) : (
+              unlockQ.data.map((a) => (
+                <Card key={a.id} style={styles.pad}>
+                  <AppText variant="label">{a.requestedByName}</AppText>
+                  <AppText variant="body">{a.summary}</AppText>
+                  {a.comment ? <AppText variant="bodyMuted">Reason: {a.comment}</AppText> : null}
+                  <AppText variant="small">Requested {savedLabel(a.createdAt)}</AppText>
+                  <DecisionBar
+                    what={`${a.requestedByName}'s unlock request`}
+                    busy={deciding === a.id}
+                    error={errors[a.id]}
+                    onDecide={(decision, reason) => {
+                      setDeciding(a.id);
+                      decide.mutate(
+                        { id: a.id, decision, comment: reason ?? undefined },
+                        {
+                          onSettled: () => setDeciding(null),
+                          onError: (e) => setErrors((x) => ({ ...x, [a.id]: saveMessage(e) })),
+                        },
+                      );
+                    }}
+                  />
+                </Card>
+              ))
+            )}
+          </>
+        ) : null}
       </ScrollView>
     </View>
   );
