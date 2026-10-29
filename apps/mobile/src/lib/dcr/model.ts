@@ -280,7 +280,11 @@ export function detailsOf(s: FlowState): DcrDetails | null {
 }
 
 /** Problems that block Submit, keyed by the field they belong to. Field values are only checked on a Field day. */
-export function problems(s: FlowState): { key: string; text: string }[] {
+export function problems(
+  s: FlowState,
+  /** Tour plans have no calls: `calls: false` skips the call checks. */
+  opts: { calls?: boolean } = {},
+): { key: string; text: string }[] {
   const p: { key: string; text: string }[] = [];
   const add = (key: string, text: string) => p.push({ key, text });
   const b = s.workOn?.branch;
@@ -298,6 +302,7 @@ export function problems(s: FlowState): { key: string; text: string }[] {
       for (const h of s.sfc.hqs)
         if (!(s.routeChoice[h.hqTerritoryId] ?? h.autoSelectedId))
           add('sfc', `Pick the SFC route for ${h.hqName}.`);
+      if (opts.calls === false) return p;
       if (!s.calls.length) add('calls', 'Add at least one Doctor, Chemist or Stockist call.');
       s.calls.forEach((c, i) => {
         if (!c.outletId)
