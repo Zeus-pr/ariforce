@@ -69,6 +69,7 @@ import {
   Product,
   productDisplayName,
   groupDetailProducts,
+  tourPlanDraftCards,
   ProductCreate,
   ProductHqMapping,
   StandardTourPlan,
@@ -681,6 +682,36 @@ function fieldHandlers(baseUrl: string) {
                 requestedAt: serverTime(),
               }
             : null,
+          tourPlanDrafts: tourPlanDraftCards(
+            tourPlans
+              .filter((t) => t.userId === fx.me.id)
+              .map((t) => ({
+                tourPlanId: t.id,
+                days: t.days.map((x) => ({
+                  date: x.date,
+                  entries: x.entries,
+                  status: x.status ?? 'draft',
+                  submissionId: x.submissionId ?? null,
+                })),
+              })),
+            dcrs.filter((x) => x.userId === fx.me.id),
+            istDate(),
+          ).map((c) => {
+            const e = c.entries[0]!;
+            const wt = fx.workTypes.find((w) => w.id === e.workTypeId);
+            return {
+              ...c,
+              fields: {
+                workTypeId: e.workTypeId,
+                band: wt ? mockBand(wt) : null,
+                territoryIds: e.territoryIds ?? [],
+                workWithUserIds: e.jointWorkUserIds ?? [],
+                details: e.details ?? null,
+                sfcRoutes: e.sfcRoutes ?? [],
+                notes: e.notes ?? null,
+              },
+            };
+          }),
           products: productOptions(),
           detailProducts: groupDetailProducts(DcrOptions.shape.products.parse(productOptions())),
         }),

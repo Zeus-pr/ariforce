@@ -2872,13 +2872,115 @@ export interface components {
       workTypeId: string;
       /** @description Patches/territories to work */
       territoryIds: string[];
-      /** @default [] */
+      /**
+       * @description Work With (the DCR's workWithUserIds)
+       * @default []
+       */
       jointWorkUserIds: string[];
       /** @default [] */
       plannedDoctorIds: string[];
       /** @default [] */
       plannedChemistIds: string[];
       notes?: string | null;
+      /** @description Same as the DCR's details (kind must match the work type's detailsKind); prefills the DCR */
+      details?: components['schemas']['DcrDetails'] | null;
+      /** @description Planned SFC route per HQ (as DCR sfcRoutes); prefills the DCR, checked at DCR submit */
+      sfcRoutes?: components['schemas']['DcrSfcRouteChoice'][];
+    };
+    /** @description Non-field day details; kind must match the work type (DcrWorkTypeOption.detailsKind) */
+    DcrDetails:
+      | components['schemas']['DcrMeetingDetails']
+      | components['schemas']['DcrTrainingDetails']
+      | components['schemas']['DcrOfficeDetails']
+      | components['schemas']['DcrLeaveDetails'];
+    DcrMeetingDetails: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'meeting';
+      /** @description Meeting / training type or name */
+      title: string;
+      /** @enum {string} */
+      mode: 'in_person' | 'online';
+      /** @description Free text; required when mode = in_person (link or text when online) */
+      location?: string | null;
+      /**
+       * @description Local time HH:mm (IST)
+       * @example 10:30
+       */
+      startTime: string;
+      /** @description Minutes, 1-720 */
+      durationMin: number;
+      /** @description Free text */
+      attendees?: string | null;
+      remarks?: string | null;
+    };
+    DcrTrainingDetails: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'training';
+      /** @description Meeting / training type or name */
+      title: string;
+      /** @enum {string} */
+      mode: 'in_person' | 'online';
+      /** @description Free text; required when mode = in_person (link or text when online) */
+      location?: string | null;
+      /**
+       * @description Local time HH:mm (IST)
+       * @example 10:30
+       */
+      startTime: string;
+      /** @description Minutes, 1-720 */
+      durationMin: number;
+      /** @description Free text */
+      attendees?: string | null;
+      remarks?: string | null;
+      /** @description Free text */
+      trainer?: string | null;
+    };
+    /** @description Admin / office work */
+    DcrOfficeDetails: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'office';
+      taskType: string;
+      description: string;
+      startTime?: string | null;
+      /** @description Minutes, 1-720 */
+      durationMin: number;
+      remarks?: string | null;
+    };
+    DcrLeaveDetails: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'leave';
+      /**
+       * Format: uuid
+       * @description Your leave request covering the date (pending or approved)
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      leaveRequestId: string;
+    };
+    DcrSfcRouteChoice: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      sfcRouteId: string;
     };
     TourPlanUpsert: {
       days: components['schemas']['TourPlanDay'][];
@@ -3055,107 +3157,14 @@ export interface components {
       sfcRoutes?: components['schemas']['DcrSfcRouteChoice'][];
       details?: components['schemas']['DcrDetails'] | null;
       deviationReason?: string | null;
+      /** @description Optional: the tourPlanDrafts[] card this day is filed from. Must be your plan whose day is approved for this date (else 422 VALIDATION, details.reason TOUR_PLAN_MISMATCH). The server links the approved TP of the date anyway */
+      tourPlanId?: string | null;
       calls?: components['schemas']['DcrCallInput'][];
       /** @description Row version from the last read */
       version?: number;
     };
     /** @enum {string} */
     DcrBand: 'hq' | 'ex_hq' | 'outstation';
-    DcrSfcRouteChoice: {
-      /**
-       * Format: uuid
-       * @description UUIDv7 identifier
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      hqTerritoryId: string;
-      /**
-       * Format: uuid
-       * @description UUIDv7 identifier
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      sfcRouteId: string;
-    };
-    /** @description Non-field day details; kind must match the work type (DcrWorkTypeOption.detailsKind) */
-    DcrDetails:
-      | components['schemas']['DcrMeetingDetails']
-      | components['schemas']['DcrTrainingDetails']
-      | components['schemas']['DcrOfficeDetails']
-      | components['schemas']['DcrLeaveDetails'];
-    DcrMeetingDetails: {
-      /**
-       * @description discriminator enum property added by openapi-typescript
-       * @enum {string}
-       */
-      kind: 'meeting';
-      /** @description Meeting / training type or name */
-      title: string;
-      /** @enum {string} */
-      mode: 'in_person' | 'online';
-      /** @description Free text; required when mode = in_person (link or text when online) */
-      location?: string | null;
-      /**
-       * @description Local time HH:mm (IST)
-       * @example 10:30
-       */
-      startTime: string;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
-      /** @description Free text */
-      attendees?: string | null;
-      remarks?: string | null;
-    };
-    DcrTrainingDetails: {
-      /**
-       * @description discriminator enum property added by openapi-typescript
-       * @enum {string}
-       */
-      kind: 'training';
-      /** @description Meeting / training type or name */
-      title: string;
-      /** @enum {string} */
-      mode: 'in_person' | 'online';
-      /** @description Free text; required when mode = in_person (link or text when online) */
-      location?: string | null;
-      /**
-       * @description Local time HH:mm (IST)
-       * @example 10:30
-       */
-      startTime: string;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
-      /** @description Free text */
-      attendees?: string | null;
-      remarks?: string | null;
-      /** @description Free text */
-      trainer?: string | null;
-    };
-    /** @description Admin / office work */
-    DcrOfficeDetails: {
-      /**
-       * @description discriminator enum property added by openapi-typescript
-       * @enum {string}
-       */
-      kind: 'office';
-      taskType: string;
-      description: string;
-      startTime?: string | null;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
-      remarks?: string | null;
-    };
-    DcrLeaveDetails: {
-      /**
-       * @description discriminator enum property added by openapi-typescript
-       * @enum {string}
-       */
-      kind: 'leave';
-      /**
-       * Format: uuid
-       * @description Your leave request covering the date (pending or approved)
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      leaveRequestId: string;
-    };
     DcrSubmit: {
       version: number;
     };
@@ -5342,6 +5351,11 @@ export interface components {
         requestedAt: string;
       } | null;
       /**
+       * @description Approved tour plan cards (independent of the query date), by from. Shown until no pending day is today or later (i.e. hidden once the last pending day locks at 00:00 IST)
+       * @default []
+       */
+      tourPlanDrafts: components['schemas']['DcrTourPlanDraft'][];
+      /**
        * @description Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed
        * @default []
        */
@@ -5369,6 +5383,53 @@ export interface components {
       usesSfc: boolean;
       /** @description Required details.kind on submit; null = no details */
       detailsKind: ('meeting' | 'training' | 'office' | 'leave') | null;
+    };
+    DcrTourPlanDraft: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      tourPlanId: string;
+      /** @description The approved TP submission of these days */
+      submissionId: string | null;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+      /** @description Every day of the card, from..to */
+      dates: string[];
+      /** @description DCR prefill (from the first planned session of the day) */
+      fields: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        workTypeId: string;
+        band: components['schemas']['DcrBand'] | null;
+        territoryIds: string[];
+        workWithUserIds: string[];
+        details: components['schemas']['DcrDetailsOutput'] | null;
+        sfcRoutes: components['schemas']['DcrSfcRouteChoiceOutput'][];
+        notes: string | null;
+      };
+      /** @description All planned sessions (am/pm/full) */
+      entries: components['schemas']['TourPlanEntryOutput'][];
+      /** @description Days with a submitted/approved DCR (any report of the day; rejected ones do not count) */
+      filedDates: string[];
+      /** @description Pending days that already have a DCR draft */
+      draftDates: string[];
+      /** @description dates minus filedDates */
+      pendingDates: string[];
+      /** @description Pending days that can be filed now: today (IST) only; future days open on their date, past days are locked (use the correction flow) */
+      fileableDates: string[];
     };
     DcrDetailProduct: {
       /** @example ARIPIX */
@@ -7163,69 +7224,20 @@ export interface components {
       workTypeId: string;
       /** @description Patches/territories to work */
       territoryIds: string[];
-      /** @default [] */
+      /**
+       * @description Work With (the DCR's workWithUserIds)
+       * @default []
+       */
       jointWorkUserIds: string[];
       /** @default [] */
       plannedDoctorIds: string[];
       /** @default [] */
       plannedChemistIds: string[];
       notes?: string | null;
-    };
-    StandardTourPlanDayOutput: {
-      week: number;
-      weekday: number;
-      entries: components['schemas']['TourPlanEntryOutput'][];
-    };
-    DetailedProductOutput: {
-      /**
-       * Format: uuid
-       * @description UUIDv7 identifier
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      productId: string;
-      /** @description Detailing sequence */
-      order: number;
-      feedback?: ('positive' | 'neutral' | 'negative') | null;
-    };
-    SampleGivenOutput: {
-      /**
-       * Format: uuid
-       * @description UUIDv7 identifier
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      productId: string;
-      quantity: number;
-    };
-    /** @description Personal order booking line: chemist and stockist calls only (doctor calls: 422 VALIDATION, details.reason POB_NOT_ALLOWED_FOR_DOCTOR); one line per product per call */
-    PobLineOutput: {
-      /**
-       * Format: uuid
-       * @description UUIDv7 identifier
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      productId: string;
-      quantity: number;
-      stockistId?: string | null;
-      /** @description INR = quantity × product PTS (price to stockist), computed by the server when the line is saved and kept as saved (null when the product has no PTS). Ignored on input. */
-      value?: number | null;
-    };
-    /** @description Retail chemist prescription audit line (chemist calls, #40) */
-    RcpaLineOutput: {
-      /**
-       * Format: uuid
-       * @description Our product; anchors the molecule being audited
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      productId: string;
-      /** @description Null/absent = this line counts our own brand */
-      competitorBrand?: string | null;
-      competitorCompany?: string | null;
-      /** @description Units sold/seen at the chemist */
-      quantity: number;
-      /** @description Prescription (Rx) count, if captured */
-      prescriptions?: number | null;
-      /** @description Prescribing doctor, in your scope */
-      doctorId?: string | null;
+      /** @description Same as the DCR's details (kind must match the work type's detailsKind); prefills the DCR */
+      details?: components['schemas']['DcrDetailsOutput'] | null;
+      /** @description Planned SFC route per HQ (as DCR sfcRoutes); prefills the DCR, checked at DCR submit */
+      sfcRoutes?: components['schemas']['DcrSfcRouteChoiceOutput'][];
     };
     /** @description Non-field day details; kind must match the work type (DcrWorkTypeOption.detailsKind) */
     DcrDetailsOutput:
@@ -7307,6 +7319,76 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       leaveRequestId: string;
+    };
+    DcrSfcRouteChoiceOutput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      sfcRouteId: string;
+    };
+    StandardTourPlanDayOutput: {
+      week: number;
+      weekday: number;
+      entries: components['schemas']['TourPlanEntryOutput'][];
+    };
+    DetailedProductOutput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      /** @description Detailing sequence */
+      order: number;
+      feedback?: ('positive' | 'neutral' | 'negative') | null;
+    };
+    SampleGivenOutput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      quantity: number;
+    };
+    /** @description Personal order booking line: chemist and stockist calls only (doctor calls: 422 VALIDATION, details.reason POB_NOT_ALLOWED_FOR_DOCTOR); one line per product per call */
+    PobLineOutput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      quantity: number;
+      stockistId?: string | null;
+      /** @description INR = quantity × product PTS (price to stockist), computed by the server when the line is saved and kept as saved (null when the product has no PTS). Ignored on input. */
+      value?: number | null;
+    };
+    /** @description Retail chemist prescription audit line (chemist calls, #40) */
+    RcpaLineOutput: {
+      /**
+       * Format: uuid
+       * @description Our product; anchors the molecule being audited
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      /** @description Null/absent = this line counts our own brand */
+      competitorBrand?: string | null;
+      competitorCompany?: string | null;
+      /** @description Units sold/seen at the chemist */
+      quantity: number;
+      /** @description Prescription (Rx) count, if captured */
+      prescriptions?: number | null;
+      /** @description Prescribing doctor, in your scope */
+      doctorId?: string | null;
     };
     SfcSettingsOutput: {
       /** @description TA per km (INR) used to compute SFC amounts on write */

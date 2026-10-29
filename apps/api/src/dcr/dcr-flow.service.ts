@@ -3,7 +3,6 @@ import {
   DcrDetails,
   SFC_CATEGORY_BAND,
   dcrDetailsKind,
-  isDeviation,
   type Dcr,
   type DcrBand,
   type DcrDraftPut,
@@ -260,6 +259,22 @@ export class DcrFlowService {
         drafts,
         rejected,
         unlockRequest: await this.unlockRequest(tx, p, date),
+        tourPlanDrafts: (await this.dcr.tourPlanCards(tx, p.userId)).map((c) => {
+          const e = c.entries[0]!;
+          const wt = wts.find((w) => w.id === e.workTypeId);
+          return {
+            ...c,
+            fields: {
+              workTypeId: e.workTypeId,
+              band: wt ? workTypeBand(wt) : null,
+              territoryIds: e.territoryIds ?? [],
+              workWithUserIds: e.jointWorkUserIds ?? [],
+              details: e.details ?? null,
+              sfcRoutes: e.sfcRoutes ?? [],
+              notes: e.notes ?? null,
+            },
+          };
+        }),
         ...(await this.productOptions(tx, p).then((products) => ({
           products,
           detailProducts: groupDetailProducts(products),
@@ -561,6 +576,11 @@ export class DcrFlowService {
       await this.checkChoices(tx, p, b.sfcRoutes ?? [], hqs, band);
       const { pts } = await this.dcr.validateCalls(tx, p, b, cur?.id);
       const plan = await this.dcr.plan(tx, p.userId, b.date);
+      if (b.tourPlanId && b.tourPlanId !== plan.tourPlanId)
+        throw err(422, 'VALIDATION', 'Tour plan is not your approved plan for this date', {
+          field: 'tourPlanId',
+          reason: 'TOUR_PLAN_MISMATCH',
+        });
 
       const vals = {
         workTypeId: b.workTypeId,
@@ -696,18 +716,8 @@ export class DcrFlowService {
         cur.id,
       );
       const plan = await this.dcr.plan(tx, p.userId, cur.date);
-      if (isDeviation(plan.entries, cur.workTypeId, cur.territoryIds) && !cur.deviationReason)
-        throw err(
-          422,
-          'DEVIATION_REASON_REQUIRED',
-          'Worked plan differs from the approved tour plan; give a reason',
-          {
-            planned: plan.entries.map((e) => ({
-              workTypeId: e.workTypeId,
-              territoryIds: e.territoryIds,
-            })),
-          },
-        );
+      // TP feature: changes from the approved tour plan no longer need a deviation reason
+      // (deviationReason stays optional and is stored as given).
 
       // One route per HQ of the day: chosen and valid, or the single candidate.
       const chosen = band

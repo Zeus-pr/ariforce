@@ -10,6 +10,22 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## feat/dcr-pob-review (2026-10-29): approved tour plans as DCR draft cards
+
+- Additive: `DcrOptions.tourPlanDrafts[]` (`DcrTourPlanDraft`: tourPlanId, submissionId, from, to,
+  dates, fields {workTypeId, band, territoryIds, workWithUserIds, details, sfcRoutes, notes},
+  entries, filedDates, draftDates, pendingDates, fileableDates). Approved TP days of this IST month
+  and later, grouped into runs of consecutive days with the same submission and entries. Shown
+  while a pending (not submitted/approved) day is today or later; fileableDates = today only.
+  Pure logic: `tourPlanDraftCards()`.
+- Additive: `TourPlanEntry.details` (DcrDetails, nullable) and `TourPlanEntry.sfcRoutes`
+  (DcrSfcRouteChoice[]) so a TP carries the DCR fields; Work With = `jointWorkUserIds`.
+- Additive: `DcrDraftPut.tourPlanId` (optional). Must equal the approved TP of the date, else 422
+  VALIDATION with details.reason TOUR_PLAN_MISMATCH.
+- Behaviour (relaxing): 422 DEVIATION_REASON_REQUIRED is no longer raised (DCR flow submit and legacy
+  PUT /v1/dcrs). deviationReason is still optional and stored.
+- No DB change.
+
 ## feat/dcr-pob-review (2026-10-29): product displayName, doctor detailing picker
 
 - Additive: `Product.displayName` and `AdminProduct.displayName` (readOnly, derived from `name`

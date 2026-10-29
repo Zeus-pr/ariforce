@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { DateOnly, Id, Timestamp } from './common';
 import { DcrBand, DcrDetails, DcrSfcRouteChoice, DcrSfcSource } from './dcr-parts';
-import { Dcr, DcrCallInput } from './field';
+import { Dcr, DcrCallInput, TourPlanEntry } from './field';
 import { Product } from './products';
 import { SfcCategory, SfcTravelMode } from './sfc';
 
@@ -42,6 +42,42 @@ export const DcrProductOption = Product.pick({
   imageUrl: true,
 }).meta({ id: 'DcrProductOption' });
 export type DcrProductOption = z.infer<typeof DcrProductOption>;
+
+/** An approved tour plan run (one day or consecutive days with the same plan) as a DCR draft card. */
+export const DcrTourPlanDraft = z
+  .object({
+    tourPlanId: Id,
+    submissionId: Id.nullable().meta({ description: 'The approved TP submission of these days' }),
+    from: DateOnly,
+    to: DateOnly,
+    dates: z.array(DateOnly).min(1).meta({ description: 'Every day of the card, from..to' }),
+    fields: z
+      .object({
+        workTypeId: Id,
+        band: DcrBand.nullable(),
+        territoryIds: z.array(Id),
+        workWithUserIds: z.array(Id),
+        details: DcrDetails.nullable(),
+        sfcRoutes: z.array(DcrSfcRouteChoice),
+        notes: z.string().nullable(),
+      })
+      .meta({ description: 'DCR prefill (from the first planned session of the day)' }),
+    entries: z.array(TourPlanEntry).meta({ description: 'All planned sessions (am/pm/full)' }),
+    filedDates: z.array(DateOnly).meta({
+      description:
+        'Days with a submitted/approved DCR (any report of the day; rejected ones do not count)',
+    }),
+    draftDates: z
+      .array(DateOnly)
+      .meta({ description: 'Pending days that already have a DCR draft' }),
+    pendingDates: z.array(DateOnly).meta({ description: 'dates minus filedDates' }),
+    fileableDates: z.array(DateOnly).meta({
+      description:
+        'Pending days that can be filed now: today (IST) only; future days open on their date, past days are locked (use the correction flow)',
+    }),
+  })
+  .meta({ id: 'DcrTourPlanDraft' });
+export type DcrTourPlanDraft = z.infer<typeof DcrTourPlanDraft>;
 
 /** Doctor detailing picker entry: one per displayName (all strengths of a product together). */
 export const DcrDetailProduct = z
@@ -110,6 +146,10 @@ export const DcrOptions = z
         description:
           "Your latest dcr_unlock (correction) request for this date, or null; drives the 'Unlock requested' state",
       }),
+    tourPlanDrafts: z.array(DcrTourPlanDraft).default([]).meta({
+      description:
+        'Approved tour plan cards (independent of the query date), by from. Shown until no pending day is today or later (i.e. hidden once the last pending day locks at 00:00 IST)',
+    }),
     detailProducts: z.array(DcrDetailProduct).default([]).meta({
       description:
         'Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed',
@@ -222,6 +262,10 @@ export const DcrDraftPut = z
       .meta({ description: 'One per HQ of the day (field only). Omit to keep the saved choices' }),
     details: DcrDetails.nullable().optional(),
     deviationReason: z.string().max(500).nullable().optional(),
+    tourPlanId: Id.nullable().optional().meta({
+      description:
+        'Optional: the tourPlanDrafts[] card this day is filed from. Must be your plan whose day is approved for this date (else 422 VALIDATION, details.reason TOUR_PLAN_MISMATCH). The server links the approved TP of the date anyway',
+    }),
     calls: z.array(DcrCallInput).max(60).default([]),
     version: z.int().min(1).optional().meta({ description: 'Row version from the last read' }),
   })

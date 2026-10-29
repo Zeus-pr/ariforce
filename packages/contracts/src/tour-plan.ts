@@ -119,3 +119,93 @@ export function isDeviation(
     !planned.some((e) => e.workTypeId === workTypeId) || territoryIds.some((t) => !terr.has(t))
   );
 }
+
+/** A plan day with its own approval state, as input to tourPlanDraftCards. */
+export interface TpCardDay<E> {
+  date: string;
+  entries: E[];
+  status: string;
+  submissionId: string | null;
+}
+/** One report of the rep (any DCR of a day), as input to tourPlanDraftCards. */
+export interface TpDayReport {
+  date: string;
+  status: string;
+}
+export interface TpCard<E> {
+  tourPlanId: string;
+  submissionId: string | null;
+  from: string;
+  to: string;
+  dates: string[];
+  entries: E[];
+  filedDates: string[];
+  draftDates: string[];
+  pendingDates: string[];
+  fileableDates: string[];
+}
+
+const nextDate = (d: string) => {
+  const t = new Date(`${d}T00:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + 1);
+  return t.toISOString().slice(0, 10);
+};
+
+/**
+ * Approved tour-plan days as DCR draft cards. A card is a run of consecutive approved days of one
+ * plan, in the same submission, with identical entries (one day = a one-day card). A day is filed
+ * when the rep has a submitted or approved DCR for it (rejected and draft reports do not count).
+ * A card is shown while some pending day is today (IST) or later; the day lock is 00:00 IST the
+ * next day, so the card hides once its last pending day locks. fileableDates = today only.
+ */
+export function tourPlanDraftCards<E>(
+  plans: { tourPlanId: string; days: TpCardDay<E>[] }[],
+  reports: TpDayReport[],
+  today: string,
+): TpCard<E>[] {
+  const filed = new Set(
+    reports.filter((r) => r.status === 'submitted' || r.status === 'approved').map((r) => r.date),
+  );
+  const drafts = new Set(reports.filter((r) => r.status === 'draft').map((r) => r.date));
+  const cards: TpCard<E>[] = [];
+  for (const plan of plans) {
+    const days = plan.days
+      .filter((d) => d.status === 'approved' && d.entries.length > 0)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    let run: TpCardDay<E>[] = [];
+    const flush = () => {
+      if (!run.length) return;
+      const dates = run.map((d) => d.date);
+      const pendingDates = dates.filter((d) => !filed.has(d));
+      if (pendingDates.some((d) => d >= today))
+        cards.push({
+          tourPlanId: plan.tourPlanId,
+          submissionId: run[0]!.submissionId,
+          from: dates[0]!,
+          to: dates[dates.length - 1]!,
+          dates,
+          entries: run[0]!.entries,
+          filedDates: dates.filter((d) => filed.has(d)),
+          draftDates: pendingDates.filter((d) => drafts.has(d)),
+          pendingDates,
+          fileableDates: pendingDates.filter((d) => d === today),
+        });
+      run = [];
+    };
+    for (const d of days) {
+      const prev = run[run.length - 1];
+      if (
+        prev &&
+        (prev.submissionId !== d.submissionId ||
+          nextDate(prev.date) !== d.date ||
+          JSON.stringify(prev.entries) !== JSON.stringify(d.entries))
+      )
+        flush();
+      run.push(d);
+    }
+    flush();
+  }
+  return cards.sort(
+    (a, b) => a.from.localeCompare(b.from) || a.tourPlanId.localeCompare(b.tourPlanId),
+  );
+}
