@@ -29,6 +29,7 @@ import {
   type MockDecision,
 } from '@/mocks/dcr';
 import { ApiError, apiFetch } from '../api';
+import { productDisplayName } from '../product-name';
 import { byName, sortByLabel } from '../sort';
 
 /** The app targets the new contract; each flag still falls back at runtime (see above). */
@@ -59,7 +60,16 @@ export type UnlockState = {
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   requestedAt: string;
 };
+/** options.detailProducts[] (contracts c44b325 DcrDetailProduct): server-grouped doctor picker. */
+export type DcrDetailProduct = {
+  displayName: string;
+  productId: string;
+  productIds: string[];
+  composition: string | null;
+  imageUrl: string | null;
+};
 export type OptionsV2 = {
+  detailProducts?: DcrDetailProduct[];
   rejected?: Dcr[];
   products?: DcrProductOption[];
   unlockRequest?: UnlockState | null;
@@ -136,9 +146,10 @@ export function useDcrProducts(options: OptionsV2 | undefined, enabled: boolean)
   return useMemo(
     () => ({
       data: fromOptions ? sortByLabel(fromOptions.map(toProductOpt)) : (fallback.data ?? []),
+      detail: options?.detailProducts?.length ? options.detailProducts : null,
       isPending: !fromOptions && fallback.isPending,
     }),
-    [fromOptions, fallback.data, fallback.isPending],
+    [fromOptions, fallback.data, fallback.isPending, options?.detailProducts],
   );
 }
 
@@ -146,11 +157,9 @@ export function useDcrProducts(options: OptionsV2 | undefined, enabled: boolean)
  * What a doctor call shows for a product (picker, picked list, presentation): the brand when set,
  * else the full name. Products sharing a brand are NOT merged. Chemist/stockist keep `label`.
  */
-const STRENGTH_TAIL = /(\s+\d+(\.\d+)?\s*(mg|mcg|g|ml|%)?)+$/i;
-export function doctorProductLabel(p: Pick<ProductOpt, 'brand' | 'label'>) {
-  // Live data has brand == name with strength ("ARIPIX 10"): drop trailing strength tokens.
-  const base = (p.brand || p.label).trim();
-  return base.replace(STRENGTH_TAIL, '').trim() || base;
+/** Doctor-call label: the API's displayName rule (lib/product-name.ts, from contracts c44b325). */
+export function doctorProductLabel(p: Pick<ProductOpt, 'label'> & { displayName?: string | null }) {
+  return p.displayName || productDisplayName(p.label);
 }
 
 export type BrandGroup = { key: string; label: string; repId: string; ids: string[] };
@@ -160,7 +169,20 @@ export type BrandGroup = { key: string; label: string; repId: string; ids: strin
  * a real product (`repId`, valid for productsDetailed): the first SKU by name that has an image,
  * else the first by name.
  */
-export function brandGroups(products: readonly ProductOpt[]): BrandGroup[] {
+export function brandGroups(
+  products: readonly ProductOpt[],
+  detail?: readonly DcrDetailProduct[] | null,
+): BrandGroup[] {
+  // Prefer the server's grouping when the API sends it.
+  if (detail?.length)
+    return detail
+      .map((d) => ({
+        key: d.displayName.toLocaleLowerCase(),
+        label: d.displayName,
+        repId: d.productId,
+        ids: d.productIds,
+      }))
+      .sort((a, b) => byName(a.label, b.label));
   const m = new Map<string, ProductOpt[]>();
   for (const p of products) {
     const key = doctorProductLabel(p).trim().toLocaleLowerCase();

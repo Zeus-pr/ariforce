@@ -789,6 +789,7 @@ function DcrForm({
                       ...(flagged[c.clientId] ? [flagged[c.clientId]!] : []),
                     ]}
                     products={productsQ.data ?? []}
+                    detail={productsQ.detail}
                     onPresented={() => {
                       if (c.outletId) presLog.record(c.outletId);
                       update((x) => ({

@@ -7,7 +7,13 @@ import { Icon } from '@/components/icon';
 import { TextField } from '@/components/text-field';
 import { formatHHmmLabel } from '@/lib/clock12';
 import type { CustomerScope } from '@/lib/dcr/api';
-import { brandGroups, doctorProductLabel, lineValue, type ProductOpt } from '@/lib/dcr/adapter';
+import {
+  brandGroups,
+  doctorProductLabel,
+  lineValue,
+  type DcrDetailProduct,
+  type ProductOpt,
+} from '@/lib/dcr/adapter';
 import { KIND_LABEL, type CallDraft, type PobDraft } from '@/lib/dcr/model';
 import { formatINR } from '@/lib/money';
 import { colors, radius, spacing, touch } from '@/theme';
@@ -27,6 +33,7 @@ export function CallEditor({
   readOnly,
   errors,
   products,
+  detail,
   scopes,
   names,
   onChange,
@@ -38,6 +45,8 @@ export function CallEditor({
   readOnly: boolean;
   errors: string[];
   products: ProductOpt[];
+  /** options.detailProducts (server grouping for the doctor picker), when the API sends it. */
+  detail?: readonly DcrDetailProduct[] | null;
   scopes: CustomerScope[];
   names: Map<string, string>;
   onChange: (p: Partial<CallDraft>) => void;
@@ -84,6 +93,7 @@ export function CallEditor({
           call={call}
           byId={byId}
           products={products}
+          detail={detail}
           readOnly={readOnly}
           error={errors.find(isProd)}
           onChange={onChange}
@@ -132,6 +142,7 @@ function DoctorProducts({
   call,
   byId,
   products,
+  detail,
   readOnly,
   error,
   onChange,
@@ -140,6 +151,7 @@ function DoctorProducts({
   call: CallDraft;
   byId: Map<string, ProductOpt>;
   products: ProductOpt[];
+  detail?: readonly DcrDetailProduct[] | null;
   readOnly: boolean;
   error?: string;
   onChange: (p: Partial<CallDraft>) => void;
@@ -150,7 +162,7 @@ function DoctorProducts({
   const picked = call.productIds.map((id) => byId.get(id) ?? unknownProduct(id));
   // One row per brand label. A SKU already on the call (older drafts) marks its group as picked
   // and is kept as-is; a newly picked group records its representative product.
-  const groups = useMemo(() => brandGroups(products), [products]);
+  const groups = useMemo(() => brandGroups(products, detail), [products, detail]);
   const groupOf = useMemo(() => {
     const m = new Map<string, (typeof groups)[number]>();
     for (const g of groups) for (const id of g.ids) m.set(id, g);
