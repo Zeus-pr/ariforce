@@ -11,6 +11,7 @@ import { ScrollView } from '@/components/scroll';
 import { SkeletonList } from '@/components/skeleton';
 import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
 import { useDeleteDraft, useDraftList, useDcrOptions, useSubmittedHistory } from '@/lib/dcr/api';
+import { REVIEW_LABEL, REVIEW_TONE, counts, reviewOf, useDecisions } from '@/lib/dcr/adapter';
 import { dateLabel, savedLabel, todayIST } from '@/lib/dcr/dates';
 import { saveMessage } from '@/lib/dcr/errors';
 import { BANDS, normaliseWorkTypes } from '@/lib/dcr/model';
@@ -37,6 +38,7 @@ function DcrWorkspace() {
   const historyQ = useSubmittedHistory();
   const optionsQ = useDcrOptions(today);
   const remove = useDeleteDraft();
+  const decisionsQ = useDecisions();
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const workTypeName = useMemo(() => {
@@ -45,19 +47,23 @@ function DcrWorkspace() {
     return map;
   }, [optionsQ.data]);
 
+  const history = useMemo(
+    () =>
+      (historyQ.data?.items ?? [])
+        .filter((d) => d.status === 'submitted' || d.status === 'locked')
+        .map((d) => ({ d, review: reviewOf(d, decisionsQ.data) })),
+    [historyQ.data, decisionsQ.data],
+  );
+  // Rejected reports never count and never block the day: the rep files it again.
   const submittedDays = useMemo(() => {
     const m = new Map<string, string>();
-    for (const d of historyQ.data?.items ?? []) if (d.status === 'submitted') m.set(d.date, d.id);
+    for (const { d, review } of history) if (counts(review)) m.set(d.date, d.id);
     return m;
-  }, [historyQ.data]);
+  }, [history]);
 
   const drafts = useMemo(
     () => (draftsQ.data?.items ?? []).filter((d) => d.status === 'draft'),
     [draftsQ.data],
-  );
-  const history = useMemo(
-    () => (historyQ.data?.items ?? []).filter((d) => d.status === 'submitted'),
-    [historyQ.data],
   );
 
   const refreshing =
@@ -201,7 +207,9 @@ function DcrWorkspace() {
           )}
 
           <AppText variant="small" style={styles.section}>
-            History
+            {historyQ.isPending
+              ? 'History'
+              : `History · ${submittedDays.size} day${submittedDays.size === 1 ? '' : 's'} filed this month`}
           </AppText>
           {historyQ.isPending ? (
             <SkeletonList count={4} />
@@ -211,14 +219,24 @@ function DcrWorkspace() {
             </Card>
           ) : (
             <Card>
-              {history.map((d, i) => (
+              {history.map(({ d, review }, i) => (
                 <ListRow
                   key={d.id}
-                  icon="check-decagram-outline"
-                  tone="green"
+                  icon={
+                    review.status === 'rejected'
+                      ? 'close-octagon-outline'
+                      : 'check-decagram-outline'
+                  }
+                  tone={review.status === 'rejected' ? 'red' : 'green'}
                   title={dateLabel(d.date)}
-                  subtitle={subtitle(d)}
-                  trailing={<Chip label="Submitted" tone="green" />}
+                  subtitle={
+                    review.status === 'rejected'
+                      ? `Rejected: ${review.reason || 'no reason given'} · File this day again`
+                      : subtitle(d)
+                  }
+                  trailing={
+                    <Chip label={REVIEW_LABEL[review.status]} tone={REVIEW_TONE[review.status]} />
+                  }
                   onPress={() => openForm({ id: d.id, date: d.date })}
                   divider={i < history.length - 1}
                 />
