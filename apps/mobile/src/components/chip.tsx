@@ -15,7 +15,14 @@ export function Chip({
 }) {
   const t = tones[tone];
   return (
-    <View style={[styles.chip, center && styles.center, { backgroundColor: t.bg }]}>
+    <View
+      style={[
+        styles.chip,
+        // Default hugs content; only force alignment when asked (list rows centre via parent).
+        center ? styles.center : undefined,
+        { backgroundColor: t.bg },
+      ]}
+    >
       <AppText variant="chip" style={{ color: t.fg }}>
         {label}
       </AppText>
@@ -28,7 +35,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radius.full,
-    alignSelf: 'flex-start',
   },
   center: { alignSelf: 'center' },
 });

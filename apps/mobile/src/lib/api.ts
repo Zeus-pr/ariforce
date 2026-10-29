@@ -26,7 +26,7 @@ type Query = Record<string, string | number | boolean | null | undefined>;
 export async function apiFetch<T>(
   path: string,
   init: {
-    method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     query?: Query;
     body?: unknown;
     headers?: Record<string, string>;

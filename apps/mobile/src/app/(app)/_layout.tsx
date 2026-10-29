@@ -25,6 +25,7 @@ export default function AppLayout() {
       <Stack.Screen name="masters/[kind]/index" />
       <Stack.Screen name="masters/[kind]/[id]" />
       <Stack.Screen name="masters/[kind]/form" />
+      <Stack.Screen name="dcr/form" />
     </Stack>
   );
 }

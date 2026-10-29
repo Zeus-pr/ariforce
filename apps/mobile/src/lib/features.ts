@@ -13,7 +13,7 @@ type Feature = {
 
 /**
  * AriForce features the mobile app links to. Each opens a "Coming soon" screen until it is built
- * (doctors, chemists and stockists are built: see featureHref).
+ * (DCR, doctors, chemists and stockists are built: see featureHref).
  * Titles match the website's navigation.
  */
 export const FEATURES = {
@@ -93,12 +93,15 @@ export type FeatureKey = keyof typeof FEATURES;
 
 export const isFeatureKey = (k: string): k is FeatureKey => Object.hasOwn(FEATURES, k);
 
-const BUILT = ['doctors', 'chemists', 'stockists'] as const;
-type BuiltKey = (typeof BUILT)[number];
-const isBuilt = (k: FeatureKey): k is BuiltKey => (BUILT as readonly string[]).includes(k);
+const MASTER_BUILT = ['doctors', 'chemists', 'stockists'] as const;
+type MasterBuilt = (typeof MASTER_BUILT)[number];
+const isMasterBuilt = (k: FeatureKey): k is MasterBuilt =>
+  (MASTER_BUILT as readonly string[]).includes(k);
 
 /** Link to a feature: its screen when the app has it, else its "Coming soon" screen. */
-export const featureHref = (feature: FeatureKey) =>
-  isBuilt(feature)
-    ? ({ pathname: '/masters/[kind]', params: { kind: feature } } as const)
-    : ({ pathname: '/coming-soon/[feature]', params: { feature } } as const);
+export const featureHref = (feature: FeatureKey) => {
+  if (feature === 'dcr') return '/dcr' as const;
+  if (isMasterBuilt(feature))
+    return { pathname: '/masters/[kind]', params: { kind: feature } } as const;
+  return { pathname: '/coming-soon/[feature]', params: { feature } } as const;
+};
