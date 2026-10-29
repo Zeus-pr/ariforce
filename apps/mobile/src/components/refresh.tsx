@@ -6,13 +6,13 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
-  withTiming,
 } from 'react-native-reanimated';
 import { PULSE } from '@/components/skeleton';
 import { colors, radius, spacing } from '@/theme';
 
 const TRIGGER = 80; // dp of pull that refreshes
 const MIN_MS = 600; // keep the bar long enough to be seen
+const MAX_MS = 8000; // hide it even if the refetch never settles
 
 /**
  * Pull-to-refresh with no spinner at all. Android's SwipeRefreshLayout always draws its disc and
@@ -39,6 +39,9 @@ export function PullToRefresh({
   const atTop = useSharedValue(true);
   const pull = useSharedValue(0);
   const [busy, setBusy] = useState(false);
+  /** The pull bar is mounted only while a pull is in progress (pull > 0); never at rest. */
+  const [pulling, setPulling] = useState(false);
+  const shown = useSharedValue(false);
   const busyRef = useRef(false);
 
   const run = useCallback(async () => {
@@ -47,7 +50,8 @@ export function PullToRefresh({
     setBusy(true);
     const t0 = Date.now();
     try {
-      await onRefresh();
+      // Never let a hung request leave the bar up.
+      await Promise.race([onRefresh(), new Promise((res) => setTimeout(res, MAX_MS))]);
     } catch {
       // the screen shows its own error state
     }
@@ -65,22 +69,27 @@ export function PullToRefresh({
     .failOffsetX([-24, 24])
     .onUpdate((e) => {
       pull.value = atTop.value ? Math.max(0, Math.min(e.translationY, TRIGGER * 1.5)) : 0;
+      if (pull.value > 0 && !shown.value) {
+        shown.value = true;
+        runOnJS(setPulling)(true);
+      }
     })
     .onEnd(() => {
       if (pull.value >= TRIGGER) runOnJS(run)();
-      pull.value = withTiming(0, { duration: 180 });
     })
     .onFinalize(() => {
-      if (pull.value > 0) pull.value = withTiming(0, { duration: 180 });
+      pull.value = 0;
+      if (shown.value) {
+        shown.value = false;
+        runOnJS(setPulling)(false);
+      }
     });
   // Let the scroll view keep scrolling while the pan watches.
   const scroll = Gesture.Native();
   const both = Gesture.Simultaneous(pan, scroll);
 
-  // Idle = invisible by default (opacity 0 in the base style), so nothing shows if the animated
-  // style hasn't applied yet; growth is a scaleX, not a % width.
+  // Growth while pulling (scaleX); the element itself only exists while pulling.
   const pullBar = useAnimatedStyle(() => ({
-    opacity: pull.value > 0 ? 1 : 0,
     transform: [{ scaleX: Math.min(1, pull.value / TRIGGER) }],
   }));
 
@@ -104,9 +113,9 @@ export function PullToRefresh({
             accessibilityLabel="Refreshing"
             style={[styles.bar, styles.full, reduced ? null : PULSE]}
           />
-        ) : (
-          <Animated.View style={[styles.bar, styles.full, styles.idle, pullBar]} />
-        )}
+        ) : pulling ? (
+          <Animated.View style={[styles.bar, styles.full, pullBar]} />
+        ) : null}
       </View>
     </View>
   );
@@ -123,5 +132,4 @@ const styles = StyleSheet.create({
   },
   bar: { height: 4, borderRadius: radius.full, backgroundColor: colors.separator },
   full: { width: '100%' },
-  idle: { opacity: 0 },
 });
