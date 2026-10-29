@@ -28,7 +28,7 @@ import {
   workTypes,
   type Tx,
 } from '@ariforce/db';
-import { and, asc, eq, gte, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type * as z from 'zod';
 import type { Principal } from '../auth/principal';
@@ -411,7 +411,14 @@ export class ExpensesService implements OnModuleInit {
       const [d] = await tx
         .select({ date: dcrs.date })
         .from(dcrs)
-        .where(and(eq(dcrs.id, l.dcrId), eq(dcrs.userId, p.userId), isNull(dcrs.deletedAt)));
+        .where(
+          and(
+            eq(dcrs.id, l.dcrId),
+            eq(dcrs.userId, p.userId),
+            isNull(dcrs.deletedAt),
+            ne(dcrs.status, 'rejected'),
+          ),
+        );
       if (!d) throw err(422, 'VALIDATION', 'dcrId must be your own DCR', { field: 'dcrId' });
       if (d.date !== l.date)
         throw err(422, 'VALIDATION', 'dcrId must be the DCR for the same date', { field: 'dcrId' });

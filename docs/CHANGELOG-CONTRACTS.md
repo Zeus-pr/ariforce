@@ -10,6 +10,31 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## feat/dcr-pob-review (2026-10-29): POB at PTS, doctor presentation, manager review, IST lock
+
+Needs migrations 0048 + 0049 (not applied yet).
+
+- **Breaking**: `PobLine.value` is now priced at `products.pts` (was PTR). POB on a doctor call is
+  rejected: 422 `VALIDATION`, `details.reason = POB_NOT_ALLOWED_FOR_DOCTOR`, `details.callIndexes/callIds`.
+- **Breaking**: on submit, every doctor call with non-empty `productsDetailed` needs
+  `DcrCall.presentationOpenedAt` (ISO, nullable; accepted by PUT /v1/dcrs/draft and PUT /v1/dcrs).
+  Otherwise 422 `VALIDATION`, `details.reason = PRESENTATION_NOT_OPENED`, `details.callIndexes/callIds`.
+- **Breaking**: `DcrCall.calledAt` is readOnly: set by the server when the call (clientId) is first
+  saved, kept on re-save; client values are ignored.
+- **Breaking**: day lock is 00:00 Asia/Kolkata on the day after the DCR date (was company tz + 24 h).
+  `companies.dcr_lock_after_hours` no longer applies to DCRs (also the missed-DCR exception deadline).
+- **Breaking (widened enum)**: `Dcr.status` adds `approved`, `rejected`. New `Dcr.reviewStatus`
+  (pending|approved|rejected|null), `approvedAt`, `approvedBy`, `rejectedAt`, `rejectedBy`, `rejectionReason`.
+- **Breaking**: GET /v1/dcrs: team scope only for callers with `dcr:review` (and not `mine=true`);
+  everyone else sees only their own DCRs. `status` filter accepts draft|submitted|locked|approved|rejected.
+- New POST /v1/dcrs/{id}/decision `{decision: approve|reject, comment?}` (comment 1-500 required to
+  reject, stored as `rejectionReason`). 403 own DCR, 404 outside team, 409 `NOT_PENDING_REVIEW`.
+- New permission `dcr:review` (ABM..director, system_admin).
+- Rejected reports count nowhere (no `DAY_ALREADY_SUBMITTED`, not `options.submitted`), are listed in
+  `options.rejected`, and reopen the day for 48 h for the rep.
+- `DcrOptions` adds `rejected[]`, `unlockRequest {id,status,requestedAt}|null`, `products[]`
+  (id, divisionId, code, name, brand, composition, packSize, form, mrp, pts, isSample, imageFileKey, imageUrl).
+
 ## Breaking changes
 
 | Feature (commit)                                               | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |

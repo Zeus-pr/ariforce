@@ -1,7 +1,8 @@
 import * as z from 'zod';
-import { DateOnly, Id } from './common';
+import { DateOnly, Id, Timestamp } from './common';
 import { DcrBand, DcrDetails, DcrSfcRouteChoice, DcrSfcSource } from './dcr-parts';
 import { Dcr, DcrCallInput } from './field';
+import { Product } from './products';
 import { SfcCategory, SfcTravelMode } from './sfc';
 
 export * from './dcr-parts';
@@ -23,6 +24,24 @@ export const DcrWorkTypeOption = z
       .meta({ description: 'Required details.kind on submit; null = no details' }),
   })
   .meta({ id: 'DcrWorkTypeOption' });
+/** Product for the DCR pickers (detailing, samples, POB). POB is priced at pts. */
+export const DcrProductOption = Product.pick({
+  id: true,
+  divisionId: true,
+  code: true,
+  name: true,
+  brand: true,
+  composition: true,
+  packSize: true,
+  form: true,
+  mrp: true,
+  pts: true,
+  isSample: true,
+  imageFileKey: true,
+  imageUrl: true,
+}).meta({ id: 'DcrProductOption' });
+export type DcrProductOption = z.infer<typeof DcrProductOption>;
+
 export const DcrOptions = z
   .object({
     date: DateOnly,
@@ -38,6 +57,25 @@ export const DcrOptions = z
       .array(Dcr)
       .default([])
       .meta({ description: 'Your drafts for the date, newest first (several allowed per day)' }),
+    rejected: z.array(Dcr).default([]).meta({
+      description:
+        'Your manager-rejected reports for the date, newest first (history; rejectionReason set)',
+    }),
+    unlockRequest: z
+      .object({
+        id: Id,
+        status: z.enum(['pending', 'approved', 'rejected', 'cancelled']),
+        requestedAt: Timestamp,
+      })
+      .nullable()
+      .default(null)
+      .meta({
+        description:
+          "Your latest dcr_unlock (correction) request for this date, or null; drives the 'Unlock requested' state",
+      }),
+    products: z.array(DcrProductOption).default([]).meta({
+      description: 'Active products for the call pickers, by name (imageUrl presigned, >= 30 min)',
+    }),
   })
   .meta({ id: 'DcrOptions' });
 export type DcrOptions = z.infer<typeof DcrOptions>;

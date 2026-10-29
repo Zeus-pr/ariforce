@@ -71,6 +71,7 @@ import {
   WorkTypeUpdate,
 } from './schemas/products';
 import {
+  DcrDecision,
   Approval,
   ApprovalDecision,
   ApprovalListQuery,
@@ -1015,8 +1016,27 @@ function buildDocument(): OpenApiDocument {
               'ALREADY_SUBMITTED (other key), DAY_ALREADY_SUBMITTED (another report of the date is submitted; details.existingId), IDEMPOTENCY_CONFLICT (key used on another DCR), VERSION_CONFLICT, DAY_LOCKED',
             ),
             '422': err(
-              'VALIDATION, SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND',
+              'VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND',
             ),
+          },
+        }),
+      },
+      '/v1/dcrs/{id}/decision': {
+        post: op({
+          tags: ['DCR'],
+          operationId: 'decideDcr',
+          summary:
+            'Approve or reject a submitted DCR (dcr:review); reject needs a comment (stored as rejectionReason)',
+          description:
+            'Scope as approvals: the DCR owner must be in your team; never your own. approve sets approvedAt/approvedBy. reject sets status rejected, rejectedAt, rejectedBy, rejectionReason; the row is kept as history, excluded from every count, and the rep may file and submit a new report for that day for 48 h, even past the lock. The queue is GET /v1/dcrs?status=submitted. Audited (dcr.approve / dcr.reject).',
+          requestParams: { path: IdParam },
+          requestBody: json(DcrDecision),
+          responses: {
+            '200': { description: 'Decided', ...json(Dcr) },
+            '403': err('FORBIDDEN (your own DCR, or no dcr:review)'),
+            '404': err('Not found (or outside your team)'),
+            '409': err('NOT_PENDING_REVIEW (not submitted; details.status)'),
+            '422': err('VALIDATION (comment 1-500 chars required to reject)'),
           },
         }),
       },

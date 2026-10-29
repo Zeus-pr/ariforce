@@ -1092,6 +1092,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/dcrs/{id}/decision': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Approve or reject a submitted DCR (dcr:review); reject needs a comment (stored as rejectionReason)
+     * @description Scope as approvals: the DCR owner must be in your team; never your own. approve sets approvedAt/approvedBy. reject sets status rejected, rejectedAt, rejectedBy, rejectionReason; the row is kept as history, excluded from every count, and the rep may file and submit a new report for that day for 48 h, even past the lock. The queue is GET /v1/dcrs?status=submitted. Audited (dcr.approve / dcr.reject).
+     */
+    post: operations['decideDcr'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/dcrs/{id}': {
     parameters: {
       query?: never;
@@ -2934,11 +2954,13 @@ export interface components {
       pob: components['schemas']['PobLine'][];
       rcpa?: components['schemas']['RcpaLine'][];
       remarks: string | null;
+      /** @description See DcrCall.presentationOpenedAt; omit or null on drafts */
+      presentationOpenedAt?: string | null;
       /**
        * Format: date-time
-       * @description ISO-8601 timestamp (UTC)
+       * @description Ignored: the server sets calledAt when the call is first saved
        */
-      calledAt: string;
+      calledAt?: string;
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -2966,7 +2988,7 @@ export interface components {
       productId: string;
       quantity: number;
     };
-    /** @description Personal order booking line (chemist and stockist calls only, #40) */
+    /** @description Personal order booking line: chemist and stockist calls only (doctor calls: 422 VALIDATION, details.reason POB_NOT_ALLOWED_FOR_DOCTOR); one line per product per call */
     PobLine: {
       /**
        * Format: uuid
@@ -2976,7 +2998,7 @@ export interface components {
       productId: string;
       quantity: number;
       stockistId?: string | null;
-      /** @description INR = quantity × product PTR, computed by the server (null when the product has no PTR). Ignored on input. */
+      /** @description INR = quantity × product PTS (price to stockist), computed by the server when the line is saved and kept as saved (null when the product has no PTS). Ignored on input. */
       value?: number | null;
     };
     /** @description Retail chemist prescription audit line (chemist calls, #40) */
@@ -3136,6 +3158,12 @@ export interface components {
     };
     DcrSubmit: {
       version: number;
+    };
+    DcrDecision: {
+      /** @enum {string} */
+      decision: 'approve' | 'reject';
+      /** @description Required (1-500 chars) to reject; stored as Dcr.rejectionReason */
+      comment?: string;
     };
     ManagerAssign: {
       /**
@@ -3726,7 +3754,8 @@ export interface components {
       | 'leave:approve'
       | 'products:prices'
       | 'sfc:read'
-      | 'sfc:write';
+      | 'sfc:write'
+      | 'dcr:review';
     RoleList: {
       items: components['schemas']['Role'][];
     };
@@ -5059,18 +5088,36 @@ export interface components {
       /** @description Required when worked differs from the approved TP (#22) */
       deviationReason: string | null;
       /**
-       * @description Locked after the day-lock cut-off (#23)
+       * @description draft/submitted show 'locked' after the day-lock cut-off (#23). approved/rejected (manager review) always show as such.
        * @enum {string}
        */
-      status: 'draft' | 'submitted' | 'locked';
+      status: 'draft' | 'submitted' | 'locked' | 'approved' | 'rejected';
+      /**
+       * @description Manager review: pending = submitted, not reviewed yet; null for drafts
+       * @default null
+       */
+      reviewStatus: ('pending' | 'approved' | 'rejected') | null;
+      /** @default null */
+      approvedAt: string | null;
+      /** @default null */
+      approvedBy: string | null;
+      /** @default null */
+      rejectedAt: string | null;
+      /** @default null */
+      rejectedBy: string | null;
+      /**
+       * @description Why the manager rejected it. A rejected DCR is kept for history, counts nowhere, and reopens its day for 48 h (unlockedUntil).
+       * @default null
+       */
+      rejectionReason: string | null;
       calls: components['schemas']['DcrCall'][];
       submittedAt: string | null;
       /**
        * Format: date-time
-       * @description Day-lock cut-off: end of the day + companies.dcr_lock_after_hours (company time zone)
+       * @description Day-lock cut-off: 00:00 Asia/Kolkata on the next day (submit by 23:59 IST the same day)
        */
       lockAt: string;
-      /** @description Set while an approved correction request keeps a locked day editable (48 h) */
+      /** @description Set while an approved correction request or a manager rejection keeps a locked day editable (48 h from the decision) */
       unlockedUntil: string | null;
       /**
        * @description Field-day band (from the work type); null for non-field days
@@ -5117,10 +5164,15 @@ export interface components {
       rcpa: components['schemas']['RcpaLineOutput'][];
       remarks: string | null;
       /**
-       * Format: date-time
-       * @description ISO-8601 timestamp (UTC)
+       * @description When the product presentation was shown to the doctor (client time). Drafts may omit it; submit requires it on every doctor call with productsDetailed (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED).
+       * @default null
        */
-      calledAt: string;
+      presentationOpenedAt: string | null;
+      /**
+       * Format: date-time
+       * @description Server time when the call (clientId) was first saved to a DCR; never changes on re-save. Client values are ignored.
+       */
+      readonly calledAt: string;
     };
     DcrSfcRoute: {
       /**
@@ -5260,6 +5312,35 @@ export interface components {
        * @default []
        */
       drafts: components['schemas']['Dcr'][];
+      /**
+       * @description Your manager-rejected reports for the date, newest first (history; rejectionReason set)
+       * @default []
+       */
+      rejected: components['schemas']['Dcr'][];
+      /**
+       * @description Your latest dcr_unlock (correction) request for this date, or null; drives the 'Unlock requested' state
+       * @default null
+       */
+      unlockRequest: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        /** @enum {string} */
+        status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+        /**
+         * Format: date-time
+         * @description ISO-8601 timestamp (UTC)
+         */
+        requestedAt: string;
+      } | null;
+      /**
+       * @description Active products for the call pickers, by name (imageUrl presigned, >= 30 min)
+       * @default []
+       */
+      products: components['schemas']['DcrProductOption'][];
     };
     DcrWorkTypeOption: {
       /**
@@ -5278,6 +5359,44 @@ export interface components {
       usesSfc: boolean;
       /** @description Required details.kind on submit; null = no details */
       detailsKind: ('meeting' | 'training' | 'office' | 'leave') | null;
+    };
+    DcrProductOption: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      divisionId: string;
+      /** @description Company SKU code, unique per company */
+      code: string;
+      name: string;
+      brand: string | null;
+      composition: string | null;
+      /** @example 10 x 10 tablets */
+      packSize: string | null;
+      form: ('tablet' | 'capsule' | 'syrup' | 'injection' | 'cream' | 'drops' | 'other') | null;
+      /** @description MRP in INR */
+      mrp: number | null;
+      /** @description Price to stockist, INR */
+      pts: number | null;
+      /** @description Can be given as a physician sample */
+      isSample: boolean;
+      /**
+       * @description R2 key of the product picture (upload purpose product_image); null = none
+       * @default null
+       */
+      imageFileKey: string | null;
+      /**
+       * @description Presigned GET for the picture (valid >= 30 min, <= 60 min); null if none or storage is off. Re-fetch the product for a fresh URL.
+       * @default null
+       */
+      imageUrl: string | null;
     };
     DcrHqOptionList: {
       items: components['schemas']['DcrHqOption'][];
@@ -7043,7 +7162,7 @@ export interface components {
       productId: string;
       quantity: number;
     };
-    /** @description Personal order booking line (chemist and stockist calls only, #40) */
+    /** @description Personal order booking line: chemist and stockist calls only (doctor calls: 422 VALIDATION, details.reason POB_NOT_ALLOWED_FOR_DOCTOR); one line per product per call */
     PobLineOutput: {
       /**
        * Format: uuid
@@ -7053,7 +7172,7 @@ export interface components {
       productId: string;
       quantity: number;
       stockistId?: string | null;
-      /** @description INR = quantity × product PTR, computed by the server (null when the product has no PTR). Ignored on input. */
+      /** @description INR = quantity × product PTS (price to stockist), computed by the server when the line is saved and kept as saved (null when the product has no PTS). Ignored on input. */
       value?: number | null;
     };
     /** @description Retail chemist prescription audit line (chemist calls, #40) */
@@ -11073,8 +11192,8 @@ export interface operations {
         userId?: string;
         /** @description Territory incl. descendants */
         territoryId?: string;
-        status?: 'draft' | 'submitted' | 'locked';
-        /** @description true: only the caller's own DCRs (ignores userId) */
+        status?: 'draft' | 'submitted' | 'locked' | 'approved' | 'rejected';
+        /** @description true: only the caller's own DCRs (ignores userId). Otherwise callers with dcr:review see their team (approvals hierarchy, incl. themselves); everyone else sees only their own */
         mine?: 'true' | 'false';
       };
       header?: never;
@@ -11598,7 +11717,79 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description VALIDATION, SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND */
+      /** @description VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  decideDcr: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DcrDecision'];
+      };
+    };
+    responses: {
+      /** @description Decided */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Dcr'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (your own DCR, or no dcr:review) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found (or outside your team) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description NOT_PENDING_REVIEW (not submitted; details.status) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (comment 1-500 chars required to reject) */
       422: {
         headers: {
           [name: string]: unknown;

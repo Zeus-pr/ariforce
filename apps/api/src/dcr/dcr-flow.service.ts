@@ -7,15 +7,18 @@ import {
   type Dcr,
   type DcrBand,
   type DcrDraftPut,
+  type DcrProductOption,
   type DcrSfcSnapshot,
   type SfcCategory,
 } from '@ariforce/contracts';
 import {
   companies,
   dcrCalls,
+  approvalRequests,
   dcrSfcRoutes,
   dcrs,
   leaveRequests,
+  products,
   sfcRoutes,
   territories,
   users,
@@ -44,9 +47,11 @@ import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { companySettings, localDate } from '../field/field.util';
 import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leave.util';
+import { StorageService } from '../files/storage.service';
 import {
   SUBMITTED_STATUSES,
   draftsNewestFirst,
+  rejectedNewestFirst,
   isDaySubmittedViolation,
   resolveDraftTarget,
   submitConflict,
@@ -96,7 +101,59 @@ export class DcrFlowService {
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
     private readonly dcr: DcrService,
+    private readonly storage: StorageService,
   ) {}
+
+  /** The caller's latest dcr_unlock (dcr_correction) request for the date, or null. */
+  private async unlockRequest(tx: Tx, p: Principal, date: string) {
+    const [r] = await tx
+      .select({
+        id: approvalRequests.id,
+        status: approvalRequests.state,
+        at: approvalRequests.createdAt,
+      })
+      .from(approvalRequests)
+      .where(
+        and(
+          eq(approvalRequests.entityType, 'dcr_correction'),
+          eq(approvalRequests.requestedBy, p.userId),
+          sql`${approvalRequests.payload}->>'date' = ${date}`,
+        ),
+      )
+      .orderBy(desc(approvalRequests.createdAt), desc(approvalRequests.id))
+      .limit(1);
+    return r ? { id: r.id, status: r.status, requestedAt: r.at.toISOString() } : null;
+  }
+
+  /** Active products for the DCR pickers, with the presigned image URL (memoised local signing). */
+  private async productOptions(tx: Tx, p: Principal): Promise<DcrProductOption[]> {
+    const rows = await tx
+      .select({
+        id: products.id,
+        divisionId: products.divisionId,
+        code: products.code,
+        name: products.name,
+        brand: products.brand,
+        composition: products.composition,
+        packSize: products.packSize,
+        form: products.form,
+        mrp: products.mrp,
+        pts: products.pts,
+        isSample: products.isSample,
+        imageFileKey: products.imageFileKey,
+      })
+      .from(products)
+      .where(and(isNull(products.deletedAt), eq(products.active, true)))
+      .orderBy(asc(products.name), asc(products.id));
+    return Promise.all(
+      rows.map(async (r) => ({
+        ...r,
+        mrp: num(r.mrp),
+        pts: num(r.pts),
+        imageUrl: r.imageFileKey ? await this.storage.imageUrl(p.companyId, r.imageFileKey) : null,
+      })),
+    );
+  }
 
   private async workType(tx: Tx, id: string) {
     const [wt] = await tx
@@ -174,12 +231,16 @@ export class DcrFlowService {
         .select()
         .from(dcrs)
         .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, date), isNull(dcrs.deletedAt)));
-      // Several drafts per day, at most one submitted report (0045).
+      // Several drafts per day, at most one submitted report (0045); rejected ones are history.
       const sub = submittedOf(rows);
-      const ordered = [...(sub ? [sub] : []), ...draftsNewestFirst(rows)];
+      const draftRows = draftsNewestFirst(rows);
+      const rejectedRows = rejectedNewestFirst(rows);
+      const ordered = [...(sub ? [sub] : []), ...draftRows, ...rejectedRows];
       const dtos = ordered.length ? await this.dcr.toDto(tx, s, ordered) : [];
       const submitted = sub ? dtos[0]! : null;
-      const drafts = sub ? dtos.slice(1) : dtos;
+      const rest = sub ? dtos.slice(1) : dtos;
+      const drafts = rest.slice(0, draftRows.length);
+      const rejected = rest.slice(draftRows.length);
       return {
         date,
         workTypes: wts.map((w) => ({
@@ -194,6 +255,9 @@ export class DcrFlowService {
         dcr: submitted ?? drafts[0] ?? null,
         submitted,
         drafts,
+        rejected,
+        unlockRequest: await this.unlockRequest(tx, p, date),
+        products: await this.productOptions(tx, p),
       };
     });
   }
@@ -489,7 +553,7 @@ export class DcrFlowService {
       const hqs = await this.resolveHqs(tx, p, b.territoryIds);
       await this.checkWorkWith(tx, b.workWithUserIds);
       await this.checkChoices(tx, p, b.sfcRoutes ?? [], hqs, band);
-      const { ptr } = await this.dcr.validateCalls(tx, p, b, cur?.id);
+      const { pts } = await this.dcr.validateCalls(tx, p, b, cur?.id);
       const plan = await this.dcr.plan(tx, p.userId, b.date);
 
       const vals = {
@@ -516,7 +580,7 @@ export class DcrFlowService {
             })
             .returning();
       const dcrId = row!.id;
-      await this.dcr.writeCalls(tx, p, dcrId, b.date, b.calls, ptr);
+      await this.dcr.writeCalls(tx, p, dcrId, b.date, b.calls, pts);
       await this.writeChoices(
         tx,
         p,
@@ -550,6 +614,16 @@ export class DcrFlowService {
         if (cur.submitIdempotencyKey === key) return (await this.dcr.toDto(tx, s, [cur]))[0]!;
         throw err(409, 'ALREADY_SUBMITTED', 'Already submitted; request a correction', { id });
       }
+      // Reviewed reports are read-only: approved stays, rejected is history (file a new draft).
+      if (cur.status !== 'draft')
+        throw err(
+          409,
+          'ALREADY_SUBMITTED',
+          cur.status === 'rejected'
+            ? 'Rejected DCRs are read-only; save a new draft for the day'
+            : 'Approved DCRs are read-only',
+          { id, status: cur.status },
+        );
       const [reused] = await tx
         .select({ id: dcrs.id })
         .from(dcrs)
@@ -599,6 +673,7 @@ export class DcrFlowService {
         throw err(422, 'VALIDATION', 'Field work needs at least one call', { field: 'calls' });
       if (!field && dto.calls.length)
         throw err(422, 'VALIDATION', 'Calls need a field work type', { field: 'calls' });
+      this.dcr.assertPresentations(dto.calls);
       const hqs = await this.resolveHqs(tx, p, cur.territoryIds);
       await this.checkWorkWith(tx, cur.workWithUserIds);
       await this.details(tx, p, wt, cur);

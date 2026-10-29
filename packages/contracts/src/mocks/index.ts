@@ -54,6 +54,7 @@ import {
   DcrDraftPut,
   DcrOptions,
   DcrOptionsQuery,
+  DcrDecision,
   DcrSfcMatch,
   DcrSfcMatchQuery,
   DcrSubmit,
@@ -613,7 +614,17 @@ function fieldHandlers(baseUrl: string) {
   // Multi-draft: several drafts per user and day, at most one submitted report.
   const myDay = (date: string) =>
     dcrs.filter((x) => x.date === date && x.userId === fx.me.id && !x.deletedAt);
-  const submittedOf = (date: string) => myDay(date).find((x) => x.status !== 'draft');
+  const submittedOf = (date: string) =>
+    myDay(date).find((x) => x.status !== 'draft' && x.status !== 'rejected');
+  const rejectedOf = (date: string) =>
+    myDay(date)
+      .filter((x) => x.status === 'rejected')
+      .sort((a, b) => (b.rejectedAt ?? '').localeCompare(a.rejectedAt ?? ''));
+  const productOptions = () =>
+    fx.products
+      .filter((p) => p.active && !p.deletedAt)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((p) => ({ ...p, imageFileKey: p.imageFileKey ?? null, imageUrl: p.imageUrl ?? null }));
   const draftsOf = (date: string) =>
     myDay(date)
       .filter((x) => x.status === 'draft')
@@ -642,6 +653,15 @@ function fieldHandlers(baseUrl: string) {
           dcr: d ? withLock(d) : null,
           submitted: sub ? withLock(sub) : null,
           drafts: drafts.map(withLock),
+          rejected: rejectedOf(q.data.date).map(withLock),
+          unlockRequest: [...corrections].some(([, day]) => day === q.data.date)
+            ? {
+                id: [...corrections].filter(([, day]) => day === q.data.date).at(-1)![0],
+                status: (unlocked.get(q.data.date) ?? 0) > Date.now() ? 'approved' : 'pending',
+                requestedAt: serverTime(),
+              }
+            : null,
+          products: productOptions(),
         }),
       );
     }),
@@ -751,6 +771,12 @@ function fieldHandlers(baseUrl: string) {
           workWithUserIds: [],
           sfcRoutes: [],
           submittedBy: null,
+          reviewStatus: null,
+          approvedAt: null,
+          approvedBy: null,
+          rejectedAt: null,
+          rejectedBy: null,
+          rejectionReason: null,
         };
         dcrs.push(d);
       } else d.version += 1;
@@ -784,8 +810,24 @@ function fieldHandlers(baseUrl: string) {
         return submitKeys.get(d.id) === key
           ? HttpResponse.json(Dcr.parse(withLock(d)))
           : dcrError(409, 'ALREADY_SUBMITTED', 'Already submitted');
+      if (d.status !== 'draft')
+        return dcrError(409, 'ALREADY_SUBMITTED', 'Reviewed DCRs are read-only', {
+          id: d.id,
+          status: d.status,
+        });
       if (b.data.version !== d.version) return dcrError(409, 'VERSION_CONFLICT', 'Stale version');
       if (isLocked(d.date)) return dcrError(409, 'DAY_LOCKED', 'Day locked');
+      const noPres = d.calls.flatMap((c, i) =>
+        c.outletKind === 'doctor' && c.productsDetailed.length && !c.presentationOpenedAt
+          ? [{ i, id: c.id }]
+          : [],
+      );
+      if (noPres.length)
+        return validation('Open the presentation on every doctor call with products detailed', {
+          reason: 'PRESENTATION_NOT_OPENED',
+          callIndexes: noPres.map((x) => x.i),
+          callIds: noPres.map((x) => x.id),
+        });
       const other = submittedOf(d.date);
       if (other)
         return dcrError(409, 'DAY_ALREADY_SUBMITTED', 'This day already has a submitted report', {
@@ -891,13 +933,11 @@ function fieldHandlers(baseUrl: string) {
     submissions: [],
   });
 
-  /** Day lock (#23): end of the IST day + dcrLockAfterHours; unlocked 48 h after an approved correction. */
+  /** Day lock: 00:00 IST the next day; unlocked 48 h after an approved correction or a rejection. */
   const corrections = new Map<string, string>();
   const unlocked = new Map<string, number>();
   const lockAt = (date: string) =>
-    new Date(
-      Date.parse(`${date}T00:00:00+05:30`) + 86_400_000 + fx.dcrLockAfterHours * 36e5,
-    ).toISOString();
+    new Date(Date.parse(`${date}T00:00:00+05:30`) + 86_400_000).toISOString();
   const isLocked = (date: string) =>
     Date.now() > Date.parse(lockAt(date)) && (unlocked.get(date) ?? 0) < Date.now();
   const withLock = (d: Dcr): Dcr => ({
@@ -907,8 +947,55 @@ function fieldHandlers(baseUrl: string) {
       (unlocked.get(d.date) ?? 0) > Date.now()
         ? new Date(unlocked.get(d.date)!).toISOString()
         : null,
-    status: isLocked(d.date) ? 'locked' : d.status === 'locked' ? 'submitted' : d.status,
+    status:
+      d.status === 'approved' || d.status === 'rejected'
+        ? d.status
+        : isLocked(d.date)
+          ? 'locked'
+          : d.status === 'locked'
+            ? 'submitted'
+            : d.status,
+    reviewStatus:
+      d.status === 'approved' || d.status === 'rejected'
+        ? d.status
+        : d.status === 'draft'
+          ? null
+          : 'pending',
   });
+  /** Manager review (dcr:review): the mock reviewer is fx.me reviewing other users' DCRs. */
+  const reviewHandlers = () => [
+    http.post(`${baseUrl}/v1/dcrs/:id/decision`, async ({ params, request }) => {
+      const b = DcrDecision.safeParse(await request.json());
+      if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
+      const d = dcrs.find((x) => x.id === params.id && !x.deletedAt);
+      if (!d) return notFound();
+      if (d.userId === fx.me.id)
+        return dcrError(403, 'FORBIDDEN', 'You cannot review your own DCR');
+      if (d.status !== 'submitted')
+        return dcrError(409, 'NOT_PENDING_REVIEW', 'Only submitted DCRs can be reviewed', {
+          id: d.id,
+          status: d.status,
+        });
+      const at = serverTime();
+      if (b.data.decision === 'reject') {
+        Object.assign(d, {
+          status: 'rejected',
+          rejectedAt: at,
+          rejectedBy: fx.me.id,
+          rejectionReason: b.data.comment,
+          updatedAt: at,
+        });
+        unlocked.set(d.date, Date.parse(at) + 48 * 36e5);
+      } else
+        Object.assign(d, {
+          status: 'approved',
+          approvedAt: at,
+          approvedBy: fx.me.id,
+          updatedAt: at,
+        });
+      return HttpResponse.json(Dcr.parse(withLock(d)));
+    }),
+  ];
 
   return [
     http.get(`${baseUrl}/v1/divisions`, ({ request }) =>
@@ -1281,6 +1368,7 @@ function fieldHandlers(baseUrl: string) {
         .slice(0, 20);
       return HttpResponse.json({ items });
     }),
+    ...reviewHandlers(),
     ...dcrFlowHandlers(),
     http.get(`${baseUrl}/v1/dcrs/:id`, ({ params }) => {
       const d = dcrs.find((x) => x.id === params.id);
@@ -1339,12 +1427,21 @@ function fieldHandlers(baseUrl: string) {
           duplicatePob,
           duplicateRcpa,
         });
-      const ptr = (id: string) => fx.products.find((p) => p.id === id)?.ptr ?? null;
+      const doctorPob = b.data.calls.flatMap((c, i) =>
+        c.outletKind === 'doctor' && c.pob.length ? [{ i, id: c.clientId }] : [],
+      );
+      if (doctorPob.length)
+        return validation('POB is not allowed on doctor calls', {
+          reason: 'POB_NOT_ALLOWED_FOR_DOCTOR',
+          callIndexes: doctorPob.map((x) => x.i),
+          callIds: doctorPob.map((x) => x.id),
+        });
+      const pts = (id: string) => fx.products.find((p) => p.id === id)?.pts ?? null;
       const calls = b.data.calls.map(({ clientId, ...c }) => ({
         ...c,
         id: clientId,
         pob: c.pob.map((l) => {
-          const r = ptr(l.productId);
+          const r = pts(l.productId);
           return { ...l, value: r == null ? null : Math.round(l.quantity * r * 100) / 100 };
         }),
       }));
@@ -1368,6 +1465,12 @@ function fieldHandlers(baseUrl: string) {
           workWithUserIds: [],
           sfcRoutes: [],
           submittedBy: null,
+          reviewStatus: null,
+          approvedAt: null,
+          approvedBy: null,
+          rejectedAt: null,
+          rejectedBy: null,
+          rejectionReason: null,
         };
         dcrs.push(d);
       } else d.version += 1;

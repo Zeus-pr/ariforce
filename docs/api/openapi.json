@@ -6759,7 +6759,9 @@
               "enum": [
                 "draft",
                 "submitted",
-                "locked"
+                "locked",
+                "approved",
+                "rejected"
               ]
             }
           },
@@ -6767,14 +6769,14 @@
             "in": "query",
             "name": "mine",
             "schema": {
-              "description": "true: only the caller's own DCRs (ignores userId)",
+              "description": "true: only the caller's own DCRs (ignores userId). Otherwise callers with dcr:review see their team (approvals hierarchy, incl. themselves); everyone else sees only their own",
               "type": "string",
               "enum": [
                 "true",
                 "false"
               ]
             },
-            "description": "true: only the caller's own DCRs (ignores userId)"
+            "description": "true: only the caller's own DCRs (ignores userId). Otherwise callers with dcr:review see their team (approvals hierarchy, incl. themselves); everyone else sees only their own"
           }
         ],
         "responses": {
@@ -7498,7 +7500,108 @@
             }
           },
           "422": {
-            "description": "VALIDATION, SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND",
+            "description": "VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/dcrs/{id}/decision": {
+      "post": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "DCR"
+        ],
+        "operationId": "decideDcr",
+        "summary": "Approve or reject a submitted DCR (dcr:review); reject needs a comment (stored as rejectionReason)",
+        "description": "Scope as approvals: the DCR owner must be in your team; never your own. approve sets approvedAt/approvedBy. reject sets status rejected, rejectedAt, rejectedBy, rejectionReason; the row is kept as history, excluded from every count, and the rep may file and submit a new report for that day for 48 h, even past the lock. The queue is GET /v1/dcrs?status=submitted. Audited (dcr.approve / dcr.reject).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DcrDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Decided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dcr"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN (your own DCR, or no dcr:review)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (or outside your team)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "NOT_PENDING_REVIEW (not submitted; details.status)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION (comment 1-500 chars required to reject)",
             "content": {
               "application/json": {
                 "schema": {
@@ -16937,11 +17040,25 @@
               }
             ]
           },
+          "presentationOpenedAt": {
+            "description": "See DcrCall.presentationOpenedAt; omit or null on drafts",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "calledAt": {
+            "description": "Ignored: the server sets calledAt when the call is first saved",
             "type": "string",
             "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "description": "ISO-8601 timestamp (UTC)"
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
           },
           "clientId": {
             "type": "string",
@@ -16960,7 +17077,6 @@
           "samples",
           "pob",
           "remarks",
-          "calledAt",
           "clientId"
         ]
       },
@@ -17052,7 +17168,7 @@
             ]
           },
           "value": {
-            "description": "INR = quantity × product PTR, computed by the server (null when the product has no PTR). Ignored on input.",
+            "description": "INR = quantity × product PTS (price to stockist), computed by the server when the line is saved and kept as saved (null when the product has no PTS). Ignored on input.",
             "anyOf": [
               {
                 "type": "number",
@@ -17068,7 +17184,7 @@
           "productId",
           "quantity"
         ],
-        "description": "Personal order booking line (chemist and stockist calls only, #40)"
+        "description": "Personal order booking line: chemist and stockist calls only (doctor calls: 422 VALIDATION, details.reason POB_NOT_ALLOWED_FOR_DOCTOR); one line per product per call"
       },
       "RcpaLine": {
         "type": "object",
@@ -17562,6 +17678,26 @@
         },
         "required": [
           "version"
+        ]
+      },
+      "DcrDecision": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ]
+          },
+          "comment": {
+            "description": "Required (1-500 chars) to reject; stored as Dcr.rejectionReason",
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "decision"
         ]
       },
       "ManagerAssign": {
@@ -19406,7 +19542,8 @@
           "leave:approve",
           "products:prices",
           "sfc:read",
-          "sfc:write"
+          "sfc:write",
+          "dcr:review"
         ]
       },
       "RoleList": {
@@ -23776,9 +23913,99 @@
             "enum": [
               "draft",
               "submitted",
-              "locked"
+              "locked",
+              "approved",
+              "rejected"
             ],
-            "description": "Locked after the day-lock cut-off (#23)"
+            "description": "draft/submitted show 'locked' after the day-lock cut-off (#23). approved/rejected (manager review) always show as such."
+          },
+          "reviewStatus": {
+            "default": null,
+            "description": "Manager review: pending = submitted, not reviewed yet; null for drafts",
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "approvedAt": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "approvedBy": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rejectedAt": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rejectedBy": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rejectionReason": {
+            "default": null,
+            "description": "Why the manager rejected it. A rejected DCR is kept for history, counts nowhere, and reopens its day for 48 h (unlockedUntil).",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "calls": {
             "type": "array",
@@ -23803,7 +24030,7 @@
             "type": "string",
             "format": "date-time",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "description": "Day-lock cut-off: end of the day + companies.dcr_lock_after_hours (company time zone)"
+            "description": "Day-lock cut-off: 00:00 Asia/Kolkata on the next day (submit by 23:59 IST the same day)"
           },
           "unlockedUntil": {
             "anyOf": [
@@ -23817,7 +24044,7 @@
                 "type": "null"
               }
             ],
-            "description": "Set while an approved correction request keeps a locked day editable (48 h)"
+            "description": "Set while an approved correction request or a manager rejection keeps a locked day editable (48 h from the decision)"
           },
           "band": {
             "default": null,
@@ -23898,6 +24125,12 @@
           "tourPlanId",
           "deviationReason",
           "status",
+          "reviewStatus",
+          "approvedAt",
+          "approvedBy",
+          "rejectedAt",
+          "rejectedBy",
+          "rejectionReason",
           "calls",
           "submittedAt",
           "lockAt",
@@ -23990,11 +24223,27 @@
               }
             ]
           },
+          "presentationOpenedAt": {
+            "default": null,
+            "description": "When the product presentation was shown to the doctor (client time). Drafts may omit it; submit requires it on every doctor call with productsDetailed (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED).",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "calledAt": {
             "type": "string",
             "format": "date-time",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-            "description": "ISO-8601 timestamp (UTC)"
+            "description": "Server time when the call (clientId) was first saved to a DCR; never changes on re-save. Client values are ignored.",
+            "readOnly": true
           }
         },
         "required": [
@@ -24008,6 +24257,7 @@
           "pob",
           "rcpa",
           "remarks",
+          "presentationOpenedAt",
           "calledAt"
         ],
         "additionalProperties": false
@@ -24388,6 +24638,64 @@
             "items": {
               "$ref": "#/components/schemas/Dcr"
             }
+          },
+          "rejected": {
+            "default": [],
+            "description": "Your manager-rejected reports for the date, newest first (history; rejectionReason set)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Dcr"
+            }
+          },
+          "unlockRequest": {
+            "default": null,
+            "description": "Your latest dcr_unlock (correction) request for this date, or null; drives the 'Unlock requested' state",
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUIDv7 identifier",
+                    "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "approved",
+                      "rejected",
+                      "cancelled"
+                    ]
+                  },
+                  "requestedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                    "description": "ISO-8601 timestamp (UTC)"
+                  }
+                },
+                "required": [
+                  "id",
+                  "status",
+                  "requestedAt"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "products": {
+            "default": [],
+            "description": "Active products for the call pickers, by name (imageUrl presigned, >= 30 min)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrProductOption"
+            }
           }
         },
         "required": [
@@ -24395,7 +24703,10 @@
           "workTypes",
           "dcr",
           "submitted",
-          "drafts"
+          "drafts",
+          "rejected",
+          "unlockRequest",
+          "products"
         ],
         "additionalProperties": false
       },
@@ -24465,6 +24776,158 @@
           "band",
           "usesSfc",
           "detailsKind"
+        ],
+        "additionalProperties": false
+      },
+      "DcrProductOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "divisionId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Company SKU code, unique per company"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "composition": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "packSize": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "example": "10 x 10 tablets"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "tablet",
+                  "capsule",
+                  "syrup",
+                  "injection",
+                  "cream",
+                  "drops",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mrp": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MRP in INR"
+          },
+          "pts": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Price to stockist, INR"
+          },
+          "isSample": {
+            "type": "boolean",
+            "description": "Can be given as a physician sample"
+          },
+          "imageFileKey": {
+            "default": null,
+            "description": "R2 key of the product picture (upload purpose product_image); null = none",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "imageUrl": {
+            "default": null,
+            "description": "Presigned GET for the picture (valid >= 30 min, <= 60 min); null if none or storage is off. Re-fetch the product for a fresh URL.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "divisionId",
+          "code",
+          "name",
+          "brand",
+          "composition",
+          "packSize",
+          "form",
+          "mrp",
+          "pts",
+          "isSample",
+          "imageFileKey",
+          "imageUrl"
         ],
         "additionalProperties": false
       },
@@ -30651,7 +31114,7 @@
             ]
           },
           "value": {
-            "description": "INR = quantity × product PTR, computed by the server (null when the product has no PTR). Ignored on input.",
+            "description": "INR = quantity × product PTS (price to stockist), computed by the server when the line is saved and kept as saved (null when the product has no PTS). Ignored on input.",
             "anyOf": [
               {
                 "type": "number",
@@ -30668,7 +31131,7 @@
           "quantity"
         ],
         "additionalProperties": false,
-        "description": "Personal order booking line (chemist and stockist calls only, #40)"
+        "description": "Personal order booking line: chemist and stockist calls only (doctor calls: 422 VALIDATION, details.reason POB_NOT_ALLOWED_FOR_DOCTOR); one line per product per call"
       },
       "RcpaLineOutput": {
         "type": "object",

@@ -5,8 +5,11 @@ import { sql, type AnyColumn, type SQL } from 'drizzle-orm';
  * live report of the date counts as submitted (status 'submitted' or 'approved'; partial unique
  * index dcrs_user_date_submitted_uq). Everything that reads "the DCR of a day" uses the day report:
  * the live submitted report if any, else the latest draft (updated_at desc, id desc).
+ * Manager review (0048): 'approved' counts like 'submitted'; 'rejected' is kept for history but is
+ * never the day report and counts nowhere (outside the partial unique index too).
  */
 export const SUBMITTED_STATUSES = ['submitted', 'approved'] as const;
+export const REJECTED_STATUS = 'rejected';
 export const DAY_SUBMITTED_INDEX = 'dcrs_user_date_submitted_uq';
 /** The pre-0045 full unique index (only while 0045 is not applied, or after a DB rollback). */
 export const LEGACY_DAY_INDEX = 'dcrs_user_date_uq';
@@ -129,7 +132,7 @@ export function isDayReport(c: {
   userId: AnyColumn;
   date: AnyColumn;
 }): SQL {
-  return sql`${c.id} = (select x.id from dcrs x where x.company_id = ${c.companyId} and x.user_id = ${c.userId} and x.date = ${c.date} and x.deleted_at is null order by (x.status = 'draft'), x.updated_at desc, x.id desc limit 1)`;
+  return sql`${c.id} = (select x.id from dcrs x where x.company_id = ${c.companyId} and x.user_id = ${c.userId} and x.date = ${c.date} and x.deleted_at is null and x.status <> 'rejected' order by (x.status = 'draft'), x.updated_at desc, x.id desc limit 1)`;
 }
 
 /** Raw-SQL form of isDayReport for a dcrs alias in a hand-written query, e.g. `and ${dayReportSql('d')}`. */
@@ -137,7 +140,7 @@ export function dayReportSql(alias: string): SQL {
   if (!/^[a-z_][a-z0-9_]*$/.test(alias)) throw new Error(`bad alias ${alias}`);
   const a = alias;
   return sql.raw(
-    `${a}.id = (select x.id from dcrs x where x.company_id = ${a}.company_id and x.user_id = ${a}.user_id and x.date = ${a}.date and x.deleted_at is null order by (x.status = 'draft'), x.updated_at desc, x.id desc limit 1)`,
+    `${a}.id = (select x.id from dcrs x where x.company_id = ${a}.company_id and x.user_id = ${a}.user_id and x.date = ${a}.date and x.deleted_at is null and x.status <> 'rejected' order by (x.status = 'draft'), x.updated_at desc, x.id desc limit 1)`,
   );
 }
 
@@ -158,3 +161,30 @@ export function submittedReportSql(alias: string): SQL {
 
 /** In-memory form: live submitted/approved rows only. */
 export const submittedOnly = <T extends DayRow>(rows: T[]): T[] => live(rows).filter(isSubmitted);
+
+/** In-memory: live manager-rejected reports, newest rejection first (history only). */
+export const rejectedNewestFirst = <T extends DayRow & { rejectedAt?: Date | string | null }>(
+  rows: T[],
+): T[] =>
+  live(rows)
+    .filter((r) => r.status === REJECTED_STATUS)
+    .sort((a, b) => ts(b.rejectedAt ?? b.updatedAt) - ts(a.rejectedAt ?? a.updatedAt));
+
+/** Only a live submitted (not yet reviewed) report can be approved or rejected. */
+export function reviewable(
+  r: { status: string; userId: string; deletedAt?: Date | string | null } | undefined,
+  reviewerId: string,
+): { ok: true } | { ok: false; status: 403 | 404 | 409; code: string; message: string } {
+  if (!r || r.deletedAt)
+    return { ok: false, status: 404, code: 'NOT_FOUND', message: 'DCR not found' };
+  if (r.userId === reviewerId)
+    return { ok: false, status: 403, code: 'FORBIDDEN', message: 'You cannot review your own DCR' };
+  if (r.status !== 'submitted')
+    return {
+      ok: false,
+      status: 409,
+      code: 'NOT_PENDING_REVIEW',
+      message: `Only submitted DCRs can be reviewed (this one is ${r.status})`,
+    };
+  return { ok: true };
+}

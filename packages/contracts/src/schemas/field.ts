@@ -346,12 +346,13 @@ export const PobLine = z
     stockistId: Id.nullable().optional(),
     value: z.number().min(0).nullable().optional().meta({
       description:
-        'INR = quantity × product PTR, computed by the server (null when the product has no PTR). Ignored on input.',
+        'INR = quantity × product PTS (price to stockist), computed by the server when the line is saved and kept as saved (null when the product has no PTS). Ignored on input.',
     }),
   })
   .meta({
     id: 'PobLine',
-    description: 'Personal order booking line (chemist and stockist calls only, #40)',
+    description:
+      'Personal order booking line: chemist and stockist calls only (doctor calls: 422 VALIDATION, details.reason POB_NOT_ALLOWED_FOR_DOCTOR); one line per product per call',
   });
 /** Brand names are trimmed and inner whitespace collapsed before storage and comparison. */
 const BrandName = z
@@ -393,7 +394,15 @@ export const DcrCall = z
     pob: z.array(PobLine),
     rcpa: z.array(RcpaLine),
     remarks: z.string().max(1000).nullable(),
-    calledAt: Timestamp,
+    presentationOpenedAt: Timestamp.nullable().default(null).meta({
+      description:
+        'When the product presentation was shown to the doctor (client time). Drafts may omit it; submit requires it on every doctor call with productsDetailed (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED).',
+    }),
+    calledAt: Timestamp.meta({
+      readOnly: true,
+      description:
+        'Server time when the call (clientId) was first saved to a DCR; never changes on re-save. Client values are ignored.',
+    }),
   })
   .meta({ id: 'DcrCall' });
 export type DcrCall = z.infer<typeof DcrCall>;
@@ -402,6 +411,12 @@ export const DcrCallInput = DcrCall.omit({ id: true })
     clientId: Id,
     pob: z.array(PobLine).max(100),
     rcpa: z.array(RcpaLine).max(100).default([]),
+    presentationOpenedAt: Timestamp.nullable().optional().meta({
+      description: 'See DcrCall.presentationOpenedAt; omit or null on drafts',
+    }),
+    calledAt: Timestamp.optional().meta({
+      description: 'Ignored: the server sets calledAt when the call is first saved',
+    }),
   })
   .meta({ id: 'DcrCallInput' });
 export const CompetitorBrandQuery = z.object({
@@ -430,17 +445,30 @@ export const Dcr = Syncable.extend({
     .max(500)
     .nullable()
     .meta({ description: 'Required when worked differs from the approved TP (#22)' }),
-  status: z
-    .enum(['draft', 'submitted', 'locked'])
-    .meta({ description: 'Locked after the day-lock cut-off (#23)' }),
+  status: z.enum(['draft', 'submitted', 'locked', 'approved', 'rejected']).meta({
+    description:
+      "draft/submitted show 'locked' after the day-lock cut-off (#23). approved/rejected (manager review) always show as such.",
+  }),
+  reviewStatus: z.enum(['pending', 'approved', 'rejected']).nullable().default(null).meta({
+    description: 'Manager review: pending = submitted, not reviewed yet; null for drafts',
+  }),
+  approvedAt: Timestamp.nullable().default(null),
+  approvedBy: Id.nullable().default(null),
+  rejectedAt: Timestamp.nullable().default(null),
+  rejectedBy: Id.nullable().default(null),
+  rejectionReason: z.string().max(500).nullable().default(null).meta({
+    description:
+      'Why the manager rejected it. A rejected DCR is kept for history, counts nowhere, and reopens its day for 48 h (unlockedUntil).',
+  }),
   calls: z.array(DcrCall),
   submittedAt: Timestamp.nullable(),
   lockAt: Timestamp.meta({
     description:
-      'Day-lock cut-off: end of the day + companies.dcr_lock_after_hours (company time zone)',
+      'Day-lock cut-off: 00:00 Asia/Kolkata on the next day (submit by 23:59 IST the same day)',
   }),
   unlockedUntil: Timestamp.nullable().meta({
-    description: 'Set while an approved correction request keeps a locked day editable (48 h)',
+    description:
+      'Set while an approved correction request or a manager rejection keeps a locked day editable (48 h from the decision)',
   }),
   band: DcrBand.nullable()
     .default(null)
@@ -476,12 +504,26 @@ export const DcrCorrectionRequest = z
   .meta({ id: 'DcrCorrectionRequest' });
 export const DCR_UNLOCK_HOURS = 48;
 export const DcrListQuery = FieldListQuery.extend({
-  status: z.enum(['draft', 'submitted', 'locked']).optional(),
-  mine: z
-    .enum(['true', 'false'])
-    .optional()
-    .meta({ description: "true: only the caller's own DCRs (ignores userId)" }),
+  status: z.enum(['draft', 'submitted', 'locked', 'approved', 'rejected']).optional(),
+  mine: z.enum(['true', 'false']).optional().meta({
+    description:
+      "true: only the caller's own DCRs (ignores userId). Otherwise callers with dcr:review see their team (approvals hierarchy, incl. themselves); everyone else sees only their own",
+  }),
 });
+
+/** Manager review of a submitted DCR (dcr:review): POST /v1/dcrs/{id}/decision. */
+export const DcrDecision = z
+  .object({
+    decision: z.enum(['approve', 'reject']),
+    comment: z.string().trim().max(500).optional().meta({
+      description: 'Required (1-500 chars) to reject; stored as Dcr.rejectionReason',
+    }),
+  })
+  .refine((b) => b.decision === 'approve' || (b.comment?.length ?? 0) >= 1, {
+    message: 'comment is required to reject',
+    path: ['comment'],
+  })
+  .meta({ id: 'DcrDecision' });
 
 // ---- Approvals (#17) ----
 export const Approval = z

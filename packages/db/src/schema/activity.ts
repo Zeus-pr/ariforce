@@ -152,6 +152,12 @@ export const dcrs = pgTable(
     submittedBy: uuid('submitted_by').references(() => users.id),
     /** Idempotency-Key of POST /v1/dcrs/{id}/submit (0043). */
     submitIdempotencyKey: text('submit_idempotency_key'),
+    /** Manager review (0048): approve keeps counting; reject excludes the report everywhere. */
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    approvedBy: uuid('approved_by').references(() => users.id),
+    rejectedAt: timestamp('rejected_at', { withTimezone: true }),
+    rejectedBy: uuid('rejected_by').references(() => users.id),
+    rejectionReason: text('rejection_reason'),
     ...syncCols(),
   },
   (t) => [
@@ -168,6 +174,10 @@ export const dcrs = pgTable(
     check(
       'dcrs_submit_key_ck',
       sql`submit_idempotency_key IS NULL OR length(submit_idempotency_key) BETWEEN 1 AND 200`,
+    ),
+    check(
+      'dcrs_rejected_ck',
+      sql`status <> 'rejected' OR (rejected_at IS NOT NULL AND rejected_by IS NOT NULL AND length(rejection_reason) BETWEEN 1 AND 500)`,
     ),
   ],
 );
@@ -224,6 +234,8 @@ export const dcrCalls = pgTable(
       .notNull()
       .default(sql`'{}'::uuid[]`),
     remarks: text('remarks'),
+    /** When the presentation was shown to the doctor (0048); required on submit for detailed doctor calls. */
+    presentationOpenedAt: timestamp('presentation_opened_at', { withTimezone: true }),
     ...syncCols(),
   },
   (t) => [
