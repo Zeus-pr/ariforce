@@ -16,7 +16,7 @@ export function Chip({
   const t = tones[tone];
   return (
     <View style={[styles.chip, center && styles.center, { backgroundColor: t.bg }]}>
-      <AppText variant="chip" style={{ color: t.fg }}>
+      <AppText variant="chip" numberOfLines={1} style={{ color: t.fg }}>
         {label}
       </AppText>
     </View>

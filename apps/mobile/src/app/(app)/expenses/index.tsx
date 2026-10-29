@@ -2,7 +2,8 @@ import type { Dcr } from '@ariforce/contracts';
 import { useQuery } from '@tanstack/react-query';
 import { Stack, useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { RefreshBar, pullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
@@ -26,7 +27,7 @@ import {
   useMyClaims,
 } from '@/lib/expenses';
 import { formatINR } from '@/lib/money';
-import { colors, layout, spacing } from '@/theme';
+import { layout, spacing } from '@/theme';
 
 const prevMonthStart = () => {
   const m = monthStartIST();
@@ -92,18 +93,12 @@ export default function ExpensesScreen() {
       <ScrollView
         style={styles.flex}
         contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
-        refreshControl={
-          <RefreshControl
-            refreshing={(dcrsQ.isRefetching || syncQ.isFetching) && !loading}
-            onRefresh={() => {
-              void dcrsQ.refetch();
-              void syncQ.refetch();
-            }}
-            tintColor={colors.navy}
-            colors={[colors.navy]}
-          />
-        }
+        refreshControl={pullToRefresh((dcrsQ.isRefetching || syncQ.isFetching) && !loading, () => {
+          void dcrsQ.refetch();
+          void syncQ.refetch();
+        })}
       >
+        <RefreshBar active={(dcrsQ.isRefetching || syncQ.isFetching) && !loading} />
         <AppText variant="small">Drafts from your DCRs</AppText>
         {loading || syncQ.isPending ? (
           <SkeletonList count={2} />

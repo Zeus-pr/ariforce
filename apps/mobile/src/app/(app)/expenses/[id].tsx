@@ -2,7 +2,8 @@ import type { Dcr } from '@ariforce/contracts';
 import { useQueries } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Linking, RefreshControl, StyleSheet, View } from 'react-native';
+import { Alert, Linking, StyleSheet, View } from 'react-native';
+import { RefreshBar, pullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { DecisionBar } from '@/components/approvals/decision-bar';
 import { Button } from '@/components/button';
@@ -13,7 +14,7 @@ import { LineForm } from '@/components/expenses/line-form';
 import { useBottomSpace } from '@/components/floating-tab-bar';
 import { SelectSheet } from '@/components/masters/select-sheet';
 import { KeyboardAwareScrollView } from '@/components/scroll';
-import { SkeletonCard, SkeletonList } from '@/components/skeleton';
+import { Skeleton, SkeletonCard, SkeletonList } from '@/components/skeleton';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { reviewOf } from '@/lib/dcr/adapter';
@@ -40,7 +41,7 @@ import {
 import { getDocumentPicker, getImagePicker, pickDocument, pickPhoto } from '@/lib/file-pickers';
 import { formatINR } from '@/lib/money';
 import { isApprover } from '@/lib/roles';
-import { colors, layout, spacing } from '@/theme';
+import { layout, spacing } from '@/theme';
 
 const daysOfMonth = (m: string) => {
   const n = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).getUTCDate();
@@ -167,15 +168,9 @@ export default function ClaimScreen() {
         style={styles.flex}
         contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
         keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={q.isRefetching && !q.isPending}
-            onRefresh={() => void q.refetch()}
-            tintColor={colors.navy}
-            colors={[colors.navy]}
-          />
-        }
+        refreshControl={pullToRefresh(q.isRefetching && !q.isPending, () => void q.refetch())}
       >
+        <RefreshBar active={q.isRefetching && !q.isPending} />
         {q.isPending ? (
           <>
             <SkeletonCard lines={2} />
@@ -256,6 +251,13 @@ export default function ClaimScreen() {
                     ) : null}
                   </View>
                 ))}
+                {busyLine === l.id ? (
+                  // Upload in progress: a pulsing receipt tile, never a spinner.
+                  <View style={styles.uploading} accessibilityLabel="Uploading receipt">
+                    <Skeleton width={40} height={40} rounded={8} />
+                    <AppText variant="small">Uploading receipt…</AppText>
+                  </View>
+                ) : null}
                 {editable ? (
                   <View style={styles.row}>
                     {(canPhoto || canFile) && l.attachments.length < MAX_FILES ? (
@@ -264,8 +266,7 @@ export default function ClaimScreen() {
                         variant="secondary"
                         compact
                         style={styles.flex}
-                        loading={busyLine === l.id}
-                        loadingLabel="Uploading…"
+                        disabled={busyLine === l.id}
                         onPress={() => attachMenu(l)}
                       />
                     ) : null}
@@ -450,4 +451,5 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm, gap: spacing.md },
   pad: { padding: spacing.lg, gap: spacing.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  uploading: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
 });

@@ -1,7 +1,8 @@
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { RefreshBar, pullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Chip } from '@/components/chip';
 import { Icon } from '@/components/icon';
@@ -156,14 +157,11 @@ function MasterList({ kind }: { kind: MasterKind }) {
         onEndReached={() => {
           if (list.hasNextPage && !list.isFetchingNextPage) void list.fetchNextPage();
         }}
-        refreshControl={
-          <RefreshControl
-            refreshing={list.isRefetching && !list.isFetchingNextPage}
-            onRefresh={() => void list.refetch()}
-            tintColor={colors.navy}
-            colors={[colors.navy]}
-          />
-        }
+        refreshControl={pullToRefresh(
+          list.isRefetching && !list.isFetchingNextPage,
+          () => void list.refetch(),
+        )}
+        ListHeaderComponent={<RefreshBar active={list.isRefetching && !list.isFetchingNextPage} />}
         renderItem={({ item, index }) => (
           <View
             style={[

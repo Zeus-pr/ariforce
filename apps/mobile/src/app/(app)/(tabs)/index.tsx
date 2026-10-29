@@ -1,7 +1,8 @@
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { ScrollView } from '@/components/scroll';
+import { RefreshBar, pullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Chip } from '@/components/chip';
 import { ApprovalsCard } from '@/components/home/approvals-card';
@@ -60,15 +61,9 @@ export default function HomeScreen() {
       <ScrollView
         style={styles.flex}
         contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.navy}
-            colors={[colors.navy]}
-          />
-        }
+        refreshControl={pullToRefresh(refreshing, onRefresh)}
       >
+        <RefreshBar active={refreshing} />
         {/* Top band: continues the header's sky colour edge to edge (status bar icons stay dark). */}
         <View style={styles.band}>
           <AppText variant="greeting" style={styles.onSky}>

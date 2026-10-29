@@ -3,7 +3,8 @@ import { Redirect, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { SelectSheet } from '@/components/masters/select-sheet';
 import { mockTpCard, rangeLabel, useMyTps, type TpDraftCard } from '@/lib/tp/adapter';
-import { Alert, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { RefreshBar, pullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
@@ -164,15 +165,9 @@ function DcrWorkspace() {
             styles.content,
             { paddingBottom: bottom + touch.control + spacing.lg },
           ]}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={refresh}
-              tintColor={colors.navy}
-              colors={[colors.navy]}
-            />
-          }
+          refreshControl={pullToRefresh(refreshing, refresh)}
         >
+          <RefreshBar active={refreshing} />
           <View style={styles.headRow}>
             <AppText variant="small">
               {draftsQ.isPending

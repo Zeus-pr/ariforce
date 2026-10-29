@@ -1,6 +1,7 @@
 import { Redirect, useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { RefreshBar, pullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
@@ -46,15 +47,9 @@ function TourPlans({ myId }: { myId?: string }) {
             styles.content,
             { paddingBottom: bottom + touch.control + spacing.lg },
           ]}
-          refreshControl={
-            <RefreshControl
-              refreshing={q.isRefetching && !q.isPending}
-              onRefresh={() => void q.refetch()}
-              tintColor={colors.navy}
-              colors={[colors.navy]}
-            />
-          }
+          refreshControl={pullToRefresh(q.isRefetching && !q.isPending, () => void q.refetch())}
         >
+          <RefreshBar active={q.isRefetching && !q.isPending} />
           <View style={styles.head}>
             <AppText variant="small">
               {q.isPending ? 'Your tour plans' : `Your tour plans (${items.length})`}

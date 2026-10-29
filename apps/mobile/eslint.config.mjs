@@ -1,7 +1,7 @@
 import base from '@ariforce/config/eslint';
 
 const SPINNER_MSG =
-  'No spinners in the app: show a skeleton from @/components/skeleton (Skeleton, SkeletonList, …).';
+  'No spinners in the app: show a skeleton from @/components/skeleton; for pull-to-refresh use pullToRefresh + RefreshBar from @/components/refresh.';
 const SCROLL_MSG = 'Use the wrappers in @/components/scroll (no scroll indicators in the app).';
 
 export default [
@@ -19,7 +19,11 @@ export default [
               importNames: ['ScrollView', 'FlatList', 'SectionList', 'VirtualizedList'],
               message: SCROLL_MSG,
             },
-            { name: 'react-native', importNames: ['ActivityIndicator'], message: SPINNER_MSG },
+            {
+              name: 'react-native',
+              importNames: ['ActivityIndicator', 'RefreshControl'],
+              message: SPINNER_MSG,
+            },
             {
               name: 'react-native-keyboard-controller',
               importNames: ['KeyboardAwareScrollView'],
@@ -30,6 +34,20 @@ export default [
               importNames: ['ScrollView', 'FlatList', 'SectionList'],
               message: SCROLL_MSG,
             },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // The one place RefreshControl may be used: invisible native indicator + skeleton bar.
+    files: ['src/components/refresh.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            { name: 'react-native', importNames: ['ActivityIndicator'], message: SPINNER_MSG },
           ],
         },
       ],

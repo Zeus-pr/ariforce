@@ -45,7 +45,7 @@ export function ListRow({
           </AppText>
         ) : null}
       </View>
-      {trailing}
+      {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
       {onPress ? <Icon name="chevron-right" color={colors.subtle} /> : null}
     </>
   );
@@ -86,6 +86,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
+  // Pills sit centred on the title row, right-aligned, never squeezed or wrapped.
+  trailing: { flexShrink: 0, alignItems: 'flex-end', justifyContent: 'center' },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator },
   pressed: { backgroundColor: colors.ground },
   text: { flex: 1 },

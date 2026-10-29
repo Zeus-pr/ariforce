@@ -1,5 +1,6 @@
 import { Stack, useRouter } from 'expo-router';
-import { Alert, RefreshControl, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
+import { RefreshBar, pullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
 import { Card } from '@/components/card';
@@ -17,7 +18,7 @@ import {
   useCancelLeave,
   useLeaveData,
 } from '@/lib/leave';
-import { colors, layout, spacing } from '@/theme';
+import { layout, spacing } from '@/theme';
 
 /** My leave (web leave-view/my-leave): balances, requests with status, cancel, Apply. */
 export default function LeaveScreen() {
@@ -46,15 +47,9 @@ export default function LeaveScreen() {
       <ScrollView
         style={styles.flex}
         contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
-        refreshControl={
-          <RefreshControl
-            refreshing={q.isRefetching && !q.isPending}
-            onRefresh={() => void q.refetch()}
-            tintColor={colors.navy}
-            colors={[colors.navy]}
-          />
-        }
+        refreshControl={pullToRefresh(q.isRefetching && !q.isPending, () => void q.refetch())}
       >
+        <RefreshBar active={q.isRefetching && !q.isPending} />
         <Button label="Apply for leave" onPress={() => router.push('/leave/apply')} />
         <AppText variant="small">Balance this year</AppText>
         {q.isPending ? (

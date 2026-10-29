@@ -1,5 +1,6 @@
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Linking, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { RefreshBar, pullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
 import { Card } from '@/components/card';
@@ -86,15 +87,9 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
       <ScrollView
         style={styles.flex}
         contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
-        refreshControl={
-          <RefreshControl
-            refreshing={rec.isRefetching}
-            onRefresh={() => void rec.refetch()}
-            tintColor={colors.navy}
-            colors={[colors.navy]}
-          />
-        }
+        refreshControl={pullToRefresh(rec.isRefetching, () => void rec.refetch())}
       >
+        <RefreshBar active={rec.isRefetching} />
         <Card style={styles.hero}>
           <TintedIcon name={FEATURES[kind].icon} tone={FEATURES[kind].tone} large />
           <AppText variant="name" accessibilityRole="header">

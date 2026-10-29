@@ -1,7 +1,8 @@
 import { Redirect, Stack, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { DecisionBar } from '@/components/approvals/decision-bar';
+import { RefreshBar, pullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
@@ -32,7 +33,7 @@ import {
   useLeaveQueue,
 } from '@/lib/leave';
 import { CONTRACT as TP_CONTRACT, rangeLabel, useTpQueue } from '@/lib/tp/adapter';
-import { colors, layout, spacing } from '@/theme';
+import { layout, spacing } from '@/theme';
 
 /** Manager review (ABM and above, same rule as the website's isApprover): DCRs and unlock requests. */
 export default function ApprovalsScreen() {
@@ -79,15 +80,9 @@ function Approvals({ myId, director }: { myId?: string; director: boolean }) {
       <ScrollView
         style={styles.flex}
         contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={refresh}
-            tintColor={colors.navy}
-            colors={[colors.navy]}
-          />
-        }
+        refreshControl={pullToRefresh(refreshing, refresh)}
       >
+        <RefreshBar active={refreshing} />
         <View style={styles.head}>
           <AppText variant="small">
             {teamQ.isPending ? 'DCRs to review' : `DCRs to review (${toReview.length})`}
