@@ -61,11 +61,16 @@ export default function HomeScreen() {
           overScrollMode="auto"
           bounces
           alwaysBounceVertical
+          // iOS must not add its own safe-area inset above the band (that opened a gap under the header).
+          contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
           style={styles.flex}
           contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
         >
           {/* Top band: continues the header's sky colour edge to edge (status bar icons stay dark). */}
           <View style={styles.band}>
+            {/* Sky above the band: a top overscroll/bounce reveals blue, never the ground colour. */}
+            <View pointerEvents="none" style={styles.bandSky} />
             <AppText variant="greeting" style={styles.onSky}>
               {greeting(now)},
             </AppText>
@@ -134,6 +139,14 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
     borderCurve: 'continuous',
+  },
+  bandSky: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: '100%',
+    height: 1000,
+    backgroundColor: colors.homeSky,
   },
   onSky: { color: colors.onSkyMuted },
 });
