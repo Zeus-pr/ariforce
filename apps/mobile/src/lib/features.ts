@@ -107,6 +107,8 @@ export const canOpenFeature = (feature: FeatureKey, roles: readonly string[]) =>
 export const featureHref = (feature: FeatureKey, roles?: readonly string[]) => {
   // DCR is for the sales ladder only (web nav.ts SALES); others land on Home.
   if (feature === 'dcr') return roles && !isSalesRole(roles) ? ('/' as const) : ('/dcr' as const);
+  // Approvals: DCR review and DCR unlock requests are built; the screen checks isApprover.
+  if (feature === 'approvals') return '/approvals' as const;
   if (isMasterBuilt(feature))
     return { pathname: '/masters/[kind]', params: { kind: feature } } as const;
   return { pathname: '/coming-soon/[feature]', params: { feature } } as const;
