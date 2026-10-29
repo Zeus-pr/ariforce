@@ -9,6 +9,7 @@ import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { companySettings } from '../field/field.util';
 import { reviewable } from './day-report';
+import { NotificationsService } from '../notifications/notifications.service';
 import { DcrService } from './dcr.service';
 import { ExpenseAutoDraftService } from '../expenses/auto-draft.service';
 
@@ -25,6 +26,7 @@ export class DcrReviewService {
     private readonly audit: AuditService,
     private readonly dcr: DcrService,
     private readonly autoExpense: ExpenseAutoDraftService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** POST /v1/dcrs/:id/decision. */
@@ -73,6 +75,15 @@ export class DcrReviewService {
           reason === null
             ? { status: 'approved', userId: cur!.userId, date: cur!.date }
             : { status: 'rejected', userId: cur!.userId, date: cur!.date, reason },
+      });
+      // To the owner (same transaction; never fails the decision). One per decision per submit.
+      await this.notifications.notify(tx, p, {
+        type: reason === null ? 'dcr.approved' : 'dcr.rejected',
+        recipientId: cur!.userId,
+        entityType: 'dcr',
+        entityId: id,
+        dedupeKey: `dcr.${reason === null ? 'approved' : 'rejected'}:${id}:${(cur!.submittedAt ?? cur!.updatedAt).getTime()}`,
+        data: { date: cur!.date, ...(reason === null ? {} : { reason }) },
       });
       // Rejected day: drop its auto TA/DA lines from an editable claim, flag the rest.
       if (reason !== null)

@@ -6397,11 +6397,21 @@ export interface components {
       type: components['schemas']['NotificationType'];
       title: string;
       body: string;
-      /** @description Deep link target type */
+      /** @description Deep link target type. dcr: entityId = DCR id; tour_plan_item: entityId = item id; tour_plan: plan id; approval_request (dcr_unlock.*): the request id, data.date = the day */
       entityType:
-        ('leave_request' | 'expense_claim' | 'tour_plan' | 'doctor' | 'approval_request') | null;
+        | (
+            | 'leave_request'
+            | 'expense_claim'
+            | 'tour_plan'
+            | 'tour_plan_item'
+            | 'doctor'
+            | 'dcr'
+            | 'approval_request'
+          )
+        | null;
       /** @description Deep link target id */
       entityId: string | null;
+      /** @description Event data. Always: actorId (null = system), actorName. Auto-approvals: autoApproved true, reason. dcr.*: date. dcr_unlock.*: date, approvalId. tour_plan.* (item): from, to, approvalId. expense.blocked: claimId, dates, dcrIds, dcrStatus, ownerId */
       data: {
         [key: string]: unknown;
       } | null;
@@ -6423,10 +6433,17 @@ export interface components {
       | 'expense.rejected'
       | 'expense.paid'
       | 'exceptions.digest'
+      | 'expense.blocked'
+      | 'tour_plan.submitted'
       | 'tour_plan.approved'
       | 'tour_plan.rejected'
       | 'doctor.approved'
       | 'doctor.rejected'
+      | 'dcr.submitted'
+      | 'dcr.approved'
+      | 'dcr.rejected'
+      | 'dcr_unlock.submitted'
+      | 'dcr_unlock.approved'
       | 'dcr_unlock.rejected';
     UnreadCount: {
       count: number;

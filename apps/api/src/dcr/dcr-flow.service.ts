@@ -832,6 +832,7 @@ export class DcrFlowService {
         date: cur.date,
       });
       const [fresh] = await tx.select().from(dcrs).where(eq(dcrs.id, cur.id));
+      await this.dcr.notifySubmit(tx, p, fresh!);
       return {
         ...((await this.dcr.toDto(tx, s, [fresh!]))[0]! satisfies Dcr),
         expenseDraft,

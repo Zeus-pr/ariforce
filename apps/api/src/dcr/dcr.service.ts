@@ -35,7 +35,8 @@ import { CheckInsService, err } from '../field/checkins.service';
 import { companySettings, localDate, type CompanySettings } from '../field/field.util';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { ApprovalsService } from '../plans/approvals.service';
-import { autoApproveAudit, isDirector } from '../plans/auto-approve';
+import { autoApproveAudit, isDirector, systemPrincipal } from '../plans/auto-approve';
+import { NotificationsService } from '../notifications/notifications.service';
 import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leave.util';
 import { DCR_LOCK_TZ, doctorPob, missingPresentation, pobValue } from './dcr-rules';
 
@@ -122,7 +123,30 @@ export class DcrService {
     private readonly audit: AuditService,
     private readonly checkIns: CheckInsService,
     private readonly approvals: ApprovalsService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  /**
+   * After a DCR submit (same transaction; never fails it). Director: dcr.approved to themselves
+   * (system, autoApproved). Others: dcr.submitted ('waiting for you') to the dcr:review chain.
+   */
+  async notifySubmit(tx: Tx, p: Principal, d: typeof dcrs.$inferSelect) {
+    const stamp = (d.submittedAt ?? d.updatedAt).getTime();
+    const base = { entityType: 'dcr' as const, entityId: d.id, data: { date: d.date } };
+    if (isDirector(p))
+      return this.notifications.notify(tx, systemPrincipal(p), {
+        ...base,
+        type: 'dcr.approved',
+        recipientId: p.userId,
+        dedupeKey: `dcr.approved:${d.id}:${stamp}`,
+      });
+    await this.notifications.notifyMany(
+      tx,
+      p,
+      { ...base, type: 'dcr.submitted', dedupeKey: `dcr.submitted:${d.id}:${stamp}` },
+      await this.notifications.reviewerChain(tx, d.userId, 'dcr:review'),
+    );
+  }
 
   async lockInfo(tx: Tx, s: CompanySettings, userId: string, date: string) {
     const res = await tx.execute(
@@ -667,6 +691,7 @@ export class DcrService {
         },
       });
       const [fresh] = await tx.select().from(dcrs).where(eq(dcrs.id, dcrId));
+      if (b.submit) await this.notifySubmit(tx, p, fresh!);
       return (await this.toDto(tx, s, [fresh!]))[0]!;
     });
   }

@@ -110,6 +110,15 @@ export interface EntityOptions {
     p: Principal,
     req: typeof approvalRequests.$inferSelect,
   ) => Promise<void>;
+  /**
+   * After beforeApprove threw and the decide transaction rolled back: own transaction, best effort
+   * (e.g. expense.blocked to the DCR reviewers). Never changes the error the caller gets.
+   */
+  onBlocked?: (
+    p: Principal,
+    req: typeof approvalRequests.$inferSelect,
+    e: unknown,
+  ) => Promise<void>;
 }
 
 /** Full subject details for GET /v1/approvals/{id} (access is checked by the caller). */
@@ -125,21 +134,31 @@ export interface DetailOptions {
 }
 
 /** Final-approval notification for subjects without their own decision notification. */
+type NoticeEntity = 'tour_plan' | 'tour_plan_item' | 'doctor' | 'approval_request';
 const APPROVE_NOTICE: Partial<
-  Record<EntityType, { type: NotificationType; entityType: 'tour_plan' | 'doctor' }>
+  Record<EntityType, { type: NotificationType; entityType: NoticeEntity }>
 > = {
   tour_plan: { type: 'tour_plan.approved', entityType: 'tour_plan' },
+  tour_plan_item: { type: 'tour_plan.approved', entityType: 'tour_plan_item' },
   doctor: { type: 'doctor.approved', entityType: 'doctor' },
+  dcr_correction: { type: 'dcr_unlock.approved', entityType: 'approval_request' },
+};
+
+/** 'Waiting for you' at request time, for subjects without their own submit notification. */
+const SUBMIT_NOTICE: Partial<
+  Record<EntityType, { type: NotificationType; entityType: NoticeEntity }>
+> = {
+  tour_plan: { type: 'tour_plan.submitted', entityType: 'tour_plan' },
+  tour_plan_item: { type: 'tour_plan.submitted', entityType: 'tour_plan_item' },
+  dcr_correction: { type: 'dcr_unlock.submitted', entityType: 'approval_request' },
 };
 
 /** Rejection notification for subjects without their own decision notification. */
 const REJECT_NOTICE: Partial<
-  Record<
-    EntityType,
-    { type: NotificationType; entityType: 'tour_plan' | 'doctor' | 'approval_request' }
-  >
+  Record<EntityType, { type: NotificationType; entityType: NoticeEntity }>
 > = {
   tour_plan: { type: 'tour_plan.rejected', entityType: 'tour_plan' },
+  tour_plan_item: { type: 'tour_plan.rejected', entityType: 'tour_plan_item' },
   doctor: { type: 'doctor.rejected', entityType: 'doctor' },
   dcr_correction: { type: 'dcr_unlock.rejected', entityType: 'approval_request' },
 };
@@ -554,7 +573,66 @@ export class ApprovalsService {
       stepNo: 1,
       approverUserId,
     });
+    const notice = SUBMIT_NOTICE[entityType];
+    if (notice) {
+      const ids = Array.isArray(extra.approverIds) ? (extra.approverIds as string[]) : [];
+      await this.notifications.notifyMany(
+        tx,
+        p,
+        {
+          type: notice.type,
+          entityType: notice.entityType,
+          entityId: this.noticeEntityId(notice.entityType, {
+            id,
+            entityId,
+            payload: payload ?? null,
+          }),
+          dedupeKey: `${notice.type}:${id}`,
+          data: { ...(payload ?? {}), approvalId: id, ...(reason ? { reason } : {}) },
+        },
+        [approverUserId, ...ids],
+      );
+    }
     return id;
+  }
+
+  private noticeEntityId(
+    t: NoticeEntity,
+    req: { id: string; entityId: string; payload: Record<string, unknown> | null },
+  ) {
+    if (t === 'approval_request') return req.id;
+    if (t === 'tour_plan' && typeof req.payload?.planId === 'string') return req.payload.planId;
+    return req.entityId;
+  }
+
+  /** Decision notification to the requester (approvals: only once the last step approved). */
+  private async decisionNotice(
+    tx: Tx,
+    p: Principal,
+    req: typeof approvalRequests.$inferSelect,
+    approved: boolean,
+    finalState: string | undefined,
+    comment: string | null,
+  ) {
+    const notice = approved
+      ? finalState === 'approved'
+        ? APPROVE_NOTICE[req.entityType]
+        : undefined
+      : REJECT_NOTICE[req.entityType];
+    if (!notice) return;
+    await this.notifications.notify(tx, p, {
+      type: notice.type,
+      recipientId: req.requestedBy,
+      entityType: notice.entityType,
+      entityId: this.noticeEntityId(notice.entityType, req),
+      dedupeKey: `${notice.type}:${req.id}`,
+      data: {
+        ...(req.payload ?? {}),
+        approvalId: req.id,
+        comment,
+        ...(approved ? {} : { reason: comment }),
+      },
+    });
   }
 
   /**
@@ -585,6 +663,8 @@ export class ApprovalsService {
       .set({ state: 'approved' })
       .where(eq(approvalRequests.id, req.id));
     await this.hooks.get(req.entityType)?.(tx, sys, req, true, AUTO_APPROVE_REASON);
+    // Tells the director (system principal: self allowed, data.autoApproved).
+    await this.decisionNotice(tx, sys, req, true, 'approved', AUTO_APPROVE_REASON);
     await this.audit.record(tx, p, 'approval.auto_approved', {
       entityType: req.entityType,
       entityId: req.entityId,
@@ -774,7 +854,26 @@ export class ApprovalsService {
     });
   }
 
-  decide(p: Principal, id: string, b: z.infer<typeof ApprovalDecision>) {
+  async decide(p: Principal, id: string, b: z.infer<typeof ApprovalDecision>) {
+    let blocked: { req: typeof approvalRequests.$inferSelect; e: unknown } | null = null;
+    try {
+      return await this.decideTx(p, id, b, (req, e) => (blocked = { req, e }));
+    } catch (e) {
+      const bl = blocked as { req: typeof approvalRequests.$inferSelect; e: unknown } | null;
+      if (bl && bl.e === e) {
+        const on = this.options.get(bl.req.entityType)?.onBlocked;
+        if (on) await on(p, bl.req, e).catch(() => undefined);
+      }
+      throw e;
+    }
+  }
+
+  private decideTx(
+    p: Principal,
+    id: string,
+    b: z.infer<typeof ApprovalDecision>,
+    onGateError: (req: typeof approvalRequests.$inferSelect, e: unknown) => void,
+  ) {
     const comment = rejectionReason(b.decision, b.comment);
     return this.tenant.run(p, async (tx) => {
       const [req] = await tx
@@ -808,7 +907,13 @@ export class ApprovalsService {
       if (steps.some((s) => s.stepNo < req.currentStep && s.decidedBy === p.userId))
         throw err(403, 'APPROVAL_ALREADY_DECIDED_BY_YOU', 'You approved an earlier step');
       const approved = b.decision === 'approve';
-      if (approved) await opt.beforeApprove?.(tx, p, req);
+      if (approved)
+        try {
+          await opt.beforeApprove?.(tx, p, req);
+        } catch (e) {
+          onGateError(req, e);
+          throw e;
+        }
       const levels = typeof opt.levels === 'function' ? await opt.levels(tx, p) : (opt.levels ?? 1);
       if (approved && req.currentStep < levels && cur?.approverUserId) {
         const [up] = await tx
@@ -871,30 +976,7 @@ export class ApprovalsService {
         .from(approvalRequests)
         .where(eq(approvalRequests.id, id));
       // Rejections notify at once; approvals only when the last step approves.
-      const notice = approved
-        ? after?.state === 'approved'
-          ? APPROVE_NOTICE[req.entityType]
-          : undefined
-        : REJECT_NOTICE[req.entityType];
-      if (notice)
-        await this.notifications.notify(tx, p, {
-          type: notice.type,
-          recipientId: req.requestedBy,
-          entityType: notice.entityType,
-          entityId:
-            notice.entityType === 'approval_request'
-              ? req.id
-              : typeof req.payload?.planId === 'string'
-                ? req.payload.planId
-                : req.entityId,
-          dedupeKey: `${notice.type}:${req.id}`,
-          data: {
-            ...(req.payload ?? {}),
-            approvalId: req.id,
-            comment,
-            ...(approved ? {} : { reason: comment }),
-          },
-        });
+      await this.decisionNotice(tx, p, req, approved, after?.state, comment);
       await this.audit.record(tx, p, `approval.${b.decision}`, {
         entityType: req.entityType,
         entityId: req.entityId,
