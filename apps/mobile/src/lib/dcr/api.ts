@@ -10,6 +10,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { ApiError, apiFetch, idempotencyKey } from '../api';
+import { useProductCatalog } from './adapter';
 import { monthStartIST, todayIST } from './dates';
 import type { CallKind, HqOption, Person, WorkTypeOption } from './model';
 import { draftBody, type FlowState } from './model';
@@ -24,7 +25,7 @@ export type DcrOptions = {
   submitted?: Dcr | null;
 };
 
-export type ProductOpt = { id: string; label: string; hint?: string | null };
+export type { ProductOpt } from './adapter';
 
 const dcrKey = ['dcr'] as const;
 
@@ -89,21 +90,8 @@ export function useWorkWith(enabled: boolean, q: string) {
   });
 }
 
-export function useProducts(enabled: boolean) {
-  return useQuery({
-    queryKey: [...dcrKey, 'products'],
-    enabled,
-    staleTime: 10 * 60_000,
-    queryFn: async ({ signal }) => {
-      const r = await apiFetch<
-        Page<{ id: string; name: string; composition?: string | null; active: boolean }>
-      >('/v1/products', { signal, query: { limit: 200 } });
-      return r.items
-        .filter((p) => p.active)
-        .map((p): ProductOpt => ({ id: p.id, label: p.name, hint: p.composition }));
-    },
-  });
-}
+/** Active products with PTS and image (lib/dcr/adapter.ts maps the contract fields). */
+export const useProducts = useProductCatalog;
 
 export type SfcMatchResult =
   | { ok: true; band: string | null; hqs: import('./model').SfcHq[] }
