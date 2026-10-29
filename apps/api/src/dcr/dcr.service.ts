@@ -35,6 +35,7 @@ import { CheckInsService, err } from '../field/checkins.service';
 import { companySettings, localDate, type CompanySettings } from '../field/field.util';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { ApprovalsService } from '../plans/approvals.service';
+import { autoApproveAudit, isDirector } from '../plans/auto-approve';
 import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leave.util';
 import { DCR_LOCK_TZ, doctorPob, missingPresentation, pobValue } from './dcr-rules';
 
@@ -79,6 +80,41 @@ const unlockedUntilSql = (userId: SQL | typeof dcrs.userId, date: SQL | typeof d
 
 export { pobValue };
 
+/** Audit of a director's DCR approved at submit (same after{} shape as approval.auto_approved). */
+export async function auditDcrAutoApproved(
+  audit: AuditService,
+  tx: Tx,
+  p: Principal,
+  dcrId: string,
+  date: string,
+) {
+  await audit.record(tx, p, 'dcr.auto_approved', {
+    entityType: 'dcr',
+    entityId: dcrId,
+    after: {
+      ...autoApproveAudit({
+        subjectType: 'dcr',
+        subjectId: dcrId,
+        requestId: null,
+        requestedBy: p.userId,
+        at: new Date(),
+      }),
+      date,
+    },
+  });
+}
+
+/** SQL: the DCR owner is a director (never locks; DCRs auto-approved at submit). By role, no flag. */
+export const neverLocksSql = (userId: SQL | typeof dcrs.userId) =>
+  sql`(exists (select 1 from user_roles nl_ur join roles nl_r on nl_r.id = nl_ur.role_id
+       where nl_ur.user_id = ${userId} and nl_r.key = 'director' and nl_r.deleted_at is null))`;
+
+/** Status columns of a DCR submit: a director's report is approved by the system at once. */
+export const submitStatus = (p: Pick<Principal, 'roles'>, at: Date) =>
+  isDirector(p)
+    ? { status: 'approved' as const, approvedAt: at, approvedBy: null }
+    : { status: 'submitted' as const };
+
 @Injectable()
 export class DcrService {
   constructor(
@@ -91,21 +127,26 @@ export class DcrService {
   async lockInfo(tx: Tx, s: CompanySettings, userId: string, date: string) {
     const res = await tx.execute(
       sql`select ${lockAtSql(sql`${date}`, s)}::text as lock_at,
-                 ${unlockedUntilSql(sql`${userId}::uuid`, sql`${date}`)}::text as unlocked_until`,
+                 ${unlockedUntilSql(sql`${userId}::uuid`, sql`${date}`)}::text as unlocked_until,
+                 ${neverLocksSql(sql`${userId}::uuid`)} as never_locks`,
     );
     const rows = ((res as unknown as { rows?: unknown[] }).rows ?? res) as {
       lock_at: string;
       unlocked_until: string | null;
+      never_locks: boolean;
     }[];
     const lockAt = new Date(rows[0]!.lock_at);
     const uu = rows[0]!.unlocked_until;
     const unlockedUntil = uu ? new Date(uu) : null;
     const now = Date.now();
     const unlocked = !!unlockedUntil && unlockedUntil.getTime() > now;
+    const neverLocks = !!rows[0]!.never_locks;
     return {
       lockAt,
       unlockedUntil: unlocked ? unlockedUntil : null,
-      locked: now > lockAt.getTime() && !unlocked,
+      // Directors' days never lock (no 00:00 IST lock, no unlock request).
+      locked: !neverLocks && now > lockAt.getTime() && !unlocked,
+      neverLocks,
     };
   }
 
@@ -183,6 +224,8 @@ export class DcrService {
               ? r.status
               : null,
         approvedAt: r.approvedAt?.toISOString() ?? null,
+        autoApproved: r.status === 'approved' && !!r.approvedAt && !r.approvedBy,
+        neverLocks: li.neverLocks,
         approvedBy: r.approvedBy,
         rejectedAt: r.rejectedAt?.toISOString() ?? null,
         rejectedBy: r.rejectedBy,
@@ -249,7 +292,7 @@ export class DcrService {
   list(p: Principal, q: DcrQuery) {
     return this.tenant.run(p, async (tx) => {
       const s = await companySettings(tx, p);
-      const locked = sql`(now() > ${lockAtSql(dcrs.date, s)} and coalesce(${unlockedUntilSql(dcrs.userId, dcrs.date)} < now(), true))`;
+      const locked = sql`(now() > ${lockAtSql(dcrs.date, s)} and coalesce(${unlockedUntilSql(dcrs.userId, dcrs.date)} < now(), true) and not ${neverLocksSql(dcrs.userId)})`;
       const where = [
         isNull(dcrs.deletedAt),
         // Team scope (approvals hierarchy) only for reviewers (dcr:review) not asking mine=true;
@@ -573,7 +616,7 @@ export class DcrService {
         territoryIds: b.territoryIds,
         tourPlanId: plan.tourPlanId,
         deviationReason: reason,
-        ...(b.submit ? { status: 'submitted' as const, submittedAt: new Date() } : {}),
+        ...(b.submit ? { ...submitStatus(p, new Date()), submittedAt: new Date() } : {}),
       };
       let row: DcrRow | undefined;
       try {
@@ -611,6 +654,7 @@ export class DcrService {
       }
       const dcrId = row!.id;
       await this.writeCalls(tx, p, dcrId, b.date, b.calls, pts);
+      if (b.submit && isDirector(p)) await auditDcrAutoApproved(this.audit, tx, p, dcrId, b.date);
       await this.audit.record(tx, p, b.submit ? 'dcr.submit' : 'dcr.save', {
         entityType: 'dcr',
         entityId: dcrId,

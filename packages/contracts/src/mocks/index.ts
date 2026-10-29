@@ -869,10 +869,10 @@ function fieldHandlers(baseUrl: string) {
       if (!key) return validation('Idempotency-Key header is required');
       const b = DcrSubmit.safeParse(await request.json());
       if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
-      if (d.status === 'submitted')
-        return submitKeys.get(d.id) === key
-          ? HttpResponse.json({ ...Dcr.parse(withLock(d)), expenseDraft: null })
-          : dcrError(409, 'ALREADY_SUBMITTED', 'Already submitted');
+      // Same-key retry, also for a director's report (approved at submit).
+      if ((d.status === 'submitted' || d.status === 'approved') && submitKeys.get(d.id) === key)
+        return HttpResponse.json({ ...Dcr.parse(withLock(d)), expenseDraft: null });
+      if (d.status === 'submitted') return dcrError(409, 'ALREADY_SUBMITTED', 'Already submitted');
       if (d.status !== 'draft')
         return dcrError(409, 'ALREADY_SUBMITTED', 'Reviewed DCRs are read-only', {
           id: d.id,
@@ -924,8 +924,11 @@ function fieldHandlers(baseUrl: string) {
           })
         : [];
       submitKeys.set(d.id, key);
+      // Directors have no manager: the report is approved by the system at submit.
+      const auto = fx.me.roles.includes('director');
       Object.assign(d, {
-        status: 'submitted',
+        status: auto ? 'approved' : 'submitted',
+        ...(auto ? { approvedAt: frozenAt, approvedBy: null, autoApproved: true } : {}),
         submittedAt: frozenAt,
         submittedBy: fx.me.id,
         sfcRoutes: routes,
@@ -1001,10 +1004,15 @@ function fieldHandlers(baseUrl: string) {
   const unlocked = new Map<string, number>();
   const lockAt = (date: string) =>
     new Date(Date.parse(`${date}T00:00:00+05:30`) + 86_400_000).toISOString();
+  // Directors' days never lock (no manager to unlock them).
+  const neverLocks = () => fx.me.roles.includes('director');
   const isLocked = (date: string) =>
-    Date.now() > Date.parse(lockAt(date)) && (unlocked.get(date) ?? 0) < Date.now();
+    !neverLocks() &&
+    Date.now() > Date.parse(lockAt(date)) &&
+    (unlocked.get(date) ?? 0) < Date.now();
   const withLock = (d: Dcr): Dcr => ({
     ...d,
+    neverLocks: neverLocks(),
     lockAt: lockAt(d.date),
     unlockedUntil:
       (unlocked.get(d.date) ?? 0) > Date.now()

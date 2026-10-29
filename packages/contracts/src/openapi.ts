@@ -850,7 +850,7 @@ function buildDocument(): OpenApiDocument {
           operationId: 'submitTourPlanItem',
           summary: 'Send your draft/rejected item for approval (status pending)',
           description:
-            'Creates one approval request routed to your reporting manager (anyone above with approvals:decide may decide; never yourself).',
+            "Creates one approval request routed to your reporting manager (anyone above with approvals:decide may decide; never yourself). Director (no manager): approved at submit by the system in the same transaction (status approved, decidedBy null, Approval.autoApproved true; audit approval.auto_approved, reason 'auto-approved, no manager').",
           requestParams: { path: IdParam },
           responses: {
             '200': { description: 'Pending', ...json(TourPlanItem) },
@@ -859,7 +859,9 @@ function buildDocument(): OpenApiDocument {
             '409': err(
               'TP_LOCKED, or TP_OVERLAP (details.items): overlaps your pending/approved item',
             ),
-            '422': err('TP_IN_PAST: from is before today (IST); or VALIDATION as for PUT'),
+            '422': err(
+              'TP_IN_PAST: from is before today (IST); NO_MANAGER (details.subjectType): you have no reporting manager and are not a director; or VALIDATION as for PUT',
+            ),
           },
         }),
       },
@@ -954,6 +956,8 @@ function buildDocument(): OpenApiDocument {
         post: op({
           tags: ['TourPlans'],
           operationId: 'submitTourPlan',
+          description:
+            "Each submission is one approval request to your reporting manager. Director (no manager): approved at submit by the system in the same transaction (status approved, decidedBy null, Approval.autoApproved true; audit approval.auto_approved, reason 'auto-approved, no manager').",
           requestParams: { path: z.object({ month: Month }) },
           requestBody: { required: false, ...json(TourPlanSubmit) },
           responses: {
@@ -965,7 +969,7 @@ function buildDocument(): OpenApiDocument {
             '404': err('No plan for the month'),
             '409': err('DAY_LOCKED (details.dates): a chosen day is already submitted or approved'),
             '422': err(
-              'EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty.',
+              'EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty. NO_MANAGER (details.subjectType): you have no reporting manager and are not a director',
             ),
           },
         }),
@@ -992,6 +996,8 @@ function buildDocument(): OpenApiDocument {
           operationId: 'upsertDcr',
           summary:
             "Create or update the caller's DCR for a date (idempotent on date + call clientIds)",
+          description:
+            'Director: submit sets status approved at once (approvedBy null, autoApproved true; audit dcr.auto_approved) and the day never locks (neverLocks true).',
           requestBody: json(DcrUpsert),
           responses: {
             '200': { description: 'Saved', ...json(Dcr) },
@@ -1111,7 +1117,7 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '200': {
               description:
-                "Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Audited as expense.auto_drafted.",
+                "Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Audited as expense.auto_drafted. Director (no manager): the report is approved at submit by the system (status approved, approvedBy null, autoApproved true; audit dcr.auto_approved) before the expense auto-draft, and the day never locks (no DAY_LOCKED, no unlock request).",
               ...json(DcrSubmitResult),
             },
             '404': err('Not found (not your DCR)'),
@@ -1487,12 +1493,14 @@ function buildDocument(): OpenApiDocument {
           tags: ['Leave'],
           operationId: 'applyLeave',
           summary: 'Apply for leave; starts the approval chain',
+          description:
+            "Approval goes to your reporting manager. Director (no manager): approved at submit by the system in the same transaction (status approved, decidedBy null, Approval.autoApproved true; audit approval.auto_approved, reason 'auto-approved, no manager').",
           requestBody: json(LeaveApply),
           responses: {
-            '201': { description: 'Pending request', ...json(LeaveRequest) },
+            '201': { description: 'Pending request (director: approved)', ...json(LeaveRequest) },
             '409': err('LEAVE_OVERLAP, LEAVE_DCR_EXISTS'),
             '422': err(
-              'LEAVE_TYPE_UNKNOWN, LEAVE_HALF_DAY_NOT_ALLOWED, LEAVE_SPANS_YEARS, LEAVE_BACKDATE_WINDOW, LEAVE_TOO_FAR_AHEAD, LEAVE_NO_WORKING_DAYS, LEAVE_INSUFFICIENT_BALANCE, VALIDATION',
+              'LEAVE_TYPE_UNKNOWN, LEAVE_HALF_DAY_NOT_ALLOWED, LEAVE_SPANS_YEARS, LEAVE_BACKDATE_WINDOW, LEAVE_TOO_FAR_AHEAD, LEAVE_NO_WORKING_DAYS, LEAVE_INSUFFICIENT_BALANCE, NO_MANAGER (details.subjectType): you have no reporting manager and are not a director, VALIDATION',
             ),
           },
         }),
@@ -1930,12 +1938,18 @@ function buildDocument(): OpenApiDocument {
           operationId: 'submitExpenseClaim',
           summary:
             'Draft or rejected -> submitted; opens an approval request (subjectType expense) to your reporting manager, then up the chain (EXPENSE_APPROVAL_LEVELS, default 2)',
+          description:
+            "Director (no manager): approved at submit by the system (status approved, decidedBy null, decisionComment 'auto-approved, no manager'). The DCR gate still applies first: every line date needs an approved DCR (a director's DCRs are approved at their submit); otherwise the submit itself fails with 409 DCR_NOT_APPROVED and nothing changes (the claim stays draft/rejected).",
           requestParams: { path: IdParam },
           responses: {
-            '200': { description: 'Submitted', ...json(ExpenseClaim) },
+            '200': { description: 'Submitted (director: approved)', ...json(ExpenseClaim) },
             '404': err('Not found'),
-            '409': err('EXPENSE_NOT_EDITABLE'),
-            '422': err('EXPENSE_EMPTY or RECEIPT_REQUIRED (hotel lines need a confirmed receipt)'),
+            '409': err(
+              'EXPENSE_NOT_EDITABLE; DCR_NOT_APPROVED (director only, details.dates / dcrIds / dcrStatus): a line date has no approved DCR',
+            ),
+            '422': err(
+              'EXPENSE_EMPTY or RECEIPT_REQUIRED (hotel lines need a confirmed receipt); NO_MANAGER (details.subjectType): you have no reporting manager and are not a director',
+            ),
           },
         }),
       },

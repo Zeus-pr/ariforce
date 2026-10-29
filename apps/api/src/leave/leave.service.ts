@@ -32,6 +32,7 @@ import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { companySettings, localDate } from '../field/field.util';
 import { ApprovalsService } from '../plans/approvals.service';
+import { deciderId } from '../plans/auto-approve';
 import { nameRejecters, rejectionFields } from '../common/rejection';
 import { addDay, assertNoSubmittedDcr, countedDates } from './leave.util';
 import { submittedReportSql } from '../dcr/day-report';
@@ -134,7 +135,7 @@ export class LeaveService implements OnModuleInit {
           .set({
             status: approved ? 'approved' : 'rejected',
             decidedAt: new Date(),
-            decidedBy: p.userId,
+            decidedBy: deciderId(p),
             decisionComment: comment,
           })
           .where(and(eq(leaveRequests.id, req.entityId), eq(leaveRequests.status, 'pending')));
@@ -645,6 +646,8 @@ export class LeaveService implements OnModuleInit {
           approvalId: reqId,
         },
       });
+      // Director: approved now by the system (no manager).
+      await this.approvals.autoApprove(tx, p, reqId);
       await this.notifications.notify(tx, p, {
         type: 'leave.submitted',
         recipientId: await this.approvals.currentApprover(tx, reqId),

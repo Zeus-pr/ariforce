@@ -19,6 +19,8 @@ export interface Principal {
   requestId: string;
   ip: string | null;
   userAgent: string | null;
+  /** Set only on the system principal of an auto-approval: hooks write decidedBy null. */
+  system?: true;
 }
 
 /** Sees the whole company (top of the sales hierarchy). */

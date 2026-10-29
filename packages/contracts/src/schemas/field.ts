@@ -456,7 +456,17 @@ export const Dcr = Syncable.extend({
     description: 'Manager review: pending = submitted, not reviewed yet; null for drafts',
   }),
   approvedAt: Timestamp.nullable().default(null),
-  approvedBy: Id.nullable().default(null),
+  approvedBy: Id.nullable().default(null).meta({
+    description: 'Reviewer; null with approvedAt set = approved by the system (autoApproved)',
+  }),
+  autoApproved: z.boolean().optional().meta({
+    description:
+      "True when the system approved it at submit: the filer is a director (no manager). Audited dcr.auto_approved with reason 'auto-approved, no manager'",
+  }),
+  neverLocks: z.boolean().optional().meta({
+    description:
+      'True for a director: the day never locks (no 00:00 IST lock, no unlock request needed); status never becomes locked',
+  }),
   rejectedAt: Timestamp.nullable().default(null),
   rejectedBy: Id.nullable().default(null),
   rejectionReason: z.string().max(500).nullable().default(null).meta({
@@ -562,6 +572,10 @@ export const Approval = z
     decidedBy: Id.nullable(),
     rejectionReason: z.string().nullable().optional().meta({
       description: 'The reason of the rejecting step; null unless status is rejected',
+    }),
+    autoApproved: z.boolean().optional().meta({
+      description:
+        "True when the system approved it at submit (the requester is a director, no manager): decidedBy null, comment 'auto-approved, no manager'",
     }),
     flags: z
       .array(z.enum(['dcr_rejected_lines']))

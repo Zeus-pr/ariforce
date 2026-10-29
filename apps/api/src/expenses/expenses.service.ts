@@ -37,6 +37,7 @@ import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { StorageService } from '../files/storage.service';
 import { ApprovalsService } from '../plans/approvals.service';
+import { deciderId } from '../plans/auto-approve';
 import { nameRejecters, rejectionFields } from '../common/rejection';
 import { keyExt, sniffMatches } from './files.util';
 import { computeAllowances } from '../allowances/allowances.engine';
@@ -90,7 +91,7 @@ export class ExpensesService implements OnModuleInit {
           .set({
             status: approved ? 'approved' : 'rejected',
             decidedAt: new Date(),
-            decidedBy: p.userId,
+            decidedBy: deciderId(p),
             decisionComment: comment,
           })
           .where(and(eq(expenseClaims.id, req.entityId), eq(expenseClaims.status, 'submitted')));
@@ -665,6 +666,9 @@ export class ExpensesService implements OnModuleInit {
         entityId: c.id,
         after: { total: dto.total, lines: dto.lines.length, approvalId: reqId },
       });
+      // Director: approved now by the system; the DCR gate still applies (409 DCR_NOT_APPROVED
+      // rolls the whole submit back: the claim stays draft/rejected).
+      await this.approvals.autoApprove(tx, p, reqId);
       await this.notifications.notify(tx, p, {
         type: 'expense.submitted',
         recipientId: await this.approvals.currentApprover(tx, reqId),

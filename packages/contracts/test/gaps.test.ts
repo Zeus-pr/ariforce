@@ -301,6 +301,27 @@ describe('contract gaps', () => {
       calls: [],
       submit: false,
     };
+    // A director's day never locks: the old date stays editable.
+    const asDirector = await api.PUT('/v1/dcrs', { body });
+    expect(asDirector.response.status).toBe(200);
+    expect(asDirector.data!.neverLocks).toBe(true);
+    const roles = fx.me.roles;
+    fx.me.roles = ['business_manager'];
+    try {
+      await runLockedAsMr();
+    } finally {
+      fx.me.roles = roles;
+    }
+  });
+  async function runLockedAsMr() {
+    const old = '2026-01-06';
+    const body = {
+      date: old,
+      workTypeId: fx.workTypes[0]!.id,
+      territoryIds: [],
+      calls: [],
+      submit: false,
+    };
     const locked = await api.PUT('/v1/dcrs', { body });
     expect(locked.response.status).toBe(409);
     const req = await api.POST('/v1/dcrs/correction-requests', {
@@ -313,5 +334,5 @@ describe('contract gaps', () => {
       body: { date: today, reason: 'Nothing to fix' },
     });
     expect(notLocked.response.status).toBe(409);
-  });
+  }
 });

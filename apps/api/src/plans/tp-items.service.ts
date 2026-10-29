@@ -23,6 +23,7 @@ import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { ApprovalsService } from './approvals.service';
+import { deciderId } from './auto-approve';
 import { dbStatus, itemsOut, type ItemRow } from './tp-items';
 
 export interface TpItemQuery {
@@ -52,7 +53,7 @@ export class TourPlanItemsService {
         .set({
           status: approved ? 'approved' : 'rejected',
           decidedAt: new Date(),
-          decidedBy: p.userId,
+          decidedBy: deciderId(p),
           decisionComment: comment,
         })
         .where(eq(tourPlanItems.id, req.entityId));
@@ -282,7 +283,7 @@ export class TourPlanItemsService {
           decisionComment: null,
         })
         .where(eq(tourPlanItems.id, cur.id));
-      await this.approvals.request(tx, p, 'tour_plan_item', cur.id, null, {
+      const reqId = await this.approvals.request(tx, p, 'tour_plan_item', cur.id, null, {
         from: cur.fromDate,
         to: cur.toDate,
       });
@@ -290,6 +291,8 @@ export class TourPlanItemsService {
         entityType: 'tour_plan_item',
         entityId: cur.id,
       });
+      // Director: approved now by the system (no manager).
+      await this.approvals.autoApprove(tx, p, reqId);
       return (await itemsOut(tx, [await this.row(tx, p, cur.id)]))[0]!;
     });
   }

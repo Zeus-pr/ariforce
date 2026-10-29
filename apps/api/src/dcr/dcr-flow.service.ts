@@ -60,7 +60,8 @@ import {
   submittedOf,
 } from './day-report';
 import { approvedItemOn, itemCards } from '../plans/tp-items';
-import { DcrService } from './dcr.service';
+import { DcrService, auditDcrAutoApproved, submitStatus } from './dcr.service';
+import { isDirector } from '../plans/auto-approve';
 import { ExpenseAutoDraftService } from '../expenses/auto-draft.service';
 import { resolveSfcCandidates, type SfcSource } from './sfc-resolve';
 
@@ -630,11 +631,14 @@ export class DcrFlowService {
       // Serialise with leave approval (LEAVE_DCR_CONFLICT): the approved-leave check below then sees
       // any leave approved before us, and an approval after us sees this submitted DCR.
       await lockDcrLeave(tx, p.userId);
-      if (cur.status === 'submitted') {
-        if (cur.submitIdempotencyKey === key)
-          return { ...(await this.dcr.toDto(tx, s, [cur]))[0]!, expenseDraft: null };
+      // Retry with the same key: also for a director's report (approved at submit).
+      if (
+        (cur.status === 'submitted' || cur.status === 'approved') &&
+        cur.submitIdempotencyKey === key
+      )
+        return { ...(await this.dcr.toDto(tx, s, [cur]))[0]!, expenseDraft: null };
+      if (cur.status === 'submitted')
         throw err(409, 'ALREADY_SUBMITTED', 'Already submitted; request a correction', { id });
-      }
       // Reviewed reports are read-only: approved stays, rejected is history (file a new draft).
       if (cur.status !== 'draft')
         throw err(
@@ -786,7 +790,8 @@ export class DcrFlowService {
           await sp
             .update(dcrs)
             .set({
-              status: 'submitted',
+              // Director: approved now by the system (no manager); everyone else: submitted.
+              ...submitStatus(p, new Date()),
               submittedAt: new Date(),
               submittedBy: p.userId,
               submitIdempotencyKey: key,
@@ -819,6 +824,7 @@ export class DcrFlowService {
         entityId: cur.id,
         after: { date: cur.date, calls: dto.calls.length, sfcRoutes: routes.map((r) => r.id) },
       });
+      if (isDirector(p)) await auditDcrAutoApproved(this.audit, tx, p, cur.id, cur.date);
       // Server TA/DA (company setting autoExpenseOnDcrSubmit); never fails the submit.
       const expenseDraft = await this.autoExpense.onDcrSubmit(tx, p, {
         id: cur.id,

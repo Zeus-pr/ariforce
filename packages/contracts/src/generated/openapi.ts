@@ -893,7 +893,7 @@ export interface paths {
     put?: never;
     /**
      * Send your draft/rejected item for approval (status pending)
-     * @description Creates one approval request routed to your reporting manager (anyone above with approvals:decide may decide; never yourself).
+     * @description Creates one approval request routed to your reporting manager (anyone above with approvals:decide may decide; never yourself). Director (no manager): approved at submit by the system in the same transaction (status approved, decidedBy null, Approval.autoApproved true; audit approval.auto_approved, reason 'auto-approved, no manager').
      */
     post: operations['submitTourPlanItem'];
     delete?: never;
@@ -982,6 +982,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** @description Each submission is one approval request to your reporting manager. Director (no manager): approved at submit by the system in the same transaction (status approved, decidedBy null, Approval.autoApproved true; audit approval.auto_approved, reason 'auto-approved, no manager'). */
     post: operations['submitTourPlan'];
     delete?: never;
     options?: never;
@@ -1014,7 +1015,10 @@ export interface paths {
       cookie?: never;
     };
     get: operations['listDcrs'];
-    /** Create or update the caller's DCR for a date (idempotent on date + call clientIds) */
+    /**
+     * Create or update the caller's DCR for a date (idempotent on date + call clientIds)
+     * @description Director: submit sets status approved at once (approvedBy null, autoApproved true; audit dcr.auto_approved) and the day never locks (neverLocks true).
+     */
     put: operations['upsertDcr'];
     post?: never;
     delete?: never;
@@ -1610,7 +1614,10 @@ export interface paths {
     /** Own requests; with leave:approve also your reporting line */
     get: operations['listLeaveRequests'];
     put?: never;
-    /** Apply for leave; starts the approval chain */
+    /**
+     * Apply for leave; starts the approval chain
+     * @description Approval goes to your reporting manager. Director (no manager): approved at submit by the system in the same transaction (status approved, decidedBy null, Approval.autoApproved true; audit approval.auto_approved, reason 'auto-approved, no manager').
+     */
     post: operations['applyLeave'];
     delete?: never;
     options?: never;
@@ -2050,7 +2057,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Draft or rejected -> submitted; opens an approval request (subjectType expense) to your reporting manager, then up the chain (EXPENSE_APPROVAL_LEVELS, default 2) */
+    /**
+     * Draft or rejected -> submitted; opens an approval request (subjectType expense) to your reporting manager, then up the chain (EXPENSE_APPROVAL_LEVELS, default 2)
+     * @description Director (no manager): approved at submit by the system (status approved, decidedBy null, decisionComment 'auto-approved, no manager'). The DCR gate still applies first: every line date needs an approved DCR (a director's DCRs are approved at their submit); otherwise the submit itself fails with 409 DCR_NOT_APPROVED and nothing changes (the claim stays draft/rejected).
+     */
     post: operations['submitExpenseClaim'];
     delete?: never;
     options?: never;
@@ -5302,8 +5312,15 @@ export interface components {
       reviewStatus: ('pending' | 'approved' | 'rejected') | null;
       /** @default null */
       approvedAt: string | null;
-      /** @default null */
+      /**
+       * @description Reviewer; null with approvedAt set = approved by the system (autoApproved)
+       * @default null
+       */
       approvedBy: string | null;
+      /** @description True when the system approved it at submit: the filer is a director (no manager). Audited dcr.auto_approved with reason 'auto-approved, no manager' */
+      autoApproved?: boolean;
+      /** @description True for a director: the day never locks (no 00:00 IST lock, no unlock request needed); status never becomes locked */
+      neverLocks?: boolean;
       /** @default null */
       rejectedAt: string | null;
       /** @default null */
@@ -5497,6 +5514,8 @@ export interface components {
       decidedBy: string | null;
       /** @description The reason of the rejecting step; null unless status is rejected */
       rejectionReason?: string | null;
+      /** @description True when the system approved it at submit (the requester is a director, no manager): decidedBy null, comment 'auto-approved, no manager' */
+      autoApproved?: boolean;
       /** @description Approver warnings. dcr_rejected_lines: an expense claim has lines on days whose DCR was rejected (see claim.dcrRejectedDates); approving such a claim is blocked with 409 DCR_NOT_APPROVED */
       flags?: 'dcr_rejected_lines'[];
     };
@@ -5839,8 +5858,15 @@ export interface components {
       reviewStatus: ('pending' | 'approved' | 'rejected') | null;
       /** @default null */
       approvedAt: string | null;
-      /** @default null */
+      /**
+       * @description Reviewer; null with approvedAt set = approved by the system (autoApproved)
+       * @default null
+       */
       approvedBy: string | null;
+      /** @description True when the system approved it at submit: the filer is a director (no manager). Audited dcr.auto_approved with reason 'auto-approved, no manager' */
+      autoApproved?: boolean;
+      /** @description True for a director: the day never locks (no 00:00 IST lock, no unlock request needed); status never becomes locked */
+      neverLocks?: boolean;
       /** @default null */
       rejectedAt: string | null;
       /** @default null */
@@ -7127,6 +7153,8 @@ export interface components {
       decidedBy: string | null;
       /** @description The reason of the rejecting step; null unless status is rejected */
       rejectionReason?: string | null;
+      /** @description True when the system approved it at submit (the requester is a director, no manager): decidedBy null, comment 'auto-approved, no manager' */
+      autoApproved?: boolean;
       /** @description Approver warnings. dcr_rejected_lines: an expense claim has lines on days whose DCR was rejected (see claim.dcrRejectedDates); approving such a claim is blocked with 409 DCR_NOT_APPROVED */
       flags?: 'dcr_rejected_lines'[];
       /** @description Full subject details for the requester, an assigned approver (any step) or a caller with read access to the subject; otherwise null */
@@ -11568,7 +11596,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description TP_IN_PAST: from is before today (IST); or VALIDATION as for PUT */
+      /** @description TP_IN_PAST: from is before today (IST); NO_MANAGER (details.subjectType): you have no reporting manager and are not a director; or VALIDATION as for PUT */
       422: {
         headers: {
           [name: string]: unknown;
@@ -11990,7 +12018,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty. */
+      /** @description EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty. NO_MANAGER (details.subjectType): you have no reporting manager and are not a director */
       422: {
         headers: {
           [name: string]: unknown;
@@ -12551,7 +12579,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Audited as expense.auto_drafted. */
+      /** @description Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Audited as expense.auto_drafted. Director (no manager): the report is approved at submit by the system (status approved, approvedBy null, autoApproved true; audit dcr.auto_approved) before the expense auto-draft, and the day never locks (no DAY_LOCKED, no unlock request). */
       200: {
         headers: {
           [name: string]: unknown;
@@ -14109,7 +14137,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Pending request */
+      /** @description Pending request (director: approved) */
       201: {
         headers: {
           [name: string]: unknown;
@@ -14145,7 +14173,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description LEAVE_TYPE_UNKNOWN, LEAVE_HALF_DAY_NOT_ALLOWED, LEAVE_SPANS_YEARS, LEAVE_BACKDATE_WINDOW, LEAVE_TOO_FAR_AHEAD, LEAVE_NO_WORKING_DAYS, LEAVE_INSUFFICIENT_BALANCE, VALIDATION */
+      /** @description LEAVE_TYPE_UNKNOWN, LEAVE_HALF_DAY_NOT_ALLOWED, LEAVE_SPANS_YEARS, LEAVE_BACKDATE_WINDOW, LEAVE_TOO_FAR_AHEAD, LEAVE_NO_WORKING_DAYS, LEAVE_INSUFFICIENT_BALANCE, NO_MANAGER (details.subjectType): you have no reporting manager and are not a director, VALIDATION */
       422: {
         headers: {
           [name: string]: unknown;
@@ -15991,7 +16019,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Submitted */
+      /** @description Submitted (director: approved) */
       200: {
         headers: {
           [name: string]: unknown;
@@ -16027,7 +16055,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description EXPENSE_NOT_EDITABLE */
+      /** @description EXPENSE_NOT_EDITABLE; DCR_NOT_APPROVED (director only, details.dates / dcrIds / dcrStatus): a line date has no approved DCR */
       409: {
         headers: {
           [name: string]: unknown;
@@ -16036,7 +16064,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description EXPENSE_EMPTY or RECEIPT_REQUIRED (hotel lines need a confirmed receipt) */
+      /** @description EXPENSE_EMPTY or RECEIPT_REQUIRED (hotel lines need a confirmed receipt); NO_MANAGER (details.subjectType): you have no reporting manager and are not a director */
       422: {
         headers: {
           [name: string]: unknown;

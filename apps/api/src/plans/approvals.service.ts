@@ -45,6 +45,14 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { rejectionReason } from '../common/rejection';
 import { plansOut, syncStatus } from './tp-submissions';
 import { routeToHolders } from './approval-routing';
+import {
+  AUTO_APPROVE_REASON,
+  autoApproveAudit,
+  deciderId,
+  isDirector,
+  managerRoute,
+  systemPrincipal,
+} from './auto-approve';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 
 type EntityType = (typeof approvalRequests.$inferInsert)['entityType'];
@@ -185,7 +193,7 @@ export class ApprovalsService {
       const decided = {
         status: approved ? ('approved' as const) : ('rejected' as const),
         decidedAt: now,
-        decidedBy: p.userId,
+        decidedBy: deciderId(p),
         decisionComment: comment,
       };
       const [sub] = await tx
@@ -528,7 +536,15 @@ export class ApprovalsService {
         .select({ managerId: users.managerId })
         .from(users)
         .where(eq(users.id, p.userId));
-      approverUserId = me?.managerId ?? null;
+      const route = managerRoute(p, entityType, me?.managerId ?? null);
+      if (route.error)
+        throw err(
+          422,
+          'NO_MANAGER',
+          'You have no reporting manager, so nobody can approve this; ask an admin to set your manager',
+          { subjectType: SUBJECT[entityType] ?? entityType },
+        );
+      approverUserId = route.approverUserId;
     }
     const id = uuidv7();
     await tx.insert(approvalRequests).values({
@@ -548,6 +564,48 @@ export class ApprovalsService {
       approverUserId,
     });
     return id;
+  }
+
+  /**
+   * Directors have no manager: approve the director's own pending request now, in the submit
+   * transaction, through the engine (beforeApprove gates, step + request state, the decision hook).
+   * decidedBy null (system), comment AUTO_APPROVE_REASON, audit approval.auto_approved. Call it after
+   * the subject is in its submitted/pending state. Returns false (no-op) for everyone else. A gate
+   * that throws (e.g. 409 DCR_NOT_APPROVED) fails the whole submit.
+   */
+  async autoApprove(tx: Tx, p: Principal, requestId: string): Promise<boolean> {
+    if (!isDirector(p)) return false;
+    const [req] = await tx
+      .select()
+      .from(approvalRequests)
+      .where(eq(approvalRequests.id, requestId))
+      .for('update');
+    if (!req || req.state !== 'pending' || req.requestedBy !== p.userId) return false;
+    const opt = this.options.get(req.entityType) ?? {};
+    const sys = systemPrincipal(p);
+    await opt.beforeApprove?.(tx, sys, req);
+    const at = new Date();
+    await tx
+      .update(approvalSteps)
+      .set({ decision: 'approved', decidedBy: null, decidedAt: at, comment: AUTO_APPROVE_REASON })
+      .where(and(eq(approvalSteps.requestId, req.id), eq(approvalSteps.stepNo, req.currentStep)));
+    await tx
+      .update(approvalRequests)
+      .set({ state: 'approved' })
+      .where(eq(approvalRequests.id, req.id));
+    await this.hooks.get(req.entityType)?.(tx, sys, req, true, AUTO_APPROVE_REASON);
+    await this.audit.record(tx, p, 'approval.auto_approved', {
+      entityType: req.entityType,
+      entityId: req.entityId,
+      after: autoApproveAudit({
+        subjectType: SUBJECT[req.entityType] ?? req.entityType,
+        subjectId: req.entityId,
+        requestId: req.id,
+        requestedBy: req.requestedBy,
+        at,
+      }),
+    });
+    return true;
   }
 
   /** Active users of the tenant (RLS) holding `perm` through any role; never `exceptUserId`. */
@@ -656,6 +714,11 @@ export class ApprovalsService {
         decidedAt: st?.decidedAt?.toISOString() ?? null,
         decidedBy: st?.decidedBy ?? null,
         rejectionReason: STATUS(r.state) === 'rejected' ? (st?.comment ?? null) : null,
+        autoApproved:
+          r.state === 'approved' &&
+          !!st?.decidedAt &&
+          !st.decidedBy &&
+          st.comment === AUTO_APPROVE_REASON,
         ...(r.entityType === 'expense'
           ? {
               flags: flaggedClaims.has(r.entityId) ? (['dcr_rejected_lines'] as const).slice() : [],
