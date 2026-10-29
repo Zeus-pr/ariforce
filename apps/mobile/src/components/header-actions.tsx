@@ -1,12 +1,13 @@
 import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
+import { AppText } from './app-text';
 import { Avatar } from './avatar';
 import { Icon } from './icon';
 import { PressableScale } from './pressable-scale';
 import { featureHref } from '@/lib/features';
-import { colors, iconSize, radius, sizes, spacing, touch } from '@/theme';
+import { colors, iconSize, radius, spacing, touch } from '@/theme';
 
-/** Home header, right side: notifications bell (stub) and the account avatar (opens More). */
+/** Home header, right side: notifications bell (live unread count) and the account avatar (opens More). */
 export function HeaderActions({ name, unread }: { name: string; unread: number }) {
   const router = useRouter();
   return (
@@ -18,7 +19,13 @@ export function HeaderActions({ name, unread }: { name: string; unread: number }
         scaleTo={0.9}
       >
         <Icon name="bell-outline" size={iconSize.lg} color={colors.ink} />
-        {unread > 0 ? <View style={styles.badge} /> : null}
+        {unread > 0 ? (
+          <View style={styles.badge}>
+            <AppText variant="chip" style={styles.badgeText} numberOfLines={1}>
+              {unread > 99 ? '99+' : unread}
+            </AppText>
+          </View>
+        ) : null}
       </PressableScale>
       <PressableScale
         onPress={() => router.navigate('/more')}
@@ -42,13 +49,17 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: 'absolute',
-    top: spacing.md,
-    right: spacing.md,
-    width: sizes.badge,
-    height: sizes.badge,
+    top: spacing.xs,
+    right: spacing.xs,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: radius.full,
     backgroundColor: colors.danger,
     borderWidth: 1.5,
     borderColor: colors.homeSky, // ring matches the Home band behind the bell
   },
+  badgeText: { color: colors.onNavy, fontSize: 11, lineHeight: 14 },
 });

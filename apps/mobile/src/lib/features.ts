@@ -110,6 +110,7 @@ export const featureHref = (feature: FeatureKey, roles?: readonly string[]) => {
   // Approvals: DCR review and DCR unlock requests are built; the screen checks isApprover.
   if (feature === 'approvals') return '/approvals' as const;
   if (feature === 'tour-plan') return '/tour-plan' as const;
+  if (feature === 'notifications') return '/notifications' as const;
   if (feature === 'leave') return '/leave' as const;
   if (feature === 'expenses') return '/expenses' as const;
   if (isMasterBuilt(feature))

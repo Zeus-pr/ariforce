@@ -1,18 +1,18 @@
 import { Tabs } from 'expo-router';
 import { AppHeader } from '@/components/app-header';
 import { HeaderActions } from '@/components/header-actions';
+import { useUnreadCount } from '@/lib/notifications';
 import { FloatingTabBar, TabBarProvider, type TabMeta } from '@/components/floating-tab-bar';
 import { LogoLockup } from '@/components/logo-lockup';
 import { useAuth } from '@/lib/auth-context';
 import { isSalesRole } from '@/lib/roles';
-import { getHomeMock } from '@/mocks/home';
 import { colors } from '@/theme';
 
 function HomeHeaderRight() {
   const { user } = useAuth();
   const name = user?.name?.trim() || user?.email || 'You';
-  // PLACEHOLDER: unread count = open flags from the mock until notifications are wired.
-  const unread = getHomeMock(new Date()).attention.length;
+  // Live unread count (GET /v1/notifications/unread-count, polled every minute).
+  const unread = useUnreadCount().data ?? 0;
   return <HeaderActions name={name} unread={unread} />;
 }
 
