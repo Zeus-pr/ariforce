@@ -9,6 +9,7 @@
  * Validation is the contract's zod rules (packages/contracts/src/schemas/masters.ts) written out
  * by hand: the app bundle never imports zod. Types come from the contract (type-only imports).
  */
+import { sortByLabel } from './sort';
 import type {
   Chemist,
   Doctor,
@@ -192,6 +193,11 @@ export type Option = { value: string; label: string; hint?: string };
 
 /** Select options per field type (web field-input.tsx). */
 export function optionsFor(type: FieldDef['type'], lk: Lookups): Option[] | null {
+  const o = optionsUnsorted(type, lk);
+  return o && sortByLabel(o);
+}
+
+function optionsUnsorted(type: FieldDef['type'], lk: Lookups): Option[] | null {
   if (type === 'territory')
     return lk.territories.map((t) => ({
       value: t.id,

@@ -1,3 +1,4 @@
+import { byName } from '@/lib/sort';
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -58,7 +59,8 @@ export function CustomerSheet({
         seen.add(x.id);
         out.push(x);
       }
-    return out;
+    // A-Z over all loaded pages together (not page by page), so paging never breaks the order.
+    return out.sort((a, b) => byName(a.name, b.name));
   }, [list.data]);
 
   const close = () => {
