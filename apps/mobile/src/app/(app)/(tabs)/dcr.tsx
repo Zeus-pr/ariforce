@@ -1,6 +1,8 @@
 import type { Dcr } from '@ariforce/contracts';
 import { Redirect, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
+import { SelectSheet } from '@/components/masters/select-sheet';
+import { datesOf, rangeLabel, useMyTps, type TpItem } from '@/lib/tp/adapter';
 import { Alert, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
@@ -39,6 +41,16 @@ function DcrWorkspace() {
   const optionsQ = useDcrOptions(today);
   const remove = useDeleteDraft();
   const decisionsQ = useDecisions();
+  const { user } = useAuth();
+  const tpsQ = useMyTps(user?.id);
+  const approvedTps = useMemo(
+    () => (tpsQ.data ?? []).filter((t) => t.status === 'approved' && t.to >= today),
+    [tpsQ.data, today],
+  );
+  const tpFrom = approvedTps.reduce((m, t) => (t.from < m ? t.from : m), today);
+  const tpTo = approvedTps.reduce((m, t) => (t.to > m ? t.to : m), today);
+  const tpFiledQ = useSubmittedHistory(tpFrom, tpTo);
+  const [pickTp, setPickTp] = useState<{ t: TpItem; open: string[] } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const workTypeName = useMemo(() => {
@@ -61,6 +73,20 @@ function DcrWorkspace() {
     return m;
   }, [history]);
 
+  // Approved TPs as one draft card each, until the range has ended or every day is filed.
+  const tpCards = useMemo(() => {
+    const filed = new Set(
+      (tpFiledQ.data?.items ?? [])
+        .filter((d) => d.status !== 'draft' && counts(reviewOf(d, decisionsQ.data)))
+        .map((d) => d.date),
+    );
+    return approvedTps
+      .map((t) => ({ t, open: datesOf(t.from, t.to).filter((d) => !filed.has(d)) }))
+      .filter((c) => c.open.length > 0)
+      .sort((a, b) => a.t.from.localeCompare(b.t.from));
+  }, [approvedTps, tpFiledQ.data, decisionsQ.data]);
+  const openTpDay = (t: TpItem, date: string) => openForm({ new: '1', date, tp: t.id });
+
   const drafts = useMemo(
     () => (draftsQ.data?.items ?? []).filter((d) => d.status === 'draft'),
     [draftsQ.data],
@@ -75,7 +101,7 @@ function DcrWorkspace() {
     void optionsQ.refetch();
   };
 
-  const openForm = (params: { id?: string; date?: string; new?: string }) =>
+  const openForm = (params: { id?: string; date?: string; new?: string; tp?: string }) =>
     router.push({ pathname: '/dcr/form', params });
 
   const confirmDelete = (d: Dcr) => {
@@ -158,6 +184,29 @@ function DcrWorkspace() {
                 <Icon name="refresh" color={colors.navy} />
                 <AppText variant="action">Retry</AppText>
               </Pressable>
+            </Card>
+          ) : null}
+
+          {tpCards.length ? (
+            <Card>
+              {tpCards.map(({ t, open }, i) => (
+                <ListRow
+                  key={t.id}
+                  icon="calendar-check-outline"
+                  tone="blue"
+                  title={`TP · ${rangeLabel(t.from, t.to)}`}
+                  subtitle={
+                    open.length === 1
+                      ? `${dateLabel(open[0]!)} to file`
+                      : `${open.length} days to file · pick a day`
+                  }
+                  trailing={<Chip label="Approved plan" tone="green" />}
+                  onPress={() =>
+                    open.length === 1 ? openTpDay(t, open[0]!) : setPickTp({ t, open })
+                  }
+                  divider={i < tpCards.length - 1}
+                />
+              ))}
             </Card>
           ) : null}
 
@@ -244,6 +293,23 @@ function DcrWorkspace() {
             </Card>
           )}
         </ScrollView>
+
+        <SelectSheet
+          visible={!!pickTp}
+          title={pickTp ? `File a day · ${rangeLabel(pickTp.t.from, pickTp.t.to)}` : 'File a day'}
+          options={(pickTp?.open ?? []).map((d) => ({
+            value: d,
+            label: dateLabel(d),
+            hint: d === today ? 'Today' : d > today ? 'Draft until the day' : undefined,
+          }))}
+          value={null}
+          onPick={(d) => {
+            const t = pickTp?.t;
+            setPickTp(null);
+            if (d && t) openTpDay(t, d);
+          }}
+          onClose={() => setPickTp(null)}
+        />
 
         <Pressable
           onPress={() => openForm({ new: '1', date: today })}
