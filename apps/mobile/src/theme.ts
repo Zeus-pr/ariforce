@@ -22,6 +22,10 @@ export const colors = {
   surface: '#FFFFFF',
   ink: '#0F2A4A',
   muted: '#55667B',
+  // Home top band (Sharanya, 2026-10-29). On it: navy 8.4:1, onSkyMuted 5.6:1 (WCAG AA body text);
+  // `muted` is only 3.4:1 there, so secondary text on the band uses onSkyMuted.
+  homeSky: '#87CEFA',
+  onSkyMuted: '#33465C',
   subtle: '#7D8A9B',
   separator: '#DCE4EE',
   borderStrong: '#B8C5D6',

@@ -76,7 +76,12 @@ export default function TabsLayout() {
           options={{
             title: 'Home',
             header: () => (
-              <AppHeader title="Home" titleNode={<LogoLockup />} right={<HomeHeaderRight />} />
+              <AppHeader
+                title="Home"
+                titleNode={<LogoLockup />}
+                right={<HomeHeaderRight />}
+                background={colors.homeSky}
+              />
             ),
           }}
         />

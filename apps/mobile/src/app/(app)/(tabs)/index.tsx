@@ -69,13 +69,18 @@ export default function HomeScreen() {
           />
         }
       >
-        <View>
-          <AppText variant="greeting">{greeting(now)},</AppText>
+        {/* Top band: continues the header's sky colour edge to edge (status bar icons stay dark). */}
+        <View style={styles.band}>
+          <AppText variant="greeting" style={styles.onSky}>
+            {greeting(now)},
+          </AppText>
           <AppText variant="name" accessibilityRole="header" numberOfLines={2}>
             {name}
           </AppText>
           <View style={styles.dateRow}>
-            <AppText variant="caption">{formatDate(now)}</AppText>
+            <AppText variant="caption" style={styles.onSky}>
+              {formatDate(now)}
+            </AppText>
             {HOME_IS_PLACEHOLDER ? <Chip label="Sample data" tone="orange" /> : null}
           </View>
         </View>
@@ -122,4 +127,13 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   section: { marginTop: layout.section },
+  band: {
+    backgroundColor: colors.homeSky,
+    marginHorizontal: -layout.gutter,
+    marginTop: -spacing.sm,
+    paddingHorizontal: layout.gutter,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
+  },
+  onSky: { color: colors.onSkyMuted },
 });

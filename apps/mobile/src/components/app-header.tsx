@@ -18,18 +18,22 @@ export function AppHeader({
   titleNode,
   onBack,
   right,
+  background,
 }: {
   title: string;
   /** Replaces the text title visually (Home's logo); `title` stays the accessible name. */
   titleNode?: ReactNode;
   onBack?: () => void;
   right?: ReactNode;
+  /** Band colour behind the header and the status bar (default: the ground). */
+  background?: string;
 }) {
   const insets = useSafeAreaInsets();
   return (
     <View
       style={[
         styles.bar,
+        background ? { backgroundColor: background } : null,
         { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right },
       ]}
     >
