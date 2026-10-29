@@ -1,3 +1,4 @@
+import { isSalesRole } from './roles';
 import type { IconName } from '@/components/icon';
 import type { Tone } from '@/theme';
 
@@ -98,9 +99,14 @@ type MasterBuilt = (typeof MASTER_BUILT)[number];
 const isMasterBuilt = (k: FeatureKey): k is MasterBuilt =>
   (MASTER_BUILT as readonly string[]).includes(k);
 
+/** Features a person may open: DCR needs a sales role (same as the website's nav). */
+export const canOpenFeature = (feature: FeatureKey, roles: readonly string[]) =>
+  feature !== 'dcr' || isSalesRole(roles);
+
 /** Link to a feature: its screen when the app has it, else its "Coming soon" screen. */
-export const featureHref = (feature: FeatureKey) => {
-  if (feature === 'dcr') return '/dcr' as const;
+export const featureHref = (feature: FeatureKey, roles?: readonly string[]) => {
+  // DCR is for the sales ladder only (web nav.ts SALES); others land on Home.
+  if (feature === 'dcr') return roles && !isSalesRole(roles) ? ('/' as const) : ('/dcr' as const);
   if (isMasterBuilt(feature))
     return { pathname: '/masters/[kind]', params: { kind: feature } } as const;
   return { pathname: '/coming-soon/[feature]', params: { feature } } as const;

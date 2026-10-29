@@ -60,3 +60,9 @@ export const isApprover = (roles: readonly string[]) => roles.some((r) => level(
  */
 export const canWriteMasters = (roles: readonly string[]) =>
   roles.some((r) => r === 'system_admin' || level(r) >= ROLE_LEVEL.regional_business_manager);
+
+/**
+ * Who files DCRs: the sales ladder (Business Manager … Director), not System Admin. Same rule
+ * as the website's nav (apps/web/src/lib/nav.ts SALES = every role except System Admin).
+ */
+export const isSalesRole = (roles: readonly string[]) => roles.some((r) => level(r) >= 1);

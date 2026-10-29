@@ -72,19 +72,13 @@ export function SfcRouteCard({
 }) {
   const rows: [string, string][] = [
     ['Band', bandText(facts)],
-    [
-      'Travel',
-      facts.travelMode
-        ? (MODE_LABEL[facts.travelMode] ?? facts.travelMode)
-        : 'Not set',
-    ],
+    ['Travel', facts.travelMode ? (MODE_LABEL[facts.travelMode] ?? facts.travelMode) : 'Not set'],
     ['Distance', `${km(facts.oneWayKm)} one way · ${km(facts.bothWayKm)} both`],
     ['TA (one way)', money(facts.oneWayAmount, facts.actualFare)],
     ['TA (both ways)', money(facts.bothWayAmount, facts.actualFare)],
     ['DA', money(facts.da)],
   ];
-  if (facts.ratePerKm != null)
-    rows.push(['TA rate', `${inr.format(facts.ratePerKm)}/km`]);
+  if (facts.ratePerKm != null) rows.push(['TA rate', `${inr.format(facts.ratePerKm)}/km`]);
 
   return (
     <View style={styles.card} accessibilityLabel="SFC details and TA/DA">

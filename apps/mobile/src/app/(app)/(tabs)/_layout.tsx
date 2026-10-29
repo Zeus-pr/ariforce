@@ -4,6 +4,7 @@ import { HeaderActions } from '@/components/header-actions';
 import { FloatingTabBar, TabBarProvider, type TabMeta } from '@/components/floating-tab-bar';
 import { LogoLockup } from '@/components/logo-lockup';
 import { useAuth } from '@/lib/auth-context';
+import { isSalesRole } from '@/lib/roles';
 import { getHomeMock } from '@/mocks/home';
 import { colors } from '@/theme';
 
@@ -54,10 +55,14 @@ const TABS: Record<string, TabMeta> = {
  * so it scrolls behind the glass (and, on Android, is what the blur samples).
  */
 export default function TabsLayout() {
+  const { user } = useAuth();
+  const sales = isSalesRole(user?.roles ?? []);
+  // DCR is for the sales ladder only (web nav.ts SALES): no tab for System Admin.
+  const meta = sales ? TABS : Object.fromEntries(Object.entries(TABS).filter(([k]) => k !== 'dcr'));
   return (
     <TabBarProvider>
       <Tabs
-        tabBar={(props) => <FloatingTabBar {...props} meta={TABS} />}
+        tabBar={(props) => <FloatingTabBar {...props} meta={meta} />}
         screenOptions={{
           // Same AppHeader as pushed screens: one inset, one 56dp row, title on the gutter.
           header: ({ options, route }) => (
@@ -76,7 +81,7 @@ export default function TabsLayout() {
           }}
         />
         <Tabs.Screen name="business" options={{ title: 'Business' }} />
-        <Tabs.Screen name="dcr" options={{ title: 'DCR' }} />
+        <Tabs.Screen name="dcr" options={{ title: 'DCR', href: sales ? undefined : null }} />
         <Tabs.Screen name="tour-plan" options={{ title: 'Tour Plan' }} />
         <Tabs.Screen name="more" options={{ title: 'More' }} />
       </Tabs>

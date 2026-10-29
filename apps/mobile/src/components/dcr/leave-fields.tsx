@@ -62,9 +62,7 @@ export function LeaveFields({
         if (!live) return;
         const items = r.items.filter(
           (l) =>
-            ['pending', 'approved'].includes(l.status) &&
-            l.fromDate <= date &&
-            l.toDate >= date,
+            ['pending', 'approved'].includes(l.status) && l.fromDate <= date && l.toDate >= date,
         );
         setReqs(items);
         setTypes((t.items ?? []).filter((x) => x.active !== false));
@@ -158,11 +156,7 @@ export function LeaveFields({
           </Pressable>
           <Pressable onPress={() => setPickHalf(true)} style={styles.select}>
             <AppText variant="body">
-              {form.half === 'am'
-                ? 'First half'
-                : form.half === 'pm'
-                  ? 'Second half'
-                  : 'Full day'}
+              {form.half === 'am' ? 'First half' : form.half === 'pm' ? 'Second half' : 'Full day'}
             </AppText>
           </Pressable>
           <TextField
@@ -215,7 +209,9 @@ export function LeaveFields({
           { value: 'pm', label: 'Second half' },
         ]}
         value={form.half || 'full'}
-        onPick={(v) => setForm((f) => ({ ...f, half: !v || v === 'full' ? '' : (v as 'am' | 'pm') }))}
+        onPick={(v) =>
+          setForm((f) => ({ ...f, half: !v || v === 'full' ? '' : (v as 'am' | 'pm') }))
+        }
         onClose={() => setPickHalf(false)}
       />
     </View>

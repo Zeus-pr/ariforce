@@ -2,10 +2,16 @@
  * Live DCR API hooks (web dcr-workspace + dcr-flow). Same endpoints and query shapes.
  */
 import type { Dcr } from '@ariforce/contracts';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { ApiError, apiFetch, idempotencyKey } from '../api';
 import { monthStartIST, todayIST } from './dates';
-import type { HqOption, Person, WorkTypeOption } from './model';
+import type { CallKind, HqOption, Person, WorkTypeOption } from './model';
 import { draftBody, type FlowState } from './model';
 
 export type Page<T> = { items: T[]; nextCursor?: string | null; total?: number | null };
@@ -49,8 +55,7 @@ export function useDcrOptions(date: string) {
   return useQuery({
     queryKey: [...dcrKey, 'options', date],
     enabled: !!date,
-    queryFn: ({ signal }) =>
-      apiFetch<DcrOptions>('/v1/dcrs/options', { signal, query: { date } }),
+    queryFn: ({ signal }) => apiFetch<DcrOptions>('/v1/dcrs/options', { signal, query: { date } }),
   });
 }
 
@@ -90,10 +95,9 @@ export function useProducts(enabled: boolean) {
     enabled,
     staleTime: 10 * 60_000,
     queryFn: async ({ signal }) => {
-      const r = await apiFetch<Page<{ id: string; name: string; composition?: string | null; active: boolean }>>(
-        '/v1/products',
-        { signal, query: { limit: 200 } },
-      );
+      const r = await apiFetch<
+        Page<{ id: string; name: string; composition?: string | null; active: boolean }>
+      >('/v1/products', { signal, query: { limit: 200 } });
       return r.items
         .filter((p) => p.active)
         .map((p): ProductOpt => ({ id: p.id, label: p.name, hint: p.composition }));
@@ -115,7 +119,8 @@ export async function fetchSfcMatch(date: string, workTypeId: string, territoryI
     return { ok: true as const, band: r.band, hqs: r.hqs };
   } catch (e) {
     if (e instanceof ApiError && e.code === 'SFC_NO_MATCH') {
-      const det = e.details as { missingHqIds?: string[]; hqs?: import('./model').SfcHq[] } | undefined;
+      const det = e.details as
+        { missingHqIds?: string[]; hqs?: import('./model').SfcHq[] } | undefined;
       return {
         ok: false as const,
         code: 'SFC_NO_MATCH' as const,
@@ -146,15 +151,7 @@ export function useSaveDraft() {
 export function useSubmitDcr() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      id,
-      version,
-      key,
-    }: {
-      id: string;
-      version: number;
-      key: string;
-    }) =>
+    mutationFn: async ({ id, version, key }: { id: string; version: number; key: string }) =>
       apiFetch<Dcr>(`/v1/dcrs/${id}/submit`, {
         method: 'POST',
         headers: { 'idempotency-key': key },
@@ -177,3 +174,66 @@ export function useDeleteDraft() {
 }
 
 export { idempotencyKey };
+
+/** Where a call's customers come from: an HQ, narrowed to the picked territories under it. */
+export type CustomerScope = { hqId: string; localIds: string[] };
+
+export type CustomerRow = {
+  id: string;
+  name: string;
+  city?: string | null;
+  territoryId?: string | null;
+  localTerritoryId?: string | null;
+  approvalStatus?: string;
+};
+
+type CustomerQuery = { territoryId: string; localTerritoryId?: string };
+
+const CUSTOMER_PATH: Record<CallKind, string> = {
+  doctor: '/v1/doctors',
+  chemist: '/v1/chemists',
+  stockist: '/v1/stockists',
+};
+
+/**
+ * Customers of the day's territories (web dcr-sections useCustomers): server search `q`, one query
+ * per HQ (doctors and chemists narrowed by localTerritoryId to the picked territories; stockists
+ * are not linked to territories, so the whole HQ). Each query pages with its own cursor; the next
+ * page fetches only the queries that still have one.
+ */
+export function useCustomers(kind: CallKind, scopes: CustomerScope[], q: string, enabled: boolean) {
+  const queries: CustomerQuery[] = scopes.flatMap((sc) =>
+    kind !== 'stockist' && sc.localIds.length
+      ? sc.localIds.map((localTerritoryId) => ({ territoryId: sc.hqId, localTerritoryId }))
+      : [{ territoryId: sc.hqId }],
+  );
+  return useInfiniteQuery({
+    queryKey: [...dcrKey, 'customers', kind, queries, q.trim()],
+    enabled: enabled && queries.length > 0,
+    placeholderData: keepPreviousData,
+    initialPageParam: queries.map(() => undefined) as (string | null | undefined)[],
+    queryFn: async ({ pageParam, signal }) => {
+      const pages = await Promise.all(
+        queries.map((query, i) =>
+          pageParam[i] === null
+            ? Promise.resolve({ items: [] as CustomerRow[], nextCursor: null })
+            : apiFetch<Page<CustomerRow>>(CUSTOMER_PATH[kind], {
+                signal,
+                query: {
+                  limit: 50,
+                  sort: 'name',
+                  q: q.trim() || undefined,
+                  cursor: pageParam[i] ?? undefined,
+                  ...query,
+                },
+              }),
+        ),
+      );
+      return {
+        items: pages.flatMap((p) => p.items),
+        cursors: pages.map((p) => p.nextCursor ?? null),
+      };
+    },
+    getNextPageParam: (last) => (last.cursors.some(Boolean) ? last.cursors : undefined),
+  });
+}

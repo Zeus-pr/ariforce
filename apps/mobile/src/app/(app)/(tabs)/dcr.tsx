@@ -1,5 +1,5 @@
 import type { Dcr } from '@ariforce/contracts';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,15 +16,12 @@ import { Icon } from '@/components/icon';
 import { ListRow } from '@/components/list-row';
 import { ScrollView } from '@/components/scroll';
 import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
-import {
-  useDeleteDraft,
-  useDraftList,
-  useDcrOptions,
-  useSubmittedHistory,
-} from '@/lib/dcr/api';
+import { useDeleteDraft, useDraftList, useDcrOptions, useSubmittedHistory } from '@/lib/dcr/api';
 import { dateLabel, savedLabel, todayIST } from '@/lib/dcr/dates';
 import { saveMessage } from '@/lib/dcr/errors';
 import { BANDS, normaliseWorkTypes } from '@/lib/dcr/model';
+import { useAuth } from '@/lib/auth-context';
+import { isSalesRole } from '@/lib/roles';
 import { colors, layout, radius, shadows, spacing, touch } from '@/theme';
 
 /**
@@ -32,6 +29,13 @@ import { colors, layout, radius, shadows, spacing, touch } from '@/theme';
  * Opening a card pushes the form stack screen.
  */
 export default function DcrTab() {
+  const { user } = useAuth();
+  // DCR is for the sales ladder only (web nav.ts SALES); the tab is hidden for others too.
+  if (!isSalesRole(user?.roles ?? [])) return <Redirect href="/" />;
+  return <DcrWorkspace />;
+}
+
+function DcrWorkspace() {
   const router = useRouter();
   const bottom = useBottomSpace();
   const today = todayIST();
@@ -63,9 +67,7 @@ export default function DcrTab() {
   );
 
   const refreshing =
-    (draftsQ.isRefetching || historyQ.isRefetching) &&
-    !draftsQ.isPending &&
-    !historyQ.isPending;
+    (draftsQ.isRefetching || historyQ.isRefetching) && !draftsQ.isPending && !historyQ.isPending;
 
   const refresh = () => {
     void draftsQ.refetch();
@@ -101,9 +103,11 @@ export default function DcrTab() {
     const band = BANDS.find((b) => b.band === d.band);
     const what =
       workTypeName.get(d.workTypeId) ??
-      (band ? 'Field work' : d.details?.kind
-        ? d.details.kind[0]!.toUpperCase() + d.details.kind.slice(1)
-        : 'Report');
+      (band
+        ? 'Field work'
+        : d.details?.kind
+          ? d.details.kind[0]!.toUpperCase() + d.details.kind.slice(1)
+          : 'Report');
     const n = d.callCount ?? d.calls?.length ?? 0;
     const territory = d.territoryIds.length
       ? `${d.territoryIds.length} ${d.territoryIds.length === 1 ? 'territory' : 'territories'}`
@@ -124,7 +128,10 @@ export default function DcrTab() {
       <View style={styles.flex}>
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[styles.content, { paddingBottom: bottom + touch.control + spacing.lg }]}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: bottom + touch.control + spacing.lg },
+          ]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -188,11 +195,7 @@ export default function DcrTab() {
                         hitSlop={8}
                         style={styles.trash}
                       >
-                        <Icon
-                          name="trash-can-outline"
-                          color={colors.danger}
-                          size={20}
-                        />
+                        <Icon name="trash-can-outline" color={colors.danger} size={20} />
                       </Pressable>
                     </View>
                   }
@@ -264,7 +267,12 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   badges: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs },
-  trash: { minWidth: touch.min, minHeight: touch.min, alignItems: 'center', justifyContent: 'center' },
+  trash: {
+    minWidth: touch.min,
+    minHeight: touch.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   fab: {
     position: 'absolute',
     right: layout.gutter,

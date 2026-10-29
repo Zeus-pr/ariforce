@@ -42,7 +42,11 @@ export default function HomeScreen() {
 
   const name = user?.name?.trim() || user?.email || 'there';
   const approver = isApprover(user?.roles ?? []);
-  const open = useCallback((f: FeatureKey) => router.push(featureHref(f)), [router]);
+  const roles = user?.roles;
+  const open = useCallback(
+    (f: FeatureKey) => router.push(featureHref(f, roles ?? [])),
+    [router, roles],
+  );
 
   async function onRefresh() {
     setRefreshing(true);
@@ -87,7 +91,7 @@ export default function HomeScreen() {
         ) : null}
 
         <View style={styles.section}>
-          <QuickActions onOpen={open} />
+          <QuickActions onOpen={open} roles={user?.roles ?? []} />
         </View>
 
         {approver ? (

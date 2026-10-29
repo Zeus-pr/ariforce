@@ -1,26 +1,24 @@
 import type { Dcr } from '@ariforce/contracts';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
 import { Chip } from '@/components/chip';
+import { CallEditor } from '@/components/dcr/call-editor';
+import { dcrStyles, Errors, Field } from '@/components/dcr/field';
 import { LeaveFields } from '@/components/dcr/leave-fields';
+import { MeetingEditor } from '@/components/dcr/meeting-editor';
 import { MultiSelectSheet } from '@/components/dcr/multi-select-sheet';
-import { SfcRouteCard, candidateFacts } from '@/components/dcr/sfc-route-card';
-import { TimeField } from '@/components/dcr/time-field';
+import { OfficeEditor } from '@/components/dcr/office-editor';
+import { SfcSection } from '@/components/dcr/sfc-section';
 import { useBottomSpace } from '@/components/floating-tab-bar';
 import { Icon } from '@/components/icon';
 import { SelectSheet } from '@/components/masters/select-sheet';
 import { KeyboardAwareScrollView } from '@/components/scroll';
 import { TextField } from '@/components/text-field';
 import { ApiError, apiFetch } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import {
   fetchSfcMatch,
   idempotencyKey,
@@ -50,34 +48,12 @@ import {
   territoryRows,
   workOnChoices,
   workOnFor,
-  type CallDraft,
   type CallKind,
   type FlowState,
   type WorkTypeOption,
 } from '@/lib/dcr/model';
-import { colors, fonts, layout, radius, spacing, touch, type } from '@/theme';
-
-const MEETING_TYPES = [
-  'Cycle meeting',
-  'Area review',
-  'Regional review',
-  'Conference or CME',
-  'Team meeting',
-];
-const TRAINING_TYPES = [
-  'Product training',
-  'Induction',
-  'Field skills workshop',
-  'Compliance training',
-  'Refresher training',
-];
-const ADMIN_TASKS = [
-  'Expense filing',
-  'Stock reconciliation',
-  'Reports and MIS',
-  'Office visit',
-  'Bank or courier work',
-];
+import { isSalesRole } from '@/lib/roles';
+import { colors, layout, radius, spacing, touch } from '@/theme';
 
 const fresh = (date: string): FlowState => ({
   date,
@@ -99,12 +75,19 @@ const fresh = (date: string): FlowState => ({
  * One DCR report (web dcr-flow.tsx): progressive sections on a scroll, draft save / submit / delete.
  */
 export default function DcrFormScreen() {
-  const { id, date: dateParam, new: isNew } = useLocalSearchParams<{
+  const {
+    id,
+    date: dateParam,
+    new: isNew,
+  } = useLocalSearchParams<{
     id?: string;
     date?: string;
     new?: string;
   }>();
+  const { user } = useAuth();
   const today = todayIST();
+  // DCR is for the sales ladder only (web nav.ts SALES).
+  if (!isSalesRole(user?.roles ?? [])) return <Redirect href="/" />;
   const initialDate = (typeof dateParam === 'string' && dateParam) || today;
   const reportId = typeof id === 'string' && id ? id : undefined;
   const creating = isNew === '1' || !reportId;
@@ -143,6 +126,20 @@ function DcrForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState<'draft' | 'submit' | null>(null);
   const [peopleQ, setPeopleQ] = useState('');
+  const peopleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Work With search goes to the server (web dcr-flow.tsx), debounced like the website's pickers.
+  const searchPeople = (q: string) => {
+    if (peopleTimer.current) clearTimeout(peopleTimer.current);
+    peopleTimer.current = setTimeout(() => setPeopleQ(q.trim()), 300);
+  };
+  useEffect(
+    () => () => {
+      if (peopleTimer.current) clearTimeout(peopleTimer.current);
+    },
+    [],
+  );
+  /** Date + report this form was filled from; refetches after a save never refill it. */
+  const hydratedFor = useRef<string | null>(null);
   const [sheet, setSheet] = useState<
     | null
     | 'workOn'
@@ -169,25 +166,21 @@ function DcrForm({
   const submitMut = useSubmitDcr();
   const deleteMut = useDeleteDraft();
 
-  const choices = useMemo(
-    () => workOnChoices(workTypes ?? []),
-    [workTypes],
-  );
+  const choices = useMemo(() => workOnChoices(workTypes ?? []), [workTypes]);
   const rows = useMemo(() => territoryRows(terrQ.data ?? []), [terrQ.data]);
   const placeName = useMemo(() => {
     const m = new Map<string, string>();
     for (const r of rows) m.set(r.id, r.name);
     return m;
   }, [rows]);
+  // Remember every person seen, so picked names survive a new search.
   const personName = useMemo(() => {
-    const m = new Map(names.current);
-    for (const p of peopleQry.data ?? []) m.set(p.id, p.name);
-    return m;
+    for (const p of peopleQry.data ?? []) names.current.set(p.id, p.name);
+    return new Map(names.current);
   }, [peopleQry.data]);
 
   const blocked = !!daySubmitted && dcr?.status !== 'submitted';
-  const readOnly =
-    dcr?.status === 'submitted' || dcr?.status === 'locked' || blocked;
+  const readOnly = dcr?.status === 'submitted' || dcr?.status === 'locked' || blocked;
   const busy = !!saving || saveDraft.isPending || submitMut.isPending || deleteMut.isPending;
 
   // Hydrate from options + optional record
@@ -196,6 +189,10 @@ function DcrForm({
       if (optionsQ.isError) setLoadError(saveMessage(optionsQ.error));
       return;
     }
+    // Fill the form once per date/report. Saving invalidates the DCR queries; without this guard
+    // the refetch reset the form and dropped the saved draft (the next save made a second draft).
+    const hydrateKey = `${optionsQ.data.date}|${reportId ?? ''}`;
+    if (hydratedFor.current === hydrateKey) return;
     const wts = normaliseWorkTypes(optionsQ.data.workTypes);
     setWorkTypes(wts);
     setLoadError(null);
@@ -213,9 +210,10 @@ function DcrForm({
       }
       if (reportId && !d && (recordQ.isPending || optionsQ.isPending)) return;
     }
+    hydratedFor.current = hydrateKey;
     if (sub && sub.id !== d?.id) setDaySubmitted({ id: sub.id });
     setDcr(d);
-    const next = fresh(s.date);
+    const next = fresh(optionsQ.data.date);
     if (d) {
       const wo = workOnFor(workOnChoices(wts), d.workTypeId);
       next.workOn = wo;
@@ -255,16 +253,28 @@ function DcrForm({
       }
     }
     setS(next);
-    // Only when options/record settle for this date/id
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [optionsQ.data, recordQ.data, reportId]);
+  }, [
+    optionsQ.data,
+    optionsQ.isError,
+    optionsQ.error,
+    optionsQ.isPending,
+    recordQ.data,
+    recordQ.isError,
+    recordQ.isPending,
+    reportId,
+  ]);
 
-  // Resolve saved customer names
+  // Resolve saved customer names, whenever a call still shows the placeholder.
+  const missingNames = s.calls
+    .filter((c) => c.outletId && (!c.outletName || c.outletName === SAVED_CUSTOMER))
+    .map((c) => `${c.kind}:${c.outletId}`)
+    .join(',');
   useEffect(() => {
-    const missing = s.calls.filter(
-      (c) => c.outletId && (!c.outletName || c.outletName === SAVED_CUSTOMER),
-    );
-    if (!missing.length) return;
+    if (!missingNames) return;
+    const missing = missingNames.split(',').map((k) => {
+      const [kind, outletId] = k.split(':') as [CallKind, string];
+      return { kind, outletId };
+    });
     let live = true;
     void (async () => {
       const found = new Map<string, string>();
@@ -296,7 +306,7 @@ function DcrForm({
     return () => {
       live = false;
     };
-  }, [dcr?.id, dcr?.version]);
+  }, [missingNames]);
 
   // SFC match
   const sfcKey =
@@ -312,12 +322,10 @@ function DcrForm({
       if (!live) return;
       if (r.ok) {
         const band =
-          bandOf(r.band) ??
-          bandOf((workTypes ?? []).find((w) => w.id === workTypeId)?.band);
+          bandOf(r.band) ?? bandOf((workTypes ?? []).find((w) => w.id === workTypeId)?.band);
         const hqs = cleanSfcHqs(r.hqs, band);
         const empty = hqs.filter((h) => !h.candidates.length);
-        if (empty.length)
-          return setS((x) => ({ ...x, sfc: { state: 'no_match', hqs: [] } }));
+        if (empty.length) return setS((x) => ({ ...x, sfc: { state: 'no_match', hqs: [] } }));
         return setS((x) => ({ ...x, sfc: { state: 'ok', hqs } }));
       }
       if (r.code === 'SFC_NO_MATCH')
@@ -339,8 +347,7 @@ function DcrForm({
     if (!wo) return;
     update((x) => {
       if (x.workOn?.branch === 'field') lastFieldWt.current = x.workTypeId;
-      if (wo.branch !== 'field')
-        return { workOn: wo, workTypeId: wo.workTypes[0]!.id };
+      if (wo.branch !== 'field') return { workOn: wo, workTypeId: wo.workTypes[0]!.id };
       return {
         workOn: wo,
         workTypeId: x.workOn?.branch === 'field' ? x.workTypeId : lastFieldWt.current,
@@ -372,9 +379,7 @@ function DcrForm({
         sfc: { state: 'idle', hqs: [] },
         routeChoice: {},
         calls: x.calls.map((c) =>
-          c.hqId && !hq.has(c.hqId)
-            ? { ...c, outletId: '', outletName: '', hqId: '' }
-            : c,
+          c.hqId && !hq.has(c.hqId) ? { ...c, outletId: '', outletName: '', hqId: '' } : c,
         ),
       };
     });
@@ -414,10 +419,12 @@ function DcrForm({
         Alert.alert('Submitted', `Report for ${dateLabel(s.date)} submitted.`);
         router.back();
       } catch (e) {
+        // Same as web dcr-flow.tsx: keep the key only when no answer came back (the submit may
+        // have gone through, and a retry with the same key is safe); any API answer drops it.
+        if (!(e instanceof ApiError && e.code === 'NETWORK')) submitKey.current = null;
         if (e instanceof ApiError && e.code === 'DEVIATION_REASON_REQUIRED') {
           setAskDeviation(true);
           setFormError(saveMessage(e));
-          submitKey.current = null;
           return;
         }
         if (e instanceof ApiError && e.code === 'DAY_ALREADY_SUBMITTED') {
@@ -426,9 +433,7 @@ function DcrForm({
           setFormError(saveMessage(e));
           return;
         }
-        setFormError(
-          `${saveMessage(e)} Your draft is saved; press Submit again.`,
-        );
+        setFormError(`${saveMessage(e)} Your draft is saved; press Submit again.`);
       }
     } catch (e) {
       if (e instanceof ApiError && e.code === 'DAY_ALREADY_SUBMITTED') {
@@ -461,14 +466,13 @@ function DcrForm({
     );
   }
 
-  const status =
-    !dcr
-      ? 'Not started'
-      : dcr.status === 'draft'
-        ? 'Draft'
-        : dcr.status === 'submitted'
-          ? 'Submitted'
-          : 'Locked';
+  const status = !dcr
+    ? 'Not started'
+    : dcr.status === 'draft'
+      ? 'Draft'
+      : dcr.status === 'submitted'
+        ? 'Submitted'
+        : 'Locked';
 
   const title =
     dcr?.status === 'submitted'
@@ -477,7 +481,10 @@ function DcrForm({
         ? `Draft · ${dateLabel(s.date)}`
         : 'New report';
 
-  if ((optionsQ.isPending && !optionsQ.data) || (reportId && recordQ.isPending && !dcr && !optionsQ.data))
+  if (
+    (optionsQ.isPending && !optionsQ.data) ||
+    (reportId && recordQ.isPending && !dcr && !optionsQ.data)
+  )
     return (
       <View style={[styles.flex, styles.center]}>
         <Stack.Screen options={{ title: 'DCR' }} />
@@ -498,7 +505,9 @@ function DcrForm({
 
   const scopes = hqIdsOf(rows, s.territoryIds).map((hqId) => ({
     hqId,
-    localIds: s.territoryIds.filter((id) => rows.find((r) => r.id === id)?.hqId === hqId && id !== hqId),
+    localIds: s.territoryIds.filter(
+      (id) => rows.find((r) => r.id === id)?.hqId === hqId && id !== hqId,
+    ),
   }));
 
   return (
@@ -524,8 +533,8 @@ function DcrForm({
               You already submitted a report for {dateLabel(s.date)}.
             </AppText>
             <AppText variant="bodyMuted">
-              Only one report per day can be submitted, so this{' '}
-              {dcr ? 'draft' : 'form'} can’t be saved or submitted.
+              Only one report per day can be submitted, so this {dcr ? 'draft' : 'form'} can’t be
+              saved or submitted.
             </AppText>
             {daySubmitted.id ? (
               <Button
@@ -541,12 +550,7 @@ function DcrForm({
               />
             ) : null}
             {dcr?.status === 'draft' ? (
-              <Button
-                label="Delete draft"
-                variant="secondary"
-                compact
-                onPress={confirmDelete}
-              />
+              <Button label="Delete draft" variant="secondary" compact onPress={confirmDelete} />
             ) : null}
           </View>
         ) : null}
@@ -575,10 +579,7 @@ function DcrForm({
               value={
                 BANDS.find(
                   (b) =>
-                    b.band ===
-                    bandOf(
-                      (workTypes ?? []).find((w) => w.id === s.workTypeId)?.band,
-                    ),
+                    b.band === bandOf((workTypes ?? []).find((w) => w.id === s.workTypeId)?.band),
                 )?.label
               }
               placeholder="HQ, Ex-HQ or Out-station"
@@ -625,108 +626,23 @@ function DcrForm({
             ) : null}
 
             {s.workWithDone ? (
-              <View style={styles.section}>
-                <AppText variant="label">SFC / TA·DA</AppText>
-                {s.sfc.state === 'loading' ? (
-                  <ActivityIndicator color={colors.navy} />
-                ) : s.sfc.state === 'error' ? (
-                  <AppText variant="caption" style={styles.err}>
-                    SFC could not be loaded. Retry before submitting.
-                  </AppText>
-                ) : s.sfc.state === 'no_match' ? (
-                  <AppText variant="caption" style={styles.err}>
-                    No matching SFC record. Change the territory or band.
-                  </AppText>
-                ) : s.sfc.state === 'ok' ? (
-                  s.sfc.hqs.map((h) => {
-                    const picked = s.routeChoice[h.hqTerritoryId];
-                    const chosen =
-                      (picked && h.candidates.some((x) => x.id === picked)
-                        ? picked
-                        : h.autoSelectedId) ?? '';
-                    const c = h.candidates.find((x) => x.id === chosen);
-                    return (
-                      <View key={h.hqTerritoryId} style={styles.sfcBlock}>
-                        {h.candidates.length > 1 && !readOnly ? (
-                          <View style={styles.field}>
-                            <AppText variant="label">
-                              {h.hqName}: which route did you travel?
-                            </AppText>
-                            <Pressable
-                              onPress={() => {
-                                setRouteHq(h.hqTerritoryId);
-                                setSheet('route');
-                              }}
-                              style={styles.select}
-                            >
-                              <AppText
-                                variant="body"
-                                style={[styles.selectText, !c && styles.ph]}
-                              >
-                                {c
-                                  ? `${c.fromPlace} to ${c.toPlace}`
-                                  : 'Choose your route'}
-                              </AppText>
-                              <Icon name="chevron-down" color={colors.subtle} />
-                            </Pressable>
-                          </View>
-                        ) : null}
-                        {c ? (
-                          <SfcRouteCard
-                            title={`${h.hqName} · ${c.fromPlace} to ${c.toPlace}`}
-                            facts={candidateFacts(c)}
-                            note="From your SFC. Read-only; changes are made on the SFC screen."
-                          />
-                        ) : (
-                          <AppText variant="bodyMuted">
-                            Pick a route to see its TA/DA.
-                          </AppText>
-                        )}
-                      </View>
-                    );
-                  })
-                ) : dcr?.sfcRoutes?.length && readOnly ? (
-                  dcr.sfcRoutes.map((r) =>
-                    r.snapshot ? (
-                      <SfcRouteCard
-                        key={r.hqTerritoryId}
-                        title={`${r.snapshot.fromPlace} to ${r.snapshot.toPlace}`}
-                        facts={{
-                          fromPlace: r.snapshot.fromPlace,
-                          toPlace: r.snapshot.toPlace,
-                          oneWayKm: r.snapshot.oneWayKm,
-                          bothWayKm: r.snapshot.bothWayKm,
-                          oneWayAmount: r.snapshot.oneWayAmount,
-                          bothWayAmount: r.snapshot.bothWayAmount,
-                          actualFare: r.snapshot.actualFare,
-                          travelMode: r.snapshot.travelMode,
-                          category: r.snapshot.category,
-                          band: r.snapshot.band,
-                          da: r.snapshot.da,
-                          source: r.snapshot.source,
-                          ratePerKm: r.snapshot.ratePerKm,
-                        }}
-                        note={`Frozen at submit · TA rate ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(r.snapshot.ratePerKm)}/km`}
-                      />
-                    ) : null,
-                  )
-                ) : null}
-                {err('sfc').map((m) => (
-                  <AppText key={m} variant="caption" style={styles.err}>
-                    {m}
-                  </AppText>
-                ))}
-              </View>
+              <SfcSection
+                sfc={s.sfc}
+                routeChoice={s.routeChoice}
+                readOnly={readOnly}
+                dcr={dcr}
+                errors={err('sfc')}
+                onChooseRoute={(hq) => {
+                  setRouteHq(hq);
+                  setSheet('route');
+                }}
+              />
             ) : null}
 
             {s.sfc.state === 'ok' || (readOnly && (dcr?.calls?.length ?? 0) > 0) ? (
-              <View style={styles.section}>
+              <View style={dcrStyles.section}>
                 <AppText variant="label">Calls</AppText>
-                {err('calls').map((m) => (
-                  <AppText key={m} variant="caption" style={styles.err}>
-                    {m}
-                  </AppText>
-                ))}
+                <Errors list={err('calls')} />
                 {s.calls.map((c, i) => (
                   <CallEditor
                     key={c.clientId}
@@ -736,6 +652,7 @@ function DcrForm({
                     errors={err(`call-${c.clientId}`)}
                     products={productsQ.data ?? []}
                     scopes={scopes}
+                    names={placeName}
                     onChange={(p) =>
                       update((x) => ({
                         calls: x.calls.map((row) =>
@@ -772,6 +689,8 @@ function DcrForm({
                             ],
                           }))
                         }
+                        accessibilityRole="button"
+                        accessibilityLabel={`Add ${KIND_LABEL[kind].toLowerCase()} call`}
                         style={styles.addCall}
                       >
                         <Icon name="plus" size={18} color={colors.navy} />
@@ -835,7 +754,7 @@ function DcrForm({
         ) : null}
 
         {formError ? (
-          <AppText variant="caption" style={styles.err} accessibilityLiveRegion="polite">
+          <AppText variant="caption" style={dcrStyles.err} accessibilityLiveRegion="polite">
             {formError}
           </AppText>
         ) : null}
@@ -860,9 +779,15 @@ function DcrForm({
           </>
         ) : null}
         {dcr?.status === 'draft' && !readOnly ? (
-          <Pressable onPress={confirmDelete} style={styles.remove} disabled={busy}>
+          <Pressable
+            onPress={confirmDelete}
+            style={styles.remove}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Delete draft"
+          >
             <Icon name="trash-can-outline" color={colors.danger} />
-            <AppText variant="button" style={styles.err}>
+            <AppText variant="button" style={dcrStyles.err}>
               Delete draft
             </AppText>
           </Pressable>
@@ -910,24 +835,26 @@ function DcrForm({
         }))}
         values={s.workWith}
         onDone={(ids) => update({ workWith: ids, workWithDone: true })}
-        onClose={() => setSheet(null)}
+        onClose={() => {
+          setSheet(null);
+          searchPeople('');
+        }}
+        onSearch={searchPeople}
+        loading={peopleQry.isFetching}
       />
       <SelectSheet
         visible={sheet === 'route' && !!routeHq}
         title="SFC route"
-        options={
-          (s.sfc.hqs.find((h) => h.hqTerritoryId === routeHq)?.candidates ?? []).map(
-            (c) => ({
-              value: c.id,
-              label: `${c.fromPlace} to ${c.toPlace}`,
-              hint: `${c.oneWayKm} km`,
-            }),
-          )
-        }
+        options={(s.sfc.hqs.find((h) => h.hqTerritoryId === routeHq)?.candidates ?? []).map(
+          (c) => ({
+            value: c.id,
+            label: `${c.fromPlace} to ${c.toPlace}`,
+            hint: `${c.oneWayKm} km`,
+          }),
+        )}
         value={routeHq ? (s.routeChoice[routeHq] ?? null) : null}
         onPick={(v) => {
-          if (routeHq && v)
-            update((x) => ({ routeChoice: { ...x.routeChoice, [routeHq]: v } }));
+          if (routeHq && v) update((x) => ({ routeChoice: { ...x.routeChoice, [routeHq]: v } }));
         }}
         onClose={() => {
           setSheet(null);
@@ -941,6 +868,7 @@ function DcrForm({
         value={s.date}
         onPick={(v) => {
           if (v && v !== s.date) {
+            hydratedFor.current = null;
             setS(fresh(v));
             setDcr(null);
             setDaySubmitted(null);
@@ -952,382 +880,14 @@ function DcrForm({
   );
 }
 
-function Field({
-  label,
-  value,
-  placeholder,
-  onPress,
-  error,
-}: {
-  label: string;
-  value?: string;
-  placeholder?: string;
-  onPress?: () => void;
-  error?: string;
-}) {
-  return (
-    <View style={styles.field}>
-      <AppText variant="label">{label}</AppText>
-      <Pressable
-        onPress={onPress}
-        disabled={!onPress}
-        style={[styles.select, !!error && styles.selectErr]}
-        accessibilityRole="button"
-      >
-        <AppText
-          variant="body"
-          numberOfLines={2}
-          style={[styles.selectText, !value && styles.ph]}
-        >
-          {value || placeholder || '—'}
-        </AppText>
-        {onPress ? <Icon name="chevron-down" color={colors.subtle} /> : null}
-      </Pressable>
-      {error ? (
-        <AppText variant="caption" style={styles.err}>
-          {error}
-        </AppText>
-      ) : null}
-    </View>
-  );
-}
-
-function CallEditor({
-  call,
-  index,
-  readOnly,
-  errors,
-  products,
-  scopes,
-  onChange,
-  onRemove,
-}: {
-  call: CallDraft;
-  index: number;
-  readOnly: boolean;
-  errors: string[];
-  products: { id: string; label: string }[];
-  scopes: { hqId: string; localIds: string[] }[];
-  onChange: (p: Partial<CallDraft>) => void;
-  onRemove: () => void;
-}) {
-  const [pickOutlet, setPickOutlet] = useState(false);
-  const [outlets, setOutlets] = useState<{ value: string; label: string; hint?: string; hqId?: string }[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!pickOutlet) return;
-    let live = true;
-    setLoading(true);
-    void (async () => {
-      try {
-        const path =
-          call.kind === 'doctor'
-            ? '/v1/doctors'
-            : call.kind === 'chemist'
-              ? '/v1/chemists'
-              : '/v1/stockists';
-        const queries =
-          call.kind === 'stockist'
-            ? scopes.map((sc) => ({ territoryId: sc.hqId, limit: 100, sort: 'name' as const }))
-            : scopes.flatMap((sc) =>
-                sc.localIds.length
-                  ? sc.localIds.map((localTerritoryId) => ({
-                      territoryId: sc.hqId,
-                      localTerritoryId,
-                      limit: 100,
-                      sort: 'name' as const,
-                    }))
-                  : [
-                      {
-                        territoryId: sc.hqId,
-                        limit: 100,
-                        sort: 'name' as const,
-                      },
-                    ],
-              );
-        const pages = await Promise.all(
-          queries.map((query) =>
-            apiFetch<{
-              items: {
-                id: string;
-                name: string;
-                city?: string | null;
-                territoryId?: string | null;
-                approvalStatus?: string;
-              }[];
-            }>(path, { query }),
-          ),
-        );
-        if (!live) return;
-        const seen = new Set<string>();
-        const out: typeof outlets = [];
-        for (const page of pages)
-          for (const x of page.items) {
-            if (seen.has(x.id)) continue;
-            if (call.kind === 'doctor' && x.approvalStatus === 'rejected') continue;
-            seen.add(x.id);
-            out.push({
-              value: x.id,
-              label: x.name,
-              hint: x.city ?? undefined,
-              hqId: x.territoryId ?? scopes[0]?.hqId,
-            });
-          }
-        setOutlets(out);
-      } catch {
-        if (live) setOutlets([]);
-      } finally {
-        if (live) setLoading(false);
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, [pickOutlet, call.kind, scopes]);
-
-  return (
-    <View style={styles.call}>
-      <View style={styles.callHead}>
-        <AppText variant="body">
-          {KIND_LABEL[call.kind]} #{index + 1}
-        </AppText>
-        {!readOnly ? (
-          <Pressable onPress={onRemove} accessibilityLabel="Remove call">
-            <Icon name="trash-can-outline" color={colors.danger} size={20} />
-          </Pressable>
-        ) : null}
-      </View>
-      <Field
-        label={KIND_LABEL[call.kind]}
-        value={call.outletName || undefined}
-        placeholder={`Choose ${KIND_LABEL[call.kind].toLowerCase()}`}
-        onPress={readOnly ? undefined : () => setPickOutlet(true)}
-        error={errors[0]}
-      />
-      <TimeField
-        label="Visit time"
-        value={call.time}
-        onChange={(time) => onChange({ time })}
-        editable={!readOnly}
-        error={errors.find((e) => e.toLowerCase().includes('time'))}
-      />
-      {call.kind === 'doctor' ? (
-        <AppText variant="small">
-          Products:{' '}
-          {call.productIds.length
-            ? call.productIds
-                .map((id) => products.find((p) => p.id === id)?.label ?? id)
-                .join(', ')
-            : 'None'}
-        </AppText>
-      ) : null}
-      <TextField
-        label="Remarks"
-        value={call.remarks}
-        onChangeText={(remarks) => onChange({ remarks })}
-        editable={!readOnly}
-        maxLength={1000}
-      />
-      <SelectSheet
-        visible={pickOutlet}
-        title={KIND_LABEL[call.kind]}
-        options={
-          loading
-            ? [{ value: '', label: 'Loading…' }]
-            : outlets
-        }
-        value={call.outletId || null}
-        onPick={(v) => {
-          if (!v) return;
-          const o = outlets.find((x) => x.value === v);
-          onChange({
-            outletId: v,
-            outletName: o?.label ?? v,
-            hqId: o?.hqId ?? call.hqId,
-          });
-        }}
-        onClose={() => setPickOutlet(false)}
-      />
-    </View>
-  );
-}
-
-function MeetingEditor({
-  kind,
-  value,
-  readOnly,
-  errors,
-  onChange,
-}: {
-  kind: 'meeting' | 'training';
-  value: FlowState['meeting'];
-  readOnly: boolean;
-  errors: Record<string, string[]>;
-  onChange: (v: FlowState['meeting']) => void;
-}) {
-  const [pick, setPick] = useState(false);
-  const presets = kind === 'meeting' ? MEETING_TYPES : TRAINING_TYPES;
-  return (
-    <View style={styles.section}>
-      <AppText variant="label">{kind === 'meeting' ? 'Meeting' : 'Training'}</AppText>
-      <Field
-        label="Type"
-        value={value.title || undefined}
-        placeholder="Choose type"
-        onPress={readOnly ? undefined : () => setPick(true)}
-        error={errors.title?.[0]}
-      />
-      <Field
-        label="Mode"
-        value={value.mode === 'online' ? 'Online' : 'In person'}
-        onPress={
-          readOnly
-            ? undefined
-            : () =>
-                onChange({
-                  ...value,
-                  mode: value.mode === 'online' ? 'in_person' : 'online',
-                })
-        }
-      />
-      <TextField
-        label={value.mode === 'online' ? 'Link or platform' : 'Location'}
-        value={value.location}
-        onChangeText={(location) => onChange({ ...value, location })}
-        editable={!readOnly}
-        error={errors.location?.[0]}
-        maxLength={200}
-      />
-      <TimeField
-        label="Start time"
-        value={value.startTime}
-        onChange={(startTime) => onChange({ ...value, startTime })}
-        editable={!readOnly}
-        error={errors.startTime?.[0]}
-      />
-      <TextField
-        label="Duration (minutes)"
-        value={value.durationMin}
-        onChangeText={(durationMin) =>
-          onChange({ ...value, durationMin: durationMin.replace(/\D/g, '').slice(0, 3) })
-        }
-        editable={!readOnly}
-        keyboardType="number-pad"
-        error={errors.durationMin?.[0]}
-      />
-      {kind === 'training' ? (
-        <TextField
-          label="Trainer"
-          value={value.trainer}
-          onChangeText={(trainer) => onChange({ ...value, trainer })}
-          editable={!readOnly}
-          maxLength={120}
-        />
-      ) : (
-        <TextField
-          label="Attendees"
-          value={value.attendees}
-          onChangeText={(attendees) => onChange({ ...value, attendees })}
-          editable={!readOnly}
-          maxLength={500}
-        />
-      )}
-      <TextField
-        label="Remarks"
-        value={value.remarks}
-        onChangeText={(remarks) => onChange({ ...value, remarks })}
-        editable={!readOnly}
-        maxLength={1000}
-      />
-      <SelectSheet
-        visible={pick}
-        title="Type"
-        options={[
-          ...presets.map((p) => ({ value: p, label: p })),
-          { value: '__other', label: 'Other…' },
-        ]}
-        value={presets.includes(value.title) ? value.title : value.title ? '__other' : null}
-        onPick={(v) => {
-          if (v === '__other') onChange({ ...value, title: '' });
-          else if (v) onChange({ ...value, title: v });
-        }}
-        onClose={() => setPick(false)}
-      />
-    </View>
-  );
-}
-
-function OfficeEditor({
-  value,
-  readOnly,
-  errors,
-  onChange,
-}: {
-  value: FlowState['office'];
-  readOnly: boolean;
-  errors: Record<string, string[]>;
-  onChange: (v: FlowState['office']) => void;
-}) {
-  const [pick, setPick] = useState(false);
-  return (
-    <View style={styles.section}>
-      <AppText variant="label">Admin work</AppText>
-      <Field
-        label="Task type"
-        value={value.taskType || undefined}
-        placeholder="Choose task type"
-        onPress={readOnly ? undefined : () => setPick(true)}
-        error={errors.taskType?.[0]}
-      />
-      <TextField
-        label="What you did"
-        value={value.description}
-        onChangeText={(description) => onChange({ ...value, description })}
-        editable={!readOnly}
-        multiline
-        error={errors.description?.[0]}
-        maxLength={1000}
-      />
-      <TimeField
-        label="Start time"
-        value={value.startTime}
-        onChange={(startTime) => onChange({ ...value, startTime })}
-        editable={!readOnly}
-        optional
-      />
-      <TextField
-        label="Duration (minutes)"
-        value={value.durationMin}
-        onChangeText={(durationMin) =>
-          onChange({ ...value, durationMin: durationMin.replace(/\D/g, '').slice(0, 3) })
-        }
-        editable={!readOnly}
-        keyboardType="number-pad"
-        error={errors.durationMin?.[0]}
-      />
-      <TextField
-        label="Remarks"
-        value={value.remarks}
-        onChangeText={(remarks) => onChange({ ...value, remarks })}
-        editable={!readOnly}
-        maxLength={1000}
-      />
-      <SelectSheet
-        visible={pick}
-        title="Task type"
-        options={ADMIN_TASKS.map((p) => ({ value: p, label: p }))}
-        value={value.taskType || null}
-        onPick={(v) => v && onChange({ ...value, taskType: v })}
-        onClose={() => setPick(false)}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.ground },
-  center: { alignItems: 'center', justifyContent: 'center', padding: layout.gutter, gap: spacing.lg },
+  center: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: layout.gutter,
+    gap: spacing.lg,
+  },
   centerText: { textAlign: 'center' },
   content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm, gap: spacing.lg },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
@@ -1335,43 +895,16 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     backgroundColor: colors.warnWash,
   },
-  field: { gap: spacing.sm },
-  select: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: touch.control,
-    borderRadius: radius.md,
-    borderCurve: 'continuous',
-    borderWidth: 1,
-    borderColor: colors.separator,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.lg,
-  },
-  selectErr: { borderColor: colors.danger },
-  selectText: { flex: 1, fontFamily: fonts.regular, fontSize: type.body.fontSize },
-  ph: { color: colors.subtle },
-  err: { color: colors.danger },
-  section: { gap: spacing.md },
-  sfcBlock: { gap: spacing.md },
-  call: {
-    gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-  },
-  callHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   addCall: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    minHeight: touch.min,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
     borderRadius: radius.full,
     borderWidth: 1,
     borderColor: colors.separator,

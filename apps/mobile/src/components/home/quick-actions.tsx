@@ -4,18 +4,24 @@ import { cardStyles } from '../card';
 import { PressableScale } from '../pressable-scale';
 import { SectionHeader } from '../section-header';
 import { TintedIcon } from '../tinted-icon';
-import { FEATURES, type FeatureKey } from '@/lib/features';
+import { canOpenFeature, FEATURES, type FeatureKey } from '@/lib/features';
 import { colors, layout, sizes, spacing } from '@/theme';
 
 const ACTIONS = ['dcr', 'tour-plan', 'leave', 'expenses'] as const satisfies readonly FeatureKey[];
 
 /** One row of four: the forms a rep opens every day or week. */
-export function QuickActions({ onOpen }: { onOpen: (feature: FeatureKey) => void }) {
+export function QuickActions({
+  onOpen,
+  roles,
+}: {
+  onOpen: (feature: FeatureKey) => void;
+  roles: readonly string[];
+}) {
   return (
     <>
       <SectionHeader title="Quick actions" />
       <View style={styles.row}>
-        {ACTIONS.map((key) => {
+        {ACTIONS.filter((key) => canOpenFeature(key, roles)).map((key) => {
           const f = FEATURES[key];
           return (
             <PressableScale

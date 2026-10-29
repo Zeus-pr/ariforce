@@ -18,6 +18,8 @@ export function MultiSelectSheet({
   values,
   onDone,
   onClose,
+  onSearch,
+  loading,
 }: {
   visible: boolean;
   title: string;
@@ -25,6 +27,9 @@ export function MultiSelectSheet({
   values: string[];
   onDone: (ids: string[]) => void;
   onClose: () => void;
+  /** Server search: called with the typed text (the caller debounces); always shows the box. */
+  onSearch?: (q: string) => void;
+  loading?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const [q, setQ] = useState('');
@@ -42,6 +47,11 @@ export function MultiSelectSheet({
     if (visible) setPicked(values);
   }, [visible, values]);
 
+  const search = (v: string) => {
+    setQ(v);
+    onSearch?.(v);
+  };
+
   const toggle = (id: string) =>
     setPicked((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : [...xs, id]));
 
@@ -54,20 +64,32 @@ export function MultiSelectSheet({
       statusBarTranslucent
       navigationBarTranslucent
     >
-      <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close" />
+      <Pressable
+        style={styles.scrim}
+        onPress={() => {
+          search('');
+          onClose();
+        }}
+        accessibilityLabel="Close"
+      />
       <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]}>
         <View style={styles.grip} />
         <View style={styles.head}>
           <AppText variant="section" accessibilityRole="header" style={styles.flex}>
             {title}
           </AppText>
-          <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" style={styles.close}>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            style={styles.close}
+          >
             <Icon name="close" />
           </Pressable>
         </View>
-        {options.length > 8 ? (
+        {onSearch || options.length > 8 ? (
           <View style={styles.search}>
-            <SearchBox value={q} onChange={setQ} placeholder={`Search ${title.toLowerCase()}`} />
+            <SearchBox value={q} onChange={search} placeholder={`Search ${title.toLowerCase()}`} />
           </View>
         ) : null}
         <List
@@ -77,7 +99,7 @@ export function MultiSelectSheet({
           style={styles.list}
           ListEmptyComponent={
             <AppText variant="bodyMuted" style={styles.empty}>
-              Nothing matches.
+              {loading ? 'Loading…' : 'Nothing matches.'}
             </AppText>
           }
           renderItem={({ item }) => {
@@ -109,7 +131,7 @@ export function MultiSelectSheet({
             label={picked.length ? `Done (${picked.length})` : 'Done'}
             onPress={() => {
               onDone(picked);
-              setQ('');
+              search('');
               onClose();
             }}
           />
