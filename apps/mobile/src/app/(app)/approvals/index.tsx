@@ -22,6 +22,7 @@ import {
 import { dateLabel, savedLabel } from '@/lib/dcr/dates';
 import { saveMessage } from '@/lib/dcr/errors';
 import { isApprover } from '@/lib/roles';
+import { CONTRACT as TP_CONTRACT, rangeLabel, useTpQueue } from '@/lib/tp/adapter';
 import { colors, layout, spacing } from '@/theme';
 
 /** Manager review (ABM and above, same rule as the website's isApprover): DCRs and unlock requests. */
@@ -38,6 +39,7 @@ function Approvals({ myId }: { myId?: string }) {
   const decisionsQ = useDecisions();
   const namesQ = useTeamNames(true);
   const unlockQ = useUnlockQueue(true);
+  const tpQ = useTpQueue(myId, true);
   const decide = useDecideApproval();
   const [deciding, setDeciding] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -53,6 +55,7 @@ function Approvals({ myId }: { myId?: string }) {
     void teamQ.refetch();
     void unlockQ.refetch();
     void decisionsQ.refetch();
+    void tpQ.refetch();
   };
 
   return (
@@ -109,6 +112,40 @@ function Approvals({ myId }: { myId?: string }) {
                 />
               );
             })}
+          </Card>
+        )}
+
+        <View style={[styles.head, styles.section]}>
+          <AppText variant="small">
+            {tpQ.isPending ? 'Tour plans' : `Tour plans (${tpQ.data?.length ?? 0})`}
+          </AppText>
+          {!TP_CONTRACT.tpItems ? <Chip label="Sample mode" tone="orange" /> : null}
+        </View>
+        {tpQ.isPending ? (
+          <SkeletonList count={2} />
+        ) : tpQ.isError ? (
+          <Card style={styles.pad}>
+            <AppText variant="bodyMuted">{saveMessage(tpQ.error)}</AppText>
+          </Card>
+        ) : !tpQ.data?.length ? (
+          <Card style={styles.pad}>
+            <AppText variant="bodyMuted">No tour plans waiting for you.</AppText>
+          </Card>
+        ) : (
+          <Card>
+            {tpQ.data.map((t, i) => (
+              <ListRow
+                key={t.id}
+                icon="calendar-month-outline"
+                tone="blue"
+                title={`${t.userName || name(t.userId)} · TP ${rangeLabel(t.from, t.to)}`}
+                subtitle={t.submittedAt ? `Sent ${savedLabel(t.submittedAt)}` : 'Sent for approval'}
+                onPress={() =>
+                  router.push({ pathname: '/approvals/tp/[id]', params: { id: t.id } })
+                }
+                divider={i < tpQ.data.length - 1}
+              />
+            ))}
           </Card>
         )}
 
