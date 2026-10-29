@@ -146,7 +146,12 @@ export function useDcrProducts(options: OptionsV2 | undefined, enabled: boolean)
  * What a doctor call shows for a product (picker, picked list, presentation): the brand when set,
  * else the full name. Products sharing a brand are NOT merged. Chemist/stockist keep `label`.
  */
-export const doctorProductLabel = (p: Pick<ProductOpt, 'brand' | 'label'>) => p.brand || p.label;
+const STRENGTH_TAIL = /(\s+\d+(\.\d+)?\s*(mg|mcg|g|ml|%)?)+$/i;
+export function doctorProductLabel(p: Pick<ProductOpt, 'brand' | 'label'>) {
+  // Live data has brand == name with strength ("ARIPIX 10"): drop trailing strength tokens.
+  const base = (p.brand || p.label).trim();
+  return base.replace(STRENGTH_TAIL, '').trim() || base;
+}
 
 export type BrandGroup = { key: string; label: string; repId: string; ids: string[] };
 
