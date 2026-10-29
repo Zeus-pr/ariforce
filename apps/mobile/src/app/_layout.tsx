@@ -17,10 +17,15 @@ import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { queryClient } from '@/lib/query-client';
 import { colors, fonts, motion } from '@/theme';
 
-// Keep the native splash (same mark, same ground) until fonts are ready, then hand over to the
-// in-app splash, which stays until the stored session has been checked.
+// Keep the native splash (same mark, same ground) up until the in-app splash has painted its
+// identical mark (BrandSplash onReady), then cross-fade: nothing visible changes at the hand-off.
+// The in-app splash stays until the stored session has been checked.
 SplashScreen.preventAutoHideAsync().catch(() => {});
-SplashScreen.setOptions({ duration: 200, fade: true });
+SplashScreen.setOptions({ duration: 150, fade: true });
+
+const hideNativeSplash = () => {
+  SplashScreen.hideAsync().catch(() => {});
+};
 
 /**
  * Navigation theme on the app's colours, so nothing navigation draws (screen and card
@@ -78,14 +83,12 @@ function RootNavigator() {
     };
   }, []);
 
-  useEffect(() => {
-    if (fontsReady) SplashScreen.hideAsync().catch(() => {});
-  }, [fontsReady]);
-
   const onSplashHidden = useCallback(() => setSplashGone(true), []);
   const signedIn = status === 'signed-in';
 
-  if (!fontsReady) return null;
+  // Before fonts: only the status bar style (dark icons on the light ground, set while the
+  // native splash still covers the screen, so the icons never flip colour at the hand-off).
+  if (!fontsReady) return <StatusBar style="dark" />;
 
   return (
     <>
@@ -103,7 +106,11 @@ function RootNavigator() {
         </Stack>
       </ThemeProvider>
       {!splashGone && (
-        <BrandSplash done={minElapsed && status !== 'loading'} onHidden={onSplashHidden} />
+        <BrandSplash
+          done={minElapsed && status !== 'loading'}
+          onReady={hideNativeSplash}
+          onHidden={onSplashHidden}
+        />
       )}
     </>
   );
