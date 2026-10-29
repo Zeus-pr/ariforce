@@ -29,7 +29,7 @@ import {
   type MockDecision,
 } from '@/mocks/dcr';
 import { ApiError, apiFetch } from '../api';
-import { sortByLabel } from '../sort';
+import { byName, sortByLabel } from '../sort';
 
 /** The app targets the new contract; each flag still falls back at runtime (see above). */
 export const CONTRACT = {
@@ -147,6 +147,28 @@ export function useDcrProducts(options: OptionsV2 | undefined, enabled: boolean)
  * else the full name. Products sharing a brand are NOT merged. Chemist/stockist keep `label`.
  */
 export const doctorProductLabel = (p: Pick<ProductOpt, 'brand' | 'label'>) => p.brand || p.label;
+
+export type BrandGroup = { key: string; label: string; repId: string; ids: string[] };
+
+/**
+ * Doctor picker groups: one row per doctorProductLabel (case-insensitive), A-Z. The row stands for
+ * a real product (`repId`, valid for productsDetailed): the first SKU by name that has an image,
+ * else the first by name.
+ */
+export function brandGroups(products: readonly ProductOpt[]): BrandGroup[] {
+  const m = new Map<string, ProductOpt[]>();
+  for (const p of products) {
+    const key = doctorProductLabel(p).trim().toLocaleLowerCase();
+    m.set(key, [...(m.get(key) ?? []), p]);
+  }
+  return [...m.entries()]
+    .map(([key, ps]) => {
+      const sorted = [...ps].sort((a, b) => byName(a.label, b.label));
+      const rep = sorted.find((p) => p.imageUrl) ?? sorted[0]!;
+      return { key, label: doctorProductLabel(rep), repId: rep.id, ids: sorted.map((p) => p.id) };
+    })
+    .sort((a, b) => byName(a.label, b.label));
+}
 
 /** POB line value at PTS. The server's PobLine.value is PTR-based, so it is not used here. */
 export const lineValue = (pts: number | null, qty: number) => (pts ?? 0) * qty;

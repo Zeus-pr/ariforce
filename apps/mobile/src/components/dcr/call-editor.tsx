@@ -7,8 +7,7 @@ import { Icon } from '@/components/icon';
 import { TextField } from '@/components/text-field';
 import { formatHHmmLabel } from '@/lib/clock12';
 import type { CustomerScope } from '@/lib/dcr/api';
-import { doctorProductLabel, lineValue, type ProductOpt } from '@/lib/dcr/adapter';
-import { sortByLabel } from '@/lib/sort';
+import { brandGroups, doctorProductLabel, lineValue, type ProductOpt } from '@/lib/dcr/adapter';
 import { KIND_LABEL, type CallDraft, type PobDraft } from '@/lib/dcr/model';
 import { formatINR } from '@/lib/money';
 import { colors, radius, spacing, touch } from '@/theme';
@@ -149,6 +148,25 @@ function DoctorProducts({
   const [sheet, setSheet] = useState(false);
   const [show, setShow] = useState(false);
   const picked = call.productIds.map((id) => byId.get(id) ?? unknownProduct(id));
+  // One row per brand label. A SKU already on the call (older drafts) marks its group as picked
+  // and is kept as-is; a newly picked group records its representative product.
+  const groups = useMemo(() => brandGroups(products), [products]);
+  const groupOf = useMemo(() => {
+    const m = new Map<string, (typeof groups)[number]>();
+    for (const g of groups) for (const id of g.ids) m.set(id, g);
+    return m;
+  }, [groups]);
+  const pickedReps = [...new Set(call.productIds.map((id) => groupOf.get(id)?.repId ?? id))];
+  const applyPicked = (repIds: string[]) => {
+    const out: string[] = [];
+    for (const rep of repIds) {
+      const g = groups.find((x) => x.repId === rep);
+      const existing = g ? call.productIds.find((id) => g.ids.includes(id)) : undefined;
+      const id = existing ?? rep;
+      if (!out.includes(id)) out.push(id);
+    }
+    onChange({ productIds: out });
+  };
   const move = (i: number, d: -1 | 1) => {
     const xs = [...call.productIds];
     const j = i + d;
@@ -218,10 +236,10 @@ function DoctorProducts({
       <MultiSelectSheet
         visible={sheet}
         title="Products"
-        options={sortByLabel(products.map((p) => ({ value: p.id, label: doctorProductLabel(p) })))}
-        values={call.productIds}
+        options={groups.map((g) => ({ value: g.repId, label: g.label }))}
+        values={pickedReps}
         loading={!products.length}
-        onDone={(ids) => onChange({ productIds: ids })}
+        onDone={applyPicked}
         onClose={() => setSheet(false)}
       />
       <Presentation visible={show} products={picked} onClose={() => setShow(false)} />
