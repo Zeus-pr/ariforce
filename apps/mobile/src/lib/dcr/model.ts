@@ -6,6 +6,7 @@
 import type { Dcr, DcrBand, DcrDetails, DcrDraftPut, DcrSfcMatch } from '@ariforce/contracts';
 import { bandOf, categoryFitsBand, sfcCategoryOf } from './bands';
 import type { ApiError } from '../api';
+import { callPresentationOpened, presentationInput } from './adapter';
 
 export type WorkTypeOption = {
   id: string;
@@ -163,9 +164,15 @@ export type CallDraft = {
   /** HQ the customer is filed under; a territory change clears customers outside the new HQs. */
   hqId: string;
   time: string;
+  /** Doctor calls: products detailed, in the order picked (= presentation order). */
   productIds: string[];
+  /** Chemist / stockist calls: the POB (quantities; valued at PTS on screen). */
+  pob: PobDraft[];
+  /** Doctor calls: the product presentation was opened (see lib/dcr/adapter.ts). */
+  presentationOpened: boolean;
   remarks: string;
 };
+export type PobDraft = { productId: string; quantity: number };
 export type MeetingForm = {
   title: string;
   mode: 'in_person' | 'online';
@@ -297,7 +304,21 @@ export function problems(s: FlowState): { key: string; text: string }[] {
             `Call ${i + 1}: choose the ${KIND_LABEL[c.kind].toLowerCase()}.`,
           );
         if (!HHMM.test(c.time)) add(`call-${c.clientId}`, `Call ${i + 1}: enter the visit time.`);
+        if (c.kind === 'doctor' && c.outletId && !c.productIds.length)
+          add(`call-${c.clientId}`, `Call ${i + 1}: pick the products you detailed.`);
       });
+      const unseen = s.calls
+        .map((c, i) => ({ c, i }))
+        .filter(({ c }) => c.kind === 'doctor' && c.productIds.length && !c.presentationOpened);
+      if (unseen.length) {
+        const who = unseen.map(
+          ({ c, i }) => `call ${i + 1}${c.outletName ? ` (${c.outletName})` : ''}`,
+        );
+        const text = `Open the presentation on doctor ${who.join(', ')} before submitting.`;
+        add('presentation', text);
+        for (const { c } of unseen)
+          add(`call-${c.clientId}`, 'Open the presentation for this call.');
+      }
     }
   }
   if (b === 'meeting' || b === 'training') {
@@ -359,9 +380,19 @@ export function draftBody(
             outletId: c.outletId,
             checkInId: null,
             jointWorkUserIds: s.workWith,
-            productsDetailed: c.productIds.map((productId, i) => ({ productId, order: i + 1 })),
+            productsDetailed:
+              c.kind === 'doctor'
+                ? c.productIds.map((productId, i) => ({ productId, order: i + 1 }))
+                : [],
             samples: [],
-            pob: [],
+            // POB is for chemist and stockist calls only (PobLine; value is computed server-side).
+            pob:
+              c.kind === 'doctor'
+                ? []
+                : c.pob
+                    .filter((l) => l.quantity >= 1)
+                    .map((l) => ({ productId: l.productId, quantity: l.quantity })),
+            ...(c.kind === 'doctor' ? presentationInput(c.presentationOpened) : {}),
             rcpa: [],
             remarks: c.remarks.trim() || null,
             calledAt: isoOf(s.date, c.time),
@@ -381,7 +412,9 @@ export function callsFromDcr(d: Dcr, names: Map<string, string>): CallDraft[] {
     outletName: names.get(c.outletId) ?? SAVED_CUSTOMER,
     hqId: '',
     time: timeOfIso(c.calledAt),
-    productIds: c.productsDetailed.sort((a, b) => a.order - b.order).map((p) => p.productId),
+    productIds: [...c.productsDetailed].sort((a, b) => a.order - b.order).map((p) => p.productId),
+    pob: c.pob.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+    presentationOpened: callPresentationOpened(c) ?? false,
     remarks: c.remarks ?? '',
   }));
 }

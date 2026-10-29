@@ -32,6 +32,16 @@ import {
   useSubmitDcr,
   useWorkWith,
 } from '@/lib/dcr/api';
+import {
+  REVIEW_LABEL,
+  REVIEW_TONE,
+  isDayLocked,
+  reviewOf,
+  useDecisions,
+  useMyUnlockRequests,
+  usePresentationLog,
+  useRequestUnlock,
+} from '@/lib/dcr/adapter';
 import { dateLabel, nowHHmm, todayIST } from '@/lib/dcr/dates';
 import { saveMessage } from '@/lib/dcr/errors';
 import { bandOf } from '@/lib/dcr/bands';
@@ -166,6 +176,18 @@ function DcrForm({
   const saveDraft = useSaveDraft();
   const submitMut = useSubmitDcr();
   const deleteMut = useDeleteDraft();
+  const presLog = usePresentationLog(s.date);
+  const decisionsQ = useDecisions();
+  const decisions = decisionsQ.data ?? {};
+  const review = dcr ? reviewOf(dcr, decisions) : null;
+  const locked = isDayLocked(dcr, s.date) && dcr?.status !== 'submitted';
+  const myUnlocksQ = useMyUnlockRequests(locked);
+  const unlockMut = useRequestUnlock();
+  const [unlockReason, setUnlockReason] = useState('');
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const unlockPending = (myUnlocksQ.data ?? []).some(
+    (a) => a.summary.includes(s.date) || (dcr && a.subjectId === dcr.id),
+  );
 
   const choices = useMemo(() => workOnChoices(workTypes ?? []), [workTypes]);
   const rows = useMemo(() => territoryRows(terrQ.data ?? []), [terrQ.data]);
@@ -180,8 +202,12 @@ function DcrForm({
     return new Map(names.current);
   }, [peopleQry.data]);
 
-  const blocked = !!daySubmitted && dcr?.status !== 'submitted';
-  const readOnly = dcr?.status === 'submitted' || dcr?.status === 'locked' || blocked;
+  // A rejected report never blocks filing the day again (adapter: mock until the contract lands).
+  const daySub = optionsQ.data?.submitted ?? null;
+  const subRejected = !!daySub && reviewOf(daySub, decisions).status === 'rejected';
+  const blocked = !!daySubmitted && dcr?.status !== 'submitted' && !subRejected;
+  const readOnly =
+    dcr?.status === 'submitted' || locked || blocked || review?.status === 'rejected';
   const busy = !!saving || saveDraft.isPending || submitMut.isPending || deleteMut.isPending;
 
   // Hydrate from options + optional record
@@ -385,7 +411,19 @@ function DcrForm({
       };
     });
 
-  const probs = findProblems(s);
+  // Presentation flags live in the adapter (mock store until DcrCall.presentationOpenedAt lands).
+  const sEff: FlowState = {
+    ...s,
+    calls: s.calls.map((c) =>
+      c.kind === 'doctor' &&
+      !c.presentationOpened &&
+      c.outletId &&
+      presLog.opened.includes(c.outletId)
+        ? { ...c, presentationOpened: true }
+        : c,
+    ),
+  };
+  const probs = findProblems(sEff);
   const err = (key: string) =>
     showErrors ? probs.filter((p) => p.key === key).map((p) => p.text) : [];
 
@@ -393,14 +431,14 @@ function DcrForm({
     if (readOnly) return;
     if (submit && probs.length) {
       setShowErrors(true);
-      setFormError(probs[0]!.text);
+      setFormError((probs.find((p) => p.key === 'presentation') ?? probs[0]!).text);
       return;
     }
     setSaving(submit ? 'submit' : 'draft');
     setFormError(null);
     try {
       const saved = await saveDraft.mutateAsync({
-        state: s,
+        state: sEff,
         saved: dcr?.status === 'draft' ? { id: dcr.id, version: dcr.version } : null,
       });
       setDcr(saved);
@@ -467,13 +505,27 @@ function DcrForm({
     );
   }
 
-  const status = !dcr
-    ? 'Not started'
-    : dcr.status === 'draft'
-      ? 'Draft'
-      : dcr.status === 'submitted'
-        ? 'Submitted'
-        : 'Locked';
+  const status = locked ? 'Locked' : review ? REVIEW_LABEL[review.status] : 'Not started';
+  const statusTone = locked ? 'neutral' : review ? REVIEW_TONE[review.status] : 'neutral';
+
+  async function requestUnlock() {
+    const reason = unlockReason.trim();
+    if (reason.length < 3) {
+      setUnlockError('Say why the day needs to be reopened (at least 3 characters).');
+      return;
+    }
+    setUnlockError(null);
+    try {
+      await unlockMut.mutateAsync({ date: s.date, reason });
+      setUnlockReason('');
+      Alert.alert(
+        'Unlock requested',
+        'Your manager will review it. You can edit once it is approved.',
+      );
+    } catch (e) {
+      setUnlockError(saveMessage(e));
+    }
+  }
 
   const title =
     dcr?.status === 'submitted'
@@ -521,14 +573,53 @@ function DcrForm({
         bottomOffset={spacing.xl}
       >
         <View style={styles.statusRow}>
-          <Chip
-            label={status}
-            tone={status === 'Submitted' ? 'green' : status === 'Draft' ? 'blue' : 'neutral'}
-          />
+          <Chip label={status} tone={statusTone} />
           <AppText variant="small">{dateLabel(s.date)}</AppText>
         </View>
 
-        {daySubmitted && dcr?.status !== 'submitted' ? (
+        {review?.status === 'rejected' ? (
+          <View style={styles.warn}>
+            <AppText variant="label">Rejected by your manager</AppText>
+            <AppText variant="bodyMuted">{review.reason || 'No reason given.'}</AppText>
+            <AppText variant="small">
+              This report doesn’t count. File {dateLabel(s.date)} again with New DCR.
+            </AppText>
+          </View>
+        ) : null}
+
+        {locked ? (
+          <View style={styles.warn}>
+            <AppText variant="label">This day is locked</AppText>
+            <AppText variant="bodyMuted">
+              Reports lock at 12:01 AM after their day. Ask your manager to reopen it to edit or
+              submit.
+            </AppText>
+            {unlockPending || unlockMut.isSuccess ? (
+              <Chip label="Unlock requested · waiting for your manager" tone="orange" />
+            ) : (
+              <>
+                <TextField
+                  label="Reason (required)"
+                  value={unlockReason}
+                  onChangeText={setUnlockReason}
+                  maxLength={500}
+                  multiline
+                  error={unlockError}
+                />
+                <Button
+                  label="Request unlock"
+                  variant="secondary"
+                  compact
+                  loading={unlockMut.isPending}
+                  loadingLabel="Requesting…"
+                  onPress={() => void requestUnlock()}
+                />
+              </>
+            )}
+          </View>
+        ) : null}
+
+        {blocked ? (
           <View style={styles.warn}>
             <AppText variant="label">
               You already submitted a report for {dateLabel(s.date)}.
@@ -647,11 +738,19 @@ function DcrForm({
                 {s.calls.map((c, i) => (
                   <CallEditor
                     key={c.clientId}
-                    call={c}
+                    call={sEff.calls[i] ?? c}
                     index={i}
                     readOnly={readOnly}
                     errors={err(`call-${c.clientId}`)}
                     products={productsQ.data ?? []}
+                    onPresented={() => {
+                      if (c.outletId) presLog.record(c.outletId);
+                      update((x) => ({
+                        calls: x.calls.map((row) =>
+                          row.clientId === c.clientId ? { ...row, presentationOpened: true } : row,
+                        ),
+                      }));
+                    }}
                     scopes={scopes}
                     names={placeName}
                     onChange={(p) =>
@@ -685,6 +784,8 @@ function DcrForm({
                                 hqId: scopes[0]?.hqId ?? '',
                                 time: nowHHmm(),
                                 productIds: [],
+                                pob: [],
+                                presentationOpened: false,
                                 remarks: '',
                               },
                             ],
