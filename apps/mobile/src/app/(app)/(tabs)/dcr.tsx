@@ -50,7 +50,7 @@ function DcrWorkspace() {
   const history = useMemo(
     () =>
       (historyQ.data?.items ?? [])
-        .filter((d) => d.status === 'submitted' || d.status === 'locked')
+        .filter((d) => d.status !== 'draft' && (d.submittedAt || d.status !== 'locked'))
         .map((d) => ({ d, review: reviewOf(d, decisionsQ.data) })),
     [historyQ.data, decisionsQ.data],
   );

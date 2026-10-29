@@ -33,8 +33,8 @@ export function DecisionBar({
 
   const reject = () => {
     const r = reason.trim();
-    if (r.length < 3) {
-      setReasonErr('Give a reason (at least 3 characters). The rep sees it.');
+    if (r.length < 1) {
+      setReasonErr('Give a reason. The rep sees it.');
       return;
     }
     setReasonErr(null);
@@ -51,7 +51,7 @@ export function DecisionBar({
           label="Reason for rejecting (required)"
           value={reason}
           onChangeText={setReason}
-          maxLength={1000}
+          maxLength={500}
           multiline
           error={reasonErr}
         />

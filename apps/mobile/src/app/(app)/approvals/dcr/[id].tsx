@@ -16,11 +16,12 @@ import {
   REVIEW_LABEL,
   REVIEW_TONE,
   callPresentationOpened,
+  decisionErrorMessage,
+  useDcrProducts,
   lineValue,
   reviewOf,
   useDecideDcr,
   useDecisions,
-  useProductCatalog,
 } from '@/lib/dcr/adapter';
 import { useDcrOptions, useDcrRecord } from '@/lib/dcr/api';
 import { dateLabel, savedLabel } from '@/lib/dcr/dates';
@@ -47,7 +48,7 @@ function Review({ id, repName }: { id: string; repName: string }) {
   const recordQ = useDcrRecord(id);
   const d = recordQ.data;
   const optionsQ = useDcrOptions(d?.date ?? '');
-  const productsQ = useProductCatalog(!!d);
+  const productsQ = useDcrProducts(optionsQ.data, !!d);
   const decisionsQ = useDecisions();
   const decide = useDecideDcr();
   const [error, setError] = useState<string | null>(null);
@@ -204,7 +205,7 @@ function Review({ id, repName }: { id: string; repName: string }) {
                       Alert.alert(decision === 'approve' ? 'Approved' : 'Rejected', `${what}.`);
                       router.back();
                     },
-                    onError: (e) => setError(saveMessage(e)),
+                    onError: (e) => setError(decisionErrorMessage(e)),
                   },
                 );
               }}

@@ -11,7 +11,7 @@ import { SkeletonList } from '@/components/skeleton';
 import { useBottomSpace } from '@/components/floating-tab-bar';
 import { useAuth } from '@/lib/auth-context';
 import {
-  CONTRACT,
+  apiCaps,
   reviewOf,
   useDecideApproval,
   useDecisions,
@@ -74,9 +74,7 @@ function Approvals({ myId }: { myId?: string }) {
           <AppText variant="small">
             {teamQ.isPending ? 'DCRs to review' : `DCRs to review (${toReview.length})`}
           </AppText>
-          {!CONTRACT.decisionEndpoint ? (
-            <Chip label="Decisions: sample mode" tone="orange" />
-          ) : null}
+          {!apiCaps.decisionRoute ? <Chip label="Decisions: sample mode" tone="orange" /> : null}
         </View>
         {teamQ.isPending ? (
           <SkeletonList count={3} />

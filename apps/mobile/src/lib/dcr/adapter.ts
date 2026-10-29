@@ -1,22 +1,25 @@
 /**
- * DCR contract adapter: the ONE place that knows which fields and endpoints the API has today and
- * which are still mocked (src/mocks/dcr.ts). Screens use only the types and hooks below.
+ * DCR contract adapter: the ONE place that knows the DCR contract (feat/dcr-pob-review @ d91a5e1)
+ * and how to fall back while the live API is still the old one.
  *
- * Waiting on Architect (packages/contracts + apps/api). When a piece lands, flip its flag here and
- * delete the mock branch; nothing else in the app changes.
- *   CONTRACT.productImageUrl     Product.imageUrl: string | null (GET /v1/products)
- *   CONTRACT.presentationFlag    DcrCall.presentationOpenedAt: Timestamp | null (read) and
- *                                DcrCallInput.presentationOpenedAt (PUT /v1/dcrs/draft)
- *   CONTRACT.reviewStatus        Dcr.status adds 'approved' | 'rejected'; Dcr.rejectionReason;
- *                                GET /v1/dcrs?status=approved|rejected; a rejected day may be filed again
- *                                (options.submitted ignores rejected; no DAY_ALREADY_SUBMITTED)
- *   CONTRACT.decisionEndpoint    POST /v1/dcrs/:id/decision { decision: 'approve'|'reject', comment }
- *                                (comment required to reject, like ApprovalDecision)
- * Already real: Product.pts (GET /v1/products), DcrCall.pob[] { productId, quantity }.
+ * Target contract (mirrored locally below; packages/contracts on this branch is still the old one):
+ *   GET  /v1/dcrs/options       + rejected[], products[] (DcrProductOption), unlockRequest
+ *   DcrCall.presentationOpenedAt (submit: 422 VALIDATION reason PRESENTATION_NOT_OPENED)
+ *   DcrCall.calledAt            server-set, read-only: never sent by the app on the new API
+ *   PobLine                     chemist/stockist only (422 reason POB_NOT_ALLOWED_FOR_DOCTOR), value at PTS
+ *   Dcr.status                  + approved | rejected; reviewStatus, rejectionReason, unlockedUntil (48 h)
+ *   POST /v1/dcrs/:id/decision  { decision, comment (1-500, required to reject) }
+ *   Lock                        00:00 IST the next day
+ *
+ * Fallbacks (until the API is live), feature-detected at runtime, never by a build flag:
+ *   - apiCaps.v2 turns on when /v1/dcrs/options carries `products` + `unlockRequest`.
+ *   - Old API: products from GET /v1/products with mock images; presentation flag kept on the device;
+ *     calledAt still sent; review status from the device-local decision store; the decision endpoint
+ *     falls back to that store when the route does not exist (404 without an API error code).
  */
 import type { Dcr, DcrCall, Product } from '@ariforce/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   mockDecide,
   mockLoadDecisions,
@@ -25,15 +28,52 @@ import {
   mockSavePresentation,
   type MockDecision,
 } from '@/mocks/dcr';
-import { apiFetch } from '../api';
+import { ApiError, apiFetch } from '../api';
+import { sortByLabel } from '../sort';
 
-/** TODO: switch each flag to true when the real contract field / endpoint ships. */
+/** The app targets the new contract; each flag still falls back at runtime (see above). */
 export const CONTRACT = {
-  productImageUrl: false,
-  presentationFlag: false,
-  reviewStatus: false,
-  decisionEndpoint: false,
+  productImageUrl: true,
+  presentationFlag: true,
+  reviewStatus: true,
+  decisionEndpoint: true,
 } as const;
+
+/** What the live API supports, learned from responses (module state; one API per app run). */
+export const apiCaps = { v2: false, decisionRoute: true };
+
+// ---- local mirror of the new contract (feat/dcr-pob-review d91a5e1) ----
+export type DcrProductOption = {
+  id: string;
+  name: string;
+  code?: string;
+  composition: string | null;
+  packSize: string | null;
+  pts: number | null;
+  imageUrl?: string | null;
+  active?: boolean;
+};
+export type UnlockState = {
+  id: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  requestedAt: string;
+};
+export type OptionsV2 = {
+  rejected?: Dcr[];
+  products?: DcrProductOption[];
+  unlockRequest?: UnlockState | null;
+};
+type CallWire = { presentationOpenedAt?: string | null };
+type DcrWire = {
+  status: string;
+  reviewStatus?: 'pending' | 'approved' | 'rejected' | null;
+  rejectionReason?: string | null;
+};
+
+/** Call on every /v1/dcrs/options response. */
+export function noteOptions(o: unknown) {
+  if (o && typeof o === 'object' && 'products' in o && 'unlockRequest' in o) apiCaps.v2 = true;
+}
 
 // ---------------------------------------------------------------- products
 
@@ -48,7 +88,9 @@ export type ProductOpt = {
   imageUrl: string | null;
 };
 
-type ProductWire = Pick<Product, 'id' | 'name' | 'code' | 'composition' | 'packSize' | 'active'> & {
+type ProductWire = Pick<Product, 'id' | 'name' | 'composition' | 'packSize'> & {
+  code?: string;
+  active?: boolean;
   pts?: number | null;
   imageUrl?: string | null;
 };
@@ -60,10 +102,8 @@ export function toProductOpt(p: ProductWire): ProductOpt {
     composition: p.composition ?? null,
     packSize: p.packSize ?? null,
     pts: typeof p.pts === 'number' ? p.pts : null,
-    imageUrl: CONTRACT.productImageUrl
-      ? (p.imageUrl ?? null)
-      : // TODO: switch to the real contract field (Product.imageUrl).
-        mockProductImageUrl(p),
+    // Real field when the API sends it (even null = no picture); mock only on the old API.
+    imageUrl: 'imageUrl' in p ? (p.imageUrl ?? null) : mockProductImageUrl(p),
   };
 }
 
@@ -77,9 +117,24 @@ export function useProductCatalog(enabled: boolean) {
         signal,
         query: { limit: 200 },
       });
-      return r.items.filter((p) => p.active).map(toProductOpt);
+      return sortByLabel(r.items.filter((p) => p.active !== false).map(toProductOpt));
     },
   });
+}
+
+/**
+ * Picker products: options.products (new API), else the GET /v1/products fallback. A-Z by name.
+ */
+export function useDcrProducts(options: OptionsV2 | undefined, enabled: boolean) {
+  const fromOptions = options?.products?.length ? options.products : null;
+  const fallback = useProductCatalog(enabled && !!options && !fromOptions);
+  return useMemo(
+    () => ({
+      data: fromOptions ? sortByLabel(fromOptions.map(toProductOpt)) : (fallback.data ?? []),
+      isPending: !fromOptions && fallback.isPending,
+    }),
+    [fromOptions, fallback.data, fallback.isPending],
+  );
 }
 
 /** POB line value at PTS. The server's PobLine.value is PTR-based, so it is not used here. */
@@ -89,15 +144,18 @@ export const lineValue = (pts: number | null, qty: number) => (pts ?? 0) * qty;
 
 /** Was the presentation opened on this saved doctor call (real field once it ships). */
 export function callPresentationOpened(c: DcrCall): boolean | undefined {
-  if (!CONTRACT.presentationFlag) return undefined;
-  return !!(c as DcrCall & { presentationOpenedAt?: string | null }).presentationOpenedAt;
+  const w = c as DcrCall & CallWire;
+  return 'presentationOpenedAt' in w ? !!w.presentationOpenedAt : undefined;
 }
 
 /** Extra fields for a call in PUT /v1/dcrs/draft. */
-export function presentationInput(opened: boolean): Record<string, unknown> {
-  if (!CONTRACT.presentationFlag) return {}; // TODO: switch to the real contract field.
-  return { presentationOpenedAt: opened ? new Date().toISOString() : null };
+export function presentationInput(opened: boolean, at?: string | null): Record<string, unknown> {
+  if (!apiCaps.v2) return {}; // old API: the flag lives on the device (usePresentationLog)
+  return { presentationOpenedAt: opened ? (at ?? new Date().toISOString()) : null };
 }
+
+/** Call fields for PUT /v1/dcrs/draft: calledAt is server-set on the new API, so never sent. */
+export const sendsCalledAt = () => !apiCaps.v2;
 
 /**
  * Doctors (outletIds) whose presentation was opened on `date`. Mock: kept on the device until
@@ -105,9 +163,10 @@ export function presentationInput(opened: boolean): Record<string, unknown> {
  */
 export function usePresentationLog(date: string) {
   const [opened, setOpened] = useState<string[]>([]);
-  const [ready, setReady] = useState<boolean>(CONTRACT.presentationFlag);
+  // Device log kept as a fallback even on the new API: it only ever adds "opened".
+  const [ready, setReady] = useState<boolean>(false);
   useEffect(() => {
-    if (CONTRACT.presentationFlag || !date) return;
+    if (!date) return;
     let live = true;
     setReady(false);
     void mockLoadPresentation(date).then((ids) => {
@@ -123,7 +182,7 @@ export function usePresentationLog(date: string) {
     (outletId: string) => {
       setOpened((xs) => {
         const next = xs.includes(outletId) ? xs : [...xs, outletId];
-        if (!CONTRACT.presentationFlag) void mockSavePresentation(date, next);
+        void mockSavePresentation(date, next);
         return next;
       });
     },
@@ -153,11 +212,13 @@ export const REVIEW_TONE = {
 } as const satisfies Record<ReviewStatus, string>;
 
 export function reviewOf(d: Dcr, decisions: Record<string, MockDecision> = {}): Review {
-  const wire = d as unknown as { status: string; rejectionReason?: string | null };
+  const wire = d as unknown as DcrWire;
   if (wire.status === 'approved' || wire.status === 'rejected')
-    return { status: wire.status as 'approved' | 'rejected', reason: wire.rejectionReason ?? null };
-  // TODO: switch to the real contract fields (Dcr.status approved/rejected, Dcr.rejectionReason).
-  const m = !CONTRACT.reviewStatus ? decisions[d.id] : undefined;
+    return { status: wire.status, reason: wire.rejectionReason ?? null };
+  if (wire.reviewStatus === 'approved' || wire.reviewStatus === 'rejected')
+    return { status: wire.reviewStatus, reason: wire.rejectionReason ?? null };
+  // Old API (no reviewStatus field): the device-local decision store.
+  const m = !('reviewStatus' in wire) ? decisions[d.id] : undefined;
   if (m && (d.status === 'submitted' || d.status === 'locked'))
     return { status: m.status, reason: m.reason };
   return { status: d.status, reason: null };
@@ -168,11 +229,27 @@ export const counts = (r: Review) => r.status !== 'rejected' && r.status !== 'dr
 
 const decisionsKey = ['dcr', 'decisions'] as const;
 
-/** Decisions known on this device (mock store); empty once CONTRACT.reviewStatus is true. */
+const isApiCode = (c: string | undefined) => !!c && /^[A-Z_]+$/.test(c) && c !== 'HTTP_404';
+
+/** Plain words for POST /v1/dcrs/:id/decision errors. */
+export function decisionErrorMessage(e: unknown): string {
+  if (e instanceof ApiError) {
+    if (e.status === 409 || e.code === 'NOT_PENDING_REVIEW')
+      return 'This DCR is no longer waiting for review. Someone may have decided it already, or it was changed. Pull to refresh.';
+    if (e.status === 403) return 'You can’t review your own DCR.';
+    if (e.status === 404) return 'This DCR isn’t in your team, or it was deleted.';
+    if (e.status === 422) return 'Give a reason to reject (1 to 500 characters).';
+    if (e.code === 'NETWORK') return 'No connection. Check your network and try again.';
+    return e.message || 'Could not save the decision. Try again.';
+  }
+  return 'Could not save the decision. Try again.';
+}
+
+/** Decisions known on this device (old-API fallback; ignored for DCRs that carry reviewStatus). */
 export function useDecisions() {
   return useQuery({
     queryKey: decisionsKey,
-    enabled: !CONTRACT.reviewStatus,
+    enabled: true,
     staleTime: 0,
     queryFn: () => mockLoadDecisions(),
   });
@@ -190,12 +267,19 @@ export function useDecideDcr() {
       decision: 'approve' | 'reject';
       reason: string | null;
     }) => {
-      if (CONTRACT.decisionEndpoint)
-        return apiFetch<Dcr>(`/v1/dcrs/${id}/decision`, {
-          method: 'POST',
-          body: { decision, ...(reason ? { comment: reason } : {}) },
-        });
-      // TODO: switch to the real endpoint (POST /v1/dcrs/:id/decision).
+      if (apiCaps.decisionRoute) {
+        try {
+          return await apiFetch<Dcr>(`/v1/dcrs/${id}/decision`, {
+            method: 'POST',
+            body: { decision, ...(reason ? { comment: reason.slice(0, 500) } : {}) },
+          });
+        } catch (e) {
+          // Route not deployed yet: Nest's own 404 has no API error code. A real "outside your
+          // team" 404 carries NOT_FOUND and is shown to the manager.
+          if (!(e instanceof ApiError && e.status === 404 && !isApiCode(e.code))) throw e;
+          apiCaps.decisionRoute = false;
+        }
+      }
       return mockDecide(id, decision, reason);
     },
     onSuccess: () => {
@@ -248,14 +332,14 @@ export function useTeamNames(enabled: boolean) {
 // { date, reason } (DcrCorrectionRequest), and the dcr_unlock approvals in GET /v1/approvals with
 // POST /v1/approvals/:id/decision (ApprovalDecision). No mock needed.
 
-/** 12:01 AM IST on the day after `date` (the company default; the server's lockAt wins). */
+/** 00:00 IST on the day after `date` (submit by 23:59 IST); the server's lockAt wins. */
 export function defaultLockAt(date: string) {
-  const d = new Date(`${date}T00:01:00+05:30`);
+  const d = new Date(`${date}T00:00:00+05:30`);
   d.setUTCDate(d.getUTCDate() + 1);
   return d;
 }
 
-/** Locked: past the lock time (server lockAt, else 12:01 AM IST next day) and not reopened. */
+/** Locked: past the lock time (server lockAt, else 00:00 IST next day) and not reopened. */
 export function isDayLocked(dcr: Dcr | null, date: string, now = new Date()) {
   if (dcr?.unlockedUntil && new Date(dcr.unlockedUntil) > now) return false;
   if (dcr?.status === 'locked') return true;
@@ -280,7 +364,10 @@ export function useRequestUnlock() {
   return useMutation({
     mutationFn: (b: { date: string; reason: string }) =>
       apiFetch<UnlockRequest>('/v1/dcrs/correction-requests', { method: 'POST', body: b }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['approvals', 'dcr_unlock'] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['approvals', 'dcr_unlock'] });
+      void qc.invalidateQueries({ queryKey: ['dcr', 'options'] });
+    },
   });
 }
 
@@ -331,4 +418,37 @@ export function useDecideApproval() {
       void qc.invalidateQueries({ queryKey: ['dcr'] });
     },
   });
+}
+
+// ---------------------------------------------------------------- submit rule errors (422)
+
+const RULE_TEXT = {
+  PRESENTATION_NOT_OPENED: {
+    message: 'Open the presentation on every doctor call before submitting.',
+    callText: 'Open the presentation for this call.',
+  },
+  POB_NOT_ALLOWED_FOR_DOCTOR: {
+    message: 'Doctor calls can’t carry an order (POB). Remove it from the doctor call.',
+    callText: 'Remove the order (POB) from this doctor call.',
+  },
+} as const;
+
+/**
+ * 422 VALIDATION with details.reason PRESENTATION_NOT_OPENED | POB_NOT_ALLOWED_FOR_DOCTOR and
+ * callIds (= the call clientIds) / callIndexes (into the calls sent). Returns the offending clientIds.
+ */
+export function submitRuleError(e: unknown, sentClientIds: string[]) {
+  if (!(e instanceof ApiError) || e.status !== 422) return null;
+  const det = (e.details ?? {}) as {
+    reason?: string;
+    callIds?: string[];
+    callIndexes?: number[];
+  };
+  const reason = det.reason as keyof typeof RULE_TEXT | undefined;
+  if (!reason || !(reason in RULE_TEXT)) return null;
+  const byId = (det.callIds ?? []).filter((id) => sentClientIds.includes(id));
+  const ids = byId.length
+    ? byId
+    : (det.callIndexes ?? []).map((i) => sentClientIds[i]).filter((x): x is string => !!x);
+  return { reason, clientIds: ids, ...RULE_TEXT[reason] };
 }

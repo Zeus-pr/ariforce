@@ -10,7 +10,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { ApiError, apiFetch, idempotencyKey } from '../api';
-import { useProductCatalog } from './adapter';
+import { noteOptions, type OptionsV2 } from './adapter';
 import { monthStartIST, todayIST } from './dates';
 import type { CallKind, HqOption, Person, WorkTypeOption } from './model';
 import { draftBody, type FlowState } from './model';
@@ -23,7 +23,7 @@ export type DcrOptions = {
   dcr?: Dcr | null;
   drafts?: Dcr[];
   submitted?: Dcr | null;
-};
+} & OptionsV2;
 
 export type { ProductOpt } from './adapter';
 
@@ -47,7 +47,8 @@ export function useSubmittedHistory(from = monthStartIST(), to = todayIST()) {
     queryFn: ({ signal }) =>
       apiFetch<Page<Dcr>>('/v1/dcrs', {
         signal,
-        query: { mine: 'true', status: 'submitted', from, to, sort: '-date', limit: 100 },
+        // No status filter: submitted, locked, approved and rejected (drafts are dropped on screen).
+        query: { mine: 'true', from, to, sort: '-date', limit: 100 },
       }),
   });
 }
@@ -56,7 +57,11 @@ export function useDcrOptions(date: string) {
   return useQuery({
     queryKey: [...dcrKey, 'options', date],
     enabled: !!date,
-    queryFn: ({ signal }) => apiFetch<DcrOptions>('/v1/dcrs/options', { signal, query: { date } }),
+    queryFn: async ({ signal }) => {
+      const o = await apiFetch<DcrOptions>('/v1/dcrs/options', { signal, query: { date } });
+      noteOptions(o);
+      return o;
+    },
   });
 }
 
@@ -89,9 +94,6 @@ export function useWorkWith(enabled: boolean, q: string) {
       }).then((r) => r.items),
   });
 }
-
-/** Active products with PTS and image (lib/dcr/adapter.ts maps the contract fields). */
-export const useProducts = useProductCatalog;
 
 export type SfcMatchResult =
   | { ok: true; band: string | null; hqs: import('./model').SfcHq[] }

@@ -6,7 +6,7 @@
 import type { Dcr, DcrBand, DcrDetails, DcrDraftPut, DcrSfcMatch } from '@ariforce/contracts';
 import { bandOf, categoryFitsBand, sfcCategoryOf } from './bands';
 import type { ApiError } from '../api';
-import { callPresentationOpened, presentationInput } from './adapter';
+import { callPresentationOpened, presentationInput, sendsCalledAt } from './adapter';
 
 export type WorkTypeOption = {
   id: string;
@@ -170,6 +170,8 @@ export type CallDraft = {
   pob: PobDraft[];
   /** Doctor calls: the product presentation was opened (see lib/dcr/adapter.ts). */
   presentationOpened: boolean;
+  /** Server value once saved (new API); kept so a re-save never moves it. */
+  presentationOpenedAt?: string | null;
   remarks: string;
 };
 export type PobDraft = { productId: string; quantity: number };
@@ -303,7 +305,9 @@ export function problems(s: FlowState): { key: string; text: string }[] {
             `call-${c.clientId}`,
             `Call ${i + 1}: choose the ${KIND_LABEL[c.kind].toLowerCase()}.`,
           );
-        if (!HHMM.test(c.time)) add(`call-${c.clientId}`, `Call ${i + 1}: enter the visit time.`);
+        // The new API stamps calledAt itself; only the old one needs the app's time.
+        if (sendsCalledAt() && !HHMM.test(c.time))
+          add(`call-${c.clientId}`, `Call ${i + 1}: enter the visit time.`);
         if (c.kind === 'doctor' && c.outletId && !c.productIds.length)
           add(`call-${c.clientId}`, `Call ${i + 1}: pick the products you detailed.`);
       });
@@ -345,10 +349,17 @@ export function problems(s: FlowState): { key: string; text: string }[] {
  * PUT /v1/dcrs/draft body. Pass the saved draft (id + version) to update it; pass nothing to create a
  * new draft: id and version are both left out then (version alone would update the day's latest draft).
  */
+/** New contract (d91a5e1): calledAt is optional/ignored, presentationOpenedAt is accepted. */
+type CallPutV2 = Omit<DcrDraftPut['calls'][number], 'calledAt'> & {
+  calledAt?: string;
+  presentationOpenedAt?: string | null;
+};
+export type DcrDraftPutV2 = Omit<DcrDraftPut, 'calls'> & { calls: CallPutV2[] };
+
 export function draftBody(
   s: FlowState,
   saved?: { id: string; version: number } | null,
-): DcrDraftPut {
+): DcrDraftPutV2 {
   const field = s.workOn?.branch === 'field';
   const routes =
     field && s.sfc.state === 'ok'
@@ -372,35 +383,39 @@ export function draftBody(
     details,
     deviationReason: s.deviationReason.trim() || null,
     calls: field
-      ? s.calls
-          .filter((c) => c.outletId && HHMM.test(c.time))
-          .map((c) => ({
-            clientId: c.clientId,
-            outletKind: c.kind,
-            outletId: c.outletId,
-            checkInId: null,
-            jointWorkUserIds: s.workWith,
-            productsDetailed:
-              c.kind === 'doctor'
-                ? c.productIds.map((productId, i) => ({ productId, order: i + 1 }))
-                : [],
-            samples: [],
-            // POB is for chemist and stockist calls only (PobLine; value is computed server-side).
-            pob:
-              c.kind === 'doctor'
-                ? []
-                : c.pob
-                    .filter((l) => l.quantity >= 1)
-                    .map((l) => ({ productId: l.productId, quantity: l.quantity })),
-            ...(c.kind === 'doctor' ? presentationInput(c.presentationOpened) : {}),
-            rcpa: [],
-            remarks: c.remarks.trim() || null,
-            calledAt: isoOf(s.date, c.time),
-          }))
+      ? s.calls.filter(sendableCall).map((c) => ({
+          clientId: c.clientId,
+          outletKind: c.kind,
+          outletId: c.outletId,
+          checkInId: null,
+          jointWorkUserIds: s.workWith,
+          productsDetailed:
+            c.kind === 'doctor'
+              ? c.productIds.map((productId, i) => ({ productId, order: i + 1 }))
+              : [],
+          samples: [],
+          // POB is for chemist and stockist calls only (PobLine; value is computed server-side).
+          pob:
+            c.kind === 'doctor'
+              ? []
+              : c.pob
+                  .filter((l) => l.quantity >= 1)
+                  .map((l) => ({ productId: l.productId, quantity: l.quantity })),
+          ...(c.kind === 'doctor'
+            ? presentationInput(c.presentationOpened, c.presentationOpenedAt)
+            : {}),
+          rcpa: [],
+          remarks: c.remarks.trim() || null,
+          ...(sendsCalledAt() ? { calledAt: isoOf(s.date, c.time) } : {}),
+        }))
       : [],
     ...(saved ? { id: saved.id, version: saved.version } : {}),
   };
 }
+
+/** Calls that go into PUT /v1/dcrs/draft, in order (the server's callIndexes count these). */
+export const sendableCall = (c: CallDraft) =>
+  !!c.outletId && (!sendsCalledAt() || HHMM.test(c.time));
 
 /** Placeholder until the customer's name is looked up (dcr-flow). */
 export const SAVED_CUSTOMER = 'Saved customer';
@@ -415,6 +430,8 @@ export function callsFromDcr(d: Dcr, names: Map<string, string>): CallDraft[] {
     productIds: [...c.productsDetailed].sort((a, b) => a.order - b.order).map((p) => p.productId),
     pob: c.pob.map((l) => ({ productId: l.productId, quantity: l.quantity })),
     presentationOpened: callPresentationOpened(c) ?? false,
+    presentationOpenedAt:
+      (c as typeof c & { presentationOpenedAt?: string | null }).presentationOpenedAt ?? null,
     remarks: c.remarks ?? '',
   }));
 }

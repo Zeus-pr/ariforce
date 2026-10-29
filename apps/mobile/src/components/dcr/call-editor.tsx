@@ -48,7 +48,7 @@ export function CallEditor({
   const [pick, setPick] = useState(false);
   const label = KIND_LABEL[call.kind];
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
-  const isProd = (e: string) => /product|presentation/i.test(e);
+  const isProd = (e: string) => /product|presentation|order|POB/i.test(e);
 
   return (
     <View style={styles.call}>
@@ -58,7 +58,7 @@ export function CallEditor({
             {label} #{index + 1}
           </AppText>
           <AppText variant="small">
-            {call.time ? `Visited ${formatHHmmLabel(call.time)}` : 'Visit time not recorded'}
+            {call.time ? `Visited ${formatHHmmLabel(call.time)}` : 'Time is recorded when saved'}
           </AppText>
         </View>
         {!readOnly ? (

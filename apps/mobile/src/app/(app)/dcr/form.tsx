@@ -27,7 +27,6 @@ import {
   useDcrRecord,
   useDcrOptions,
   useDcrTerritories,
-  useProducts,
   useSaveDraft,
   useSubmitDcr,
   useWorkWith,
@@ -37,6 +36,9 @@ import {
   REVIEW_TONE,
   isDayLocked,
   reviewOf,
+  sendsCalledAt,
+  submitRuleError,
+  useDcrProducts,
   useDecisions,
   useMyUnlockRequests,
   usePresentationLog,
@@ -50,6 +52,8 @@ import {
   KIND_LABEL,
   SAVED_CUSTOMER,
   callsFromDcr,
+  sendableCall,
+  timeOfIso,
   cleanSfcHqs,
   emptyMeeting,
   emptyOffice,
@@ -172,7 +176,7 @@ function DcrForm({
   const field = s.workOn?.branch === 'field';
   const terrQ = useDcrTerritories(!!field);
   const peopleQry = useWorkWith(!!field && s.territoryIds.length > 0, peopleQ);
-  const productsQ = useProducts(!!field);
+  const productsQ = useDcrProducts(optionsQ.data, !!field);
   const saveDraft = useSaveDraft();
   const submitMut = useSubmitDcr();
   const deleteMut = useDeleteDraft();
@@ -181,13 +185,19 @@ function DcrForm({
   const decisions = decisionsQ.data ?? {};
   const review = dcr ? reviewOf(dcr, decisions) : null;
   const locked = isDayLocked(dcr, s.date) && dcr?.status !== 'submitted';
-  const myUnlocksQ = useMyUnlockRequests(locked);
+  const v2Unlock = optionsQ.data && 'unlockRequest' in optionsQ.data;
+  // Old API only: best-effort match of my pending dcr_unlock approvals.
+  const myUnlocksQ = useMyUnlockRequests(locked && !v2Unlock);
   const unlockMut = useRequestUnlock();
   const [unlockReason, setUnlockReason] = useState('');
   const [unlockError, setUnlockError] = useState<string | null>(null);
-  const unlockPending = (myUnlocksQ.data ?? []).some(
-    (a) => a.summary.includes(s.date) || (dcr && a.subjectId === dcr.id),
-  );
+  const unlockPending = v2Unlock
+    ? optionsQ.data?.unlockRequest?.status === 'pending'
+    : (myUnlocksQ.data ?? []).some(
+        (a) => a.summary.includes(s.date) || (dcr && a.subjectId === dcr.id),
+      );
+  /** Calls the server refused on submit (422 PRESENTATION_NOT_OPENED / POB_NOT_ALLOWED_FOR_DOCTOR). */
+  const [flagged, setFlagged] = useState<Record<string, string>>({});
 
   const choices = useMemo(() => workOnChoices(workTypes ?? []), [workTypes]);
   const rows = useMemo(() => territoryRows(terrQ.data ?? []), [terrQ.data]);
@@ -442,6 +452,15 @@ function DcrForm({
         saved: dcr?.status === 'draft' ? { id: dcr.id, version: dcr.version } : null,
       });
       setDcr(saved);
+      // Show the server's calledAt (new API stamps it on first save; the app never sends it).
+      if (!sendsCalledAt()) {
+        const at = new Map(saved.calls.map((c) => [c.id, timeOfIso(c.calledAt)]));
+        setS((x) => ({
+          ...x,
+          calls: x.calls.map((c) => (at.has(c.clientId) ? { ...c, time: at.get(c.clientId)! } : c)),
+        }));
+      }
+      setFlagged({});
       if (!submit) {
         Alert.alert('Draft saved', 'You can come back and finish it later.');
         router.back();
@@ -461,6 +480,20 @@ function DcrForm({
         // Same as web dcr-flow.tsx: keep the key only when no answer came back (the submit may
         // have gone through, and a retry with the same key is safe); any API answer drops it.
         if (!(e instanceof ApiError && e.code === 'NETWORK')) submitKey.current = null;
+        const rule = submitRuleError(
+          e,
+          sEff.calls.filter(sendableCall).map((c) => c.clientId),
+        );
+        if (rule) {
+          setFlagged(Object.fromEntries(rule.clientIds.map((id) => [id, rule.callText])));
+          setShowErrors(true);
+          const which = sEff.calls
+            .map((c, i) => (rule.clientIds.includes(c.clientId) ? `call ${i + 1}` : null))
+            .filter(Boolean)
+            .join(', ');
+          setFormError(`${rule.message}${which ? ` (${which})` : ''}`);
+          return;
+        }
         if (e instanceof ApiError && e.code === 'DEVIATION_REASON_REQUIRED') {
           setAskDeviation(true);
           setFormError(saveMessage(e));
@@ -582,8 +615,18 @@ function DcrForm({
             <AppText variant="label">Rejected by your manager</AppText>
             <AppText variant="bodyMuted">{review.reason || 'No reason given.'}</AppText>
             <AppText variant="small">
-              This report doesn’t count. File {dateLabel(s.date)} again with New DCR.
+              This report doesn’t count. The day is open again for 48 hours: file it as a new
+              report.
             </AppText>
+            <Button
+              label="File this day again"
+              variant="secondary"
+              compact
+              onPress={() =>
+                // A brand-new form: new call clientIds and a new idempotency key, never the old ones.
+                router.replace({ pathname: '/dcr/form', params: { new: '1', date: s.date } })
+              }
+            />
           </View>
         ) : null}
 
@@ -741,7 +784,10 @@ function DcrForm({
                     call={sEff.calls[i] ?? c}
                     index={i}
                     readOnly={readOnly}
-                    errors={err(`call-${c.clientId}`)}
+                    errors={[
+                      ...err(`call-${c.clientId}`),
+                      ...(flagged[c.clientId] ? [flagged[c.clientId]!] : []),
+                    ]}
                     products={productsQ.data ?? []}
                     onPresented={() => {
                       if (c.outletId) presLog.record(c.outletId);
@@ -782,7 +828,8 @@ function DcrForm({
                                 outletId: '',
                                 outletName: '',
                                 hqId: scopes[0]?.hqId ?? '',
-                                time: nowHHmm(),
+                                // New API: calledAt is stamped by the server on first save.
+                                time: sendsCalledAt() ? nowHHmm() : '',
                                 productIds: [],
                                 pob: [],
                                 presentationOpened: false,
