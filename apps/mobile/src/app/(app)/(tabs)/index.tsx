@@ -57,6 +57,10 @@ export default function HomeScreen() {
     <TabScene>
       <PullToRefresh onRefresh={onRefresh}>
         <ScrollView
+          // Home keeps a gentle native overscroll (Android stretch, iOS bounce); other screens are fixed.
+          overScrollMode="auto"
+          bounces
+          alwaysBounceVertical
           style={styles.flex}
           contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
         >
