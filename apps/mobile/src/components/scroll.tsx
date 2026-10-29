@@ -8,7 +8,15 @@ import { KeyboardAwareScrollView as RNKeyboardAwareScrollView } from 'react-nati
  * these instead of the react-native ones (ESLint enforces it), so new screens inherit the
  * default. A caller can still opt back in by passing the prop explicitly.
  */
-const NO_BARS = { showsVerticalScrollIndicator: false, showsHorizontalScrollIndicator: false };
+const NO_BARS = {
+  showsVerticalScrollIndicator: false,
+  showsHorizontalScrollIndicator: false,
+  // Fixed screens: no Android overscroll stretch, no iOS bounce. Pull-to-refresh is a
+  // gesture-handler Pan (components/refresh.tsx), so it does not need overscroll.
+  overScrollMode: 'never',
+  bounces: false,
+  alwaysBounceVertical: false,
+} as const;
 
 export function ScrollView(props: ComponentProps<typeof RNScrollView>) {
   return <RNScrollView {...NO_BARS} {...props} />;
