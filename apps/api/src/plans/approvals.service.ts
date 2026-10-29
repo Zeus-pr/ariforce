@@ -50,7 +50,6 @@ import {
   autoApproveAudit,
   deciderId,
   isDirector,
-  managerRoute,
   systemPrincipal,
 } from './auto-approve';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
@@ -536,15 +535,7 @@ export class ApprovalsService {
         .select({ managerId: users.managerId })
         .from(users)
         .where(eq(users.id, p.userId));
-      const route = managerRoute(p, entityType, me?.managerId ?? null);
-      if (route.error)
-        throw err(
-          422,
-          'NO_MANAGER',
-          'You have no reporting manager, so nobody can approve this; ask an admin to set your manager',
-          { subjectType: SUBJECT[entityType] ?? entityType },
-        );
-      approverUserId = route.approverUserId;
+      approverUserId = me?.managerId ?? null;
     }
     const id = uuidv7();
     await tx.insert(approvalRequests).values({

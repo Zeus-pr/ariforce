@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { submitStatus } from '../dcr/dcr.service';
-import {
-  AUTO_APPROVE_REASON,
-  autoApproveAudit,
-  deciderId,
-  isDirector,
-  managerRoute,
-} from './auto-approve';
+import { AUTO_APPROVE_REASON, autoApproveAudit, deciderId, isDirector } from './auto-approve';
 
 const director = { roles: ['director' as const] };
 const mr = { roles: ['business_manager' as const] };
@@ -15,22 +9,6 @@ describe('director auto-approve', () => {
   it('detects directors by role', () => {
     expect(isDirector(director)).toBe(true);
     expect(isDirector(mr)).toBe(false);
-  });
-
-  it('routes to the manager when there is one', () => {
-    expect(managerRoute(mr, 'leave', 'm1')).toEqual({ approverUserId: 'm1', error: null });
-    expect(managerRoute(director, 'expense', 'm1')).toEqual({ approverUserId: 'm1', error: null });
-  });
-
-  it('lets a director without a manager through (auto-approved later)', () => {
-    for (const t of ['tour_plan', 'tour_plan_item', 'expense', 'leave'])
-      expect(managerRoute(director, t, null)).toEqual({ approverUserId: null, error: null });
-  });
-
-  it('rejects a non-director without a manager on manager-routed subjects only', () => {
-    for (const t of ['tour_plan', 'tour_plan_item', 'expense', 'leave'])
-      expect(managerRoute(mr, t, null).error).toBe('NO_MANAGER');
-    expect(managerRoute(mr, 'doctor', null).error).toBeNull();
   });
 
   it('writes decidedBy null for the system principal', () => {

@@ -11596,7 +11596,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description TP_IN_PAST: from is before today (IST); NO_MANAGER (details.subjectType): you have no reporting manager and are not a director; or VALIDATION as for PUT */
+      /** @description TP_IN_PAST: from is before today (IST); or VALIDATION as for PUT */
       422: {
         headers: {
           [name: string]: unknown;
@@ -12018,7 +12018,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty. NO_MANAGER (details.subjectType): you have no reporting manager and are not a director */
+      /** @description EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty */
       422: {
         headers: {
           [name: string]: unknown;
@@ -14173,7 +14173,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description LEAVE_TYPE_UNKNOWN, LEAVE_HALF_DAY_NOT_ALLOWED, LEAVE_SPANS_YEARS, LEAVE_BACKDATE_WINDOW, LEAVE_TOO_FAR_AHEAD, LEAVE_NO_WORKING_DAYS, LEAVE_INSUFFICIENT_BALANCE, NO_MANAGER (details.subjectType): you have no reporting manager and are not a director, VALIDATION */
+      /** @description LEAVE_TYPE_UNKNOWN, LEAVE_HALF_DAY_NOT_ALLOWED, LEAVE_SPANS_YEARS, LEAVE_BACKDATE_WINDOW, LEAVE_TOO_FAR_AHEAD, LEAVE_NO_WORKING_DAYS, LEAVE_INSUFFICIENT_BALANCE, VALIDATION */
       422: {
         headers: {
           [name: string]: unknown;
@@ -16064,7 +16064,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description EXPENSE_EMPTY or RECEIPT_REQUIRED (hotel lines need a confirmed receipt); NO_MANAGER (details.subjectType): you have no reporting manager and are not a director */
+      /** @description EXPENSE_EMPTY or RECEIPT_REQUIRED (hotel lines need a confirmed receipt) */
       422: {
         headers: {
           [name: string]: unknown;

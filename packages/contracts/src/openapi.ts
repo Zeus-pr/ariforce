@@ -859,9 +859,7 @@ function buildDocument(): OpenApiDocument {
             '409': err(
               'TP_LOCKED, or TP_OVERLAP (details.items): overlaps your pending/approved item',
             ),
-            '422': err(
-              'TP_IN_PAST: from is before today (IST); NO_MANAGER (details.subjectType): you have no reporting manager and are not a director; or VALIDATION as for PUT',
-            ),
+            '422': err('TP_IN_PAST: from is before today (IST); or VALIDATION as for PUT'),
           },
         }),
       },
@@ -969,7 +967,7 @@ function buildDocument(): OpenApiDocument {
             '404': err('No plan for the month'),
             '409': err('DAY_LOCKED (details.dates): a chosen day is already submitted or approved'),
             '422': err(
-              'EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty. NO_MANAGER (details.subjectType): you have no reporting manager and are not a director',
+              'EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty',
             ),
           },
         }),
@@ -1500,7 +1498,7 @@ function buildDocument(): OpenApiDocument {
             '201': { description: 'Pending request (director: approved)', ...json(LeaveRequest) },
             '409': err('LEAVE_OVERLAP, LEAVE_DCR_EXISTS'),
             '422': err(
-              'LEAVE_TYPE_UNKNOWN, LEAVE_HALF_DAY_NOT_ALLOWED, LEAVE_SPANS_YEARS, LEAVE_BACKDATE_WINDOW, LEAVE_TOO_FAR_AHEAD, LEAVE_NO_WORKING_DAYS, LEAVE_INSUFFICIENT_BALANCE, NO_MANAGER (details.subjectType): you have no reporting manager and are not a director, VALIDATION',
+              'LEAVE_TYPE_UNKNOWN, LEAVE_HALF_DAY_NOT_ALLOWED, LEAVE_SPANS_YEARS, LEAVE_BACKDATE_WINDOW, LEAVE_TOO_FAR_AHEAD, LEAVE_NO_WORKING_DAYS, LEAVE_INSUFFICIENT_BALANCE, VALIDATION',
             ),
           },
         }),
@@ -1947,9 +1945,7 @@ function buildDocument(): OpenApiDocument {
             '409': err(
               'EXPENSE_NOT_EDITABLE; DCR_NOT_APPROVED (director only, details.dates / dcrIds / dcrStatus): a line date has no approved DCR',
             ),
-            '422': err(
-              'EXPENSE_EMPTY or RECEIPT_REQUIRED (hotel lines need a confirmed receipt); NO_MANAGER (details.subjectType): you have no reporting manager and are not a director',
-            ),
+            '422': err('EXPENSE_EMPTY or RECEIPT_REQUIRED (hotel lines need a confirmed receipt)'),
           },
         }),
       },
