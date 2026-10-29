@@ -2,7 +2,7 @@ import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { RefreshBar, pullToRefresh } from '@/components/refresh';
+import { PullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Chip } from '@/components/chip';
 import { Icon } from '@/components/icon';
@@ -147,66 +147,63 @@ function MasterList({ kind }: { kind: MasterKind }) {
         ) : null}
       </View>
 
-      <List
-        data={rows}
-        keyExtractor={(r) => r.id}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        contentContainerStyle={[styles.listContent, { paddingBottom: bottom }]}
-        onEndReachedThreshold={0.5}
-        onEndReached={() => {
-          if (list.hasNextPage && !list.isFetchingNextPage) void list.fetchNextPage();
-        }}
-        refreshControl={pullToRefresh(
-          list.isRefetching && !list.isFetchingNextPage,
-          () => void list.refetch(),
-        )}
-        ListHeaderComponent={<RefreshBar active={list.isRefetching && !list.isFetchingNextPage} />}
-        renderItem={({ item, index }) => (
-          <View
-            style={[
-              styles.item,
-              index === 0 && styles.first,
-              index === rows.length - 1 && styles.last,
-            ]}
-          >
-            <ListRow
-              title={item.name}
-              subtitle={subtitle(item)}
-              icon={FEATURES[kind].icon}
-              tone={FEATURES[kind].tone}
-              trailing={tag(item)}
-              divider={index < rows.length - 1}
-              onPress={() =>
-                router.push({ pathname: '/masters/[kind]/[id]', params: { kind, id: item.id } })
-              }
-            />
-          </View>
-        )}
-        ListFooterComponent={
-          list.isFetchingNextPage ? (
-            <SkeletonGroup style={styles.moreRows}>
-              <SkeletonRow divider />
-              <SkeletonRow />
-            </SkeletonGroup>
-          ) : undefined
-        }
-        ListEmptyComponent={
-          list.isPending ? (
-            <SkeletonList count={8} />
-          ) : (
-            <View style={styles.empty}>
-              <AppText variant="bodyMuted" style={styles.center}>
-                {list.isError
-                  ? (list.error as Error).message
-                  : q || Object.values(filters).some(Boolean)
-                    ? `No ${cfg.title.toLowerCase()} match.`
-                    : `No ${cfg.title.toLowerCase()} yet.`}
-              </AppText>
+      <PullToRefresh onRefresh={() => list.refetch()}>
+        <List
+          data={rows}
+          keyExtractor={(r) => r.id}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={[styles.listContent, { paddingBottom: bottom }]}
+          onEndReachedThreshold={0.5}
+          onEndReached={() => {
+            if (list.hasNextPage && !list.isFetchingNextPage) void list.fetchNextPage();
+          }}
+          renderItem={({ item, index }) => (
+            <View
+              style={[
+                styles.item,
+                index === 0 && styles.first,
+                index === rows.length - 1 && styles.last,
+              ]}
+            >
+              <ListRow
+                title={item.name}
+                subtitle={subtitle(item)}
+                icon={FEATURES[kind].icon}
+                tone={FEATURES[kind].tone}
+                trailing={tag(item)}
+                divider={index < rows.length - 1}
+                onPress={() =>
+                  router.push({ pathname: '/masters/[kind]/[id]', params: { kind, id: item.id } })
+                }
+              />
             </View>
-          )
-        }
-      />
+          )}
+          ListFooterComponent={
+            list.isFetchingNextPage ? (
+              <SkeletonGroup style={styles.moreRows}>
+                <SkeletonRow divider />
+                <SkeletonRow />
+              </SkeletonGroup>
+            ) : undefined
+          }
+          ListEmptyComponent={
+            list.isPending ? (
+              <SkeletonList count={8} />
+            ) : (
+              <View style={styles.empty}>
+                <AppText variant="bodyMuted" style={styles.center}>
+                  {list.isError
+                    ? (list.error as Error).message
+                    : q || Object.values(filters).some(Boolean)
+                      ? `No ${cfg.title.toLowerCase()} match.`
+                      : `No ${cfg.title.toLowerCase()} yet.`}
+                </AppText>
+              </View>
+            )
+          }
+        />
+      </PullToRefresh>
 
       {canWrite ? (
         <Pressable

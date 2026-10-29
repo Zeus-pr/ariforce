@@ -1,7 +1,7 @@
 import { Redirect, useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { RefreshBar, pullToRefresh } from '@/components/refresh';
+import { PullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
@@ -41,56 +41,58 @@ function TourPlans({ myId }: { myId?: string }) {
   return (
     <TabScene>
       <View style={styles.flex}>
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={[
-            styles.content,
-            { paddingBottom: bottom + touch.control + spacing.lg },
-          ]}
-          refreshControl={pullToRefresh(q.isRefetching && !q.isPending, () => void q.refetch())}
-        >
-          <RefreshBar active={q.isRefetching && !q.isPending} />
-          <View style={styles.head}>
-            <AppText variant="small">
-              {q.isPending ? 'Your tour plans' : `Your tour plans (${items.length})`}
-            </AppText>
-            {!CONTRACT.tpItems ? <Chip label="Sample mode" tone="orange" /> : null}
-          </View>
-          {q.isPending ? (
-            <SkeletonList count={3} />
-          ) : q.isError ? (
-            <Card style={styles.pad}>
-              <AppText variant="bodyMuted">{saveMessage(q.error)}</AppText>
-            </Card>
-          ) : !items.length ? (
-            <Card style={styles.pad}>
-              <AppText variant="body">No tour plans yet</AppText>
-              <AppText variant="bodyMuted">
-                Plan a day or a few days with New TP, then send it to your manager. Approved plans
-                show on the DCR screen, ready to file.
+        <PullToRefresh onRefresh={() => q.refetch()}>
+          <ScrollView
+            style={styles.flex}
+            contentContainerStyle={[
+              styles.content,
+              { paddingBottom: bottom + touch.control + spacing.lg },
+            ]}
+          >
+            <View style={styles.head}>
+              <AppText variant="small">
+                {q.isPending ? 'Your tour plans' : `Your tour plans (${items.length})`}
               </AppText>
-            </Card>
-          ) : (
-            <Card>
-              {items.map((t, i) => (
-                <ListRow
-                  key={t.id}
-                  icon="calendar-month-outline"
-                  tone={t.status === 'rejected' ? 'red' : 'blue'}
-                  title={`TP · ${rangeLabel(t.from, t.to)}`}
-                  subtitle={
-                    t.status === 'rejected'
-                      ? `Rejected: ${t.rejectionReason || 'no reason given'}`
-                      : (wtName.get(t.plan.workTypeId) ?? 'Planned day')
-                  }
-                  trailing={<Chip label={TP_LABEL[t.status]} tone={TP_TONE[t.status]} />}
-                  onPress={() => router.push({ pathname: '/tour-plan/form', params: { id: t.id } })}
-                  divider={i < items.length - 1}
-                />
-              ))}
-            </Card>
-          )}
-        </ScrollView>
+              {!CONTRACT.tpItems ? <Chip label="Sample mode" tone="orange" /> : null}
+            </View>
+            {q.isPending ? (
+              <SkeletonList count={3} />
+            ) : q.isError ? (
+              <Card style={styles.pad}>
+                <AppText variant="bodyMuted">{saveMessage(q.error)}</AppText>
+              </Card>
+            ) : !items.length ? (
+              <Card style={styles.pad}>
+                <AppText variant="body">No tour plans yet</AppText>
+                <AppText variant="bodyMuted">
+                  Plan a day or a few days with New TP, then send it to your manager. Approved plans
+                  show on the DCR screen, ready to file.
+                </AppText>
+              </Card>
+            ) : (
+              <Card>
+                {items.map((t, i) => (
+                  <ListRow
+                    key={t.id}
+                    icon="calendar-month-outline"
+                    tone={t.status === 'rejected' ? 'red' : 'blue'}
+                    title={`TP · ${rangeLabel(t.from, t.to)}`}
+                    subtitle={
+                      t.status === 'rejected'
+                        ? `Rejected: ${t.rejectionReason || 'no reason given'}`
+                        : (wtName.get(t.plan.workTypeId) ?? 'Planned day')
+                    }
+                    trailing={<Chip label={TP_LABEL[t.status]} tone={TP_TONE[t.status]} />}
+                    onPress={() =>
+                      router.push({ pathname: '/tour-plan/form', params: { id: t.id } })
+                    }
+                    divider={i < items.length - 1}
+                  />
+                ))}
+              </Card>
+            )}
+          </ScrollView>
+        </PullToRefresh>
         <Pressable
           onPress={() => router.push('/tour-plan/form')}
           accessibilityRole="button"

@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { SelectSheet } from '@/components/masters/select-sheet';
 import { mockTpCard, rangeLabel, useMyTps, type TpDraftCard } from '@/lib/tp/adapter';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
-import { RefreshBar, pullToRefresh } from '@/components/refresh';
+import { PullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
@@ -99,14 +99,7 @@ function DcrWorkspace() {
     [draftsQ.data],
   );
 
-  const refreshing =
-    (draftsQ.isRefetching || historyQ.isRefetching) && !draftsQ.isPending && !historyQ.isPending;
-
-  const refresh = () => {
-    void draftsQ.refetch();
-    void historyQ.refetch();
-    void optionsQ.refetch();
-  };
+  const refresh = () => Promise.all([draftsQ.refetch(), historyQ.refetch(), optionsQ.refetch()]);
 
   const openForm = (params: { id?: string; date?: string; new?: string; tp?: string }) =>
     router.push({ pathname: '/dcr/form', params });
@@ -159,141 +152,141 @@ function DcrWorkspace() {
   return (
     <TabScene>
       <View style={styles.flex}>
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={[
-            styles.content,
-            { paddingBottom: bottom + touch.control + spacing.lg },
-          ]}
-          refreshControl={pullToRefresh(refreshing, refresh)}
-        >
-          <RefreshBar active={refreshing} />
-          <View style={styles.headRow}>
-            <AppText variant="small">
-              {draftsQ.isPending
-                ? 'Saved drafts'
-                : drafts.length
-                  ? `Saved drafts (${drafts.length})`
-                  : 'No saved drafts'}
-            </AppText>
-          </View>
-
-          {listError ? (
-            <Card style={styles.pad}>
-              <AppText variant="bodyMuted">{listError}</AppText>
-              <Pressable onPress={refresh} accessibilityRole="button" style={styles.retry}>
-                <Icon name="refresh" color={colors.navy} />
-                <AppText variant="action">Retry</AppText>
-              </Pressable>
-            </Card>
-          ) : null}
-
-          {tpCards.length ? (
-            <Card>
-              {tpCards.map((t, i) => (
-                <ListRow
-                  key={t.id}
-                  icon="calendar-check-outline"
-                  tone="blue"
-                  title={`TP · ${rangeLabel(t.from, t.to)}`}
-                  subtitle={
-                    t.pendingDates.length === 1
-                      ? `${dateLabel(t.pendingDates[0]!)} to file`
-                      : `${t.pendingDates.length} days to file · pick a day`
-                  }
-                  trailing={<Chip label="Approved plan" tone="green" />}
-                  onPress={() =>
-                    t.pendingDates.length === 1 ? openTpDay(t, t.pendingDates[0]!) : setPickTp(t)
-                  }
-                  divider={i < tpCards.length - 1}
-                />
-              ))}
-            </Card>
-          ) : null}
-
-          {draftsQ.isPending ? (
-            <SkeletonList count={2} />
-          ) : !drafts.length ? (
-            <Card style={styles.pad}>
-              <AppText variant="body">No saved drafts</AppText>
-              <AppText variant="bodyMuted">
-                Start today’s report with New DCR. Save it as a draft to come back later.
+        <PullToRefresh onRefresh={refresh}>
+          <ScrollView
+            style={styles.flex}
+            contentContainerStyle={[
+              styles.content,
+              { paddingBottom: bottom + touch.control + spacing.lg },
+            ]}
+          >
+            <View style={styles.headRow}>
+              <AppText variant="small">
+                {draftsQ.isPending
+                  ? 'Saved drafts'
+                  : drafts.length
+                    ? `Saved drafts (${drafts.length})`
+                    : 'No saved drafts'}
               </AppText>
-            </Card>
-          ) : (
-            <Card>
-              {drafts.map((d, i) => (
-                <ListRow
-                  key={d.id}
-                  icon="clipboard-text-outline"
-                  tone="teal"
-                  title={dateLabel(d.date)}
-                  subtitle={`${subtitle(d)} · Saved ${savedLabel(d.updatedAt)}`}
-                  trailing={
-                    <View style={styles.trail}>
-                      <View style={styles.badges}>
-                        <Chip label="Draft" tone="blue" />
-                        {submittedDays.has(d.date) ? (
-                          <Chip label="Day submitted" tone="orange" />
-                        ) : null}
-                      </View>
-                      <Pressable
-                        onPress={() => confirmDelete(d)}
-                        disabled={busyId === d.id}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Delete draft for ${dateLabel(d.date)}`}
-                        hitSlop={8}
-                        style={styles.trash}
-                      >
-                        <Icon name="trash-can-outline" color={colors.danger} size={20} />
-                      </Pressable>
-                    </View>
-                  }
-                  onPress={() => openForm({ id: d.id, date: d.date })}
-                  divider={i < drafts.length - 1}
-                />
-              ))}
-            </Card>
-          )}
+            </View>
 
-          <AppText variant="small" style={styles.section}>
-            {historyQ.isPending
-              ? 'History'
-              : `History · ${submittedDays.size} day${submittedDays.size === 1 ? '' : 's'} filed this month`}
-          </AppText>
-          {historyQ.isPending ? (
-            <SkeletonList count={4} />
-          ) : !history.length ? (
-            <Card style={styles.pad}>
-              <AppText variant="bodyMuted">No submitted reports this month yet.</AppText>
-            </Card>
-          ) : (
-            <Card>
-              {history.map(({ d, review }, i) => (
-                <ListRow
-                  key={d.id}
-                  icon={
-                    review.status === 'rejected'
-                      ? 'close-octagon-outline'
-                      : 'check-decagram-outline'
-                  }
-                  tone={review.status === 'rejected' ? 'red' : 'green'}
-                  title={dateLabel(d.date)}
-                  subtitle={
-                    review.status === 'rejected'
-                      ? `Rejected: ${review.reason || 'no reason given'} · File this day again`
-                      : subtitle(d)
-                  }
-                  trailing={
-                    <Chip label={REVIEW_LABEL[review.status]} tone={REVIEW_TONE[review.status]} />
-                  }
-                  onPress={() => openForm({ id: d.id, date: d.date })}
-                  divider={i < history.length - 1}
-                />
-              ))}
-            </Card>
-          )}
-        </ScrollView>
+            {listError ? (
+              <Card style={styles.pad}>
+                <AppText variant="bodyMuted">{listError}</AppText>
+                <Pressable onPress={refresh} accessibilityRole="button" style={styles.retry}>
+                  <Icon name="refresh" color={colors.navy} />
+                  <AppText variant="action">Retry</AppText>
+                </Pressable>
+              </Card>
+            ) : null}
+
+            {tpCards.length ? (
+              <Card>
+                {tpCards.map((t, i) => (
+                  <ListRow
+                    key={t.id}
+                    icon="calendar-check-outline"
+                    tone="blue"
+                    title={`TP · ${rangeLabel(t.from, t.to)}`}
+                    subtitle={
+                      t.pendingDates.length === 1
+                        ? `${dateLabel(t.pendingDates[0]!)} to file`
+                        : `${t.pendingDates.length} days to file · pick a day`
+                    }
+                    trailing={<Chip label="Approved plan" tone="green" />}
+                    onPress={() =>
+                      t.pendingDates.length === 1 ? openTpDay(t, t.pendingDates[0]!) : setPickTp(t)
+                    }
+                    divider={i < tpCards.length - 1}
+                  />
+                ))}
+              </Card>
+            ) : null}
+
+            {draftsQ.isPending ? (
+              <SkeletonList count={2} />
+            ) : !drafts.length ? (
+              <Card style={styles.pad}>
+                <AppText variant="body">No saved drafts</AppText>
+                <AppText variant="bodyMuted">
+                  Start today’s report with New DCR. Save it as a draft to come back later.
+                </AppText>
+              </Card>
+            ) : (
+              <Card>
+                {drafts.map((d, i) => (
+                  <ListRow
+                    key={d.id}
+                    icon="clipboard-text-outline"
+                    tone="teal"
+                    title={dateLabel(d.date)}
+                    subtitle={`${subtitle(d)} · Saved ${savedLabel(d.updatedAt)}`}
+                    trailing={
+                      <View style={styles.trail}>
+                        <View style={styles.badges}>
+                          <Chip label="Draft" tone="blue" />
+                          {submittedDays.has(d.date) ? (
+                            <Chip label="Day submitted" tone="orange" />
+                          ) : null}
+                        </View>
+                        <Pressable
+                          onPress={() => confirmDelete(d)}
+                          disabled={busyId === d.id}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Delete draft for ${dateLabel(d.date)}`}
+                          hitSlop={8}
+                          style={styles.trash}
+                        >
+                          <Icon name="trash-can-outline" color={colors.danger} size={20} />
+                        </Pressable>
+                      </View>
+                    }
+                    onPress={() => openForm({ id: d.id, date: d.date })}
+                    divider={i < drafts.length - 1}
+                  />
+                ))}
+              </Card>
+            )}
+
+            <AppText variant="small" style={styles.section}>
+              {historyQ.isPending
+                ? 'History'
+                : `History · ${submittedDays.size} day${submittedDays.size === 1 ? '' : 's'} filed this month`}
+            </AppText>
+            {historyQ.isPending ? (
+              <SkeletonList count={4} />
+            ) : !history.length ? (
+              <Card style={styles.pad}>
+                <AppText variant="bodyMuted">No submitted reports this month yet.</AppText>
+              </Card>
+            ) : (
+              <Card>
+                {history.map(({ d, review }, i) => (
+                  <ListRow
+                    key={d.id}
+                    icon={
+                      review.status === 'rejected'
+                        ? 'close-octagon-outline'
+                        : 'check-decagram-outline'
+                    }
+                    tone={review.status === 'rejected' ? 'red' : 'green'}
+                    title={dateLabel(d.date)}
+                    subtitle={
+                      review.status === 'rejected'
+                        ? `Rejected: ${review.reason || 'no reason given'} · File this day again`
+                        : subtitle(d)
+                    }
+                    trailing={
+                      <Chip label={REVIEW_LABEL[review.status]} tone={REVIEW_TONE[review.status]} />
+                    }
+                    onPress={() => openForm({ id: d.id, date: d.date })}
+                    divider={i < history.length - 1}
+                  />
+                ))}
+              </Card>
+            )}
+          </ScrollView>
+        </PullToRefresh>
 
         <SelectSheet
           visible={!!pickTp}

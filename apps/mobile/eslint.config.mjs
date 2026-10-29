@@ -1,7 +1,7 @@
 import base from '@ariforce/config/eslint';
 
 const SPINNER_MSG =
-  'No spinners in the app: show a skeleton from @/components/skeleton; for pull-to-refresh use pullToRefresh + RefreshBar from @/components/refresh.';
+  'No spinners in the app: show a skeleton from @/components/skeleton; for pull-to-refresh wrap the list in <PullToRefresh> from @/components/refresh.';
 const SCROLL_MSG = 'Use the wrappers in @/components/scroll (no scroll indicators in the app).';
 
 export default [
@@ -34,20 +34,6 @@ export default [
               importNames: ['ScrollView', 'FlatList', 'SectionList'],
               message: SCROLL_MSG,
             },
-          ],
-        },
-      ],
-    },
-  },
-  {
-    // The one place RefreshControl may be used: invisible native indicator + skeleton bar.
-    files: ['src/components/refresh.tsx'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          paths: [
-            { name: 'react-native', importNames: ['ActivityIndicator'], message: SPINNER_MSG },
           ],
         },
       ],

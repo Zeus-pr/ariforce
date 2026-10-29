@@ -1,6 +1,6 @@
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Linking, Pressable, StyleSheet, View } from 'react-native';
-import { RefreshBar, pullToRefresh } from '@/components/refresh';
+import { PullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
 import { Card } from '@/components/card';
@@ -84,91 +84,91 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
   return (
     <View style={styles.flex}>
       <Stack.Screen options={{ title }} />
-      <ScrollView
-        style={styles.flex}
-        contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
-        refreshControl={pullToRefresh(rec.isRefetching, () => void rec.refetch())}
-      >
-        <RefreshBar active={rec.isRefetching} />
-        <Card style={styles.hero}>
-          <TintedIcon name={FEATURES[kind].icon} tone={FEATURES[kind].tone} large />
-          <AppText variant="name" accessibilityRole="header">
-            {row.name}
-          </AppText>
-          <View style={styles.chips}>
-            {category ? <Chip label={category.name} tone="teal" /> : null}
-            {doctor && doctor.approvalStatus !== 'approved' ? (
-              <Chip
-                label={APPROVAL_LABEL[doctor.approvalStatus] ?? doctor.approvalStatus}
-                tone={doctor.approvalStatus === 'rejected' ? 'red' : 'orange'}
-              />
+      <PullToRefresh onRefresh={() => rec.refetch()}>
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
+        >
+          <Card style={styles.hero}>
+            <TintedIcon name={FEATURES[kind].icon} tone={FEATURES[kind].tone} large />
+            <AppText variant="name" accessibilityRole="header">
+              {row.name}
+            </AppText>
+            <View style={styles.chips}>
+              {category ? <Chip label={category.name} tone="teal" /> : null}
+              {doctor && doctor.approvalStatus !== 'approved' ? (
+                <Chip
+                  label={APPROVAL_LABEL[doctor.approvalStatus] ?? doctor.approvalStatus}
+                  tone={doctor.approvalStatus === 'rejected' ? 'red' : 'orange'}
+                />
+              ) : null}
+              {doctor && isPlaceholderName(row.name) ? (
+                <Chip label="Placeholder" tone="neutral" />
+              ) : null}
+            </View>
+            {summary.some(Boolean) ? (
+              <AppText variant="subhead">{summary.filter(Boolean).join(' · ')}</AppText>
             ) : null}
-            {doctor && isPlaceholderName(row.name) ? (
-              <Chip label="Placeholder" tone="neutral" />
+            {place ? (
+              <View style={styles.line}>
+                <Icon name="map-marker-outline" size={18} color={colors.muted} />
+                <AppText variant="subhead" style={styles.flexText}>
+                  {place}
+                </AppText>
+              </View>
             ) : null}
-          </View>
-          {summary.some(Boolean) ? (
-            <AppText variant="subhead">{summary.filter(Boolean).join(' · ')}</AppText>
-          ) : null}
-          {place ? (
-            <View style={styles.line}>
-              <Icon name="map-marker-outline" size={18} color={colors.muted} />
-              <AppText variant="subhead" style={styles.flexText}>
-                {place}
+            {row.phone ? (
+              <Pressable
+                onPress={() => void Linking.openURL(`tel:${row.phone}`)}
+                accessibilityRole="link"
+                accessibilityLabel={`Call ${row.phone}`}
+                style={[styles.line, styles.call]}
+              >
+                <Icon name="phone-outline" size={18} color={colors.tealDeep} />
+                <AppText variant="label" style={styles.callText}>
+                  {row.phone}
+                </AppText>
+              </Pressable>
+            ) : null}
+          </Card>
+
+          {rejection ? (
+            <View style={styles.rejection}>
+              <AppText variant="label" style={styles.rejectionTitle}>
+                Rejected{rejection.rejectedBy?.name ? ` by ${rejection.rejectedBy.name}` : ''}
               </AppText>
+              <AppText variant="body">{rejection.rejectionReason}</AppText>
             </View>
           ) : null}
-          {row.phone ? (
-            <Pressable
-              onPress={() => void Linking.openURL(`tel:${row.phone}`)}
-              accessibilityRole="link"
-              accessibilityLabel={`Call ${row.phone}`}
-              style={[styles.line, styles.call]}
-            >
-              <Icon name="phone-outline" size={18} color={colors.tealDeep} />
-              <AppText variant="label" style={styles.callText}>
-                {row.phone}
-              </AppText>
-            </Pressable>
+
+          <Card>
+            {cfg.fields.map((f, i) => {
+              const raw = values[f.key];
+              const v = raw && LOOKUP_TYPES.includes(f.type) ? (lk.byId.get(raw) ?? raw) : raw;
+              return (
+                <View
+                  key={f.key}
+                  style={[styles.field, i < cfg.fields.length - 1 && styles.divider]}
+                  accessible
+                  accessibilityLabel={`${f.label}: ${v || 'none'}`}
+                >
+                  <AppText variant="small">{f.label}</AppText>
+                  <AppText variant="body">{v || '—'}</AppText>
+                </View>
+              );
+            })}
+          </Card>
+
+          {canWrite ? (
+            <Button
+              label={`Edit ${cfg.singular}`}
+              onPress={() =>
+                router.push({ pathname: '/masters/[kind]/form', params: { kind, id: row.id } })
+              }
+            />
           ) : null}
-        </Card>
-
-        {rejection ? (
-          <View style={styles.rejection}>
-            <AppText variant="label" style={styles.rejectionTitle}>
-              Rejected{rejection.rejectedBy?.name ? ` by ${rejection.rejectedBy.name}` : ''}
-            </AppText>
-            <AppText variant="body">{rejection.rejectionReason}</AppText>
-          </View>
-        ) : null}
-
-        <Card>
-          {cfg.fields.map((f, i) => {
-            const raw = values[f.key];
-            const v = raw && LOOKUP_TYPES.includes(f.type) ? (lk.byId.get(raw) ?? raw) : raw;
-            return (
-              <View
-                key={f.key}
-                style={[styles.field, i < cfg.fields.length - 1 && styles.divider]}
-                accessible
-                accessibilityLabel={`${f.label}: ${v || 'none'}`}
-              >
-                <AppText variant="small">{f.label}</AppText>
-                <AppText variant="body">{v || '—'}</AppText>
-              </View>
-            );
-          })}
-        </Card>
-
-        {canWrite ? (
-          <Button
-            label={`Edit ${cfg.singular}`}
-            onPress={() =>
-              router.push({ pathname: '/masters/[kind]/form', params: { kind, id: row.id } })
-            }
-          />
-        ) : null}
-      </ScrollView>
+        </ScrollView>
+      </PullToRefresh>
     </View>
   );
 }

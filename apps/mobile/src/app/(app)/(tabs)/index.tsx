@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ScrollView } from '@/components/scroll';
-import { RefreshBar, pullToRefresh } from '@/components/refresh';
+import { PullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Chip } from '@/components/chip';
 import { ApprovalsCard } from '@/components/home/approvals-card';
@@ -28,7 +28,6 @@ export default function HomeScreen() {
   const { user, refresh } = useAuth();
   const router = useRouter();
   const [now, setNow] = useState(() => new Date());
-  const [refreshing, setRefreshing] = useState(false);
   const bottom = useBottomSpace();
 
   // Keep the greeting and date right if the app stays open across noon, 5 pm or midnight.
@@ -50,64 +49,62 @@ export default function HomeScreen() {
   );
 
   async function onRefresh() {
-    setRefreshing(true);
     await refresh();
     setNow(new Date());
-    setRefreshing(false);
   }
 
   return (
     <TabScene>
-      <ScrollView
-        style={styles.flex}
-        contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
-        refreshControl={pullToRefresh(refreshing, onRefresh)}
-      >
-        <RefreshBar active={refreshing} />
-        {/* Top band: continues the header's sky colour edge to edge (status bar icons stay dark). */}
-        <View style={styles.band}>
-          <AppText variant="greeting" style={styles.onSky}>
-            {greeting(now)},
-          </AppText>
-          <AppText variant="name" accessibilityRole="header" numberOfLines={2}>
-            {name}
-          </AppText>
-          <View style={styles.dateRow}>
-            <AppText variant="caption" style={styles.onSky}>
-              {formatDate(now)}
+      <PullToRefresh onRefresh={onRefresh}>
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
+        >
+          {/* Top band: continues the header's sky colour edge to edge (status bar icons stay dark). */}
+          <View style={styles.band}>
+            <AppText variant="greeting" style={styles.onSky}>
+              {greeting(now)},
             </AppText>
-            {HOME_IS_PLACEHOLDER ? <Chip label="Sample data" tone="orange" /> : null}
+            <AppText variant="name" accessibilityRole="header" numberOfLines={2}>
+              {name}
+            </AppText>
+            <View style={styles.dateRow}>
+              <AppText variant="caption" style={styles.onSky}>
+                {formatDate(now)}
+              </AppText>
+              {HOME_IS_PLACEHOLDER ? <Chip label="Sample data" tone="orange" /> : null}
+            </View>
           </View>
-        </View>
 
-        <View style={styles.section}>
-          <TodayCard key={day} data={data} onOpen={open} />
-        </View>
-
-        {data.attention.length > 0 ? (
           <View style={styles.section}>
-            <AttentionList items={data.attention} onOpen={open} />
+            <TodayCard key={day} data={data} onOpen={open} />
           </View>
-        ) : null}
 
-        <View style={styles.section}>
-          <QuickActions onOpen={open} roles={user?.roles ?? []} />
-        </View>
+          {data.attention.length > 0 ? (
+            <View style={styles.section}>
+              <AttentionList items={data.attention} onOpen={open} />
+            </View>
+          ) : null}
 
-        {approver ? (
           <View style={styles.section}>
-            <ApprovalsCard counts={data.approvals} onOpen={() => open('approvals')} />
+            <QuickActions onOpen={open} roles={user?.roles ?? []} />
           </View>
-        ) : null}
 
-        <View style={styles.section}>
-          <DoctorsToday doctors={data.doctorsToday} onOpenDoctors={() => open('doctors')} />
-        </View>
+          {approver ? (
+            <View style={styles.section}>
+              <ApprovalsCard counts={data.approvals} onOpen={() => open('approvals')} />
+            </View>
+          ) : null}
 
-        <View style={styles.section}>
-          <KpiGrid kpis={data.kpis} />
-        </View>
-      </ScrollView>
+          <View style={styles.section}>
+            <DoctorsToday doctors={data.doctorsToday} onOpenDoctors={() => open('doctors')} />
+          </View>
+
+          <View style={styles.section}>
+            <KpiGrid kpis={data.kpis} />
+          </View>
+        </ScrollView>
+      </PullToRefresh>
     </TabScene>
   );
 }

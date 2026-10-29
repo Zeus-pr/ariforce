@@ -3,7 +3,7 @@ import { useQueries } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, Linking, StyleSheet, View } from 'react-native';
-import { RefreshBar, pullToRefresh } from '@/components/refresh';
+import { PullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { DecisionBar } from '@/components/approvals/decision-bar';
 import { Button } from '@/components/button';
@@ -164,272 +164,276 @@ export default function ClaimScreen() {
   return (
     <View style={styles.flex}>
       <Stack.Screen options={{ title: claim ? monthLabel(claim.month) : 'Expense claim' }} />
-      <KeyboardAwareScrollView
-        style={styles.flex}
-        contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={pullToRefresh(q.isRefetching && !q.isPending, () => void q.refetch())}
-      >
-        <RefreshBar active={q.isRefetching && !q.isPending} />
-        {q.isPending ? (
-          <>
-            <SkeletonCard lines={2} />
-            <SkeletonList count={3} />
-          </>
-        ) : q.isError || !claim ? (
-          <Card style={styles.pad}>
-            <AppText variant="bodyMuted">{expenseMessage(q.error)}</AppText>
-          </Card>
-        ) : (
-          <>
+      <PullToRefresh onRefresh={() => q.refetch()}>
+        <KeyboardAwareScrollView
+          style={styles.flex}
+          contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
+          keyboardShouldPersistTaps="handled"
+        >
+          {q.isPending ? (
+            <>
+              <SkeletonCard lines={2} />
+              <SkeletonList count={3} />
+            </>
+          ) : q.isError || !claim ? (
             <Card style={styles.pad}>
-              <View style={styles.row}>
-                <AppText variant="label" style={styles.flex}>
-                  {mine ? 'My claim' : claim.userName}
-                </AppText>
-                <Chip label={STATUS_LABEL[claim.status]} tone={STATUS_TONE[claim.status]} />
-              </View>
-              <AppText variant="count">{formatINR(claim.total)}</AppText>
-              <AppText variant="small">
-                {claim.lines.length} {claim.lines.length === 1 ? 'line' : 'lines'}
-              </AppText>
-              {claim.rejectionReason && claim.status === 'rejected' ? (
-                <AppText variant="bodyMuted">Sent back: {claim.rejectionReason}</AppText>
-              ) : null}
-              {claim.lines.some(rejectedDcr) ? (
-                <Chip label="Has a day whose DCR was rejected" tone="red" />
-              ) : null}
+              <AppText variant="bodyMuted">{expenseMessage(q.error)}</AppText>
             </Card>
-
-            {onlyDay ? (
-              <Button
-                label={`Showing ${dateLabel(onlyDay)} · show whole month`}
-                variant="secondary"
-                compact
-                onPress={() => setOnlyDay(null)}
-              />
-            ) : null}
-
-            {lines.map((l) => (
-              <Card key={l.id} style={styles.pad}>
+          ) : (
+            <>
+              <Card style={styles.pad}>
                 <View style={styles.row}>
                   <AppText variant="label" style={styles.flex}>
-                    {dateLabel(l.date)} · {CATEGORY_LABEL[l.category]}
+                    {mine ? 'My claim' : claim.userName}
                   </AppText>
-                  <AppText variant="label">{formatINR(l.amount)}</AppText>
+                  <Chip label={STATUS_LABEL[claim.status]} tone={STATUS_TONE[claim.status]} />
                 </View>
-                {l.source === 'auto' ? (
-                  <AppText variant="small">TA/DA from your DCR</AppText>
+                <AppText variant="count">{formatINR(claim.total)}</AppText>
+                <AppText variant="small">
+                  {claim.lines.length} {claim.lines.length === 1 ? 'line' : 'lines'}
+                </AppText>
+                {claim.rejectionReason && claim.status === 'rejected' ? (
+                  <AppText variant="bodyMuted">Sent back: {claim.rejectionReason}</AppText>
                 ) : null}
-                {l.mileageKm != null ? <AppText variant="small">{l.mileageKm} km</AppText> : null}
-                {l.notes ? <AppText variant="bodyMuted">{l.notes}</AppText> : null}
-                {rejectedDcr(l) ? <Chip label="DCR rejected" tone="red" /> : null}
-                {l.attachments.map((a, ai) => (
-                  <View key={a.id} style={styles.row}>
-                    <Button
-                      label={`Receipt ${ai + 1}${a.status === 'pending' ? ' (uploading)' : ''}`}
-                      variant="secondary"
-                      compact
-                      style={styles.flex}
-                      onPress={() =>
-                        void receiptUrl(a.id)
-                          .then((u) => Linking.openURL(u))
-                          .catch((e) => Alert.alert('Can’t open', expenseMessage(e)))
-                      }
-                    />
-                    {editable ? (
-                      <Button
-                        label="Remove"
-                        variant="secondary"
-                        compact
-                        onPress={() =>
-                          void deleteReceipt(a.id)
-                            .then(m.refresh)
-                            .catch((e) => Alert.alert('Can’t remove', expenseMessage(e)))
-                        }
-                      />
-                    ) : null}
-                  </View>
-                ))}
-                {busyLine === l.id ? (
-                  // Upload in progress: a pulsing receipt tile, never a spinner.
-                  <View style={styles.uploading} accessibilityLabel="Uploading receipt">
-                    <Skeleton width={40} height={40} rounded={8} />
-                    <AppText variant="small">Uploading receipt…</AppText>
-                  </View>
+                {claim.lines.some(rejectedDcr) ? (
+                  <Chip label="Has a day whose DCR was rejected" tone="red" />
                 ) : null}
-                {editable ? (
+              </Card>
+
+              {onlyDay ? (
+                <Button
+                  label={`Showing ${dateLabel(onlyDay)} · show whole month`}
+                  variant="secondary"
+                  compact
+                  onPress={() => setOnlyDay(null)}
+                />
+              ) : null}
+
+              {lines.map((l) => (
+                <Card key={l.id} style={styles.pad}>
                   <View style={styles.row}>
-                    {(canPhoto || canFile) && l.attachments.length < MAX_FILES ? (
+                    <AppText variant="label" style={styles.flex}>
+                      {dateLabel(l.date)} · {CATEGORY_LABEL[l.category]}
+                    </AppText>
+                    <AppText variant="label">{formatINR(l.amount)}</AppText>
+                  </View>
+                  {l.source === 'auto' ? (
+                    <AppText variant="small">TA/DA from your DCR</AppText>
+                  ) : null}
+                  {l.mileageKm != null ? <AppText variant="small">{l.mileageKm} km</AppText> : null}
+                  {l.notes ? <AppText variant="bodyMuted">{l.notes}</AppText> : null}
+                  {rejectedDcr(l) ? <Chip label="DCR rejected" tone="red" /> : null}
+                  {l.attachments.map((a, ai) => (
+                    <View key={a.id} style={styles.row}>
                       <Button
-                        label="Attach receipt"
+                        label={`Receipt ${ai + 1}${a.status === 'pending' ? ' (uploading)' : ''}`}
                         variant="secondary"
                         compact
                         style={styles.flex}
-                        disabled={busyLine === l.id}
-                        onPress={() => attachMenu(l)}
+                        onPress={() =>
+                          void receiptUrl(a.id)
+                            .then((u) => Linking.openURL(u))
+                            .catch((e) => Alert.alert('Can’t open', expenseMessage(e)))
+                        }
                       />
-                    ) : null}
-                    {l.source !== 'auto' ? (
-                      <>
+                      {editable ? (
                         <Button
-                          label="Edit"
-                          variant="secondary"
-                          compact
-                          onPress={() => setEditing(l)}
-                        />
-                        <Button
-                          label="Delete"
+                          label="Remove"
                           variant="secondary"
                           compact
                           onPress={() =>
-                            Alert.alert(
-                              'Delete line?',
-                              `${CATEGORY_LABEL[l.category]}, ${formatINR(l.amount)}`,
-                              [
-                                { text: 'Keep', style: 'cancel' },
-                                {
-                                  text: 'Delete',
-                                  style: 'destructive',
-                                  onPress: () =>
-                                    m.remove.mutate(l.id, {
-                                      onError: (e) => setError(expenseMessage(e)),
-                                    }),
-                                },
-                              ],
-                            )
+                            void deleteReceipt(a.id)
+                              .then(m.refresh)
+                              .catch((e) => Alert.alert('Can’t remove', expenseMessage(e)))
                           }
                         />
-                      </>
-                    ) : null}
-                  </View>
-                ) : null}
-              </Card>
-            ))}
-            {!lines.length ? (
-              <Card style={styles.pad}>
-                <AppText variant="bodyMuted">No lines yet.</AppText>
-              </Card>
-            ) : null}
-
-            {editable && editing ? (
-              <LineForm
-                dates={daysOfMonth(claim.month)}
-                line={editing === 'new' ? undefined : editing}
-                initialDate={onlyDay ?? undefined}
-                busy={m.save.isPending}
-                error={error}
-                dcrIdFor={(d) => dcrByDate.get(d) ?? null}
-                onCancel={() => setEditing(null)}
-                onSave={(body) =>
-                  m.save.mutate(
-                    { line: editing === 'new' ? undefined : editing, body },
-                    {
-                      onSuccess: () => setEditing(null),
-                      onError: (e) => setError(expenseMessage(e)),
-                    },
-                  )
-                }
-              />
-            ) : null}
-
-            {editable && preview ? (
-              <Card style={styles.pad}>
-                <AppText variant="label">TA/DA preview</AppText>
-                <AppText variant="body">
-                  TA {formatINR(preview.totals.ta)} · DA {formatINR(preview.totals.da)} ·{' '}
-                  {preview.totals.km} km
-                </AppText>
-                {preview.days
-                  .filter((d) => d.issues.includes('place_required') || places[d.date])
-                  .map((d) => (
-                    <Field
-                      key={d.date}
-                      label={`Place for ${dateLabel(d.date)}`}
-                      value={
-                        placesQ.data?.find((p) => p.id === (places[d.date] ?? d.placeId))?.name
-                      }
-                      placeholder="Choose place"
-                      onPress={() => setPlaceFor(d.date)}
-                    />
+                      ) : null}
+                    </View>
                   ))}
-                {preview.days.some((d) => d.issues.includes('no_rate')) ? (
-                  <AppText variant="small">
-                    Some days have no allowance rate set; ask admin.
-                  </AppText>
-                ) : null}
-                <View style={styles.row}>
-                  <Button
-                    label="Cancel"
-                    variant="secondary"
-                    compact
-                    style={styles.flex}
-                    onPress={() => setPreview(null)}
-                  />
-                  <Button
-                    label="Apply"
-                    compact
-                    style={styles.flex}
-                    loading={tadaBusy}
-                    onPress={() => void tada(true)}
-                  />
-                </View>
-              </Card>
-            ) : null}
+                  {busyLine === l.id ? (
+                    // Upload in progress: a pulsing receipt tile, never a spinner.
+                    <View style={styles.uploading} accessibilityLabel="Uploading receipt">
+                      <Skeleton width={40} height={40} rounded={8} />
+                      <AppText variant="small">Uploading receipt…</AppText>
+                    </View>
+                  ) : null}
+                  {editable ? (
+                    <View style={styles.row}>
+                      {(canPhoto || canFile) && l.attachments.length < MAX_FILES ? (
+                        <Button
+                          label="Attach receipt"
+                          variant="secondary"
+                          compact
+                          style={styles.flex}
+                          disabled={busyLine === l.id}
+                          onPress={() => attachMenu(l)}
+                        />
+                      ) : null}
+                      {l.source !== 'auto' ? (
+                        <>
+                          <Button
+                            label="Edit"
+                            variant="secondary"
+                            compact
+                            onPress={() => setEditing(l)}
+                          />
+                          <Button
+                            label="Delete"
+                            variant="secondary"
+                            compact
+                            onPress={() =>
+                              Alert.alert(
+                                'Delete line?',
+                                `${CATEGORY_LABEL[l.category]}, ${formatINR(l.amount)}`,
+                                [
+                                  { text: 'Keep', style: 'cancel' },
+                                  {
+                                    text: 'Delete',
+                                    style: 'destructive',
+                                    onPress: () =>
+                                      m.remove.mutate(l.id, {
+                                        onError: (e) => setError(expenseMessage(e)),
+                                      }),
+                                  },
+                                ],
+                              )
+                            }
+                          />
+                        </>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </Card>
+              ))}
+              {!lines.length ? (
+                <Card style={styles.pad}>
+                  <AppText variant="bodyMuted">No lines yet.</AppText>
+                </Card>
+              ) : null}
 
-            {error && !editing ? (
-              <AppText variant="caption" style={dcrStyles.err}>
-                {error}
-              </AppText>
-            ) : null}
-
-            {editable ? (
-              <>
-                {!editing ? (
-                  <Button label="Add line" variant="secondary" onPress={() => setEditing('new')} />
-                ) : null}
-                {!preview ? (
-                  <Button
-                    label="Recalculate TA/DA"
-                    variant="secondary"
-                    loading={tadaBusy}
-                    loadingLabel="Calculating…"
-                    onPress={() => void tada(false)}
-                  />
-                ) : null}
-                <Button
-                  label={claim.status === 'rejected' ? 'Resubmit claim' : 'Submit claim'}
-                  loading={m.submit.isPending}
-                  loadingLabel="Submitting…"
-                  onPress={submit}
+              {editable && editing ? (
+                <LineForm
+                  dates={daysOfMonth(claim.month)}
+                  line={editing === 'new' ? undefined : editing}
+                  initialDate={onlyDay ?? undefined}
+                  busy={m.save.isPending}
+                  error={error}
+                  dcrIdFor={(d) => dcrByDate.get(d) ?? null}
+                  onCancel={() => setEditing(null)}
+                  onSave={(body) =>
+                    m.save.mutate(
+                      { line: editing === 'new' ? undefined : editing, body },
+                      {
+                        onSuccess: () => setEditing(null),
+                        onError: (e) => setError(expenseMessage(e)),
+                      },
+                    )
+                  }
                 />
-              </>
-            ) : null}
+              ) : null}
 
-            {reviewing ? (
-              <DecisionBar
-                what={`${claim.userName}'s ${monthLabel(claim.month)} claim (${formatINR(claim.total)})`}
-                busy={m.decide.isPending}
-                error={error}
-                // Server rule: expense approval waits for that day's DCR approval (DCR_NOT_APPROVED).
-                approveBlocked={
-                  notApproved.length
-                    ? `DCR not approved yet (${notApproved.map((d) => dateLabel(d.date)).join(', ')}).`
-                    : dcrQs.some((r) => r.isPending)
-                      ? 'Checking DCR approvals…'
-                      : null
-                }
-                onDecide={(decision, reason) =>
-                  m.decide.mutate(
-                    { decision, comment: reason ?? undefined },
-                    { onError: (e) => setError(expenseMessage(e)) },
-                  )
-                }
-              />
-            ) : null}
-          </>
-        )}
-      </KeyboardAwareScrollView>
+              {editable && preview ? (
+                <Card style={styles.pad}>
+                  <AppText variant="label">TA/DA preview</AppText>
+                  <AppText variant="body">
+                    TA {formatINR(preview.totals.ta)} · DA {formatINR(preview.totals.da)} ·{' '}
+                    {preview.totals.km} km
+                  </AppText>
+                  {preview.days
+                    .filter((d) => d.issues.includes('place_required') || places[d.date])
+                    .map((d) => (
+                      <Field
+                        key={d.date}
+                        label={`Place for ${dateLabel(d.date)}`}
+                        value={
+                          placesQ.data?.find((p) => p.id === (places[d.date] ?? d.placeId))?.name
+                        }
+                        placeholder="Choose place"
+                        onPress={() => setPlaceFor(d.date)}
+                      />
+                    ))}
+                  {preview.days.some((d) => d.issues.includes('no_rate')) ? (
+                    <AppText variant="small">
+                      Some days have no allowance rate set; ask admin.
+                    </AppText>
+                  ) : null}
+                  <View style={styles.row}>
+                    <Button
+                      label="Cancel"
+                      variant="secondary"
+                      compact
+                      style={styles.flex}
+                      onPress={() => setPreview(null)}
+                    />
+                    <Button
+                      label="Apply"
+                      compact
+                      style={styles.flex}
+                      loading={tadaBusy}
+                      onPress={() => void tada(true)}
+                    />
+                  </View>
+                </Card>
+              ) : null}
+
+              {error && !editing ? (
+                <AppText variant="caption" style={dcrStyles.err}>
+                  {error}
+                </AppText>
+              ) : null}
+
+              {editable ? (
+                <>
+                  {!editing ? (
+                    <Button
+                      label="Add line"
+                      variant="secondary"
+                      onPress={() => setEditing('new')}
+                    />
+                  ) : null}
+                  {!preview ? (
+                    <Button
+                      label="Recalculate TA/DA"
+                      variant="secondary"
+                      loading={tadaBusy}
+                      loadingLabel="Calculating…"
+                      onPress={() => void tada(false)}
+                    />
+                  ) : null}
+                  <Button
+                    label={claim.status === 'rejected' ? 'Resubmit claim' : 'Submit claim'}
+                    loading={m.submit.isPending}
+                    loadingLabel="Submitting…"
+                    onPress={submit}
+                  />
+                </>
+              ) : null}
+
+              {reviewing ? (
+                <DecisionBar
+                  what={`${claim.userName}'s ${monthLabel(claim.month)} claim (${formatINR(claim.total)})`}
+                  busy={m.decide.isPending}
+                  error={error}
+                  // Server rule: expense approval waits for that day's DCR approval (DCR_NOT_APPROVED).
+                  approveBlocked={
+                    notApproved.length
+                      ? `DCR not approved yet (${notApproved.map((d) => dateLabel(d.date)).join(', ')}).`
+                      : dcrQs.some((r) => r.isPending)
+                        ? 'Checking DCR approvals…'
+                        : null
+                  }
+                  onDecide={(decision, reason) =>
+                    m.decide.mutate(
+                      { decision, comment: reason ?? undefined },
+                      { onError: (e) => setError(expenseMessage(e)) },
+                    )
+                  }
+                />
+              ) : null}
+            </>
+          )}
+        </KeyboardAwareScrollView>
+      </PullToRefresh>
       <SelectSheet
         visible={!!placeFor}
         title="Place"
