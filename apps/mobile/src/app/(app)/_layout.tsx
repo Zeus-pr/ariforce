@@ -27,6 +27,10 @@ export default function AppLayout() {
       <Stack.Screen name="masters/[kind]/form" />
       <Stack.Screen name="dcr/form" />
       <Stack.Screen name="tour-plan/form" />
+      <Stack.Screen name="leave/index" />
+      <Stack.Screen name="leave/apply" />
+      <Stack.Screen name="expenses/index" />
+      <Stack.Screen name="expenses/[id]" />
       <Stack.Screen name="approvals/tp/[id]" />
       <Stack.Screen name="approvals/index" />
       <Stack.Screen name="approvals/dcr/[id]" />

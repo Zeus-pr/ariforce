@@ -52,6 +52,14 @@
         {
           "initialOrientation": "PORTRAIT_UP"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "AriForce uses your photos to attach expense receipts.",
+          "cameraPermission": "AriForce uses the camera to photograph expense receipts.",
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {

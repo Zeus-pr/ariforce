@@ -14,7 +14,10 @@ export function DecisionBar({
   busy,
   error,
   onDecide,
+  approveBlocked,
 }: {
+  /** Shown instead of enabling Approve (e.g. "DCR not approved yet"); Reject still works. */
+  approveBlocked?: string | null;
   /** "Ravi's DCR for Wed, 28 Oct" — used in the dialogs. */
   what: string;
   busy: boolean;
@@ -56,6 +59,7 @@ export function DecisionBar({
           error={reasonErr}
         />
       ) : null}
+      {approveBlocked ? <AppText variant="caption">{approveBlocked}</AppText> : null}
       {error ? (
         <AppText variant="caption" style={styles.err}>
           {error}
@@ -88,6 +92,7 @@ export function DecisionBar({
             compact
             loading={busy}
             loadingLabel="Saving…"
+            disabled={!!approveBlocked}
             onPress={approve}
             style={styles.flex}
           />

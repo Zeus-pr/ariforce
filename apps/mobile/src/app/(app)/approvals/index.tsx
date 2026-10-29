@@ -22,6 +22,8 @@ import {
 import { dateLabel, savedLabel } from '@/lib/dcr/dates';
 import { saveMessage } from '@/lib/dcr/errors';
 import { isApprover, isDirector } from '@/lib/roles';
+import { monthLabel, useClaimQueue } from '@/lib/expenses';
+import { formatINR } from '@/lib/money';
 import {
   daysLabel,
   leaveMessage,
@@ -49,6 +51,7 @@ function Approvals({ myId, director }: { myId?: string; director: boolean }) {
   const unlockQ = useUnlockQueue(director);
   const leaveQ = useLeaveQueue(myId, true);
   const decideLeave = useDecideLeave();
+  const expQ = useClaimQueue(myId, true);
   const tpQ = useTpQueue(myId, true);
   const decide = useDecideApproval();
   const [deciding, setDeciding] = useState<string | null>(null);
@@ -66,6 +69,7 @@ function Approvals({ myId, director }: { myId?: string; director: boolean }) {
     void decisionsQ.refetch();
     void tpQ.refetch();
     void leaveQ.refetch();
+    void expQ.refetch();
     if (director) void unlockQ.refetch();
   };
 
@@ -199,6 +203,35 @@ function Approvals({ myId, director }: { myId?: string; director: boolean }) {
               />
             </Card>
           ))
+        )}
+
+        <AppText variant="small" style={styles.section}>
+          {expQ.isPending ? 'Expenses' : `Expenses (${expQ.data?.length ?? 0})`}
+        </AppText>
+        {expQ.isPending ? (
+          <SkeletonList count={2} />
+        ) : !expQ.data?.length ? (
+          <Card style={styles.pad}>
+            <AppText variant="bodyMuted">
+              {expQ.isError
+                ? 'Could not load expense claims.'
+                : 'No expense claims waiting for you.'}
+            </AppText>
+          </Card>
+        ) : (
+          <Card>
+            {expQ.data.map((c, i) => (
+              <ListRow
+                key={c.id}
+                icon="receipt"
+                tone="orange"
+                title={c.userName}
+                subtitle={`${monthLabel(c.month)} · ${formatINR(c.total)}`}
+                divider={i > 0}
+                onPress={() => router.push({ pathname: '/expenses/[id]', params: { id: c.id } })}
+              />
+            ))}
+          </Card>
         )}
 
         {director ? (
