@@ -551,7 +551,8 @@ export const Approval = z
     requestedBy: Id,
     requestedByName: z.string(),
     approverId: Id.nullable().meta({
-      description: 'Reporting manager; null = any authorised manager',
+      description:
+        'Reporting manager; null = any authorised manager. dcr_unlock: the company director (dcr_unlock:decide holder) when there is exactly one; null when several share the queue',
     }),
     status: z.enum(['pending', 'approved', 'rejected', 'cancelled']),
     summary: z.string(),
@@ -562,6 +563,13 @@ export const Approval = z
     rejectionReason: z.string().nullable().optional().meta({
       description: 'The reason of the rejecting step; null unless status is rejected',
     }),
+    flags: z
+      .array(z.enum(['dcr_rejected_lines']))
+      .optional()
+      .meta({
+        description:
+          'Approver warnings. dcr_rejected_lines: an expense claim has lines on days whose DCR was rejected (see claim.dcrRejectedDates); approving such a claim is blocked with 409 DCR_NOT_APPROVED',
+      }),
   })
   .meta({ id: 'Approval' });
 export type Approval = z.infer<typeof Approval>;

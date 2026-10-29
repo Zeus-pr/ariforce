@@ -4,6 +4,7 @@ import {
   SFC_CATEGORY_BAND,
   dcrDetailsKind,
   type Dcr,
+  type DcrSubmitResult,
   type DcrBand,
   type DcrDraftPut,
   type DcrProductOption,
@@ -60,6 +61,7 @@ import {
 } from './day-report';
 import { approvedItemOn, itemCards } from '../plans/tp-items';
 import { DcrService } from './dcr.service';
+import { ExpenseAutoDraftService } from '../expenses/auto-draft.service';
 import { resolveSfcCandidates, type SfcSource } from './sfc-resolve';
 
 type WorkTypeRow = typeof workTypes.$inferSelect;
@@ -104,6 +106,7 @@ export class DcrFlowService {
     private readonly audit: AuditService,
     private readonly dcr: DcrService,
     private readonly storage: StorageService,
+    private readonly autoExpense: ExpenseAutoDraftService,
   ) {}
 
   /** The caller's latest dcr_unlock (dcr_correction) request for the date, or null. */
@@ -261,6 +264,7 @@ export class DcrFlowService {
         rejected,
         unlockRequest: await this.unlockRequest(tx, p, date),
         tourPlanDrafts: await itemCards(tx, p.userId, localDate(new Date(), s.timezone)),
+        autoExpenseOnDcrSubmit: await this.autoExpense.enabled(tx, p),
         ...(await this.productOptions(tx, p).then((products) => ({
           products,
           detailProducts: groupDetailProducts(products),
@@ -627,7 +631,8 @@ export class DcrFlowService {
       // any leave approved before us, and an approval after us sees this submitted DCR.
       await lockDcrLeave(tx, p.userId);
       if (cur.status === 'submitted') {
-        if (cur.submitIdempotencyKey === key) return (await this.dcr.toDto(tx, s, [cur]))[0]!;
+        if (cur.submitIdempotencyKey === key)
+          return { ...(await this.dcr.toDto(tx, s, [cur]))[0]!, expenseDraft: null };
         throw err(409, 'ALREADY_SUBMITTED', 'Already submitted; request a correction', { id });
       }
       // Reviewed reports are read-only: approved stays, rejected is history (file a new draft).
@@ -814,8 +819,17 @@ export class DcrFlowService {
         entityId: cur.id,
         after: { date: cur.date, calls: dto.calls.length, sfcRoutes: routes.map((r) => r.id) },
       });
+      // Server TA/DA (company setting autoExpenseOnDcrSubmit); never fails the submit.
+      const expenseDraft = await this.autoExpense.onDcrSubmit(tx, p, {
+        id: cur.id,
+        userId: p.userId,
+        date: cur.date,
+      });
       const [fresh] = await tx.select().from(dcrs).where(eq(dcrs.id, cur.id));
-      return (await this.dcr.toDto(tx, s, [fresh!]))[0]! satisfies Dcr;
+      return {
+        ...((await this.dcr.toDto(tx, s, [fresh!]))[0]! satisfies Dcr),
+        expenseDraft,
+      } satisfies DcrSubmitResult;
     });
   }
 

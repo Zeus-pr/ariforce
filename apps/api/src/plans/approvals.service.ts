@@ -14,6 +14,7 @@ import {
   chemists,
   doctorCategories,
   doctors,
+  expenseLines,
   specialties,
   territories,
   tourPlanSubmissions,
@@ -22,7 +23,19 @@ import {
   workTypes,
   type Tx,
 } from '@ariforce/db';
-import { and, asc, desc, eq, inArray, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  ne,
+  notInArray,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
@@ -31,6 +44,7 @@ import { err } from '../field/checkins.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { rejectionReason } from '../common/rejection';
 import { plansOut, syncStatus } from './tp-submissions';
+import { routeToHolders } from './approval-routing';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 
 type EntityType = (typeof approvalRequests.$inferInsert)['entityType'];
@@ -75,6 +89,13 @@ export interface EntityOptions {
   levels?: number | ((tx: Tx, p: Principal) => Promise<number>);
   /** Extra permission the decider needs for this entity type (decide and the to_decide list). */
   permission?: Permission;
+  /**
+   * 'permission_holders': route to every active user of the company holding `permission` (not the
+   * requester's manager). Any one of them decides; all of them see it (to_decide, GET, decide), even
+   * outside their team. One holder: step 1 names them; several: step 1 approver is null (shared queue)
+   * and payload.approverIds lists them. None: request() throws 422 NO_APPROVER.
+   */
+  route?: 'manager' | 'permission_holders';
   onStep?: StepHook;
   /** Runs before any approve (every step, every route); throw to block (e.g. DCR_NOT_APPROVED). */
   beforeApprove?: (
@@ -144,7 +165,11 @@ export class ApprovalsService {
     private readonly notifications: NotificationsService,
   ) {
     // DCR unlock/correction requests: director only (dcr_unlock:decide), Sharanya 2026-10-29.
-    this.options.set('dcr_correction', { permission: 'dcr_unlock:decide' });
+    // Routed to the company's directors (dcr_unlock:decide holders), not the rep's manager (Phase B).
+    this.options.set('dcr_correction', {
+      permission: 'dcr_unlock:decide',
+      route: 'permission_holders',
+    });
     this.registerDetail('tour_plan', (tx, _p, req) => this.tourPlanDetail(tx, req.entityId));
     this.registerDetail('doctor', (tx, _p, req) => this.doctorDetail(tx, req), {
       readPermissions: ['masters:read'],
@@ -278,7 +303,9 @@ export class ApprovalsService {
         .from(approvalSteps)
         .where(eq(approvalSteps.requestId, id));
       const own = req.requestedBy === p.userId;
-      const assigned = steps.some((s) => s.a === p.userId || s.d === p.userId);
+      const assigned =
+        steps.some((s) => s.a === p.userId || s.d === p.userId) ||
+        this.routedToMe(p).includes(req.entityType);
       const inLine = !p.teamUserIds || p.teamUserIds.includes(req.requestedBy);
       if (!own && !assigned && !inLine) throw new NotFoundException('Approval not found');
       const det = this.details.get(req.entityType);
@@ -477,10 +504,32 @@ export class ApprovalsService {
           eq(approvalRequests.state, 'pending'),
         ),
       );
-    const [me] = await tx
-      .select({ managerId: users.managerId })
-      .from(users)
-      .where(eq(users.id, p.userId));
+    const opt = this.options.get(entityType) ?? {};
+    let approverUserId: string | null;
+    let extra: Record<string, unknown> = {};
+    if (opt.route === 'permission_holders' && opt.permission) {
+      const route = routeToHolders(
+        await this.permissionHolders(tx, opt.permission, p.userId),
+        p.userId,
+      );
+      if (!route)
+        throw err(
+          422,
+          'NO_APPROVER',
+          `Nobody in your company can decide this (${opt.permission})`,
+          {
+            permission: opt.permission,
+          },
+        );
+      approverUserId = route.approverUserId;
+      extra = route.payload;
+    } else {
+      const [me] = await tx
+        .select({ managerId: users.managerId })
+        .from(users)
+        .where(eq(users.id, p.userId));
+      approverUserId = me?.managerId ?? null;
+    }
     const id = uuidv7();
     await tx.insert(approvalRequests).values({
       id,
@@ -489,16 +538,26 @@ export class ApprovalsService {
       entityId,
       requestedBy: p.userId,
       reason,
-      payload: payload ?? null,
+      payload: payload || Object.keys(extra).length ? { ...(payload ?? {}), ...extra } : null,
     });
     await tx.insert(approvalSteps).values({
       id: uuidv7(),
       companyId: p.companyId,
       requestId: id,
       stepNo: 1,
-      approverUserId: me?.managerId ?? null,
+      approverUserId,
     });
     return id;
+  }
+
+  /** Active users of the tenant (RLS) holding `perm` through any role; never `exceptUserId`. */
+  async permissionHolders(tx: Tx, perm: Permission, exceptUserId: string): Promise<string[]> {
+    const rows = await tx.execute<{ id: string }>(sql`select distinct u.id, u.created_at
+      from users u join user_roles ur on ur.user_id = u.id join roles r on r.id = ur.role_id
+      where u.deleted_at is null and u.status = 'active' and r.deleted_at is null
+        and ${perm} = any(r.permissions) and u.id <> ${exceptUserId}
+      order by u.created_at, u.id`);
+    return rows.rows.map((r) => r.id);
   }
 
   async byId(tx: Tx, id: string): Promise<Approval> {
@@ -506,8 +565,21 @@ export class ApprovalsService {
     return (await this.toDto(tx, [r!]))[0]!;
   }
 
+  /** Entity types routed to permission holders that the caller holds (visible company-wide). */
+  private routedToMe(p: Principal): EntityType[] {
+    return [...this.options.entries()]
+      .filter(
+        ([, o]) =>
+          o.route === 'permission_holders' && o.permission && p.permissions.includes(o.permission),
+      )
+      .map(([k]) => k as EntityType);
+  }
+
   private visible(p: Principal): SQL | undefined {
-    return p.teamUserIds ? inArray(approvalRequests.requestedBy, p.teamUserIds) : undefined;
+    if (!p.teamUserIds) return undefined;
+    const team = inArray(approvalRequests.requestedBy, p.teamUserIds);
+    const routed = this.routedToMe(p);
+    return routed.length ? or(team, inArray(approvalRequests.entityType, routed)) : team;
   }
 
   private async toDto(
@@ -526,6 +598,24 @@ export class ApprovalsService {
       .select({ id: users.id, name: users.name })
       .from(users)
       .where(inArray(users.id, [...new Set(rows.map((r) => r.requestedBy))]));
+    // Approver warning: expense claims with lines on days whose DCR was rejected (0052 flag).
+    const claimIds = rows.filter((r) => r.entityType === 'expense').map((r) => r.entityId);
+    const flaggedClaims = new Set(
+      claimIds.length
+        ? (
+            await tx
+              .selectDistinct({ id: expenseLines.claimId })
+              .from(expenseLines)
+              .where(
+                and(
+                  inArray(expenseLines.claimId, claimIds),
+                  isNull(expenseLines.deletedAt),
+                  sql`${expenseLines.dcrRejectedAt} is not null`,
+                ),
+              )
+          ).map((x) => x.id)
+        : [],
+    );
     return rows.map((r) => {
       const all = steps.filter((s) => s.requestId === r.id);
       const st = all.at(-1);
@@ -536,7 +626,10 @@ export class ApprovalsService {
         r.requestedBy !== p.userId &&
         p.permissions.includes('approvals:decide') &&
         (!perm || p.permissions.includes(perm)) &&
-        (!st?.approverUserId || !p.teamUserIds || p.teamUserIds.includes(st.approverUserId)) &&
+        (this.options.get(r.entityType)?.route === 'permission_holders' ||
+          !st?.approverUserId ||
+          !p.teamUserIds ||
+          p.teamUserIds.includes(st.approverUserId)) &&
         !all.some((s) => s.stepNo < r.currentStep && s.decidedBy === p.userId);
       return {
         canDecide,
@@ -563,6 +656,11 @@ export class ApprovalsService {
         decidedAt: st?.decidedAt?.toISOString() ?? null,
         decidedBy: st?.decidedBy ?? null,
         rejectionReason: STATUS(r.state) === 'rejected' ? (st?.comment ?? null) : null,
+        ...(r.entityType === 'expense'
+          ? {
+              flags: flaggedClaims.has(r.entityId) ? (['dcr_rejected_lines'] as const).slice() : [],
+            }
+          : {}),
       };
     });
   }
@@ -646,7 +744,12 @@ export class ApprovalsService {
         .orderBy(asc(approvalSteps.stepNo));
       const cur = steps.find((s) => s.stepNo === req.currentStep);
       // The current step's approver or anyone above them; never someone who decided an earlier step.
-      if (cur?.approverUserId && p.teamUserIds && !p.teamUserIds.includes(cur.approverUserId))
+      if (
+        opt.route !== 'permission_holders' &&
+        cur?.approverUserId &&
+        p.teamUserIds &&
+        !p.teamUserIds.includes(cur.approverUserId)
+      )
         throw err(403, 'APPROVAL_NOT_YOUR_STEP', 'Waiting for a higher approver');
       if (steps.some((s) => s.stepNo < req.currentStep && s.decidedBy === p.userId))
         throw err(403, 'APPROVAL_ALREADY_DECIDED_BY_YOU', 'You approved an earlier step');

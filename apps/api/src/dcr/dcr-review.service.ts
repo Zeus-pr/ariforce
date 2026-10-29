@@ -10,6 +10,7 @@ import { err } from '../field/checkins.service';
 import { companySettings } from '../field/field.util';
 import { reviewable } from './day-report';
 import { DcrService } from './dcr.service';
+import { ExpenseAutoDraftService } from '../expenses/auto-draft.service';
 
 /**
  * Manager review of submitted DCRs (dcr:review). Scope matches approvals: reports of users in the
@@ -23,6 +24,7 @@ export class DcrReviewService {
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
     private readonly dcr: DcrService,
+    private readonly autoExpense: ExpenseAutoDraftService,
   ) {}
 
   /** POST /v1/dcrs/:id/decision. */
@@ -72,6 +74,13 @@ export class DcrReviewService {
             ? { status: 'approved', userId: cur!.userId, date: cur!.date }
             : { status: 'rejected', userId: cur!.userId, date: cur!.date, reason },
       });
+      // Rejected day: drop its auto TA/DA lines from an editable claim, flag the rest.
+      if (reason !== null)
+        await this.autoExpense.onDcrRejected(tx, p, {
+          id,
+          userId: cur!.userId,
+          date: cur!.date,
+        });
       return (await this.dcr.toDto(tx, s, [fresh]))[0]!;
     });
   }

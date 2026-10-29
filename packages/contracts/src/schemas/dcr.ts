@@ -136,6 +136,10 @@ export const DcrOptions = z
     products: z.array(DcrProductOption).default([]).meta({
       description: 'Active products for the call pickers, by name (imageUrl presigned, >= 30 min)',
     }),
+    autoExpenseOnDcrSubmit: z.boolean().default(false).meta({
+      description:
+        'Company setting: the server drafts TA/DA expense lines on DCR submit (submit response expenseDraft). Clients switch off client-side drafting when true; absent (older API) = false',
+    }),
   })
   .meta({ id: 'DcrOptions' });
 export type DcrOptions = z.infer<typeof DcrOptions>;

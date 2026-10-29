@@ -109,6 +109,7 @@ import {
 import {
   AllowanceDraftRequest,
   AllowanceDraftResult,
+  DcrSubmitResult,
   AllowancePlace,
   AllowancePlaceInput,
   AllowancePlaceList,
@@ -1018,11 +1019,16 @@ function buildDocument(): OpenApiDocument {
         post: op({
           tags: ['DCR'],
           operationId: 'requestDcrCorrection',
-          summary: 'Ask your manager to reopen a locked day (gap #8)',
+          summary: "Ask the company's directors to reopen a locked day (gap #8)",
+          description:
+            'Routed to every active user holding dcr_unlock:decide (the directors), not your manager; any one of them decides, all of them see it in to_decide. One director: approverId is that director; several: approverId null (shared queue). Never routed to yourself. Earlier pending requests (manager-routed) stay as they are: directors already see and decide them.',
           requestBody: json(DcrCorrectionRequest),
           responses: {
             '201': { description: 'Approval request created', ...json(Approval) },
             '409': err('Day is not locked, or already unlocked'),
+            '422': err(
+              'NO_APPROVER (details.permission dcr_unlock:decide): nobody else in the company can decide unlock requests; ask an admin to assign the director role',
+            ),
           },
         }),
       },
@@ -1104,8 +1110,9 @@ function buildDocument(): OpenApiDocument {
           requestBody: json(DcrSubmit),
           responses: {
             '200': {
-              description: 'Submitted (also returned for a retry with the same key)',
-              ...json(Dcr),
+              description:
+                "Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Audited as expense.auto_drafted.",
+              ...json(DcrSubmitResult),
             },
             '404': err('Not found (not your DCR)'),
             '409': err(
@@ -1124,7 +1131,7 @@ function buildDocument(): OpenApiDocument {
           summary:
             'Approve or reject a submitted DCR (dcr:review); reject needs a comment (stored as rejectionReason)',
           description:
-            'Scope as approvals: the DCR owner must be in your team; never your own. approve sets approvedAt/approvedBy. reject sets status rejected, rejectedAt, rejectedBy, rejectionReason; the row is kept as history, excluded from every count, and the rep may file and submit a new report for that day for 48 h, even past the lock. The queue is GET /v1/dcrs?status=submitted. Audited (dcr.approve / dcr.reject).',
+            "Scope as approvals: the DCR owner must be in your team; never your own. approve sets approvedAt/approvedBy. reject sets status rejected, rejectedAt, rejectedBy, rejectionReason; the row is kept as history, excluded from every count, and the rep may file and submit a new report for that day for 48 h, even past the lock. The queue is GET /v1/dcrs?status=submitted. Audited (dcr.approve / dcr.reject). On reject, the day's auto TA/DA lines are removed from the rep's draft/rejected month claim and any remaining line of that day (manual lines, or any line on a submitted/approved/paid claim) gets dcrRejectedAt (claim.dcrRejectedDates; approver flag dcr_rejected_lines); audited as expense.dcr_rejected_cleanup.",
           requestParams: { path: IdParam },
           requestBody: json(DcrDecision),
           responses: {
@@ -1901,6 +1908,8 @@ function buildDocument(): OpenApiDocument {
           operationId: 'draftExpenseAllowances',
           summary:
             'Owner, draft or rejected claim: compute DA/TA per DCR day of the month from the rate card and fare chart and replace the auto lines (dryRun: preview only). Manual lines are never touched.',
+          description:
+            "Only submitted or approved DCRs pay: draft days are listed with issue dcr_not_submitted, days whose only reports are rejected with dcr_rejected (no lines). Km: the place asked for, else the DCR's frozen SFC snapshot (round trip), else the previous or only fare-chart place.",
           requestParams: { path: IdParam },
           requestBody: json(AllowanceDraftRequest),
           responses: {

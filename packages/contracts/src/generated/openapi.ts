@@ -1052,7 +1052,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Ask your manager to reopen a locked day (gap #8) */
+    /**
+     * Ask the company's directors to reopen a locked day (gap #8)
+     * @description Routed to every active user holding dcr_unlock:decide (the directors), not your manager; any one of them decides, all of them see it in to_decide. One director: approverId is that director; several: approverId null (shared queue). Never routed to yourself. Earlier pending requests (manager-routed) stay as they are: directors already see and decide them.
+     */
     post: operations['requestDcrCorrection'];
     delete?: never;
     options?: never;
@@ -1179,7 +1182,7 @@ export interface paths {
     put?: never;
     /**
      * Approve or reject a submitted DCR (dcr:review); reject needs a comment (stored as rejectionReason)
-     * @description Scope as approvals: the DCR owner must be in your team; never your own. approve sets approvedAt/approvedBy. reject sets status rejected, rejectedAt, rejectedBy, rejectionReason; the row is kept as history, excluded from every count, and the rep may file and submit a new report for that day for 48 h, even past the lock. The queue is GET /v1/dcrs?status=submitted. Audited (dcr.approve / dcr.reject).
+     * @description Scope as approvals: the DCR owner must be in your team; never your own. approve sets approvedAt/approvedBy. reject sets status rejected, rejectedAt, rejectedBy, rejectionReason; the row is kept as history, excluded from every count, and the rep may file and submit a new report for that day for 48 h, even past the lock. The queue is GET /v1/dcrs?status=submitted. Audited (dcr.approve / dcr.reject). On reject, the day's auto TA/DA lines are removed from the rep's draft/rejected month claim and any remaining line of that day (manual lines, or any line on a submitted/approved/paid claim) gets dcrRejectedAt (claim.dcrRejectedDates; approver flag dcr_rejected_lines); audited as expense.dcr_rejected_cleanup.
      */
     post: operations['decideDcr'];
     delete?: never;
@@ -2027,7 +2030,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Owner, draft or rejected claim: compute DA/TA per DCR day of the month from the rate card and fare chart and replace the auto lines (dryRun: preview only). Manual lines are never touched. */
+    /**
+     * Owner, draft or rejected claim: compute DA/TA per DCR day of the month from the rate card and fare chart and replace the auto lines (dryRun: preview only). Manual lines are never touched.
+     * @description Only submitted or approved DCRs pay: draft days are listed with issue dcr_not_submitted, days whose only reports are rejected with dcr_rejected (no lines). Km: the place asked for, else the DCR's frozen SFC snapshot (round trip), else the previous or only fare-chart place.
+     */
     post: operations['draftExpenseAllowances'];
     delete?: never;
     options?: never;
@@ -5476,7 +5482,7 @@ export interface components {
        */
       requestedBy: string;
       requestedByName: string;
-      /** @description Reporting manager; null = any authorised manager */
+      /** @description Reporting manager; null = any authorised manager. dcr_unlock: the company director (dcr_unlock:decide holder) when there is exactly one; null when several share the queue */
       approverId: string | null;
       /** @enum {string} */
       status: 'pending' | 'approved' | 'rejected' | 'cancelled';
@@ -5491,6 +5497,8 @@ export interface components {
       decidedBy: string | null;
       /** @description The reason of the rejecting step; null unless status is rejected */
       rejectionReason?: string | null;
+      /** @description Approver warnings. dcr_rejected_lines: an expense claim has lines on days whose DCR was rejected (see claim.dcrRejectedDates); approving such a claim is blocked with 409 DCR_NOT_APPROVED */
+      flags?: 'dcr_rejected_lines'[];
     };
     DcrOptions: {
       /**
@@ -5550,6 +5558,11 @@ export interface components {
        * @default []
        */
       products: components['schemas']['DcrProductOption'][];
+      /**
+       * @description Company setting: the server drafts TA/DA expense lines on DCR submit (submit response expenseDraft). Clients switch off client-side drafting when true; absent (older API) = false
+       * @default false
+       */
+      autoExpenseOnDcrSubmit: boolean;
     };
     DcrWorkTypeOption: {
       /**
@@ -5763,6 +5776,151 @@ export interface components {
       version: number;
       /** @description own = the filer's route; hq = HQ fallback (filer has no live route on that HQ) */
       source?: components['schemas']['DcrSfcSource'];
+    };
+    DcrSubmitResult: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Tombstone: set when soft-deleted */
+      deletedAt: string | null;
+      /** @description Row version, incremented on every update (optimistic concurrency) */
+      version: number;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      territoryIds: string[];
+      tourPlanId: string | null;
+      /** @description Approved TourPlanItem this report was filed from */
+      tourPlanItemId?: string | null;
+      /** @description Required when worked differs from the approved TP (#22) */
+      deviationReason: string | null;
+      /**
+       * @description draft/submitted show 'locked' after the day-lock cut-off (#23). approved/rejected (manager review) always show as such.
+       * @enum {string}
+       */
+      status: 'draft' | 'submitted' | 'locked' | 'approved' | 'rejected';
+      /**
+       * @description Manager review: pending = submitted, not reviewed yet; null for drafts
+       * @default null
+       */
+      reviewStatus: ('pending' | 'approved' | 'rejected') | null;
+      /** @default null */
+      approvedAt: string | null;
+      /** @default null */
+      approvedBy: string | null;
+      /** @default null */
+      rejectedAt: string | null;
+      /** @default null */
+      rejectedBy: string | null;
+      /**
+       * @description Why the manager rejected it. A rejected DCR is kept for history, counts nowhere, and reopens its day for 48 h (unlockedUntil).
+       * @default null
+       */
+      rejectionReason: string | null;
+      calls: components['schemas']['DcrCall'][];
+      submittedAt: string | null;
+      /**
+       * Format: date-time
+       * @description Day-lock cut-off: 00:00 Asia/Kolkata on the next day (submit by 23:59 IST the same day)
+       */
+      lockAt: string;
+      /** @description Set while an approved correction request or a manager rejection keeps a locked day editable (48 h from the decision) */
+      unlockedUntil: string | null;
+      /**
+       * @description Field-day band (from the work type); null for non-field days
+       * @default null
+       */
+      band: components['schemas']['DcrBand'] | null;
+      /** @default null */
+      details: components['schemas']['DcrDetailsOutput'] | null;
+      /**
+       * @description Day-level Work With (anyone)
+       * @default []
+       */
+      workWithUserIds: string[];
+      /**
+       * @description One chosen SFC route per HQ of the day; snapshots set at submit
+       * @default []
+       */
+      sfcRoutes: components['schemas']['DcrSfcRoute'][];
+      /** @default null */
+      submittedBy: string | null;
+      /** @description Live calls on this DCR (GET /v1/dcrs list only) */
+      callCount?: number;
+      /**
+       * @description Server TA/DA auto-draft outcome; null when the company setting autoExpenseOnDcrSubmit is off or on an idempotent retry. Clients: non-null means the server drafted (do not draft client-side)
+       * @default null
+       */
+      expenseDraft: components['schemas']['ExpenseAutoDraft'] | null;
+    };
+    ExpenseAutoDraft: {
+      /**
+       * @description drafted = the day's auto lines were (re)written; skipped = nothing written (see reason); error = the TA/DA engine failed, nothing written, the DCR submit still succeeded
+       * @enum {string}
+       */
+      status: 'drafted' | 'skipped' | 'error';
+      /** @description Set when skipped: claim_locked (the month claim is submitted/approved/paid), manual_line_exists (a manual allowance/mileage line on the day), no_allowance (work type pays no TA/DA or nothing computed) */
+      reason: ('claim_locked' | 'manual_line_exists' | 'no_allowance') | null;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      dcrId: string;
+      claimId: string | null;
+      claimStatus: components['schemas']['ExpenseStatus'] | null;
+      /** @description True when the month claim was created now */
+      claimCreated: boolean;
+      lines: number;
+      da: number;
+      ta: number;
+      km: number;
+      /** @description Engine problems on the day (no_rate, place_required, ...); lines may still be drafted */
+      issues: (
+        'no_rate' | 'place_required' | 'manual_line_exists' | 'dcr_not_submitted' | 'dcr_rejected'
+      )[];
+      error: {
+        code: string;
+        message: string;
+      } | null;
     };
     ApprovalPage: {
       items: components['schemas']['Approval'][];
@@ -6447,6 +6605,11 @@ export interface components {
       rejectedAt: string | null;
       paidAt: string | null;
       paymentRef: string | null;
+      /**
+       * @description Dates of live lines whose DCR was rejected (lines[].dcrRejectedAt set); approvers see the flag dcr_rejected_lines on the Approval
+       * @default []
+       */
+      dcrRejectedDates: string[];
       version: number;
       lineCount: number;
     };
@@ -6489,6 +6652,11 @@ export interface components {
       rejectedAt: string | null;
       paidAt: string | null;
       paymentRef: string | null;
+      /**
+       * @description Dates of live lines whose DCR was rejected (lines[].dcrRejectedAt set); approvers see the flag dcr_rejected_lines on the Approval
+       * @default []
+       */
+      dcrRejectedDates: string[];
       version: number;
     };
     ExpenseLine: {
@@ -6522,6 +6690,16 @@ export interface components {
       source: 'manual' | 'auto';
       /** @description Fare-chart place used for TA (#39) */
       allowancePlaceId: string | null;
+      /**
+       * @description What wrote an auto line (POST .../allowances or DCR submit); null on manual lines
+       * @default null
+       */
+      autoTrigger: ('allowances_run' | 'dcr_submit') | null;
+      /**
+       * @description Set when the day's DCR was rejected after this line was added (the line stays on a submitted/approved/paid claim; auto lines on draft/rejected claims are removed instead)
+       * @default null
+       */
+      dcrRejectedAt: string | null;
       attachments: components['schemas']['ExpenseAttachment'][];
       version: number;
     };
@@ -6757,7 +6935,9 @@ export interface components {
       km: number | null;
       da: number;
       ta: number;
-      issues: ('no_rate' | 'place_required' | 'manual_line_exists' | 'dcr_not_submitted')[];
+      issues: (
+        'no_rate' | 'place_required' | 'manual_line_exists' | 'dcr_not_submitted' | 'dcr_rejected'
+      )[];
     };
     ExpenseReconciliation: {
       /**
@@ -6932,7 +7112,7 @@ export interface components {
        */
       requestedBy: string;
       requestedByName: string;
-      /** @description Reporting manager; null = any authorised manager */
+      /** @description Reporting manager; null = any authorised manager. dcr_unlock: the company director (dcr_unlock:decide holder) when there is exactly one; null when several share the queue */
       approverId: string | null;
       /** @enum {string} */
       status: 'pending' | 'approved' | 'rejected' | 'cancelled';
@@ -6947,6 +7127,8 @@ export interface components {
       decidedBy: string | null;
       /** @description The reason of the rejecting step; null unless status is rejected */
       rejectionReason?: string | null;
+      /** @description Approver warnings. dcr_rejected_lines: an expense claim has lines on days whose DCR was rejected (see claim.dcrRejectedDates); approving such a claim is blocked with 409 DCR_NOT_APPROVED */
+      flags?: 'dcr_rejected_lines'[];
       /** @description Full subject details for the requester, an assigned approver (any step) or a caller with read access to the subject; otherwise null */
       subject: components['schemas']['ApprovalSubject'] | null;
     };
@@ -12069,6 +12251,15 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
+      /** @description NO_APPROVER (details.permission dcr_unlock:decide): nobody else in the company can decide unlock requests; ask an admin to assign the director role */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
     };
   };
   getDcrOptions: {
@@ -12360,13 +12551,13 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Submitted (also returned for a retry with the same key) */
+      /** @description Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Audited as expense.auto_drafted. */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['Dcr'];
+          'application/json': components['schemas']['DcrSubmitResult'];
         };
       };
       /** @description Not signed in */

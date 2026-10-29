@@ -49,6 +49,10 @@ export type Decision = z.infer<typeof ExpenseDecision>;
 export type Category = ExpenseCategory;
 
 const EDITABLE = ['draft', 'rejected'];
+
+/** Distinct, sorted dates of live lines flagged dcr_rejected_at (claim.dcrRejectedDates). */
+export const rejectedDates = (ls: { date: string; dcrRejectedAt: Date | string | null }[]) =>
+  [...new Set(ls.filter((l) => l.dcrRejectedAt).map((l) => l.date))].sort();
 const FINANCE_VISIBLE: ExpenseStatus[] = ['approved', 'paid'];
 const monthStart = (m: string) => `${m}-01`;
 const nextMonth = (m: string) => {
@@ -290,6 +294,7 @@ export class ExpensesService implements OnModuleInit {
       {
         ...this.summary(c, u?.name ?? ''),
         approvalStep: c.status === 'submitted' ? step : null,
+        dcrRejectedDates: rejectedDates(lines),
         lines: lines.map((l) => this.lineDto(l, atts)),
       },
     ]);
@@ -314,6 +319,7 @@ export class ExpensesService implements OnModuleInit {
       ...rejectionFields(c.status, c.decisionComment, c.decidedBy, iso(c.decidedAt)),
       paidAt: iso(c.paidAt),
       paymentRef: c.paymentRef,
+      dcrRejectedDates: [] as string[],
       version: c.version,
     };
   }
@@ -331,6 +337,8 @@ export class ExpensesService implements OnModuleInit {
       tourPlanId: l.tourPlanId,
       source: l.source,
       allowancePlaceId: l.allowancePlaceId,
+      autoTrigger: l.source === 'auto' ? (l.autoTrigger ?? null) : null,
+      dcrRejectedAt: iso(l.dcrRejectedAt),
       attachments: atts.filter((a) => a.lineId === l.id).map((a) => this.attDto(a)),
       version: l.version,
     };
@@ -387,11 +395,31 @@ export class ExpensesService implements OnModuleInit {
             )
             .groupBy(expenseLines.claimId)
         : [];
+      const flagged = rows.length
+        ? await tx
+            .select({
+              claimId: expenseLines.claimId,
+              date: expenseLines.date,
+              dcrRejectedAt: expenseLines.dcrRejectedAt,
+            })
+            .from(expenseLines)
+            .where(
+              and(
+                inArray(
+                  expenseLines.claimId,
+                  rows.map((r) => r.c.id),
+                ),
+                isNull(expenseLines.deletedAt),
+                sql`${expenseLines.dcrRejectedAt} is not null`,
+              ),
+            )
+        : [];
       return {
         items: await nameRejecters(
           tx,
           rows.map((r) => ({
             ...this.summary(r.c, r.name),
+            dcrRejectedDates: rejectedDates(flagged.filter((x) => x.claimId === r.c.id)),
             lineCount: counts.find((x) => x.id === r.c.id)?.n ?? 0,
           })),
         ),
@@ -520,7 +548,7 @@ export class ExpensesService implements OnModuleInit {
       await this.checkLine(tx, p, c, l);
       await tx
         .update(expenseLines)
-        .set({ ...this.lineValues(l), source: 'manual' })
+        .set({ ...this.lineValues(l), source: 'manual', autoTrigger: null })
         .where(eq(expenseLines.id, lineId));
       await this.recomputeTotal(tx, c.id);
       await this.audit.record(tx, p, 'expense.line_updated', {
@@ -584,6 +612,7 @@ export class ExpensesService implements OnModuleInit {
             mileageKm: l.mileageKm === null ? null : l.mileageKm.toFixed(2),
             dcrId: l.dcrId,
             source: 'auto' as const,
+            autoTrigger: 'allowances_run' as const,
             calc: l.calc,
             allowancePlaceId: l.placeId,
           })),
@@ -719,7 +748,7 @@ export class ExpensesService implements OnModuleInit {
       // A receipt on a drafted TA/DA line makes it the rep's own (kept on re-run).
       await tx
         .update(expenseLines)
-        .set({ source: 'manual' })
+        .set({ source: 'manual', autoTrigger: null })
         .where(and(eq(expenseLines.id, lineId), eq(expenseLines.source, 'auto')));
       await this.audit.record(tx, p, 'expense.attachment_requested', {
         entityType: 'expense_attachment',

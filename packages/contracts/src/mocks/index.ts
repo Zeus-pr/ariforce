@@ -710,6 +710,8 @@ function fieldHandlers(baseUrl: string) {
             }),
           products: productOptions(),
           detailProducts: groupDetailProducts(DcrOptions.shape.products.parse(productOptions())),
+          // Mock keeps client-side TA/DA drafting (the server setting is off here).
+          autoExpenseOnDcrSubmit: false,
         }),
       );
     }),
@@ -869,7 +871,7 @@ function fieldHandlers(baseUrl: string) {
       if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
       if (d.status === 'submitted')
         return submitKeys.get(d.id) === key
-          ? HttpResponse.json(Dcr.parse(withLock(d)))
+          ? HttpResponse.json({ ...Dcr.parse(withLock(d)), expenseDraft: null })
           : dcrError(409, 'ALREADY_SUBMITTED', 'Already submitted');
       if (d.status !== 'draft')
         return dcrError(409, 'ALREADY_SUBMITTED', 'Reviewed DCRs are read-only', {
@@ -930,7 +932,7 @@ function fieldHandlers(baseUrl: string) {
         version: d.version + 1,
         updatedAt: frozenAt,
       });
-      return HttpResponse.json(Dcr.parse(withLock(d)));
+      return HttpResponse.json({ ...Dcr.parse(withLock(d)), expenseDraft: null });
     }),
     http.delete(`${baseUrl}/v1/dcrs/:id`, ({ params }) => {
       const d = dcrs.find((x) => x.id === params.id && x.userId === fx.me.id);
@@ -1723,7 +1725,8 @@ function fieldHandlers(baseUrl: string) {
           crypto.randomUUID(),
         requestedBy: fx.me.id,
         requestedByName: fx.me.name,
-        approverId: fx.me.managerId,
+        // Routed to the company's directors (shared queue), not the manager.
+        approverId: null,
         status: 'pending',
         summary: `DCR correction ${b.data.date}`,
         comment: null,
