@@ -66,8 +66,9 @@ const lockAtSql = (date: SQL | typeof dcrs.date, _s?: CompanySettings) =>
  * SQL: end of the unlock window for (user, date), or null: 48 h after the latest approved correction
  * (dcr_unlock) or the latest manager rejection of a report of that day (automatic reopen).
  */
+// Parenthesised as a whole: callers append ::text / comparisons, and `a + b::text` would cast b.
 const unlockedUntilSql = (userId: SQL | typeof dcrs.userId, date: SQL | typeof dcrs.date) =>
-  sql`greatest(
+  sql`(greatest(
        (select max(st.decided_at)
           from approval_requests r join approval_steps st on st.request_id = r.id
           where r.entity_type = 'dcr_correction' and r.state = 'approved' and r.requested_by = ${userId}
@@ -75,7 +76,7 @@ const unlockedUntilSql = (userId: SQL | typeof dcrs.userId, date: SQL | typeof d
        (select max(x.rejected_at) from dcrs x
           where x.user_id = ${userId} and x.date = (${date})::date and x.status = 'rejected'
             and x.deleted_at is null)
-     ) + make_interval(hours => ${DCR_UNLOCK_HOURS})`;
+     ) + make_interval(hours => ${DCR_UNLOCK_HOURS}))`;
 
 export { pobValue };
 
