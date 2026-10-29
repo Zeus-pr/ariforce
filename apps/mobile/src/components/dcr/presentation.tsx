@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -14,6 +14,7 @@ import { AppText } from '@/components/app-text';
 import { Icon } from '@/components/icon';
 import { List } from '@/components/scroll';
 import type { ProductOpt } from '@/lib/dcr/adapter';
+import { getScreenOrientation, lockLandscape, lockPortrait } from '@/lib/orientation';
 import { colors, radius, spacing, touch } from '@/theme';
 
 /**
@@ -33,10 +34,36 @@ export function Presentation({
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [page, setPage] = useState(0);
+  const [landscape, setLandscape] = useState(false);
+  // Hidden when this binary has no expo-screen-orientation (built before it was added).
+  const canRotate = getScreenOrientation() != null;
 
   useEffect(() => {
-    if (visible) setPage(0);
+    if (visible) {
+      setPage(0);
+      setLandscape(false);
+    }
   }, [visible]);
+
+  // Back to portrait on close, back press (onRequestClose) and unmount.
+  useEffect(() => {
+    if (!visible) return;
+    return () => {
+      void lockPortrait();
+    };
+  }, [visible]);
+
+  const close = useCallback(() => {
+    void lockPortrait();
+    setLandscape(false);
+    onClose();
+  }, [onClose]);
+
+  const rotate = () => {
+    const next = !landscape;
+    setLandscape(next);
+    void (next ? lockLandscape() : lockPortrait());
+  };
 
   const onEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) =>
     setPage(Math.round(e.nativeEvent.contentOffset.x / Math.max(1, width)));
@@ -45,12 +72,16 @@ export function Presentation({
     <Modal
       visible={visible}
       animationType="fade"
-      onRequestClose={onClose}
+      onRequestClose={close}
+      supportedOrientations={['portrait', 'landscape']}
       statusBarTranslucent
       navigationBarTranslucent
     >
       <View style={styles.root}>
         <List
+          // Re-layout on rotate: remount at the new width, starting on the current slide.
+          key={`w${Math.round(width)}`}
+          initialScrollIndex={Math.min(page, Math.max(0, products.length - 1))}
           data={products}
           horizontal
           pagingEnabled
@@ -66,6 +97,8 @@ export function Presentation({
                   height,
                   paddingTop: insets.top + touch.min + spacing.lg,
                   paddingBottom: insets.bottom + spacing.xxl * 2,
+                  paddingLeft: insets.left + spacing.lg,
+                  paddingRight: insets.right + spacing.lg,
                 },
               ]}
               accessible
@@ -98,14 +131,29 @@ export function Presentation({
           <AppText variant="label" style={styles.count}>
             {products.length ? `${page + 1} / ${products.length}` : ''}
           </AppText>
-          <Pressable
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close presentation"
-            style={({ pressed }) => [styles.close, pressed && styles.closePressed]}
-          >
-            <Icon name="close" color={colors.onNavy} />
-          </Pressable>
+          <View style={styles.actions}>
+            {canRotate ? (
+              <Pressable
+                onPress={rotate}
+                accessibilityRole="button"
+                accessibilityLabel={landscape ? 'Rotate to portrait' : 'Rotate to landscape'}
+                style={({ pressed }) => [styles.close, pressed && styles.closePressed]}
+              >
+                <Icon
+                  name={landscape ? 'phone-rotate-portrait' : 'phone-rotate-landscape'}
+                  color={colors.onNavy}
+                />
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={close}
+              accessibilityRole="button"
+              accessibilityLabel="Close presentation"
+              style={({ pressed }) => [styles.close, pressed && styles.closePressed]}
+            >
+              <Icon name="close" color={colors.onNavy} />
+            </Pressable>
+          </View>
         </View>
 
         <View
@@ -140,6 +188,7 @@ const styles = StyleSheet.create({
     paddingRight: spacing.sm,
   },
   count: { color: colors.onNavy },
+  actions: { flexDirection: 'row', gap: spacing.sm },
   close: {
     width: touch.min,
     height: touch.min,

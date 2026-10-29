@@ -11,6 +11,7 @@ import GoogleSansBold from '../../assets/fonts/GoogleSans-Bold.ttf';
 import GoogleSansMedium from '../../assets/fonts/GoogleSans-Medium.ttf';
 import GoogleSansRegular from '../../assets/fonts/GoogleSans-Regular.ttf';
 import GoogleSansSemiBold from '../../assets/fonts/GoogleSans-SemiBold.ttf';
+import { lockPortrait } from '@/lib/orientation';
 import { BrandSplash } from '@/components/brand-splash';
 import { iconFont } from '@/components/icon';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
@@ -22,6 +23,8 @@ import { colors, fonts, motion } from '@/theme';
 // The in-app splash stays until the stored session has been checked.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 SplashScreen.setOptions({ duration: 150, fade: true });
+// The app is portrait (app.json allows rotation only so the presentation can lock landscape).
+void lockPortrait();
 
 const hideNativeSplash = () => {
   SplashScreen.hideAsync().catch(() => {});

@@ -3,7 +3,7 @@
     "name": "AriForce",
     "slug": "ariforce",
     "version": "0.1.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "ariforce",
     "userInterfaceStyle": "light",
@@ -46,7 +46,13 @@
           "imageWidth": 112
         }
       ],
-      "./plugins/with-launch-window"
+      "./plugins/with-launch-window",
+      [
+        "expo-screen-orientation",
+        {
+          "initialOrientation": "PORTRAIT_UP"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
