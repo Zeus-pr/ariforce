@@ -55,6 +55,7 @@ import {
   addDays,
   datesOf,
   rangeLabel,
+  tpMessage,
   useDeleteTp,
   useSaveTp,
   useTp,
@@ -129,8 +130,6 @@ export function DcrForm({
   const tpSave = useSaveTp();
   const tpDelete = useDeleteTp();
   const [tpTo, setTpTo] = useState(initialDate);
-  /** Set once when a TP-prefilled day meets DEVIATION_REASON_REQUIRED (TP days need no reason). */
-  const devOverride = useRef<string | null>(null);
   const router = useRouter();
   const bottom = useBottomSpace();
   const [s, setS] = useState<FlowState>(() => fresh(initialDate));
@@ -206,7 +205,14 @@ export function DcrForm({
 
   // Leave is applied for in Leave, never planned in a tour plan.
   const choices = useMemo(
-    () => workOnChoices(workTypes ?? []).filter((c) => !isTp || c.branch !== 'leave'),
+    () =>
+      workOnChoices(workTypes ?? []).filter(
+        // The TP API refuses leave and holiday work types (plan leave as a leave request).
+        (c) =>
+          !isTp ||
+          (c.branch !== 'leave' &&
+            !c.workTypes.some((w) => w.kind === 'leave' || w.kind === 'holiday')),
+      ),
     [workTypes, isTp],
   );
   const rows = useMemo(() => territoryRows(terrQ.data ?? []), [terrQ.data]);
@@ -484,7 +490,11 @@ export function DcrForm({
     setFormError(null);
     try {
       const saved = await saveDraft.mutateAsync({
-        state: devOverride.current ? { ...sEff, deviationReason: devOverride.current } : sEff,
+        state: {
+          ...sEff,
+          tourPlanItemId:
+            fromTp ?? (dcr as { tourPlanItemId?: string | null } | null)?.tourPlanItemId ?? null,
+        },
         saved: dcr?.status === 'draft' ? { id: dcr.id, version: dcr.version } : null,
       });
       setDcr(saved);
@@ -533,17 +543,6 @@ export function DcrForm({
             .join(', ');
           setFormError(`${rule.message}${which ? ` (${which})` : ''}`);
           return;
-        }
-        if (
-          e instanceof ApiError &&
-          e.code === 'DEVIATION_REASON_REQUIRED' &&
-          tpItem &&
-          !devOverride.current
-        ) {
-          // Filed from an approved tour plan: edits are free, so answer for the rep and retry once.
-          devOverride.current = `Filed from my approved tour plan (${rangeLabel(tpItem.from, tpItem.to)}).`;
-          setSaving(null);
-          return save(true);
         }
         if (e instanceof ApiError && e.code === 'DEVIATION_REASON_REQUIRED') {
           setAskDeviation(true);
@@ -613,7 +612,7 @@ export function DcrForm({
       );
       router.back();
     } catch (e) {
-      setFormError(e instanceof ApiError ? saveMessage(e) : (e as Error).message);
+      setFormError(tpMessage(e));
     } finally {
       setSaving(null);
     }
@@ -632,7 +631,7 @@ export function DcrForm({
           onPress: () =>
             tpDelete.mutate(tpItem.id, {
               onSuccess: () => router.back(),
-              onError: (e) => setFormError(e.message),
+              onError: (e) => setFormError(tpMessage(e)),
             }),
         },
       ],

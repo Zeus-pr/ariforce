@@ -18,6 +18,7 @@
  *     falls back to that store when the route does not exist (404 without an API error code).
  */
 import type { Dcr, DcrCall, Product } from '@ariforce/contracts';
+import type { TpDraftCard } from '../tp/adapter';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -73,6 +74,8 @@ export type OptionsV2 = {
   rejected?: Dcr[];
   products?: DcrProductOption[];
   unlockRequest?: UnlockState | null;
+  /** 28f8820: approved tour plan items as DCR draft cards (present once the TP API is live). */
+  tourPlanDrafts?: TpDraftCard[];
 };
 type CallWire = { presentationOpenedAt?: string | null };
 type DcrWire = {

@@ -15,7 +15,15 @@ import { dateLabel, savedLabel, todayIST } from '@/lib/dcr/dates';
 import { BAND_LABEL, normaliseWorkTypes, territoryRows } from '@/lib/dcr/model';
 import { bandOf } from '@/lib/dcr/bands';
 import { isApprover } from '@/lib/roles';
-import { TP_LABEL, TP_TONE, datesOf, rangeLabel, useDecideTp, useTp } from '@/lib/tp/adapter';
+import {
+  TP_LABEL,
+  TP_TONE,
+  datesOf,
+  rangeLabel,
+  tpMessage,
+  useDecideTp,
+  useTp,
+} from '@/lib/tp/adapter';
 import { layout, spacing } from '@/theme';
 
 /** One team tour plan, read-only, with approve / reject. */
@@ -90,6 +98,12 @@ function Review({ id }: { id: string }) {
           {t.submittedAt ? (
             <AppText variant="small">Sent {savedLabel(t.submittedAt)}</AppText>
           ) : null}
+          {t.decidedBy && t.status !== 'pending' ? (
+            <AppText variant="small">
+              {t.status === 'approved' ? 'Approved' : 'Rejected'} by{' '}
+              {namesQ.data?.get(t.decidedBy) ?? 'a manager'}
+            </AppText>
+          ) : null}
           {t.status === 'rejected' && t.rejectionReason ? (
             <AppText variant="small">Rejected: {t.rejectionReason}</AppText>
           ) : null}
@@ -138,7 +152,7 @@ function Review({ id }: { id: string }) {
                       Alert.alert(decision === 'approve' ? 'Approved' : 'Rejected', `${what}.`);
                       router.back();
                     },
-                    onError: (e) => setError(e.message),
+                    onError: (e) => setError(tpMessage(e)),
                   },
                 );
               }}

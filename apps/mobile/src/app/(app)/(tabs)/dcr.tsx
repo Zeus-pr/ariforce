@@ -2,7 +2,7 @@ import type { Dcr } from '@ariforce/contracts';
 import { Redirect, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { SelectSheet } from '@/components/masters/select-sheet';
-import { datesOf, rangeLabel, useMyTps, type TpItem } from '@/lib/tp/adapter';
+import { mockTpCard, rangeLabel, useMyTps, type TpDraftCard } from '@/lib/tp/adapter';
 import { Alert, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
@@ -50,7 +50,7 @@ function DcrWorkspace() {
   const tpFrom = approvedTps.reduce((m, t) => (t.from < m ? t.from : m), today);
   const tpTo = approvedTps.reduce((m, t) => (t.to > m ? t.to : m), today);
   const tpFiledQ = useSubmittedHistory(tpFrom, tpTo);
-  const [pickTp, setPickTp] = useState<{ t: TpItem; open: string[] } | null>(null);
+  const [pickTp, setPickTp] = useState<TpDraftCard | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const workTypeName = useMemo(() => {
@@ -73,19 +73,25 @@ function DcrWorkspace() {
     return m;
   }, [history]);
 
-  // Approved TPs as one draft card each, until the range has ended or every day is filed.
+  // Approved TPs as one draft card each: options.tourPlanDrafts once the TP API is live, else the
+  // same rule on the mock (unfiled days from today on; past days are locked and drop out).
   const tpCards = useMemo(() => {
+    const live = (optionsQ.data as { tourPlanDrafts?: TpDraftCard[] } | undefined)?.tourPlanDrafts;
+    if (live) return [...live].sort((a, b) => a.from.localeCompare(b.from));
     const filed = new Set(
       (tpFiledQ.data?.items ?? [])
         .filter((d) => d.status !== 'draft' && counts(reviewOf(d, decisionsQ.data)))
         .map((d) => d.date),
     );
+    const drafted = new Set(
+      (draftsQ.data?.items ?? []).filter((d) => d.status === 'draft').map((d) => d.date),
+    );
     return approvedTps
-      .map((t) => ({ t, open: datesOf(t.from, t.to).filter((d) => !filed.has(d)) }))
-      .filter((c) => c.open.length > 0)
-      .sort((a, b) => a.t.from.localeCompare(b.t.from));
-  }, [approvedTps, tpFiledQ.data, decisionsQ.data]);
-  const openTpDay = (t: TpItem, date: string) => openForm({ new: '1', date, tp: t.id });
+      .map((t) => mockTpCard(t, filed, drafted, today))
+      .filter((c): c is TpDraftCard => !!c)
+      .sort((a, b) => a.from.localeCompare(b.from));
+  }, [optionsQ.data, approvedTps, tpFiledQ.data, draftsQ.data, decisionsQ.data, today]);
+  const openTpDay = (t: TpDraftCard, date: string) => openForm({ new: '1', date, tp: t.id });
 
   const drafts = useMemo(
     () => (draftsQ.data?.items ?? []).filter((d) => d.status === 'draft'),
@@ -189,20 +195,20 @@ function DcrWorkspace() {
 
           {tpCards.length ? (
             <Card>
-              {tpCards.map(({ t, open }, i) => (
+              {tpCards.map((t, i) => (
                 <ListRow
                   key={t.id}
                   icon="calendar-check-outline"
                   tone="blue"
                   title={`TP · ${rangeLabel(t.from, t.to)}`}
                   subtitle={
-                    open.length === 1
-                      ? `${dateLabel(open[0]!)} to file`
-                      : `${open.length} days to file · pick a day`
+                    t.pendingDates.length === 1
+                      ? `${dateLabel(t.pendingDates[0]!)} to file`
+                      : `${t.pendingDates.length} days to file · pick a day`
                   }
                   trailing={<Chip label="Approved plan" tone="green" />}
                   onPress={() =>
-                    open.length === 1 ? openTpDay(t, open[0]!) : setPickTp({ t, open })
+                    t.pendingDates.length === 1 ? openTpDay(t, t.pendingDates[0]!) : setPickTp(t)
                   }
                   divider={i < tpCards.length - 1}
                 />
@@ -296,15 +302,20 @@ function DcrWorkspace() {
 
         <SelectSheet
           visible={!!pickTp}
-          title={pickTp ? `File a day · ${rangeLabel(pickTp.t.from, pickTp.t.to)}` : 'File a day'}
-          options={(pickTp?.open ?? []).map((d) => ({
+          title={pickTp ? `File a day · ${rangeLabel(pickTp.from, pickTp.to)}` : 'File a day'}
+          // fileableDates (today) can be submitted; other pending days take a draft until the day.
+          options={(pickTp?.pendingDates ?? []).map((d) => ({
             value: d,
             label: dateLabel(d),
-            hint: d === today ? 'Today' : d > today ? 'Draft until the day' : undefined,
+            hint: pickTp?.fileableDates.includes(d)
+              ? 'Today · can submit'
+              : pickTp?.draftDates.includes(d)
+                ? 'Draft saved · submit on the day'
+                : 'Draft until the day',
           }))}
           value={null}
           onPick={(d) => {
-            const t = pickTp?.t;
+            const t = pickTp;
             setPickTp(null);
             if (d && t) openTpDay(t, d);
           }}

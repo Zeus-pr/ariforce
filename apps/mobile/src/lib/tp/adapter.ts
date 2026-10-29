@@ -9,7 +9,10 @@
  * and no from-to item, so this feature targets a NEW item API (proposed below) and runs on a
  * device-local mock until CONTRACT.tpItems is true.
  *
- * Proposed contract for Architect:
+ * Contract: feat/dcr-pob-review @ 28f8820 (packages/contracts/src/schemas/tp-items.ts), not live yet.
+ * The app probes GET /v1/tour-plans/items once (tpCaps.live) and falls back to the mock on 404.
+ *
+ * Originally proposed contract (matches 28f8820):
  *   TourPlanItem { id, userId, userName, from: DateOnly, to: DateOnly (<= from + 30),
  *     status: 'draft'|'pending'|'approved'|'rejected', rejectionReason: string|null,
  *     plan: { workTypeId, territoryIds[], workWithUserIds[], sfcRoutes[{hqTerritoryId, sfcRouteId}],
@@ -29,9 +32,33 @@
 import type { DcrDetails } from '@ariforce/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { mockDeleteTp, mockGetTp, mockListTps, mockPutTp } from '@/mocks/tp';
-import { apiFetch, idempotencyKey } from '../api';
+import { ApiError, apiFetch, idempotencyKey } from '../api';
+import { tpCaps } from './caps';
 
-export const CONTRACT = { tpItems: false } as const;
+/**
+ * CONTRACT.tpItems: true while the real API answers. Detected at runtime by isLive(); the mock
+ * (src/mocks/tp.ts) stays as the fallback until the route is deployed.
+ */
+export const CONTRACT = {
+  get tpItems() {
+    return tpCaps.live === true;
+  },
+};
+
+let probe: Promise<boolean> | null = null;
+/** One probe per app run: 404 on the list route = not deployed (mock); other errors retry later. */
+export function isLive(): Promise<boolean> {
+  if (tpCaps.live != null) return Promise.resolve(tpCaps.live);
+  probe ??= apiFetch('/v1/tour-plans/items', { query: { mine: 'true', limit: 1 } })
+    .then(() => (tpCaps.live = true))
+    .catch((e: unknown) => {
+      probe = null;
+      if (e instanceof ApiError && (e.status === 404 || e.status === 405))
+        return (tpCaps.live = false);
+      throw e;
+    });
+  return probe;
+}
 
 export type TpStatus = 'draft' | 'pending' | 'approved' | 'rejected';
 export type TpPlan = {
@@ -54,7 +81,64 @@ export type TpItem = {
   updatedAt: string;
   submittedAt: string | null;
   decidedAt: string | null;
+  /** 28f8820 extras (absent in the mock). */
+  companyId?: string;
+  createdAt?: string;
+  decidedBy?: string | null;
+  filedDates?: string[];
 };
+
+/** options.tourPlanDrafts[] (DcrTourPlanDraft = TourPlanItem + these dates). */
+export type TpDraftCard = TpItem & {
+  /** Unfiled days from today on; the card shows while non-empty. */
+  pendingDates: string[];
+  /** pendingDates that already have a DCR draft. */
+  draftDates: string[];
+  /** Days that can be submitted now (today only); future pending days take drafts only. */
+  fileableDates: string[];
+};
+
+/** Mock twin of the server's tpItemCard(): past unfiled days are locked, so they are left out. */
+export function mockTpCard(
+  t: TpItem,
+  filed: Set<string>,
+  drafts: Set<string>,
+  today: string,
+): TpDraftCard | null {
+  if (t.status !== 'approved') return null;
+  const open = datesOf(t.from, t.to).filter((d) => !filed.has(d) && d >= today);
+  if (!open.length) return null;
+  return {
+    ...t,
+    pendingDates: open,
+    draftDates: open.filter((d) => drafts.has(d)),
+    fileableDates: open.filter((d) => d === today),
+  };
+}
+
+const TP_ERRORS: Record<string, string> = {
+  TP_IN_PAST: 'A tour plan must start today or later. Change the From date.',
+  TP_OVERLAP: 'These dates overlap another tour plan that is pending or approved.',
+  TP_LOCKED: 'This tour plan is pending or approved and can no longer be changed.',
+  VERSION_CONFLICT: 'This tour plan changed on another device. Go back and open it again.',
+  REJECTION_REASON_REQUIRED: 'Give a reason to reject.',
+  CONFLICT: 'This tour plan is no longer waiting for approval.',
+  APPROVAL_NOT_YOUR_STEP: 'This tour plan is waiting for a different approver.',
+};
+/** Plain-language TP errors (28f8820 codes; leave/holiday work types come back as VALIDATION). */
+export function tpMessage(e: unknown): string {
+  if (!(e instanceof ApiError)) return (e as Error)?.message || 'Something went wrong.';
+  if (e.code && TP_ERRORS[e.code]) return TP_ERRORS[e.code]!;
+  if (e.code === 'VALIDATION' && /leave/i.test(e.message))
+    return 'Leave and holidays are not planned in a tour plan. Apply for leave instead.';
+  if (
+    e.code === 'VALIDATION' &&
+    (e.details as { reason?: string })?.reason === 'TOUR_PLAN_ITEM_MISMATCH'
+  )
+    return 'This day is not part of an approved tour plan of yours.';
+  if (e.code === 'NETWORK') return 'Could not reach the server.';
+  return e.message || 'Something went wrong.';
+}
 
 export const TP_LABEL: Record<TpStatus, string> = {
   draft: 'Draft',
@@ -107,7 +191,7 @@ export function useMyTps(myId: string | undefined) {
     queryKey: [...key, 'mine', myId],
     enabled: !!myId,
     queryFn: async ({ signal }) => {
-      if (CONTRACT.tpItems)
+      if (await isLive())
         return apiFetch<{ items: TpItem[] }>('/v1/tour-plans/items', {
           signal,
           query: { mine: 'true', limit: 100 },
@@ -126,7 +210,7 @@ export function useTp(id: string | undefined) {
     queryKey: [...key, 'one', id],
     enabled: !!id,
     queryFn: async ({ signal }) => {
-      if (CONTRACT.tpItems) return apiFetch<TpItem>(`/v1/tour-plans/items/${id}`, { signal });
+      if (await isLive()) return apiFetch<TpItem>(`/v1/tour-plans/items/${id}`, { signal });
       const t = await mockGetTp(id!);
       if (!t) throw new Error('This tour plan no longer exists.');
       return t;
@@ -140,7 +224,7 @@ export function useTpQueue(myId: string | undefined, enabled: boolean) {
     queryKey: [...key, 'queue', myId],
     enabled: enabled && !!myId,
     queryFn: async ({ signal }) => {
-      if (CONTRACT.tpItems)
+      if (await isLive())
         return apiFetch<{ items: TpItem[] }>('/v1/tour-plans/items', {
           signal,
           query: { status: 'pending', limit: 100 },
@@ -163,7 +247,7 @@ export type TpSaveInput = {
 };
 
 async function saveTp(b: TpSaveInput): Promise<TpItem> {
-  if (CONTRACT.tpItems)
+  if (await isLive())
     return apiFetch<TpItem>('/v1/tour-plans/items', {
       method: 'PUT',
       body: { id: b.id, version: b.version, from: b.from, to: b.to, plan: b.plan },
@@ -194,7 +278,7 @@ export function useSaveTp() {
     mutationFn: async ({ input, send }: { input: TpSaveInput; send: boolean }) => {
       const saved = await saveTp(input);
       if (!send) return saved;
-      if (CONTRACT.tpItems)
+      if (await isLive())
         return apiFetch<TpItem>(`/v1/tour-plans/items/${saved.id}/submit`, { method: 'POST' });
       return mockPutTp({ ...saved, status: 'pending', submittedAt: new Date().toISOString() });
     },
@@ -205,8 +289,8 @@ export function useSaveTp() {
 export function useDeleteTp() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      CONTRACT.tpItems
+    mutationFn: async (id: string) =>
+      (await isLive())
         ? apiFetch<void>(`/v1/tour-plans/items/${id}`, { method: 'DELETE' })
         : mockDeleteTp(id),
     onSuccess: () => void qc.invalidateQueries({ queryKey: key }),
@@ -225,7 +309,7 @@ export function useDecideTp() {
       decision: 'approve' | 'reject';
       reason: string | null;
     }) => {
-      if (CONTRACT.tpItems)
+      if (await isLive())
         return apiFetch<TpItem>(`/v1/tour-plans/items/${id}/decision`, {
           method: 'POST',
           body: { decision, ...(reason ? { comment: reason.slice(0, 500) } : {}) },

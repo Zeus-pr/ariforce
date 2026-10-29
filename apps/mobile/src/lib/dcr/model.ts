@@ -6,6 +6,7 @@
 import type { Dcr, DcrBand, DcrDetails, DcrDraftPut, DcrSfcMatch } from '@ariforce/contracts';
 import { bandOf, categoryFitsBand, sfcCategoryOf } from './bands';
 import type { ApiError } from '../api';
+import { tpCaps } from '../tp/caps';
 import { callPresentationOpened, presentationInput, sendsCalledAt } from './adapter';
 
 export type WorkTypeOption = {
@@ -236,6 +237,8 @@ export type FlowState = {
   leaveRequestId: string;
   /** Why the day differs from the approved tour plan; asked for when submit says DEVIATION_REASON_REQUIRED. */
   deviationReason: string;
+  /** Approved tour plan item this day is filed from (sent once the TP API is live). */
+  tourPlanItemId?: string | null;
 };
 
 const minutes = (v: string) => {
@@ -387,6 +390,8 @@ export function draftBody(
     // A partial non-field form is kept on the page, not sent: the API only takes complete details.
     details,
     deviationReason: s.deviationReason.trim() || null,
+    // 28f8820: lets a future day in the item be drafted; omitted, the server links by date.
+    ...(s.tourPlanItemId && tpCaps.live ? { tourPlanItemId: s.tourPlanItemId } : {}),
     calls: field
       ? s.calls.filter(sendableCall).map((c) => ({
           clientId: c.clientId,
