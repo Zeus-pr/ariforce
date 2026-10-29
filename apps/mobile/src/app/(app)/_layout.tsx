@@ -22,6 +22,9 @@ export default function AppLayout() {
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="coming-soon/[feature]" />
+      <Stack.Screen name="masters/[kind]/index" />
+      <Stack.Screen name="masters/[kind]/[id]" />
+      <Stack.Screen name="masters/[kind]/form" />
     </Stack>
   );
 }

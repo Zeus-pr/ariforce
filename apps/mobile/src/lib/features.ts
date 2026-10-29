@@ -12,7 +12,8 @@ type Feature = {
 };
 
 /**
- * AriForce features the mobile app links to. Each opens a "Coming soon" screen until it is built.
+ * AriForce features the mobile app links to. Each opens a "Coming soon" screen until it is built
+ * (doctors, chemists and stockists are built: see featureHref).
  * Titles match the website's navigation.
  */
 export const FEATURES = {
@@ -92,6 +93,12 @@ export type FeatureKey = keyof typeof FEATURES;
 
 export const isFeatureKey = (k: string): k is FeatureKey => Object.hasOwn(FEATURES, k);
 
-/** Typed link to a feature's "Coming soon" screen. */
+const BUILT = ['doctors', 'chemists', 'stockists'] as const;
+type BuiltKey = (typeof BUILT)[number];
+const isBuilt = (k: FeatureKey): k is BuiltKey => (BUILT as readonly string[]).includes(k);
+
+/** Link to a feature: its screen when the app has it, else its "Coming soon" screen. */
 export const featureHref = (feature: FeatureKey) =>
-  ({ pathname: '/coming-soon/[feature]', params: { feature } }) as const;
+  isBuilt(feature)
+    ? ({ pathname: '/masters/[kind]', params: { kind: feature } } as const)
+    : ({ pathname: '/coming-soon/[feature]', params: { feature } } as const);

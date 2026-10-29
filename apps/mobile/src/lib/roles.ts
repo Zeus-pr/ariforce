@@ -51,3 +51,12 @@ export function roleLabel(roles: readonly string[]) {
 
 /** Same rule as the website's isApprover: level 2 (ABM) and above approve their team's work. */
 export const isApprover = (roles: readonly string[]) => roles.some((r) => level(r) >= 2);
+
+/**
+ * Who may change master data (doctors, chemists, stockists): same rule as the website's
+ * canWriteMasters (apps/web/src/lib/permissions.ts, docs/PERMISSIONS.md). Regional Business
+ * Manager and above (ZBM, SM, GM, VP, Director) and System Admin add, edit and remove; Area
+ * Business Manager and Business Manager are read-only. The API also returns 403 on their writes.
+ */
+export const canWriteMasters = (roles: readonly string[]) =>
+  roles.some((r) => r === 'system_admin' || level(r) >= ROLE_LEVEL.regional_business_manager);

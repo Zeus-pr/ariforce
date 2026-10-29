@@ -1,7 +1,6 @@
 import { useRouter } from 'expo-router';
 import { StyleSheet } from 'react-native';
 import { ScrollView } from '@/components/scroll';
-import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { ListRow } from '@/components/list-row';
 import { FEATURES, featureHref, type FeatureKey } from '@/lib/features';
@@ -10,7 +9,7 @@ import { colors, layout, spacing } from '@/theme';
 
 const LISTS = ['doctors', 'chemists', 'stockists'] as const satisfies readonly FeatureKey[];
 
-/** Stub: the three customer lists a rep calls on. Each opens "Coming soon". */
+/** The three customer lists a rep calls on (doctors, chemists, stockists). */
 export default function BusinessTab() {
   const router = useRouter();
   const bottom = useBottomSpace();
@@ -36,9 +35,6 @@ export default function BusinessTab() {
             );
           })}
         </Card>
-        <AppText variant="small" style={styles.note}>
-          Customer lists are coming to the app. Use the AriForce website for them today.
-        </AppText>
       </ScrollView>
     </TabScene>
   );
@@ -47,5 +43,4 @@ export default function BusinessTab() {
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.ground },
   content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm, gap: layout.inner },
-  note: { paddingHorizontal: layout.gutter },
 });
