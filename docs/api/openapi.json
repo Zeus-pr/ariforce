@@ -13088,7 +13088,7 @@
             }
           },
           "409": {
-            "description": "Not submitted / already decided",
+            "description": "Not submitted / already decided; or DCR_NOT_APPROVED on approve: details {dates[], dcrIds[], dcrStatus{date: draft|submitted|rejected|missing}} (every line date needs an approved DCR of the owner)",
             "content": {
               "application/json": {
                 "schema": {
@@ -14057,7 +14057,7 @@
             }
           },
           "403": {
-            "description": "Own request, or requester not below you in the reporting line",
+            "description": "Own request, or requester not below you in the reporting line; APPROVAL_PERMISSION_REQUIRED (details.permission): dcr_unlock requests need dcr_unlock:decide (director only), expense needs expenses:approve",
             "content": {
               "application/json": {
                 "schema": {
@@ -14077,7 +14077,7 @@
             }
           },
           "409": {
-            "description": "Already decided; LEAVE_DCR_CONFLICT when the final approval of a leave hits a submitted DCR (details.dates, details.dcrIds)",
+            "description": "DCR_NOT_APPROVED (expense approve; details {dates[], dcrIds[], dcrStatus}). Already decided; LEAVE_DCR_CONFLICT when the final approval of a leave hits a submitted DCR (details.dates, details.dcrIds)",
             "content": {
               "application/json": {
                 "schema": {
@@ -20189,7 +20189,8 @@
           "products:prices",
           "sfc:read",
           "sfc:write",
-          "dcr:review"
+          "dcr:review",
+          "dcr_unlock:decide"
         ]
       },
       "RoleList": {
@@ -25331,6 +25332,10 @@
             "description": "UUIDv7 identifier",
             "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
           },
+          "canDecide": {
+            "description": "True when the caller can decide this request now (pending, not their own, approvals:decide plus the type permission: dcr_unlock:decide for dcr_unlock, expenses:approve for expense; in line above the current approver)",
+            "type": "boolean"
+          },
           "requestedBy": {
             "type": "string",
             "format": "uuid",
@@ -30347,6 +30352,10 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "description": "UUIDv7 identifier",
             "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "canDecide": {
+            "description": "True when the caller can decide this request now (pending, not their own, approvals:decide plus the type permission: dcr_unlock:decide for dcr_unlock, expenses:approve for expense; in line above the current approver)",
+            "type": "boolean"
           },
           "requestedBy": {
             "type": "string",

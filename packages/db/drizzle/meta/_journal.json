@@ -358,6 +358,13 @@
       "when": 1793340100000,
       "tag": "0050_tour_plan_items",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1793340200000,
+      "tag": "0051_dcr_unlock_perms",
+      "breakpoints": true
     }
   ]
 }

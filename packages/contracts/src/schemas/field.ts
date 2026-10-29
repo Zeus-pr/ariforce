@@ -544,6 +544,10 @@ export const Approval = z
       'expense',
     ]),
     subjectId: Id,
+    canDecide: z.boolean().optional().meta({
+      description:
+        'True when the caller can decide this request now (pending, not their own, approvals:decide plus the type permission: dcr_unlock:decide for dcr_unlock, expenses:approve for expense; in line above the current approver)',
+    }),
     requestedBy: Id,
     requestedByName: z.string(),
     approverId: Id.nullable().meta({

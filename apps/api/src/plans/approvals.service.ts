@@ -22,7 +22,7 @@ import {
   workTypes,
   type Tx,
 } from '@ariforce/db';
-import { and, asc, desc, eq, inArray, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
@@ -73,9 +73,15 @@ export type StepHook = (
 export interface EntityOptions {
   /** Approval levels up the reporting line (1 = reporting manager only); a function reads company settings. */
   levels?: number | ((tx: Tx, p: Principal) => Promise<number>);
-  /** Extra permission the decider needs for this entity type. */
+  /** Extra permission the decider needs for this entity type (decide and the to_decide list). */
   permission?: Permission;
   onStep?: StepHook;
+  /** Runs before any approve (every step, every route); throw to block (e.g. DCR_NOT_APPROVED). */
+  beforeApprove?: (
+    tx: Tx,
+    p: Principal,
+    req: typeof approvalRequests.$inferSelect,
+  ) => Promise<void>;
 }
 
 /** Full subject details for GET /v1/approvals/{id} (access is checked by the caller). */
@@ -137,6 +143,8 @@ export class ApprovalsService {
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
   ) {
+    // DCR unlock/correction requests: director only (dcr_unlock:decide), Sharanya 2026-10-29.
+    this.options.set('dcr_correction', { permission: 'dcr_unlock:decide' });
     this.registerDetail('tour_plan', (tx, _p, req) => this.tourPlanDetail(tx, req.entityId));
     this.registerDetail('doctor', (tx, _p, req) => this.doctorDetail(tx, req), {
       readPermissions: ['masters:read'],
@@ -172,7 +180,14 @@ export class ApprovalsService {
 
   register(entity: EntityType, hook: DecisionHook, options: EntityOptions = {}) {
     this.hooks.set(entity, hook);
-    this.options.set(entity, options);
+    this.options.set(entity, { ...this.options.get(entity), ...options });
+  }
+
+  /** Entity types whose extra decide permission the caller lacks (never actionable for them). */
+  private undecidable(p: Principal): EntityType[] {
+    return [...this.options.entries()]
+      .filter(([, o]) => o.permission && !p.permissions.includes(o.permission))
+      .map(([k]) => k as EntityType);
   }
 
   registerDetail(entity: EntityType, load: DetailLoader, opt: DetailOptions = {}) {
@@ -273,7 +288,7 @@ export class ApprovalsService {
         (det?.opt.readPermissions ?? []).length === 0 ||
         (det?.opt.readPermissions ?? []).some((x) => p.permissions.includes(x));
       const subject = det && may ? await det.load(tx, p, req) : null;
-      return { ...(await this.toDto(tx, [req]))[0]!, subject };
+      return { ...(await this.toDto(tx, [req], p))[0]!, subject };
     });
   }
 
@@ -495,7 +510,11 @@ export class ApprovalsService {
     return p.teamUserIds ? inArray(approvalRequests.requestedBy, p.teamUserIds) : undefined;
   }
 
-  private async toDto(tx: Tx, rows: (typeof approvalRequests.$inferSelect)[]): Promise<Approval[]> {
+  private async toDto(
+    tx: Tx,
+    rows: (typeof approvalRequests.$inferSelect)[],
+    p?: Principal,
+  ): Promise<Approval[]> {
     if (!rows.length) return [];
     const ids = rows.map((r) => r.id);
     const steps = await tx
@@ -508,8 +527,19 @@ export class ApprovalsService {
       .from(users)
       .where(inArray(users.id, [...new Set(rows.map((r) => r.requestedBy))]));
     return rows.map((r) => {
-      const st = steps.filter((s) => s.requestId === r.id).at(-1);
+      const all = steps.filter((s) => s.requestId === r.id);
+      const st = all.at(-1);
+      const perm = this.options.get(r.entityType)?.permission;
+      const canDecide =
+        !!p &&
+        r.state === 'pending' &&
+        r.requestedBy !== p.userId &&
+        p.permissions.includes('approvals:decide') &&
+        (!perm || p.permissions.includes(perm)) &&
+        (!st?.approverUserId || !p.teamUserIds || p.teamUserIds.includes(st.approverUserId)) &&
+        !all.some((s) => s.stepNo < r.currentStep && s.decidedBy === p.userId);
       return {
+        canDecide,
         id: r.id,
         companyId: r.companyId,
         subjectType: SUBJECT[r.entityType] ?? 'leave',
@@ -553,7 +583,13 @@ export class ApprovalsService {
         q.mine === 'requested' ? eq(approvalRequests.requestedBy, p.userId) : undefined,
         q.mine === 'to_decide'
           ? canDecide
-            ? and(eq(approvalRequests.state, 'pending'), ne(approvalRequests.requestedBy, p.userId))
+            ? and(
+                eq(approvalRequests.state, 'pending'),
+                ne(approvalRequests.requestedBy, p.userId),
+                this.undecidable(p).length
+                  ? notInArray(approvalRequests.entityType, this.undecidable(p))
+                  : undefined,
+              )
             : sql`false`
           : undefined,
       ].filter(Boolean) as SQL[];
@@ -571,7 +607,7 @@ export class ApprovalsService {
         .limit(limit + 1)
         .offset(offset);
       const out: Record<string, unknown> = {
-        items: await this.toDto(tx, rows.slice(0, limit)),
+        items: await this.toDto(tx, rows.slice(0, limit), p),
         nextCursor: rows.length > limit ? encodeCursor(offset + limit) : null,
         serverTime: new Date().toISOString(),
       };
@@ -600,7 +636,9 @@ export class ApprovalsService {
       if (req.state !== 'pending') throw err(409, 'CONFLICT', 'Already decided');
       const opt = this.options.get(req.entityType) ?? {};
       if (opt.permission && !p.permissions.includes(opt.permission))
-        throw new ForbiddenException(`Missing permission: ${opt.permission}`);
+        throw err(403, 'APPROVAL_PERMISSION_REQUIRED', `Missing permission: ${opt.permission}`, {
+          permission: opt.permission,
+        });
       const steps = await tx
         .select()
         .from(approvalSteps)
@@ -613,6 +651,7 @@ export class ApprovalsService {
       if (steps.some((s) => s.stepNo < req.currentStep && s.decidedBy === p.userId))
         throw err(403, 'APPROVAL_ALREADY_DECIDED_BY_YOU', 'You approved an earlier step');
       const approved = b.decision === 'approve';
+      if (approved) await opt.beforeApprove?.(tx, p, req);
       const levels = typeof opt.levels === 'function' ? await opt.levels(tx, p) : (opt.levels ?? 1);
       if (approved && req.currentStep < levels && cur?.approverUserId) {
         const [up] = await tx

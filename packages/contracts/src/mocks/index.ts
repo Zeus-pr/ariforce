@@ -1738,12 +1738,19 @@ function fieldHandlers(baseUrl: string) {
     http.get(`${baseUrl}/v1/approvals`, ({ request }) => {
       const url = new URL(request.url);
       const mine = url.searchParams.get('mine');
-      const rows =
+      // DCR unlock requests need dcr_unlock:decide (director only); others approvals:decide.
+      const can = (a: (typeof approvals)[number]) =>
+        a.status === 'pending' &&
+        a.requestedBy !== fx.me.id &&
+        fx.me.permissions.includes('approvals:decide') &&
+        (a.subjectType !== 'dcr_unlock' || fx.me.permissions.includes('dcr_unlock:decide'));
+      const rows = (
         mine === 'to_decide'
-          ? approvals.filter((a) => a.status === 'pending' && a.requestedBy !== fx.me.id)
+          ? approvals.filter(can)
           : mine === 'requested'
             ? approvals.filter((a) => a.requestedBy === fx.me.id)
-            : approvals;
+            : approvals
+      ).map((a) => ({ ...a, canDecide: can(a) }));
       return list(Approval, rows, url);
     }),
     http.post(`${baseUrl}/v1/approvals/:id/decision`, async ({ params, request }) => {
@@ -1762,6 +1769,15 @@ function fieldHandlers(baseUrl: string) {
         return HttpResponse.json(
           { error: { code: 'FORBIDDEN', message: 'You cannot decide your own request' } },
           { status: 403 },
+        );
+      if (a.subjectType === 'dcr_unlock' && !fx.me.permissions.includes('dcr_unlock:decide'))
+        return dcrError(
+          403,
+          'APPROVAL_PERMISSION_REQUIRED',
+          'Missing permission: dcr_unlock:decide',
+          {
+            permission: 'dcr_unlock:decide',
+          },
         );
       if (a.status !== 'pending') return conflict('Already decided');
       Object.assign(a, {

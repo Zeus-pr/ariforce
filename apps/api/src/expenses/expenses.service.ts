@@ -57,6 +57,8 @@ const nextMonth = (m: string) => {
 };
 const num = (v: string | number | null) => (v === null ? null : Number(v));
 const iso = (d: Date | null) => d?.toISOString() ?? null;
+import { dcrApprovalGap } from './dcr-gate';
+
 const r2 = (n: number) => Math.round(n * 100) / 100;
 export const approvalLevels = () => Math.max(1, Number(process.env.EXPENSE_APPROVAL_LEVELS ?? 2));
 
@@ -105,6 +107,7 @@ export class ExpensesService implements OnModuleInit {
       {
         levels: approvalLevels(),
         permission: 'expenses:approve',
+        beforeApprove: (tx, _p, req) => this.assertDcrsApproved(tx, req.entityId),
         onStep: async (tx, p, req, nextStep, nextApproverId) => {
           await this.audit.record(tx, p, 'expense.step_approved', {
             entityType: 'expense_claim',
@@ -132,6 +135,33 @@ export class ExpensesService implements OnModuleInit {
   }
 
   /** Approver view (GET /v1/approvals/{id}): the claim, allowance places and receipt read URLs. */
+  /** 409 DCR_NOT_APPROVED unless every line date of the claim has an approved DCR of its owner. */
+  private async assertDcrsApproved(tx: Tx, claimId: string) {
+    const [c] = await tx
+      .select({ userId: expenseClaims.userId })
+      .from(expenseClaims)
+      .where(eq(expenseClaims.id, claimId));
+    if (!c) return;
+    const lines = await tx
+      .select({ date: expenseLines.date })
+      .from(expenseLines)
+      .where(and(eq(expenseLines.claimId, claimId), isNull(expenseLines.deletedAt)));
+    const dates = [...new Set(lines.map((l) => l.date))];
+    if (!dates.length) return;
+    const rows = await tx
+      .select({ id: dcrs.id, date: dcrs.date, status: dcrs.status, updatedAt: dcrs.updatedAt })
+      .from(dcrs)
+      .where(and(eq(dcrs.userId, c.userId), inArray(dcrs.date, dates), isNull(dcrs.deletedAt)));
+    const gap = dcrApprovalGap(dates, rows);
+    if (gap)
+      throw err(
+        409,
+        'DCR_NOT_APPROVED',
+        'Every expense date needs an approved DCR before the claim can be approved',
+        gap,
+      );
+  }
+
   private async approvalDetail(tx: Tx, p: Principal, id: string): Promise<ApprovalSubject | null> {
     const [c] = await tx.select().from(expenseClaims).where(eq(expenseClaims.id, id));
     if (!c) return null;

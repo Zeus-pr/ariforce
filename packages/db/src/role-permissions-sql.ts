@@ -6,7 +6,7 @@
 import { DEFAULT_ROLE_PERMISSIONS, ROLE_KEYS } from '../../contracts/src/schemas/roles';
 
 /** Applied 0019 stays frozen; each permission change gets a NEW generated migration (set, not append). */
-export const ROLE_PERMISSIONS_MIGRATION = '0049_dcr_review_perms';
+export const ROLE_PERMISSIONS_MIGRATION = '0051_dcr_unlock_perms';
 
 /** Sorted, de-duplicated permission list per role (the exact array written to roles.permissions). */
 export function rolePermissionMatrix(): Record<string, string[]> {
@@ -32,6 +32,7 @@ export function rolePermissionsSql(): string {
 -- Product prices admin: products:prices for system_admin only.
 -- SFC: sfc:read for the sales hierarchy and system_admin; sfc:write for ABM and up + system_admin.
 -- DCR review (0049): dcr:review (approve/reject submitted DCRs of the reporting line) for ABM and up + system_admin.
+-- DCR unlock/correction decisions (0051): dcr_unlock:decide for director only (not system_admin).
 -- Masters: BM/ABM read-only; RBM and above + system_admin write. distribution_head / accountant
 -- are retired (no assignment, no sign-in); their rows keep their old sets (docs/RBAC.md).`;
   const stmts = ROLE_KEYS.map(

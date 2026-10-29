@@ -3884,7 +3884,8 @@ export interface components {
       | 'products:prices'
       | 'sfc:read'
       | 'sfc:write'
-      | 'dcr:review';
+      | 'dcr:review'
+      | 'dcr_unlock:decide';
     RoleList: {
       items: components['schemas']['Role'][];
     };
@@ -5466,6 +5467,8 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       subjectId: string;
+      /** @description True when the caller can decide this request now (pending, not their own, approvals:decide plus the type permission: dcr_unlock:decide for dcr_unlock, expenses:approve for expense; in line above the current approver) */
+      canDecide?: boolean;
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -6920,6 +6923,8 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       subjectId: string;
+      /** @description True when the caller can decide this request now (pending, not their own, approvals:decide plus the type permission: dcr_unlock:decide for dcr_unlock, expenses:approve for expense; in line above the current approver) */
+      canDecide?: boolean;
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -15903,7 +15908,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Not submitted / already decided */
+      /** @description Not submitted / already decided; or DCR_NOT_APPROVED on approve: details {dates[], dcrIds[], dcrStatus{date: draft|submitted|rejected|missing}} (every line date needs an approved DCR of the owner) */
       409: {
         headers: {
           [name: string]: unknown;
@@ -16569,7 +16574,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Own request, or requester not below you in the reporting line */
+      /** @description Own request, or requester not below you in the reporting line; APPROVAL_PERMISSION_REQUIRED (details.permission): dcr_unlock requests need dcr_unlock:decide (director only), expense needs expenses:approve */
       403: {
         headers: {
           [name: string]: unknown;
@@ -16587,7 +16592,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Already decided; LEAVE_DCR_CONFLICT when the final approval of a leave hits a submitted DCR (details.dates, details.dcrIds) */
+      /** @description DCR_NOT_APPROVED (expense approve; details {dates[], dcrIds[], dcrStatus}). Already decided; LEAVE_DCR_CONFLICT when the final approval of a leave hits a submitted DCR (details.dates, details.dcrIds) */
       409: {
         headers: {
           [name: string]: unknown;

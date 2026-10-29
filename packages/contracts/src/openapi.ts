@@ -1942,7 +1942,9 @@ function buildDocument(): OpenApiDocument {
             '200': { description: 'Claim after the decision', ...json(ExpenseClaim) },
             '403': err('Own claim, APPROVAL_NOT_YOUR_STEP or APPROVAL_ALREADY_DECIDED_BY_YOU'),
             '404': err('Not found'),
-            '409': err('Not submitted / already decided'),
+            '409': err(
+              'Not submitted / already decided; or DCR_NOT_APPROVED on approve: details {dates[], dcrIds[], dcrStatus{date: draft|submitted|rejected|missing}} (every line date needs an approved DCR of the owner)',
+            ),
             '422': err('REJECTION_REASON_REQUIRED: reject without a non-blank comment'),
           },
         }),
@@ -2131,10 +2133,12 @@ function buildDocument(): OpenApiDocument {
           requestBody: json(ApprovalDecision),
           responses: {
             '200': { description: 'Decided', ...json(Approval) },
-            '403': err('Own request, or requester not below you in the reporting line'),
+            '403': err(
+              'Own request, or requester not below you in the reporting line; APPROVAL_PERMISSION_REQUIRED (details.permission): dcr_unlock requests need dcr_unlock:decide (director only), expense needs expenses:approve',
+            ),
             '404': err('Not found'),
             '409': err(
-              'Already decided; LEAVE_DCR_CONFLICT when the final approval of a leave hits a submitted DCR (details.dates, details.dcrIds)',
+              'DCR_NOT_APPROVED (expense approve; details {dates[], dcrIds[], dcrStatus}). Already decided; LEAVE_DCR_CONFLICT when the final approval of a leave hits a submitted DCR (details.dates, details.dcrIds)',
             ),
             '422': err('REJECTION_REASON_REQUIRED: reject without a non-blank comment'),
           },

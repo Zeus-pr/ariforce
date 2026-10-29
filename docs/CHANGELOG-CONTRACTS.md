@@ -10,6 +10,20 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## feat/dcr-pob-review (2026-10-29): expense approval needs approved DCRs; unlock decisions director-only
+
+Migration 0051 (roles.permissions: dcr_unlock:decide for director).
+
+- Behaviour (breaking for approvers): approving an expense claim (any step; POST
+  /v1/approvals/{id}/decision and POST /v1/expenses/{id}/decision) needs an APPROVED DCR of the
+  owner on every line date, else 409 DCR_NOT_APPROVED, details {dates[], dcrIds[], dcrStatus{date:
+  draft|submitted|rejected|missing}}. Rejecting is unaffected.
+- New permission `dcr_unlock:decide` (director only). DCR unlock/correction requests
+  (subjectType dcr_unlock) need it: 403 APPROVAL_PERMISSION_REQUIRED {permission}. They are left out
+  of `mine=to_decide` for everyone else. Other approval types keep approvals:decide; dcr:review is
+  unchanged (ABM and up).
+- Additive: `Approval.canDecide` (list and get): whether the caller can decide it now.
+
 ## feat/dcr-pob-review (2026-10-29): tour plan items (one day or from-to) as DCR draft cards
 
 Migration 0050 (additive: table tour_plan_items, dcrs.tour_plan_item_id).
