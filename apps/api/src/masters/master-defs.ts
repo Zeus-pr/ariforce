@@ -74,6 +74,11 @@ export interface MasterDef {
   wideWrite: boolean;
   writePermission: Permission;
   sort: Record<string, AnyPgColumn>;
+  /**
+   * Picker lists (doctors, chemists, stockists, products): default order and sort=name are A-Z by
+   * lower(name), then id, so the order is total and the offset cursor stays stable.
+   */
+  nameOrder?: AnyPgColumn;
   search: AnyPgColumn[];
   filters?: (q: Q) => (SQL | undefined)[];
   /** DB row -> plain object (dto parse strips internal columns). */
@@ -132,6 +137,7 @@ const outlet = (
   create: c,
   update: u,
   territoryCol: table.territoryId,
+  nameOrder: table.name,
   wideWrite: false,
   writePermission: 'masters:write',
   sort: {
@@ -158,6 +164,7 @@ export const MASTERS: Record<string, MasterDef> = {
     create: DoctorCreate,
     update: DoctorUpdate,
     territoryCol: doctors.territoryId,
+    nameOrder: doctors.name,
     wideWrite: false,
     writePermission: 'masters:write',
     sort: {
@@ -189,6 +196,7 @@ export const MASTERS: Record<string, MasterDef> = {
     listQuery: ProductListQuery,
     create: ProductCreate,
     update: ProductUpdate,
+    nameOrder: products.name,
     wideWrite: true,
     writePermission: 'masters:write',
     sort: { code: products.code, name: products.name, updatedAt: products.updatedAt },

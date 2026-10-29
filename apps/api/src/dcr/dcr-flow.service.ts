@@ -144,7 +144,7 @@ export class DcrFlowService {
       })
       .from(products)
       .where(and(isNull(products.deletedAt), eq(products.active, true)))
-      .orderBy(asc(products.name), asc(products.id));
+      .orderBy(asc(sql`lower(${products.name})`), asc(products.id));
     return Promise.all(
       rows.map(async (r) => ({
         ...r,

@@ -104,8 +104,10 @@ export class MastersService {
       const col = def.sort[q.sort.replace(/^-/, '')];
       if (!col)
         throw new HttpException({ code: 'VALIDATION', message: `Unknown sort '${q.sort}'` }, 422);
-      order = [desc_ ? desc(col) : asc(col), asc(t.id)];
-    } else order = q.updatedSince ? [asc(t.updatedAt), asc(t.id)] : [asc(t.id)];
+      const key = q.sort.replace(/^-/, '') === 'name' && def.nameOrder ? sql`lower(${col})` : col;
+      order = [desc_ ? desc(key) : asc(key), asc(t.id)];
+    } else if (q.updatedSince) order = [asc(t.updatedAt), asc(t.id)];
+    else order = def.nameOrder ? [asc(sql`lower(${def.nameOrder})`), asc(t.id)] : [asc(t.id)];
     return this.tenant.run(p, async (tx) => {
       const s = this.select(tx, def, p, where);
       const rows = (await s.q
