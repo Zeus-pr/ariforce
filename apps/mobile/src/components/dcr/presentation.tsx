@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@/components/app-text';
 import { Icon } from '@/components/icon';
 import { List } from '@/components/scroll';
-import type { ProductOpt } from '@/lib/dcr/adapter';
+import { doctorProductLabel, type ProductOpt } from '@/lib/dcr/adapter';
 import { getScreenOrientation, lockLandscape, lockPortrait } from '@/lib/orientation';
 import { colors, radius, spacing, touch } from '@/theme';
 
@@ -102,7 +102,7 @@ export function Presentation({
                 },
               ]}
               accessible
-              accessibilityLabel={`${item.label}, product ${index + 1} of ${products.length}`}
+              accessibilityLabel={`${doctorProductLabel(item)}, product ${index + 1} of ${products.length}`}
             >
               {item.imageUrl ? (
                 <>
@@ -113,13 +113,13 @@ export function Presentation({
                     transition={120}
                   />
                   <AppText variant="title" style={styles.caption} numberOfLines={2}>
-                    {item.label}
+                    {doctorProductLabel(item)}
                   </AppText>
                 </>
               ) : (
                 <View style={styles.nameOnly}>
                   <AppText variant="display" style={styles.bigName}>
-                    {item.label}
+                    {doctorProductLabel(item)}
                   </AppText>
                 </View>
               )}

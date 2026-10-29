@@ -47,6 +47,7 @@ export type DcrProductOption = {
   id: string;
   name: string;
   code?: string;
+  brand?: string | null;
   composition: string | null;
   packSize: string | null;
   pts: number | null;
@@ -81,6 +82,8 @@ export type ProductOpt = {
   id: string;
   /** Brand name: the only thing a doctor call shows. */
   label: string;
+  /** Brand (e.g. "Ariclav" for "Ariclav 625"); null when the API has none. */
+  brand: string | null;
   composition: string | null;
   packSize: string | null;
   /** Price to stockist, INR; null = price not set (counts as ₹0 in totals). */
@@ -89,6 +92,7 @@ export type ProductOpt = {
 };
 
 type ProductWire = Pick<Product, 'id' | 'name' | 'composition' | 'packSize'> & {
+  brand?: string | null;
   code?: string;
   active?: boolean;
   pts?: number | null;
@@ -99,6 +103,7 @@ export function toProductOpt(p: ProductWire): ProductOpt {
   return {
     id: p.id,
     label: p.name,
+    brand: p.brand?.trim() || null,
     composition: p.composition ?? null,
     packSize: p.packSize ?? null,
     pts: typeof p.pts === 'number' ? p.pts : null,
@@ -136,6 +141,12 @@ export function useDcrProducts(options: OptionsV2 | undefined, enabled: boolean)
     [fromOptions, fallback.data, fallback.isPending],
   );
 }
+
+/**
+ * What a doctor call shows for a product (picker, picked list, presentation): the brand when set,
+ * else the full name. Products sharing a brand are NOT merged. Chemist/stockist keep `label`.
+ */
+export const doctorProductLabel = (p: Pick<ProductOpt, 'brand' | 'label'>) => p.brand || p.label;
 
 /** POB line value at PTS. The server's PobLine.value is PTR-based, so it is not used here. */
 export const lineValue = (pts: number | null, qty: number) => (pts ?? 0) * qty;

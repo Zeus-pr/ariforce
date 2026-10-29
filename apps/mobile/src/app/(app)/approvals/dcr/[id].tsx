@@ -16,6 +16,7 @@ import {
   REVIEW_LABEL,
   REVIEW_TONE,
   callPresentationOpened,
+  doctorProductLabel,
   decisionErrorMessage,
   useDcrProducts,
   lineValue,
@@ -149,7 +150,11 @@ function Review({ id, repName }: { id: string; repName: string }) {
                     {c.productsDetailed.length
                       ? [...c.productsDetailed]
                           .sort((a, b) => a.order - b.order)
-                          .map((p) => product.get(p.productId)?.label ?? 'Product')
+                          .map((p) =>
+                            product.get(p.productId)
+                              ? doctorProductLabel(product.get(p.productId)!)
+                              : 'Product',
+                          )
                           .join(', ')
                       : 'No products'}
                   </AppText>

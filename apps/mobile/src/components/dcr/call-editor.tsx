@@ -7,7 +7,8 @@ import { Icon } from '@/components/icon';
 import { TextField } from '@/components/text-field';
 import { formatHHmmLabel } from '@/lib/clock12';
 import type { CustomerScope } from '@/lib/dcr/api';
-import { lineValue, type ProductOpt } from '@/lib/dcr/adapter';
+import { doctorProductLabel, lineValue, type ProductOpt } from '@/lib/dcr/adapter';
+import { sortByLabel } from '@/lib/sort';
 import { KIND_LABEL, type CallDraft, type PobDraft } from '@/lib/dcr/model';
 import { formatINR } from '@/lib/money';
 import { colors, radius, spacing, touch } from '@/theme';
@@ -121,6 +122,7 @@ export function CallEditor({
 const unknownProduct = (id: string): ProductOpt => ({
   id,
   label: 'Product',
+  brand: null,
   composition: null,
   packSize: null,
   pts: null,
@@ -170,7 +172,7 @@ function DoctorProducts({
             {i + 1}
           </AppText>
           <AppText variant="body" style={styles.flex} numberOfLines={2}>
-            {p.label}
+            {doctorProductLabel(p)}
           </AppText>
           {!readOnly ? (
             <>
@@ -178,7 +180,7 @@ function DoctorProducts({
                 onPress={() => move(i, -1)}
                 disabled={i === 0}
                 accessibilityRole="button"
-                accessibilityLabel={`Move ${p.label} up`}
+                accessibilityLabel={`Move ${doctorProductLabel(p)} up`}
                 style={[styles.iconBtn, i === 0 && styles.dim]}
               >
                 <Icon name="chevron-up" color={colors.navy} size={20} />
@@ -187,7 +189,7 @@ function DoctorProducts({
                 onPress={() => move(i, 1)}
                 disabled={i === picked.length - 1}
                 accessibilityRole="button"
-                accessibilityLabel={`Move ${p.label} down`}
+                accessibilityLabel={`Move ${doctorProductLabel(p)} down`}
                 style={[styles.iconBtn, i === picked.length - 1 && styles.dim]}
               >
                 <Icon name="chevron-down" color={colors.navy} size={20} />
@@ -216,7 +218,7 @@ function DoctorProducts({
       <MultiSelectSheet
         visible={sheet}
         title="Products"
-        options={products.map((p) => ({ value: p.id, label: p.label }))}
+        options={sortByLabel(products.map((p) => ({ value: p.id, label: doctorProductLabel(p) })))}
         values={call.productIds}
         loading={!products.length}
         onDone={(ids) => onChange({ productIds: ids })}
