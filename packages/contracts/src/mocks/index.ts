@@ -67,6 +67,8 @@ import {
   ImportRequest,
   type ImportRowResult,
   Product,
+  productDisplayName,
+  groupDetailProducts,
   ProductCreate,
   ProductHqMapping,
   StandardTourPlan,
@@ -542,7 +544,20 @@ export function createHandlers(baseUrl = '') {
     ),
     ...crud(baseUrl, '/v1/chemists', Chemist, ChemistCreate, chemistRows, undefined, false),
     ...crud(baseUrl, '/v1/stockists', Stockist, StockistCreate, fx.stockists),
-    ...crud(baseUrl, '/v1/products', Product, ProductCreate, fx.products),
+    ...crud(
+      baseUrl,
+      '/v1/products',
+      // displayName is derived from name on every read (create, patch and import included).
+      z.preprocess(
+        (r) => ({
+          ...(r as object),
+          displayName: productDisplayName((r as { name: string }).name),
+        }),
+        Product,
+      ) as unknown as z.ZodType<Product>,
+      ProductCreate,
+      fx.products,
+    ),
     ...crud(baseUrl, '/v1/work-types', WorkType, WorkTypeCreate, fx.workTypes),
     ...fieldHandlers(baseUrl),
     ...teamProfileHandlers(baseUrl, mockPrincipal),
@@ -624,7 +639,12 @@ function fieldHandlers(baseUrl: string) {
     fx.products
       .filter((p) => p.active && !p.deletedAt)
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((p) => ({ ...p, imageFileKey: p.imageFileKey ?? null, imageUrl: p.imageUrl ?? null }));
+      .map((p) => ({
+        ...p,
+        displayName: productDisplayName(p.name),
+        imageFileKey: p.imageFileKey ?? null,
+        imageUrl: p.imageUrl ?? null,
+      }));
   const draftsOf = (date: string) =>
     myDay(date)
       .filter((x) => x.status === 'draft')
@@ -662,6 +682,7 @@ function fieldHandlers(baseUrl: string) {
               }
             : null,
           products: productOptions(),
+          detailProducts: groupDetailProducts(DcrOptions.shape.products.parse(productOptions())),
         }),
       );
     }),

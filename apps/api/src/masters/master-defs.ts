@@ -31,6 +31,7 @@ import {
   WorkTypeCreate,
   WorkTypeUpdate,
   type Permission,
+  productDisplayName,
 } from '@ariforce/contracts';
 import {
   chemists,
@@ -214,6 +215,7 @@ export const MASTERS: Record<string, MasterDef> = {
     ],
     fromRow: (r) => ({
       ...r,
+      displayName: productDisplayName(String(r.name)),
       mrp: r.mrp == null ? null : Number(r.mrp),
       ptr: r.ptr == null ? null : Number(r.ptr),
       pts: r.pts == null ? null : Number(r.pts),

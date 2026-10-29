@@ -30,6 +30,7 @@ export const DcrProductOption = Product.pick({
   divisionId: true,
   code: true,
   name: true,
+  displayName: true,
   brand: true,
   composition: true,
   packSize: true,
@@ -41,6 +42,42 @@ export const DcrProductOption = Product.pick({
   imageUrl: true,
 }).meta({ id: 'DcrProductOption' });
 export type DcrProductOption = z.infer<typeof DcrProductOption>;
+
+/** Doctor detailing picker entry: one per displayName (all strengths of a product together). */
+export const DcrDetailProduct = z
+  .object({
+    displayName: z.string().meta({ example: 'ARIPIX' }),
+    productId: Id.meta({
+      description:
+        'SKU to store in productsDetailed for this entry: the first SKU (A-Z by name) that has a picture, else the first SKU',
+    }),
+    productIds: z
+      .array(Id)
+      .min(1)
+      .meta({ description: 'All active SKUs (strengths) of this displayName, A-Z by name' }),
+    composition: z.string().nullable().meta({ description: "productId's composition" }),
+    imageFileKey: z.string().nullable(),
+    imageUrl: z.url().nullable().meta({ description: "productId's picture (presigned), or null" }),
+  })
+  .meta({ id: 'DcrDetailProduct' });
+export type DcrDetailProduct = z.infer<typeof DcrDetailProduct>;
+
+/** Groups product options (already A-Z) into doctor-detailing entries, keeping the input order. */
+export function groupDetailProducts(items: DcrProductOption[]): DcrDetailProduct[] {
+  const groups = new Map<string, DcrProductOption[]>();
+  for (const p of items) groups.set(p.displayName, [...(groups.get(p.displayName) ?? []), p]);
+  return [...groups].map(([displayName, skus]) => {
+    const primary = skus.find((s) => s.imageFileKey) ?? skus[0]!;
+    return {
+      displayName,
+      productId: primary.id,
+      productIds: skus.map((s) => s.id),
+      composition: primary.composition,
+      imageFileKey: primary.imageFileKey,
+      imageUrl: primary.imageUrl,
+    };
+  });
+}
 
 export const DcrOptions = z
   .object({
@@ -73,6 +110,10 @@ export const DcrOptions = z
         description:
           "Your latest dcr_unlock (correction) request for this date, or null; drives the 'Unlock requested' state",
       }),
+    detailProducts: z.array(DcrDetailProduct).default([]).meta({
+      description:
+        'Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed',
+    }),
     products: z.array(DcrProductOption).default([]).meta({
       description: 'Active products for the call pickers, by name (imageUrl presigned, >= 30 min)',
     }),

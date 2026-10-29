@@ -10,6 +10,8 @@ import {
   type DcrProductOption,
   type DcrSfcSnapshot,
   type SfcCategory,
+  groupDetailProducts,
+  productDisplayName,
 } from '@ariforce/contracts';
 import {
   companies,
@@ -148,6 +150,7 @@ export class DcrFlowService {
     return Promise.all(
       rows.map(async (r) => ({
         ...r,
+        displayName: productDisplayName(r.name),
         mrp: num(r.mrp),
         pts: num(r.pts),
         imageUrl: r.imageFileKey ? await this.storage.imageUrl(p.companyId, r.imageFileKey) : null,
@@ -257,7 +260,10 @@ export class DcrFlowService {
         drafts,
         rejected,
         unlockRequest: await this.unlockRequest(tx, p, date),
-        products: await this.productOptions(tx, p),
+        ...(await this.productOptions(tx, p).then((products) => ({
+          products,
+          detailProducts: groupDetailProducts(products),
+        }))),
       };
     });
   }

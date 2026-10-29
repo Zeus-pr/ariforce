@@ -21430,6 +21430,14 @@
             "minLength": 1,
             "maxLength": 160
           },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "readOnly": true,
+            "description": "Name without strength numbers, derived from name (e.g. 'ARIPIX 10' -> 'ARIPIX'); several SKUs can share one. Use for doctor detailing pickers.",
+            "example": "ARIPIX"
+          },
           "brand": {
             "anyOf": [
               {
@@ -21563,6 +21571,7 @@
           "divisionId",
           "code",
           "name",
+          "displayName",
           "brand",
           "composition",
           "packSize",
@@ -24689,6 +24698,14 @@
               }
             ]
           },
+          "detailProducts": {
+            "default": [],
+            "description": "Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrDetailProduct"
+            }
+          },
           "products": {
             "default": [],
             "description": "Active products for the call pickers, by name (imageUrl presigned, >= 30 min)",
@@ -24706,6 +24723,7 @@
           "drafts",
           "rejected",
           "unlockRequest",
+          "detailProducts",
           "products"
         ],
         "additionalProperties": false
@@ -24779,6 +24797,68 @@
         ],
         "additionalProperties": false
       },
+      "DcrDetailProduct": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "example": "ARIPIX"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "SKU to store in productsDetailed for this entry: the first SKU (A-Z by name) that has a picture, else the first SKU",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "productIds": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "description": "All active SKUs (strengths) of this displayName, A-Z by name"
+          },
+          "composition": {
+            "description": "productId's composition",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "imageFileKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "imageUrl": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "productId's picture (presigned), or null"
+          }
+        },
+        "required": [
+          "displayName",
+          "productId",
+          "productIds",
+          "composition",
+          "imageFileKey",
+          "imageUrl"
+        ],
+        "additionalProperties": false
+      },
       "DcrProductOption": {
         "type": "object",
         "properties": {
@@ -24805,6 +24885,14 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 160
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "readOnly": true,
+            "description": "Name without strength numbers, derived from name (e.g. 'ARIPIX 10' -> 'ARIPIX'); several SKUs can share one. Use for doctor detailing pickers.",
+            "example": "ARIPIX"
           },
           "brand": {
             "anyOf": [
@@ -24919,6 +25007,7 @@
           "divisionId",
           "code",
           "name",
+          "displayName",
           "brand",
           "composition",
           "packSize",
@@ -30398,6 +30487,11 @@
           "name": {
             "type": "string"
           },
+          "displayName": {
+            "type": "string",
+            "readOnly": true,
+            "description": "Name without strength numbers (derived from name), e.g. ARIPIX"
+          },
           "brand": {
             "type": [
               "string",
@@ -30528,6 +30622,7 @@
           "id",
           "code",
           "name",
+          "displayName",
           "brand",
           "composition",
           "packSize",

@@ -43,6 +43,10 @@ export const AdminProduct = z
     id: Id,
     code: z.string(),
     name: z.string(),
+    displayName: z.string().meta({
+      readOnly: true,
+      description: 'Name without strength numbers (derived from name), e.g. ARIPIX',
+    }),
     brand: z.string().nullable(),
     composition: z.string().nullable(),
     packSize: z.string().nullable().meta({ example: '10 x 10 tablets' }),

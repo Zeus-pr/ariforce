@@ -10,6 +10,7 @@ import {
   type AdminProduct,
   type ProductPricesBulkResult,
 } from '../schemas/product-prices';
+import { productDisplayName } from '../schemas/products';
 import * as fx from './fixtures';
 
 /**
@@ -43,6 +44,7 @@ const dto = (p: (typeof fx.products)[number]): AdminProduct => {
     id: p.id,
     code: p.code,
     name: p.name,
+    displayName: productDisplayName(p.name),
     brand: p.brand,
     composition: p.composition,
     packSize: p.packSize,

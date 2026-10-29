@@ -8,6 +8,7 @@ import {
   type ProductPricesBulkResponse,
   type ProductPricesBulkResult,
   type ProductPricesUpdate,
+  productDisplayName,
 } from '@ariforce/contracts';
 import { productPriceHistory, products, type Tx } from '@ariforce/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
@@ -113,6 +114,7 @@ export class ProductPricesService {
       id: x.id,
       code: x.code,
       name: x.name,
+      displayName: productDisplayName(x.name),
       brand: x.brand,
       composition: x.composition,
       packSize: x.pack_size,

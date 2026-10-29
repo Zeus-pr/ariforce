@@ -10,6 +10,16 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## feat/dcr-pob-review (2026-10-29): product displayName, doctor detailing picker
+
+- Additive: `Product.displayName` and `AdminProduct.displayName` (readOnly, derived from `name`
+  without strength numbers: 'ARIPIX 10' -> 'ARIPIX', 'ESCINEX CZ 10/0.25' -> 'ESCINEX CZ'). Helper
+  `productDisplayName()` exported from @ariforce/contracts. `DcrProductOption.displayName`.
+- Additive: `DcrOptions.detailProducts[]` `{displayName, productId, productIds[], composition,
+imageFileKey, imageUrl}`: one entry per displayName (A-Z); `productId` = first SKU with a
+  picture, else the first. Store `productId` in `productsDetailed`.
+- GET /v1/doctors|chemists|stockists|products default and sort=name order: lower(name), id.
+
 ## feat/dcr-pob-review (2026-10-29): POB at PTS, doctor presentation, manager review, IST lock
 
 Needs migrations 0048 + 0049 (not applied yet).

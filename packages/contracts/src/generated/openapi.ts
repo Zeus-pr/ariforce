@@ -4343,6 +4343,11 @@ export interface components {
       /** @description Company SKU code, unique per company */
       code: string;
       name: string;
+      /**
+       * @description Name without strength numbers, derived from name (e.g. 'ARIPIX 10' -> 'ARIPIX'); several SKUs can share one. Use for doctor detailing pickers.
+       * @example ARIPIX
+       */
+      readonly displayName: string;
       brand: string | null;
       composition: string | null;
       /** @example 10 x 10 tablets */
@@ -5337,6 +5342,11 @@ export interface components {
         requestedAt: string;
       } | null;
       /**
+       * @description Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed
+       * @default []
+       */
+      detailProducts: components['schemas']['DcrDetailProduct'][];
+      /**
        * @description Active products for the call pickers, by name (imageUrl presigned, >= 30 min)
        * @default []
        */
@@ -5360,6 +5370,23 @@ export interface components {
       /** @description Required details.kind on submit; null = no details */
       detailsKind: ('meeting' | 'training' | 'office' | 'leave') | null;
     };
+    DcrDetailProduct: {
+      /** @example ARIPIX */
+      displayName: string;
+      /**
+       * Format: uuid
+       * @description SKU to store in productsDetailed for this entry: the first SKU (A-Z by name) that has a picture, else the first SKU
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      /** @description All active SKUs (strengths) of this displayName, A-Z by name */
+      productIds: string[];
+      /** @description productId's composition */
+      composition: string | null;
+      imageFileKey: string | null;
+      /** @description productId's picture (presigned), or null */
+      imageUrl: string | null;
+    };
     DcrProductOption: {
       /**
        * Format: uuid
@@ -5376,6 +5403,11 @@ export interface components {
       /** @description Company SKU code, unique per company */
       code: string;
       name: string;
+      /**
+       * @description Name without strength numbers, derived from name (e.g. 'ARIPIX 10' -> 'ARIPIX'); several SKUs can share one. Use for doctor detailing pickers.
+       * @example ARIPIX
+       */
+      readonly displayName: string;
       brand: string | null;
       composition: string | null;
       /** @example 10 x 10 tablets */
@@ -6976,6 +7008,8 @@ export interface components {
       id: string;
       code: string;
       name: string;
+      /** @description Name without strength numbers (derived from name), e.g. ARIPIX */
+      readonly displayName: string;
       brand: string | null;
       composition: string | null;
       /** @example 10 x 10 tablets */
