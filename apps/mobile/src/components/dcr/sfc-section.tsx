@@ -1,7 +1,8 @@
 import type { Dcr } from '@ariforce/contracts';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Icon } from '@/components/icon';
+import { SkeletonCard } from '@/components/skeleton';
 import type { FlowState } from '@/lib/dcr/model';
 import { colors } from '@/theme';
 import { dcrStyles, Errors } from './field';
@@ -33,7 +34,7 @@ export function SfcSection({
     <View style={dcrStyles.section}>
       <AppText variant="label">SFC / TA·DA</AppText>
       {sfc.state === 'loading' ? (
-        <ActivityIndicator color={colors.navy} />
+        <SkeletonCard lines={4} />
       ) : sfc.state === 'error' ? (
         <AppText variant="caption" style={dcrStyles.err}>
           SFC could not be loaded. Retry before submitting.

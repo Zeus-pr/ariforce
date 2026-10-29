@@ -1,6 +1,6 @@
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@/components/app-text';
 import { Chip } from '@/components/chip';
@@ -9,6 +9,7 @@ import { ListRow } from '@/components/list-row';
 import { SearchBox } from '@/components/masters/search-box';
 import { SelectSheet } from '@/components/masters/select-sheet';
 import { List, ScrollView } from '@/components/scroll';
+import { SkeletonGroup, SkeletonList, SkeletonRow } from '@/components/skeleton';
 import { useAuth } from '@/lib/auth-context';
 import { FEATURES } from '@/lib/features';
 import {
@@ -186,12 +187,15 @@ function MasterList({ kind }: { kind: MasterKind }) {
         )}
         ListFooterComponent={
           list.isFetchingNextPage ? (
-            <ActivityIndicator color={colors.navy} style={styles.more} />
+            <SkeletonGroup style={styles.moreRows}>
+              <SkeletonRow divider />
+              <SkeletonRow />
+            </SkeletonGroup>
           ) : undefined
         }
         ListEmptyComponent={
           list.isPending ? (
-            <ActivityIndicator color={colors.navy} style={styles.more} />
+            <SkeletonList count={8} />
           ) : (
             <View style={styles.empty}>
               <AppText variant="bodyMuted" style={styles.center}>
@@ -261,7 +265,12 @@ const styles = StyleSheet.create({
   item: { backgroundColor: colors.surface, overflow: 'hidden' },
   first: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg },
   last: { borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg },
-  more: { paddingVertical: spacing.xl },
+  moreRows: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderCurve: 'continuous',
+  },
   empty: { paddingVertical: spacing.xxxl, paddingHorizontal: layout.gutter },
   center: { textAlign: 'center' },
   fab: {

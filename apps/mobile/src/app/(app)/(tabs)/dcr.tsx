@@ -1,20 +1,14 @@
 import type { Dcr } from '@ariforce/contracts';
 import { Redirect, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { Alert, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
 import { Icon } from '@/components/icon';
 import { ListRow } from '@/components/list-row';
 import { ScrollView } from '@/components/scroll';
+import { SkeletonList } from '@/components/skeleton';
 import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
 import { useDeleteDraft, useDraftList, useDcrOptions, useSubmittedHistory } from '@/lib/dcr/api';
 import { dateLabel, savedLabel, todayIST } from '@/lib/dcr/dates';
@@ -162,7 +156,7 @@ function DcrWorkspace() {
           ) : null}
 
           {draftsQ.isPending ? (
-            <ActivityIndicator color={colors.navy} style={styles.pad} />
+            <SkeletonList count={2} />
           ) : !drafts.length ? (
             <Card style={styles.pad}>
               <AppText variant="body">No saved drafts</AppText>
@@ -210,7 +204,7 @@ function DcrWorkspace() {
             History
           </AppText>
           {historyQ.isPending ? (
-            <ActivityIndicator color={colors.navy} style={styles.pad} />
+            <SkeletonList count={4} />
           ) : !history.length ? (
             <Card style={styles.pad}>
               <AppText variant="bodyMuted">No submitted reports this month yet.</AppText>

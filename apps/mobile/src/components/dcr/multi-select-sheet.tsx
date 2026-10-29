@@ -6,6 +6,7 @@ import { Button } from '@/components/button';
 import { Icon } from '@/components/icon';
 import { SearchBox } from '@/components/masters/search-box';
 import { List } from '@/components/scroll';
+import { SkeletonSheetRows } from '@/components/skeleton';
 import { colors, layout, radius, sizes, spacing, touch } from '@/theme';
 
 export type PickOption = { value: string; label: string; hint?: string };
@@ -98,9 +99,13 @@ export function MultiSelectSheet({
           keyboardShouldPersistTaps="handled"
           style={styles.list}
           ListEmptyComponent={
-            <AppText variant="bodyMuted" style={styles.empty}>
-              {loading ? 'Loading…' : 'Nothing matches.'}
-            </AppText>
+            loading ? (
+              <SkeletonSheetRows count={6} />
+            ) : (
+              <AppText variant="bodyMuted" style={styles.empty}>
+                Nothing matches.
+              </AppText>
+            )
           }
           renderItem={({ item }) => {
             const on = picked.includes(item.value);

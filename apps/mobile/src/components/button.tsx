@@ -1,13 +1,7 @@
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  View,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
+import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { useReducedMotion } from 'react-native-reanimated';
 import { AppText } from './app-text';
+import { PULSE } from './skeleton';
 import { colors, motion, radius, spacing, touch } from '@/theme';
 
 const variants = {
@@ -44,7 +38,8 @@ type Props = {
 };
 
 /**
- * Full-width button. Press feedback on press-in: scale 0.97 + darker fill, as a Reanimated CSS
+ * Full-width button. Pending: the label changes ("Signing in…") and gently pulses; no spinner.
+ * Press feedback on press-in: scale 0.97 + darker fill, as a Reanimated CSS
  * transition (120ms strong ease-out). Loading keeps the label readable ("Signing in…") next to a
  * small spinner, and the accessibility label stays the action name.
  */
@@ -88,12 +83,11 @@ export function Button({
             },
           ]}
         >
-          <View style={styles.content}>
-            {loading && <ActivityIndicator size="small" color={v.fg} />}
+          <Animated.View style={[styles.content, loading && !reduced ? PULSE : null]}>
             <AppText variant="button" style={{ color: v.fg }}>
               {loading ? (loadingLabel ?? label) : label}
             </AppText>
-          </View>
+          </Animated.View>
         </Animated.View>
       )}
     </Pressable>

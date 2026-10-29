@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
 import { SelectSheet } from '@/components/masters/select-sheet';
 import { TextField } from '@/components/text-field';
+import { SkeletonCard } from '@/components/skeleton';
 import { apiFetch } from '@/lib/api';
 import { saveMessage, thrownMessage } from '@/lib/dcr/errors';
 import { colors, spacing } from '@/theme';
@@ -109,7 +110,7 @@ export function LeaveFields({
         <Button label="Retry" variant="secondary" compact onPress={() => setTick((n) => n + 1)} />
       </View>
     );
-  if (!reqs) return <ActivityIndicator color={colors.navy} />;
+  if (!reqs) return <SkeletonCard lines={2} />;
 
   const selected = reqs.find((r) => r.id === value);
 

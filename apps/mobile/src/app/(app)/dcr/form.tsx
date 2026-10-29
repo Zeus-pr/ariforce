@@ -1,7 +1,7 @@
 import type { Dcr } from '@ariforce/contracts';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
 import { Chip } from '@/components/chip';
@@ -17,6 +17,7 @@ import { Icon } from '@/components/icon';
 import { SelectSheet } from '@/components/masters/select-sheet';
 import { KeyboardAwareScrollView } from '@/components/scroll';
 import { TextField } from '@/components/text-field';
+import { SkeletonForm } from '@/components/skeleton';
 import { ApiError, apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import {
@@ -486,9 +487,9 @@ function DcrForm({
     (reportId && recordQ.isPending && !dcr && !optionsQ.data)
   )
     return (
-      <View style={[styles.flex, styles.center]}>
+      <View style={[styles.flex, styles.content]}>
         <Stack.Screen options={{ title: 'DCR' }} />
-        <ActivityIndicator color={colors.navy} />
+        <SkeletonForm count={4} />
       </View>
     );
 

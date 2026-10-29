@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@/components/app-text';
 import { Chip } from '@/components/chip';
 import { Icon } from '@/components/icon';
 import { SearchBox } from '@/components/masters/search-box';
 import { List } from '@/components/scroll';
+import { SkeletonSheetRows } from '@/components/skeleton';
 import { useCustomers, type CustomerRow, type CustomerScope } from '@/lib/dcr/api';
 import { thrownMessage } from '@/lib/dcr/errors';
 import { KIND_LABEL, type CallKind } from '@/lib/dcr/model';
@@ -108,13 +109,11 @@ export function CustomerSheet({
             if (list.hasNextPage && !list.isFetchingNextPage) void list.fetchNextPage();
           }}
           ListFooterComponent={
-            list.isFetchingNextPage ? (
-              <ActivityIndicator color={colors.navy} style={styles.more} />
-            ) : undefined
+            list.isFetchingNextPage ? <SkeletonSheetRows count={2} /> : undefined
           }
           ListEmptyComponent={
             list.isPending ? (
-              <ActivityIndicator color={colors.navy} style={styles.more} />
+              <SkeletonSheetRows count={7} />
             ) : (
               <AppText variant="bodyMuted" style={styles.empty}>
                 {list.isError
@@ -219,6 +218,5 @@ const styles = StyleSheet.create({
   },
   disabled: { opacity: 0.5 },
   pressed: { backgroundColor: colors.separator },
-  more: { paddingVertical: spacing.xl },
   empty: { padding: layout.gutter, textAlign: 'center' },
 });

@@ -1,6 +1,6 @@
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
 import { Chip } from '@/components/chip';
@@ -8,6 +8,7 @@ import { Icon } from '@/components/icon';
 import { SelectSheet } from '@/components/masters/select-sheet';
 import { KeyboardAwareScrollView } from '@/components/scroll';
 import { TextField } from '@/components/text-field';
+import { Skeleton, SkeletonForm } from '@/components/skeleton';
 import { useBottomSpace } from '@/components/floating-tab-bar';
 import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
@@ -49,9 +50,9 @@ function FormLoader({ kind, id }: { kind: MasterKind; id?: string }) {
   const cfg = MASTERS[kind];
   if (id && rec.isPending)
     return (
-      <View style={[styles.flex, styles.centerFill]}>
+      <View style={[styles.flex, styles.content]}>
         <Stack.Screen options={{ title: `Edit ${cfg.singular}` }} />
-        <ActivityIndicator color={colors.navy} />
+        <SkeletonForm count={cfg.fields.length} />
       </View>
     );
   if (id && !rec.data)
@@ -201,13 +202,17 @@ function MasterForm({ kind, row }: { kind: MasterKind; row: MasterRow | null }) 
                     pressed && styles.selectPressed,
                   ]}
                 >
-                  <AppText
-                    variant="body"
-                    numberOfLines={1}
-                    style={[styles.selectText, !text && styles.placeholder]}
-                  >
-                    {text ?? (lk.ready ? `Choose ${f.label.toLowerCase()}` : 'Loading…')}
-                  </AppText>
+                  {lk.ready || text ? (
+                    <AppText
+                      variant="body"
+                      numberOfLines={1}
+                      style={[styles.selectText, !text && styles.placeholder]}
+                    >
+                      {text ?? `Choose ${f.label.toLowerCase()}`}
+                    </AppText>
+                  ) : (
+                    <Skeleton width="55%" height={16} style={styles.selectText} />
+                  )}
                   <Icon name="chevron-down" color={colors.subtle} />
                 </Pressable>
                 {errors[f.key] ? (

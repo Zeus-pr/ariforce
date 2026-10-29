@@ -1,12 +1,5 @@
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import {
-  ActivityIndicator,
-  Linking,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { Linking, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
 import { Card } from '@/components/card';
@@ -14,6 +7,7 @@ import { Chip } from '@/components/chip';
 import { Icon } from '@/components/icon';
 import { ScrollView } from '@/components/scroll';
 import { TintedIcon } from '@/components/tinted-icon';
+import { SkeletonDetail } from '@/components/skeleton';
 import { useBottomSpace } from '@/components/floating-tab-bar';
 import { useAuth } from '@/lib/auth-context';
 import { FEATURES } from '@/lib/features';
@@ -54,9 +48,9 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
 
   if (rec.isPending)
     return (
-      <View style={[styles.flex, styles.centerFill]}>
+      <View style={[styles.flex, styles.content]}>
         <Stack.Screen options={{ title }} />
-        <ActivityIndicator color={colors.navy} />
+        <SkeletonDetail fields={cfg.fields.length} />
       </View>
     );
   if (!row)
