@@ -87,7 +87,10 @@ export default function TabsLayout() {
         />
         <Tabs.Screen name="business" options={{ title: 'Business' }} />
         <Tabs.Screen name="dcr" options={{ title: 'DCR', href: sales ? undefined : null }} />
-        <Tabs.Screen name="tour-plan" options={{ title: 'Tour Plan' }} />
+        <Tabs.Screen
+          name="tour-plan"
+          options={{ title: 'Tour Plan', href: sales ? undefined : null }}
+        />
         <Tabs.Screen name="more" options={{ title: 'More' }} />
       </Tabs>
     </TabBarProvider>
