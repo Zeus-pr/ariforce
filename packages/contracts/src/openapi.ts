@@ -34,6 +34,13 @@ import {
   UnreadCount,
 } from './schemas/notifications';
 import { ApprovalDetail } from './schemas/approval-detail';
+import {
+  TourPlanItem,
+  TourPlanItemDecision,
+  TourPlanItemList,
+  TourPlanItemListQuery,
+  TourPlanItemUpsert,
+} from './schemas/tp-items';
 import * as z from 'zod';
 import { masterReadPermission } from './schemas/roles';
 import {
@@ -781,6 +788,95 @@ function buildDocument(): OpenApiDocument {
           operationId: 'listTourPlans',
           requestParams: { query: TourPlanListQuery },
           responses: { '200': { description: 'Page', ...json(page(TourPlan, 'TourPlanPage')) } },
+        }),
+      },
+      '/v1/tour-plans/items': {
+        get: op({
+          tags: ['TourPlans'],
+          operationId: 'listTourPlanItems',
+          summary: 'Tour plan items: mine=true for your own (newest first); else the team queue',
+          description:
+            'Without mine=true: items of your reporting line, never your own (approvals:decide or field:read, else 403), ordered by from. Use status=pending for the approval queue.',
+          requestParams: { query: TourPlanItemListQuery },
+          responses: {
+            '200': { description: 'Page', ...json(TourPlanItemList) },
+            '403': err('Team list without approvals:decide or field:read'),
+          },
+        }),
+        put: op({
+          tags: ['TourPlans'],
+          operationId: 'upsertTourPlanItem',
+          summary: 'Create (no id) or edit your draft/rejected item; the result is a draft',
+          requestBody: json(TourPlanItemUpsert),
+          responses: {
+            '200': { description: 'Saved (status draft)', ...json(TourPlanItem) },
+            '403': err('Not your item'),
+            '404': err('No such item'),
+            '409': err('TP_LOCKED (pending/approved) or VERSION_CONFLICT'),
+            '422': err(
+              'VALIDATION: to < from, more than 31 days, unknown/inactive or leave/holiday work type, details.kind mismatch, unknown or out-of-scope territories/users/SFC routes',
+            ),
+          },
+        }),
+      },
+      '/v1/tour-plans/items/{id}': {
+        get: op({
+          tags: ['TourPlans'],
+          operationId: 'getTourPlanItem',
+          summary: 'One item (owner, or the reporting line with approvals:decide/field:read)',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'OK', ...json(TourPlanItem) },
+            '404': err('Not found'),
+          },
+        }),
+        delete: op({
+          tags: ['TourPlans'],
+          operationId: 'deleteTourPlanItem',
+          summary: 'Delete your draft/rejected item',
+          requestParams: { path: IdParam },
+          responses: {
+            '204': { description: 'Deleted' },
+            '403': err('Not your item'),
+            '404': err('Not found'),
+            '409': err('TP_LOCKED (pending/approved)'),
+          },
+        }),
+      },
+      '/v1/tour-plans/items/{id}/submit': {
+        post: op({
+          tags: ['TourPlans'],
+          operationId: 'submitTourPlanItem',
+          summary: 'Send your draft/rejected item for approval (status pending)',
+          description:
+            'Creates one approval request routed to your reporting manager (anyone above with approvals:decide may decide; never yourself).',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'Pending', ...json(TourPlanItem) },
+            '403': err('Not your item'),
+            '404': err('Not found'),
+            '409': err(
+              'TP_LOCKED, or TP_OVERLAP (details.items): overlaps your pending/approved item',
+            ),
+            '422': err('TP_IN_PAST: from is before today (IST); or VALIDATION as for PUT'),
+          },
+        }),
+      },
+      '/v1/tour-plans/items/{id}/decision': {
+        post: op({
+          tags: ['TourPlans'],
+          operationId: 'decideTourPlanItem',
+          summary:
+            'Approve or reject a pending item (approvals:decide, reporting line, never your own)',
+          requestParams: { path: IdParam },
+          requestBody: json(TourPlanItemDecision),
+          responses: {
+            '200': { description: 'Decided', ...json(TourPlanItem) },
+            '403': err('Your own item, missing approvals:decide, or APPROVAL_NOT_YOUR_STEP'),
+            '404': err('Not found or outside your team'),
+            '409': err('CONFLICT: not pending'),
+            '422': err('REJECTION_REASON_REQUIRED'),
+          },
         }),
       },
       '/v1/tour-plans/standard': {

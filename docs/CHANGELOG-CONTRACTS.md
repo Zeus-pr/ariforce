@@ -10,21 +10,29 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
-## feat/dcr-pob-review (2026-10-29): approved tour plans as DCR draft cards
+## feat/dcr-pob-review (2026-10-29): tour plan items (one day or from-to) as DCR draft cards
 
-- Additive: `DcrOptions.tourPlanDrafts[]` (`DcrTourPlanDraft`: tourPlanId, submissionId, from, to,
-  dates, fields {workTypeId, band, territoryIds, workWithUserIds, details, sfcRoutes, notes},
-  entries, filedDates, draftDates, pendingDates, fileableDates). Approved TP days of this IST month
-  and later, grouped into runs of consecutive days with the same submission and entries. Shown
-  while a pending (not submitted/approved) day is today or later; fileableDates = today only.
-  Pure logic: `tourPlanDraftCards()`.
-- Additive: `TourPlanEntry.details` (DcrDetails, nullable) and `TourPlanEntry.sfcRoutes`
-  (DcrSfcRouteChoice[]) so a TP carries the DCR fields; Work With = `jointWorkUserIds`.
-- Additive: `DcrDraftPut.tourPlanId` (optional). Must equal the approved TP of the date, else 422
-  VALIDATION with details.reason TOUR_PLAN_MISMATCH.
+Migration 0050 (additive: table tour_plan_items, dcrs.tour_plan_item_id).
+
+- Additive: `TourPlanItem` {id, companyId, userId, userName, from, to (<= 31 days), status
+  draft|pending|approved|rejected, rejectionReason, plan {workTypeId, territoryIds,
+  workWithUserIds, sfcRoutes[{hqTerritoryId, sfcRouteId}], details|null}, filedDates, version,
+  createdAt, updatedAt, submittedAt, decidedAt, decidedBy}.
+- New endpoints: GET /v1/tour-plans/items (?mine=true own, newest first; else team, never own,
+  approvals:decide or field:read; ?status), GET/DELETE /v1/tour-plans/items/{id}, PUT
+  /v1/tour-plans/items (create or edit draft/rejected -> draft), POST .../{id}/submit (-> pending,
+  one approval request routed like the monthly TP), POST .../{id}/decision {decision, comment}
+  (approvals:decide, reporting line, never your own; comment required to reject).
+  Errors: TP_LOCKED, TP_OVERLAP, TP_IN_PAST, VERSION_CONFLICT, REJECTION_REASON_REQUIRED.
+- Additive: `DcrOptions.tourPlanDrafts[]` = approved items + {pendingDates, draftDates,
+  fileableDates}. Listed while an unfiled day is today (IST) or later.
+- Additive: `DcrDraftPut.tourPlanItemId`; `Dcr.tourPlanItemId`. The date must lie in an approved
+  item of yours (422 VALIDATION, details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date
+  may be drafted; submit still needs the day. Without it, the covering approved item is linked.
 - Behaviour (relaxing): 422 DEVIATION_REASON_REQUIRED is no longer raised (DCR flow submit and legacy
-  PUT /v1/dcrs). deviationReason is still optional and stored.
-- No DB change.
+  PUT /v1/dcrs).
+- GET /v1/approvals omits tour plan item requests (they have their own queue).
+- Monthly TourPlan unchanged (TourPlanEntry is back to its c44b325 shape).
 
 ## feat/dcr-pob-review (2026-10-29): product displayName, doctor detailing picker
 

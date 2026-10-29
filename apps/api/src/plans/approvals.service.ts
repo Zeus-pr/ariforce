@@ -544,6 +544,8 @@ export class ApprovalsService {
         q.status === 'pending' ? ['pending', 'draft'] : q.status ? [q.status] : undefined;
       const where = [
         this.visible(p),
+        // Tour plan items have their own queue (GET /v1/tour-plans/items); not an Approval subject.
+        ne(approvalRequests.entityType, 'tour_plan_item'),
         state ? inArray(approvalRequests.state, state as never[]) : undefined,
         q.subjectType
           ? eq(approvalRequests.entityType, ENTITY[q.subjectType] ?? ('none' as never))

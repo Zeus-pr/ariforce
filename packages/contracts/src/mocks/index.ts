@@ -69,7 +69,13 @@ import {
   Product,
   productDisplayName,
   groupDetailProducts,
-  tourPlanDraftCards,
+  tpItemCard,
+  tpItemFiledDates,
+  TourPlanItem,
+  TourPlanItemDecision,
+  TourPlanItemList,
+  TourPlanItemListQuery,
+  TourPlanItemUpsert,
   ProductCreate,
   ProductHqMapping,
   StandardTourPlan,
@@ -570,6 +576,16 @@ function fieldHandlers(baseUrl: string) {
   const inbox = seedNotifications();
   const checkIns: CheckIn[] = [];
   const tourPlans: TourPlan[] = [];
+  /** Tour plan items (TP feature); single-user mock: queue/decision only see other users' items. */
+  const tpItems: TourPlanItem[] = [];
+  const itemOut = (it: TourPlanItem): TourPlanItem => ({
+    ...it,
+    filedDates: tpItemFiledDates(
+      it.from,
+      it.to,
+      dcrs.filter((x) => x.userId === it.userId),
+    ),
+  });
   let stp: StandardTourPlan | null = null;
   const dcrs: Dcr[] = [];
   setMockSubmittedDcrLookup((userId, from, to) =>
@@ -628,8 +644,7 @@ function fieldHandlers(baseUrl: string) {
     source: 'own' as const,
   });
   // Multi-draft: several drafts per user and day, at most one submitted report.
-  const myDay = (date: string) =>
-    dcrs.filter((x) => x.date === date && x.userId === fx.me.id && !x.deletedAt);
+  const myDay = (date: string) => dcrs.filter((x) => x.date === date && x.userId === fx.me.id);
   const submittedOf = (date: string) =>
     myDay(date).find((x) => x.status !== 'draft' && x.status !== 'rejected');
   const rejectedOf = (date: string) =>
@@ -682,36 +697,17 @@ function fieldHandlers(baseUrl: string) {
                 requestedAt: serverTime(),
               }
             : null,
-          tourPlanDrafts: tourPlanDraftCards(
-            tourPlans
-              .filter((t) => t.userId === fx.me.id)
-              .map((t) => ({
-                tourPlanId: t.id,
-                days: t.days.map((x) => ({
-                  date: x.date,
-                  entries: x.entries,
-                  status: x.status ?? 'draft',
-                  submissionId: x.submissionId ?? null,
-                })),
-              })),
-            dcrs.filter((x) => x.userId === fx.me.id),
-            istDate(),
-          ).map((c) => {
-            const e = c.entries[0]!;
-            const wt = fx.workTypes.find((w) => w.id === e.workTypeId);
-            return {
-              ...c,
-              fields: {
-                workTypeId: e.workTypeId,
-                band: wt ? mockBand(wt) : null,
-                territoryIds: e.territoryIds ?? [],
-                workWithUserIds: e.jointWorkUserIds ?? [],
-                details: e.details ?? null,
-                sfcRoutes: e.sfcRoutes ?? [],
-                notes: e.notes ?? null,
-              },
-            };
-          }),
+          tourPlanDrafts: tpItems
+            .filter((it) => it.userId === fx.me.id)
+            .sort((a, b) => a.from.localeCompare(b.from))
+            .flatMap((it) => {
+              const c = tpItemCard(
+                it,
+                dcrs.filter((x) => x.userId === fx.me.id),
+                today(),
+              );
+              return c ? [{ ...itemOut(it), ...c }] : [];
+            }),
           products: productOptions(),
           detailProducts: groupDetailProducts(DcrOptions.shape.products.parse(productOptions())),
         }),
@@ -765,12 +761,25 @@ function fieldHandlers(baseUrl: string) {
     http.put(`${baseUrl}/v1/dcrs/draft`, async ({ request }) => {
       const b = DcrDraftPut.safeParse(await request.json());
       if (!b.success) return validation('Invalid DCR', z.treeifyError(b.error));
-      if (b.data.date > today()) return validation('DCR date is in the future');
+      const tpItem = tpItems.find(
+        (it) =>
+          it.userId === fx.me.id &&
+          it.status === 'approved' &&
+          it.from <= b.data.date &&
+          it.to >= b.data.date,
+      );
+      if (b.data.tourPlanItemId && b.data.tourPlanItemId !== tpItem?.id)
+        return dcrError(422, 'VALIDATION', 'Not your approved tour plan for this date', {
+          field: 'tourPlanItemId',
+          reason: 'TOUR_PLAN_ITEM_MISMATCH',
+        });
+      if (b.data.date > today() && !b.data.tourPlanItemId)
+        return validation('DCR date is in the future');
       if (isLocked(b.data.date))
         return dcrError(409, 'DAY_LOCKED', 'Day locked; request a correction');
       let d: (typeof dcrs)[number] | undefined;
       if (b.data.id) {
-        d = dcrs.find((x) => x.id === b.data.id && x.userId === fx.me.id && !x.deletedAt);
+        d = dcrs.find((x) => x.id === b.data.id && x.userId === fx.me.id);
         if (!d) return notFound();
         if (d.status !== 'draft')
           return dcrError(409, 'ALREADY_SUBMITTED', 'Read-only after submit');
@@ -924,7 +933,7 @@ function fieldHandlers(baseUrl: string) {
       return HttpResponse.json(Dcr.parse(withLock(d)));
     }),
     http.delete(`${baseUrl}/v1/dcrs/:id`, ({ params }) => {
-      const d = dcrs.find((x) => x.id === params.id && x.userId === fx.me.id && !x.deletedAt);
+      const d = dcrs.find((x) => x.id === params.id && x.userId === fx.me.id);
       if (!d) return notFound();
       if (d.status !== 'draft')
         return dcrError(409, 'ALREADY_SUBMITTED', 'Submitted DCRs are read-only');
@@ -1019,7 +1028,7 @@ function fieldHandlers(baseUrl: string) {
     http.post(`${baseUrl}/v1/dcrs/:id/decision`, async ({ params, request }) => {
       const b = DcrDecision.safeParse(await request.json());
       if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
-      const d = dcrs.find((x) => x.id === params.id && !x.deletedAt);
+      const d = dcrs.find((x) => x.id === params.id);
       if (!d) return notFound();
       if (d.userId === fx.me.id)
         return dcrError(403, 'FORBIDDEN', 'You cannot review your own DCR');
@@ -1220,6 +1229,170 @@ function fieldHandlers(baseUrl: string) {
         [...days.values()].map((d) => ({ ...d, id: `${d.userId}|${d.date}` })) as never,
         new URL(request.url),
       );
+    }),
+    http.get(`${baseUrl}/v1/tour-plans/items`, ({ request }) => {
+      const q = TourPlanItemListQuery.safeParse(
+        Object.fromEntries(new URL(request.url).searchParams),
+      );
+      if (!q.success) return validation('Invalid query', z.treeifyError(q.error));
+      const mine = q.data.mine === 'true';
+      const rows = tpItems
+        .filter((it) => (mine ? it.userId === fx.me.id : it.userId !== fx.me.id))
+        .filter((it) => !q.data.status || it.status === q.data.status)
+        .sort((a, b) =>
+          mine ? b.updatedAt.localeCompare(a.updatedAt) : a.from.localeCompare(b.from),
+        );
+      const off = decodeCursor(q.data.cursor ?? null);
+      const page = rows.slice(off, off + q.data.limit);
+      return HttpResponse.json(
+        TourPlanItemList.parse({
+          items: page.map(itemOut),
+          nextCursor: off + q.data.limit < rows.length ? encodeCursor(off + q.data.limit) : null,
+          serverTime: serverTime(),
+        }),
+      );
+    }),
+    http.put(`${baseUrl}/v1/tour-plans/items`, async ({ request }) => {
+      const b = TourPlanItemUpsert.safeParse(await request.json());
+      if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
+      const wt = fx.workTypes.find((w) => w.id === b.data.plan.workTypeId && w.active);
+      if (!wt)
+        return dcrError(422, 'VALIDATION', 'Unknown or inactive work type', {
+          field: 'plan.workTypeId',
+        });
+      if (wt.kind === 'leave' || wt.kind === 'holiday')
+        return dcrError(422, 'VALIDATION', 'Plan leave through a leave request, not a tour plan', {
+          field: 'plan.workTypeId',
+        });
+      const want = dcrDetailsKind(wt);
+      if (b.data.plan.details && b.data.plan.details.kind !== want)
+        return dcrError(
+          422,
+          'VALIDATION',
+          want ? `details.kind must be '${want}'` : 'No details for this work type',
+          {
+            field: 'plan.details',
+            expected: want,
+          },
+        );
+      const ts = serverTime();
+      if (!b.data.id) {
+        const it: TourPlanItem = {
+          id: crypto.randomUUID(),
+          companyId: fx.COMPANY_ID,
+          userId: fx.me.id,
+          userName: fx.me.name,
+          from: b.data.from,
+          to: b.data.to,
+          status: 'draft',
+          rejectionReason: null,
+          plan: b.data.plan,
+          filedDates: [],
+          version: 1,
+          createdAt: ts,
+          updatedAt: ts,
+          submittedAt: null,
+          decidedAt: null,
+          decidedBy: null,
+        };
+        tpItems.push(it);
+        return HttpResponse.json(itemOut(it));
+      }
+      const it = tpItems.find((x) => x.id === b.data.id);
+      if (!it) return notFound();
+      if (it.userId !== fx.me.id)
+        return dcrError(403, 'FORBIDDEN', 'Only the owner can change a tour plan');
+      if (it.status !== 'draft' && it.status !== 'rejected')
+        return dcrError(409, 'TP_LOCKED', 'Only a draft or rejected tour plan can be changed', {
+          status: it.status,
+        });
+      if (b.data.version !== undefined && b.data.version !== it.version)
+        return dcrError(409, 'VERSION_CONFLICT', 'Tour plan changed since you read it', {
+          version: it.version,
+        });
+      Object.assign(it, {
+        from: b.data.from,
+        to: b.data.to,
+        plan: b.data.plan,
+        status: 'draft',
+        rejectionReason: null,
+        submittedAt: null,
+        decidedAt: null,
+        decidedBy: null,
+        version: it.version + 1,
+        updatedAt: ts,
+      });
+      return HttpResponse.json(itemOut(it));
+    }),
+    http.get(`${baseUrl}/v1/tour-plans/items/:id`, ({ params }) => {
+      const it = tpItems.find((x) => x.id === params.id);
+      return it ? HttpResponse.json(itemOut(it)) : notFound();
+    }),
+    http.post(`${baseUrl}/v1/tour-plans/items/:id/submit`, ({ params }) => {
+      const it = tpItems.find((x) => x.id === params.id);
+      if (!it) return notFound();
+      if (it.userId !== fx.me.id) return dcrError(403, 'FORBIDDEN', 'Only the owner can submit');
+      if (it.status !== 'draft' && it.status !== 'rejected')
+        return dcrError(409, 'TP_LOCKED', 'Only a draft or rejected tour plan can be changed', {
+          status: it.status,
+        });
+      if (it.from < today())
+        return dcrError(422, 'TP_IN_PAST', 'A tour plan must start today or later', {
+          field: 'from',
+        });
+      const hits = tpItems.filter(
+        (x) =>
+          x.id !== it.id &&
+          x.userId === it.userId &&
+          (x.status === 'pending' || x.status === 'approved') &&
+          x.from <= it.to &&
+          x.to >= it.from,
+      );
+      if (hits.length)
+        return dcrError(409, 'TP_OVERLAP', 'Overlaps a pending or approved tour plan', {
+          items: hits.map((x) => ({ id: x.id, from: x.from, to: x.to })),
+        });
+      const ts = serverTime();
+      Object.assign(it, {
+        status: 'pending',
+        submittedAt: ts,
+        updatedAt: ts,
+        version: it.version + 1,
+      });
+      return HttpResponse.json(itemOut(it));
+    }),
+    http.post(`${baseUrl}/v1/tour-plans/items/:id/decision`, async ({ params, request }) => {
+      const b = TourPlanItemDecision.safeParse(await request.json());
+      if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
+      const it = tpItems.find((x) => x.id === params.id);
+      if (!it) return notFound();
+      if (it.userId === fx.me.id)
+        return dcrError(403, 'FORBIDDEN', 'You cannot decide your own tour plan');
+      if (it.status !== 'pending') return conflict('This tour plan is not waiting for approval');
+      const comment = b.data.comment?.trim() || null;
+      if (b.data.decision === 'reject' && !comment)
+        return dcrError(422, 'REJECTION_REASON_REQUIRED', 'A reason is required to reject');
+      const ts = serverTime();
+      Object.assign(it, {
+        status: b.data.decision === 'approve' ? 'approved' : 'rejected',
+        rejectionReason: b.data.decision === 'reject' ? comment : null,
+        decidedAt: ts,
+        decidedBy: fx.me.id,
+        updatedAt: ts,
+        version: it.version + 1,
+      });
+      return HttpResponse.json(itemOut(it));
+    }),
+    http.delete(`${baseUrl}/v1/tour-plans/items/:id`, ({ params }) => {
+      const it = tpItems.find((x) => x.id === params.id);
+      if (!it) return notFound();
+      if (it.userId !== fx.me.id) return dcrError(403, 'FORBIDDEN', 'Only the owner can delete');
+      if (it.status !== 'draft' && it.status !== 'rejected')
+        return dcrError(409, 'TP_LOCKED', 'Only a draft or rejected tour plan can be changed', {
+          status: it.status,
+        });
+      tpItems.splice(tpItems.indexOf(it), 1);
+      return new HttpResponse(null, { status: 204 });
     }),
     http.get(`${baseUrl}/v1/tour-plans`, ({ request }) =>
       list(TourPlan, tourPlans, new URL(request.url)),

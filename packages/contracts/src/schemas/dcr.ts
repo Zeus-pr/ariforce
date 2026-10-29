@@ -1,7 +1,8 @@
 import * as z from 'zod';
 import { DateOnly, Id, Timestamp } from './common';
 import { DcrBand, DcrDetails, DcrSfcRouteChoice, DcrSfcSource } from './dcr-parts';
-import { Dcr, DcrCallInput, TourPlanEntry } from './field';
+import { Dcr, DcrCallInput } from './field';
+import { TourPlanItem } from './tp-items';
 import { Product } from './products';
 import { SfcCategory, SfcTravelMode } from './sfc';
 
@@ -43,40 +44,18 @@ export const DcrProductOption = Product.pick({
 }).meta({ id: 'DcrProductOption' });
 export type DcrProductOption = z.infer<typeof DcrProductOption>;
 
-/** An approved tour plan run (one day or consecutive days with the same plan) as a DCR draft card. */
-export const DcrTourPlanDraft = z
-  .object({
-    tourPlanId: Id,
-    submissionId: Id.nullable().meta({ description: 'The approved TP submission of these days' }),
-    from: DateOnly,
-    to: DateOnly,
-    dates: z.array(DateOnly).min(1).meta({ description: 'Every day of the card, from..to' }),
-    fields: z
-      .object({
-        workTypeId: Id,
-        band: DcrBand.nullable(),
-        territoryIds: z.array(Id),
-        workWithUserIds: z.array(Id),
-        details: DcrDetails.nullable(),
-        sfcRoutes: z.array(DcrSfcRouteChoice),
-        notes: z.string().nullable(),
-      })
-      .meta({ description: 'DCR prefill (from the first planned session of the day)' }),
-    entries: z.array(TourPlanEntry).meta({ description: 'All planned sessions (am/pm/full)' }),
-    filedDates: z.array(DateOnly).meta({
-      description:
-        'Days with a submitted/approved DCR (any report of the day; rejected ones do not count)',
-    }),
-    draftDates: z
-      .array(DateOnly)
-      .meta({ description: 'Pending days that already have a DCR draft' }),
-    pendingDates: z.array(DateOnly).meta({ description: 'dates minus filedDates' }),
-    fileableDates: z.array(DateOnly).meta({
-      description:
-        'Pending days that can be filed now: today (IST) only; future days open on their date, past days are locked (use the correction flow)',
-    }),
-  })
-  .meta({ id: 'DcrTourPlanDraft' });
+/** An approved tour plan item as a DCR draft card (one card per item, one DCR per day). */
+export const DcrTourPlanDraft = TourPlanItem.extend({
+  pendingDates: z.array(DateOnly).meta({
+    description:
+      'Unfiled days from today (IST) on; the card is listed only while this is non-empty',
+  }),
+  draftDates: z.array(DateOnly).meta({ description: 'pendingDates that already have a DCR draft' }),
+  fileableDates: z.array(DateOnly).meta({
+    description:
+      'Days that can be submitted now (today only). Future pendingDates accept drafts (with tourPlanItemId) but not submit',
+  }),
+}).meta({ id: 'DcrTourPlanDraft' });
 export type DcrTourPlanDraft = z.infer<typeof DcrTourPlanDraft>;
 
 /** Doctor detailing picker entry: one per displayName (all strengths of a product together). */
@@ -262,9 +241,9 @@ export const DcrDraftPut = z
       .meta({ description: 'One per HQ of the day (field only). Omit to keep the saved choices' }),
     details: DcrDetails.nullable().optional(),
     deviationReason: z.string().max(500).nullable().optional(),
-    tourPlanId: Id.nullable().optional().meta({
+    tourPlanItemId: Id.nullable().optional().meta({
       description:
-        'Optional: the tourPlanDrafts[] card this day is filed from. Must be your plan whose day is approved for this date (else 422 VALIDATION, details.reason TOUR_PLAN_MISMATCH). The server links the approved TP of the date anyway',
+        'The approved TourPlanItem this day is filed from. The date must lie in its from..to and it must be yours and approved, else 422 VALIDATION (details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date in the range may be drafted (submit still opens on the day). Omitted: the server links the approved item covering the date, if any. No deviation reason is ever required',
     }),
     calls: z.array(DcrCallInput).max(60).default([]),
     version: z.int().min(1).optional().meta({ description: 'Row version from the last read' }),

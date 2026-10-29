@@ -5,8 +5,6 @@ import {
   type DcrCall,
   type DcrUpsert,
   type TourPlan,
-  istDate,
-  tourPlanDraftCards,
 } from '@ariforce/contracts';
 import {
   chemists,
@@ -25,19 +23,7 @@ import {
   workTypes,
   type Tx,
 } from '@ariforce/db';
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  gte,
-  inArray,
-  isNull,
-  ne,
-  notInArray,
-  sql,
-  type SQL,
-} from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, notInArray, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type * as z from 'zod';
 import type { Principal } from '../auth/principal';
@@ -180,6 +166,7 @@ export class DcrService {
         workTypeId: r.workTypeId,
         territoryIds: r.territoryIds.length ? r.territoryIds : r.territoryId ? [r.territoryId] : [],
         tourPlanId: r.tourPlanId,
+        tourPlanItemId: r.tourPlanItemId ?? null,
         deviationReason: r.deviationReason,
         status:
           r.status === 'approved' || r.status === 'rejected'
@@ -351,48 +338,6 @@ export class DcrService {
     const entries =
       ((tp.days ?? []) as TourPlan['days']).find((d) => d.date === date)?.entries ?? [];
     return { tourPlanId: tp.id, entries };
-  }
-
-  /**
-   * The rep's approved TP days as DCR draft cards (TP feature): plans of this IST month and later,
-   * reports from the first card day on. Pure grouping/visibility in contracts tourPlanDraftCards.
-   */
-  async tourPlanCards(tx: Tx, userId: string, today = istDate()) {
-    const tps = await tx
-      .select()
-      .from(tourPlans)
-      .where(
-        and(
-          eq(tourPlans.userId, userId),
-          gte(tourPlans.month, `${today.slice(0, 7)}-01`),
-          isNull(tourPlans.deletedAt),
-        ),
-      );
-    if (!tps.length) return [];
-    const subs = await loadSubs(
-      tx,
-      tps.map((t) => t.id),
-    );
-    const plans = tps.map((tp) => {
-      const states = dayStates(tp, subs);
-      return {
-        tourPlanId: tp.id,
-        days: ((tp.days ?? []) as TourPlan['days']).map((d) => ({
-          date: d.date,
-          entries: d.entries,
-          status: states.get(d.date)?.status ?? 'draft',
-          submissionId: states.get(d.date)?.submissionId ?? null,
-        })),
-      };
-    });
-    const first = plans.flatMap((pl) => pl.days.map((d) => d.date)).sort()[0];
-    const reports = first
-      ? await tx
-          .select({ date: dcrs.date, status: dcrs.status })
-          .from(dcrs)
-          .where(and(eq(dcrs.userId, userId), gte(dcrs.date, first), isNull(dcrs.deletedAt)))
-      : [];
-    return tourPlanDraftCards(plans, reports, today);
   }
 
   async validateCalls(tx: Tx, p: Principal, b: Pick<Upsert, 'calls'>, dcrId: string | undefined) {

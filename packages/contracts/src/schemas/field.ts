@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { DcrBand, DcrDetails, DcrSfcRoute, DcrSfcRouteChoice } from './dcr-parts';
+import { DcrBand, DcrDetails, DcrSfcRoute } from './dcr-parts';
 import { UserRef, DateOnly, GeoPoint, Id, Month, Syncable, Timestamp, listQuery } from './common';
 import { RoleKey } from './roles';
 
@@ -187,21 +187,10 @@ export const TourPlanEntry = z
     session: z.enum(['full', 'am', 'pm']).meta({ description: 'Multi-session days (#21)' }),
     workTypeId: Id,
     territoryIds: z.array(Id).meta({ description: 'Patches/territories to work' }),
-    jointWorkUserIds: z
-      .array(Id)
-      .default([])
-      .meta({ description: "Work With (the DCR's workWithUserIds)" }),
+    jointWorkUserIds: z.array(Id).default([]),
     plannedDoctorIds: z.array(Id).default([]),
     plannedChemistIds: z.array(Id).default([]),
     notes: z.string().max(500).nullable().optional(),
-    details: DcrDetails.nullable().optional().meta({
-      description:
-        "Same as the DCR's details (kind must match the work type's detailsKind); prefills the DCR",
-    }),
-    sfcRoutes: z.array(DcrSfcRouteChoice).max(20).optional().meta({
-      description:
-        'Planned SFC route per HQ (as DCR sfcRoutes); prefills the DCR, checked at DCR submit',
-    }),
   })
   .meta({ id: 'TourPlanEntry' });
 export const TourPlanDayStatus = z.enum(['draft', 'submitted', 'approved', 'rejected']).meta({
@@ -451,6 +440,9 @@ export const Dcr = Syncable.extend({
   workTypeId: Id,
   territoryIds: z.array(Id),
   tourPlanId: Id.nullable(),
+  tourPlanItemId: Id.nullable()
+    .optional()
+    .meta({ description: 'Approved TourPlanItem this report was filed from' }),
   deviationReason: z
     .string()
     .max(500)

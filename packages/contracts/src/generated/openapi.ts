@@ -843,6 +843,82 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/tour-plans/items': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Tour plan items: mine=true for your own (newest first); else the team queue
+     * @description Without mine=true: items of your reporting line, never your own (approvals:decide or field:read, else 403), ordered by from. Use status=pending for the approval queue.
+     */
+    get: operations['listTourPlanItems'];
+    /** Create (no id) or edit your draft/rejected item; the result is a draft */
+    put: operations['upsertTourPlanItem'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/tour-plans/items/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** One item (owner, or the reporting line with approvals:decide/field:read) */
+    get: operations['getTourPlanItem'];
+    put?: never;
+    post?: never;
+    /** Delete your draft/rejected item */
+    delete: operations['deleteTourPlanItem'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/tour-plans/items/{id}/submit': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Send your draft/rejected item for approval (status pending)
+     * @description Creates one approval request routed to your reporting manager (anyone above with approvals:decide may decide; never yourself).
+     */
+    post: operations['submitTourPlanItem'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/tour-plans/items/{id}/decision': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Approve or reject a pending item (approvals:decide, reporting line, never your own) */
+    post: operations['decideTourPlanItem'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/tour-plans/standard': {
     parameters: {
       query?: never;
@@ -2849,43 +2925,64 @@ export interface components {
     };
     /** @enum {string} */
     ApprovalStatus: 'draft' | 'submitted' | 'approved' | 'rejected' | 'recalled';
-    StandardTourPlanUpsert: {
-      days: components['schemas']['StandardTourPlanDay'][];
-      version?: number;
-    };
-    StandardTourPlanDay: {
-      week: number;
-      weekday: number;
-      entries: components['schemas']['TourPlanEntry'][];
-    };
-    TourPlanEntry: {
+    /** @enum {string} */
+    TourPlanItemStatus: 'draft' | 'pending' | 'approved' | 'rejected';
+    TourPlanItemUpsert: {
       /**
-       * @description Multi-session days (#21)
-       * @enum {string}
+       * Format: uuid
+       * @description Omit to create; else your draft or rejected item
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
-      session: 'full' | 'am' | 'pm';
+      id?: string;
+      /** @description Row version from the last read (updates) */
+      version?: number;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+      plan: components['schemas']['TourPlanItemPlan'];
+    };
+    TourPlanItemPlan: {
       /**
        * Format: uuid
        * @description UUIDv7 identifier
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       workTypeId: string;
-      /** @description Patches/territories to work */
+      /** @default [] */
       territoryIds: string[];
+      /** @default [] */
+      workWithUserIds: string[];
       /**
-       * @description Work With (the DCR's workWithUserIds)
+       * @description One route per HQ of the day (as DCR sfcRoutes); fully checked at DCR submit
        * @default []
        */
-      jointWorkUserIds: string[];
-      /** @default [] */
-      plannedDoctorIds: string[];
-      /** @default [] */
-      plannedChemistIds: string[];
-      notes?: string | null;
-      /** @description Same as the DCR's details (kind must match the work type's detailsKind); prefills the DCR */
-      details?: components['schemas']['DcrDetails'] | null;
-      /** @description Planned SFC route per HQ (as DCR sfcRoutes); prefills the DCR, checked at DCR submit */
-      sfcRoutes?: components['schemas']['DcrSfcRouteChoice'][];
+      sfcRoutes: components['schemas']['DcrSfcRouteChoice'][];
+      /**
+       * @description Meeting/training/office details; kind must match the work type's detailsKind. Never leave
+       * @default null
+       */
+      details: components['schemas']['DcrDetails'] | null;
+    };
+    DcrSfcRouteChoice: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      sfcRouteId: string;
     };
     /** @description Non-field day details; kind must match the work type (DcrWorkTypeOption.detailsKind) */
     DcrDetails:
@@ -2968,19 +3065,42 @@ export interface components {
        */
       leaveRequestId: string;
     };
-    DcrSfcRouteChoice: {
+    TourPlanItemDecision: {
+      /** @enum {string} */
+      decision: 'approve' | 'reject';
+      /** @description Required (1-500) to reject: else 422 REJECTION_REASON_REQUIRED */
+      comment?: string;
+    };
+    StandardTourPlanUpsert: {
+      days: components['schemas']['StandardTourPlanDay'][];
+      version?: number;
+    };
+    StandardTourPlanDay: {
+      week: number;
+      weekday: number;
+      entries: components['schemas']['TourPlanEntry'][];
+    };
+    TourPlanEntry: {
+      /**
+       * @description Multi-session days (#21)
+       * @enum {string}
+       */
+      session: 'full' | 'am' | 'pm';
       /**
        * Format: uuid
        * @description UUIDv7 identifier
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
-      hqTerritoryId: string;
-      /**
-       * Format: uuid
-       * @description UUIDv7 identifier
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      sfcRouteId: string;
+      workTypeId: string;
+      /** @description Patches/territories to work */
+      territoryIds: string[];
+      /** @default [] */
+      jointWorkUserIds: string[];
+      /** @default [] */
+      plannedDoctorIds: string[];
+      /** @default [] */
+      plannedChemistIds: string[];
+      notes?: string | null;
     };
     TourPlanUpsert: {
       days: components['schemas']['TourPlanDay'][];
@@ -3157,8 +3277,8 @@ export interface components {
       sfcRoutes?: components['schemas']['DcrSfcRouteChoice'][];
       details?: components['schemas']['DcrDetails'] | null;
       deviationReason?: string | null;
-      /** @description Optional: the tourPlanDrafts[] card this day is filed from. Must be your plan whose day is approved for this date (else 422 VALIDATION, details.reason TOUR_PLAN_MISMATCH). The server links the approved TP of the date anyway */
-      tourPlanId?: string | null;
+      /** @description The approved TourPlanItem this day is filed from. The date must lie in its from..to and it must be yours and approved, else 422 VALIDATION (details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date in the range may be drafted (submit still opens on the day). Omitted: the server links the approved item covering the date, if any. No deviation reason is ever required */
+      tourPlanItemId?: string | null;
       calls?: components['schemas']['DcrCallInput'][];
       /** @description Row version from the last read */
       version?: number;
@@ -4981,6 +5101,66 @@ export interface components {
       rejectedBy: components['schemas']['UserRef'] | null;
       rejectedAt: string | null;
     };
+    TourPlanItemList: {
+      items: components['schemas']['TourPlanItem'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+    };
+    TourPlanItem: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      userName: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description from..to inclusive, at most 31 days
+       */
+      to: string;
+      status: components['schemas']['TourPlanItemStatus'];
+      /** @description Set while rejected */
+      rejectionReason: string | null;
+      plan: components['schemas']['TourPlanItemPlanOutput'];
+      /** @description Days in from..to with a counted DCR of the owner (submitted/approved; rejected don't count) */
+      filedDates: string[];
+      version: number;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      submittedAt: string | null;
+      decidedAt: string | null;
+      decidedBy: string | null;
+    };
     StandardTourPlan: {
       /**
        * Format: uuid
@@ -5099,6 +5279,8 @@ export interface components {
       workTypeId: string;
       territoryIds: string[];
       tourPlanId: string | null;
+      /** @description Approved TourPlanItem this report was filed from */
+      tourPlanItemId?: string | null;
       /** @description Required when worked differs from the approved TP (#22) */
       deviationReason: string | null;
       /**
@@ -5390,9 +5572,20 @@ export interface components {
        * @description UUIDv7 identifier
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
-      tourPlanId: string;
-      /** @description The approved TP submission of these days */
-      submissionId: string | null;
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      userName: string;
       /**
        * Format: date
        * @description Calendar date (YYYY-MM-DD, IST)
@@ -5400,35 +5593,34 @@ export interface components {
       from: string;
       /**
        * Format: date
-       * @description Calendar date (YYYY-MM-DD, IST)
+       * @description from..to inclusive, at most 31 days
        */
       to: string;
-      /** @description Every day of the card, from..to */
-      dates: string[];
-      /** @description DCR prefill (from the first planned session of the day) */
-      fields: {
-        /**
-         * Format: uuid
-         * @description UUIDv7 identifier
-         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-         */
-        workTypeId: string;
-        band: components['schemas']['DcrBand'] | null;
-        territoryIds: string[];
-        workWithUserIds: string[];
-        details: components['schemas']['DcrDetailsOutput'] | null;
-        sfcRoutes: components['schemas']['DcrSfcRouteChoiceOutput'][];
-        notes: string | null;
-      };
-      /** @description All planned sessions (am/pm/full) */
-      entries: components['schemas']['TourPlanEntryOutput'][];
-      /** @description Days with a submitted/approved DCR (any report of the day; rejected ones do not count) */
+      status: components['schemas']['TourPlanItemStatus'];
+      /** @description Set while rejected */
+      rejectionReason: string | null;
+      plan: components['schemas']['TourPlanItemPlanOutput'];
+      /** @description Days in from..to with a counted DCR of the owner (submitted/approved; rejected don't count) */
       filedDates: string[];
-      /** @description Pending days that already have a DCR draft */
-      draftDates: string[];
-      /** @description dates minus filedDates */
+      version: number;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      submittedAt: string | null;
+      decidedAt: string | null;
+      decidedBy: string | null;
+      /** @description Unfiled days from today (IST) on; the card is listed only while this is non-empty */
       pendingDates: string[];
-      /** @description Pending days that can be filed now: today (IST) only; future days open on their date, past days are locked (use the correction flow) */
+      /** @description pendingDates that already have a DCR draft */
+      draftDates: string[];
+      /** @description Days that can be submitted now (today only). Future pendingDates accept drafts (with tourPlanItemId) but not submit */
       fileableDates: string[];
     };
     DcrDetailProduct: {
@@ -7224,20 +7416,49 @@ export interface components {
       workTypeId: string;
       /** @description Patches/territories to work */
       territoryIds: string[];
-      /**
-       * @description Work With (the DCR's workWithUserIds)
-       * @default []
-       */
+      /** @default [] */
       jointWorkUserIds: string[];
       /** @default [] */
       plannedDoctorIds: string[];
       /** @default [] */
       plannedChemistIds: string[];
       notes?: string | null;
-      /** @description Same as the DCR's details (kind must match the work type's detailsKind); prefills the DCR */
-      details?: components['schemas']['DcrDetailsOutput'] | null;
-      /** @description Planned SFC route per HQ (as DCR sfcRoutes); prefills the DCR, checked at DCR submit */
-      sfcRoutes?: components['schemas']['DcrSfcRouteChoiceOutput'][];
+    };
+    TourPlanItemPlanOutput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      /** @default [] */
+      territoryIds: string[];
+      /** @default [] */
+      workWithUserIds: string[];
+      /**
+       * @description One route per HQ of the day (as DCR sfcRoutes); fully checked at DCR submit
+       * @default []
+       */
+      sfcRoutes: components['schemas']['DcrSfcRouteChoiceOutput'][];
+      /**
+       * @description Meeting/training/office details; kind must match the work type's detailsKind. Never leave
+       * @default null
+       */
+      details: components['schemas']['DcrDetailsOutput'] | null;
+    };
+    DcrSfcRouteChoiceOutput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      sfcRouteId: string;
     };
     /** @description Non-field day details; kind must match the work type (DcrWorkTypeOption.detailsKind) */
     DcrDetailsOutput:
@@ -7319,20 +7540,6 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       leaveRequestId: string;
-    };
-    DcrSfcRouteChoiceOutput: {
-      /**
-       * Format: uuid
-       * @description UUIDv7 identifier
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      hqTerritoryId: string;
-      /**
-       * Format: uuid
-       * @description UUIDv7 identifier
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      sfcRouteId: string;
     };
     StandardTourPlanDayOutput: {
       week: number;
@@ -10888,6 +11095,366 @@ export interface operations {
       };
       /** @description Signed in but not allowed (role, hierarchy or tenant) */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listTourPlanItems: {
+    parameters: {
+      query?: {
+        /** @description true: the caller's items (newest first). Else the team's items, never your own (approvals:decide or field:read), oldest from first */
+        mine?: 'true' | 'false';
+        status?: components['schemas']['TourPlanItemStatus'];
+        limit?: number;
+        cursor?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlanItemList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Team list without approvals:decide or field:read */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  upsertTourPlanItem: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['TourPlanItemUpsert'];
+      };
+    };
+    responses: {
+      /** @description Saved (status draft) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlanItem'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not your item */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description No such item */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TP_LOCKED (pending/approved) or VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION: to < from, more than 31 days, unknown/inactive or leave/holiday work type, details.kind mismatch, unknown or out-of-scope territories/users/SFC routes */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getTourPlanItem: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlanItem'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteTourPlanItem: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not your item */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TP_LOCKED (pending/approved) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  submitTourPlanItem: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Pending */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlanItem'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not your item */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TP_LOCKED, or TP_OVERLAP (details.items): overlaps your pending/approved item */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TP_IN_PAST: from is before today (IST); or VALIDATION as for PUT */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  decideTourPlanItem: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['TourPlanItemDecision'];
+      };
+    };
+    responses: {
+      /** @description Decided */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlanItem'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Your own item, missing approvals:decide, or APPROVAL_NOT_YOUR_STEP */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found or outside your team */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description CONFLICT: not pending */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description REJECTION_REASON_REQUIRED */
+      422: {
         headers: {
           [name: string]: unknown;
         };

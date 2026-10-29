@@ -351,6 +351,13 @@
       "when": 1793340000000,
       "tag": "0049_dcr_review_perms",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1793340100000,
+      "tag": "0050_tour_plan_items",
+      "breakpoints": true
     }
   ]
 }

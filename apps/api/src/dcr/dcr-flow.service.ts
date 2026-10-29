@@ -58,6 +58,7 @@ import {
   submitConflict,
   submittedOf,
 } from './day-report';
+import { approvedItemOn, itemCards } from '../plans/tp-items';
 import { DcrService } from './dcr.service';
 import { resolveSfcCandidates, type SfcSource } from './sfc-resolve';
 
@@ -259,22 +260,7 @@ export class DcrFlowService {
         drafts,
         rejected,
         unlockRequest: await this.unlockRequest(tx, p, date),
-        tourPlanDrafts: (await this.dcr.tourPlanCards(tx, p.userId)).map((c) => {
-          const e = c.entries[0]!;
-          const wt = wts.find((w) => w.id === e.workTypeId);
-          return {
-            ...c,
-            fields: {
-              workTypeId: e.workTypeId,
-              band: wt ? workTypeBand(wt) : null,
-              territoryIds: e.territoryIds ?? [],
-              workWithUserIds: e.jointWorkUserIds ?? [],
-              details: e.details ?? null,
-              sfcRoutes: e.sfcRoutes ?? [],
-              notes: e.notes ?? null,
-            },
-          };
-        }),
+        tourPlanDrafts: await itemCards(tx, p.userId, localDate(new Date(), s.timezone)),
         ...(await this.productOptions(tx, p).then((products) => ({
           products,
           detailProducts: groupDetailProducts(products),
@@ -515,7 +501,15 @@ export class DcrFlowService {
   draft(p: Principal, b: DcrDraftPut) {
     return this.tenant.run(p, async (tx) => {
       const s = await companySettings(tx, p);
-      if (b.date > localDate(new Date(), s.timezone))
+      // TP items: the approved item covering the date (asked for, or linked automatically).
+      const item = await approvedItemOn(tx, p.userId, b.date);
+      if (b.tourPlanItemId && b.tourPlanItemId !== item?.id)
+        throw err(422, 'VALIDATION', 'Not your approved tour plan for this date', {
+          field: 'tourPlanItemId',
+          reason: 'TOUR_PLAN_ITEM_MISMATCH',
+        });
+      // A future day may be drafted only from its approved tour plan item; submit opens on the day.
+      if (b.date > localDate(new Date(), s.timezone) && !b.tourPlanItemId)
         throw err(422, 'VALIDATION', 'DCR date is in the future');
       // Lock the caller's live DCRs of the date: a concurrent submit of one of them is seen here.
       const day = await tx
@@ -576,17 +570,13 @@ export class DcrFlowService {
       await this.checkChoices(tx, p, b.sfcRoutes ?? [], hqs, band);
       const { pts } = await this.dcr.validateCalls(tx, p, b, cur?.id);
       const plan = await this.dcr.plan(tx, p.userId, b.date);
-      if (b.tourPlanId && b.tourPlanId !== plan.tourPlanId)
-        throw err(422, 'VALIDATION', 'Tour plan is not your approved plan for this date', {
-          field: 'tourPlanId',
-          reason: 'TOUR_PLAN_MISMATCH',
-        });
 
       const vals = {
         workTypeId: b.workTypeId,
         territoryId: b.territoryIds[0] ?? null,
         territoryIds: b.territoryIds,
         tourPlanId: plan.tourPlanId,
+        tourPlanItemId: item?.id ?? null,
         deviationReason: b.deviationReason?.trim() || null,
         band,
         details: b.details ?? null,
@@ -797,6 +787,7 @@ export class DcrFlowService {
               submitIdempotencyKey: key,
               band,
               tourPlanId: plan.tourPlanId,
+              tourPlanItemId: (await approvedItemOn(tx, p.userId, cur.date))?.id ?? null,
             })
             .where(eq(dcrs.id, cur.id));
         });
