@@ -6,6 +6,7 @@ import { PullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Chip } from '@/components/chip';
 import { ApprovalsCard } from '@/components/home/approvals-card';
+import { useHomeAttention } from '@/lib/home-attention';
 import { AttentionList } from '@/components/home/attention-list';
 import { DoctorsToday } from '@/components/home/doctors-today';
 import { KpiGrid } from '@/components/home/kpi-grid';
@@ -42,6 +43,7 @@ export default function HomeScreen() {
 
   const name = user?.name?.trim() || user?.email || 'there';
   const approver = isApprover(user?.roles ?? []);
+  const attention = useHomeAttention(user);
   const roles = user?.roles;
   const open = useCallback(
     (f: FeatureKey) => router.push(featureHref(f, roles ?? [])),
@@ -49,7 +51,7 @@ export default function HomeScreen() {
   );
 
   async function onRefresh() {
-    await refresh();
+    await Promise.all([refresh(), attention.refetch()]);
     setNow(new Date());
   }
 
@@ -81,7 +83,9 @@ export default function HomeScreen() {
               <AppText variant="caption" style={styles.onSky}>
                 {formatDate(now)}
               </AppText>
-              {HOME_IS_PLACEHOLDER ? <Chip label="Sample data" tone="orange" /> : null}
+              {HOME_IS_PLACEHOLDER ? (
+                <Chip label="Sample: today, doctors, KPIs" tone="orange" />
+              ) : null}
             </View>
           </View>
 
@@ -89,11 +93,9 @@ export default function HomeScreen() {
             <TodayCard key={day} data={data} onOpen={open} />
           </View>
 
-          {data.attention.length > 0 ? (
-            <View style={styles.section}>
-              <AttentionList items={data.attention} onOpen={open} />
-            </View>
-          ) : null}
+          <View style={styles.section}>
+            <AttentionList items={attention.items} pending={attention.pending} />
+          </View>
 
           <View style={styles.section}>
             <QuickActions onOpen={open} roles={user?.roles ?? []} />
@@ -101,7 +103,7 @@ export default function HomeScreen() {
 
           {approver ? (
             <View style={styles.section}>
-              <ApprovalsCard counts={data.approvals} onOpen={() => open('approvals')} />
+              <ApprovalsCard counts={attention.counts} onOpen={() => open('approvals')} />
             </View>
           ) : null}
 
