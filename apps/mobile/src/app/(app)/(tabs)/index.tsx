@@ -133,7 +133,11 @@ const styles = StyleSheet.create({
     marginTop: -spacing.sm,
     paddingHorizontal: layout.gutter,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.lg,
+    paddingBottom: spacing.xl,
+    // Card-like bottom curve; the top stays square and flush with the header band.
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    borderCurve: 'continuous',
   },
   onSky: { color: colors.onSkyMuted },
 });
