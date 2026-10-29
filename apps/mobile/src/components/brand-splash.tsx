@@ -26,10 +26,13 @@ const READY_FAILSAFE_MS = 1500;
  */
 export function BrandSplash({
   done,
+  showWords,
   onReady,
   onHidden,
 }: {
   done: boolean;
+  /** Wordmark needs the brand fonts; the mark alone renders before they load. */
+  showWords: boolean;
   onReady: () => void;
   onHidden: () => void;
 }) {
@@ -73,6 +76,9 @@ export function BrandSplash({
       style={[
         StyleSheet.absoluteFill,
         styles.root,
+        // Transparent until our mark is painted: the Android launch window (plugins/
+        // with-launch-window.js) draws the identical mark underneath, so nothing ever blinks.
+        shown && styles.opaque,
         {
           opacity: done ? 0 : 1,
           transitionProperty: 'opacity',
@@ -94,7 +100,7 @@ export function BrandSplash({
           onDisplay={fireReady}
         />
       </View>
-      {shown ? (
+      {shown && showWords ? (
         <>
           <Animated.View entering={words} style={styles.words}>
             <AppText variant="display">AriForce</AppText>
@@ -115,7 +121,8 @@ export function BrandSplash({
 }
 
 const styles = StyleSheet.create({
-  root: { backgroundColor: colors.ground, zIndex: 10 },
+  root: { zIndex: 10 },
+  opaque: { backgroundColor: colors.ground },
   center: { alignItems: 'center', justifyContent: 'center' },
   mark: { width: MARK_W, height: MARK_H },
   // Under the mark: its bottom edge is at 50% + MARK_H / 2.

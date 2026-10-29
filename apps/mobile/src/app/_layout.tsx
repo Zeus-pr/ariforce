@@ -72,6 +72,7 @@ function RootNavigator() {
   const [fontTimeout, setFontTimeout] = useState(false);
   const [minElapsed, setMinElapsed] = useState(false);
   const [splashGone, setSplashGone] = useState(false);
+  const [splashReady, setSplashReady] = useState(false);
   const fontsReady = fontsLoaded || !!fontError || fontTimeout;
 
   useEffect(() => {
@@ -84,31 +85,36 @@ function RootNavigator() {
   }, []);
 
   const onSplashHidden = useCallback(() => setSplashGone(true), []);
+  const onSplashReady = useCallback(() => {
+    hideNativeSplash();
+    setSplashReady(true);
+  }, []);
   const signedIn = status === 'signed-in';
 
-  // Before fonts: only the status bar style (dark icons on the light ground, set while the
-  // native splash still covers the screen, so the icons never flip colour at the hand-off).
-  if (!fontsReady) return <StatusBar style="dark" />;
-
+  // The BrandSplash mark is the very first thing React draws (even before fonts), exactly over
+  // the launch window's mark. The app mounts under it only once that mark is painted.
   return (
     <>
       <StatusBar style="dark" />
-      <ThemeProvider value={NAV_THEME}>
-        <Stack
-          screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground } }}
-        >
-          <Stack.Protected guard={signedIn}>
-            <Stack.Screen name="(app)" />
-          </Stack.Protected>
-          <Stack.Protected guard={!signedIn}>
-            <Stack.Screen name="sign-in" options={{ animation: 'fade' }} />
-          </Stack.Protected>
-        </Stack>
-      </ThemeProvider>
+      {fontsReady && splashReady && (
+        <ThemeProvider value={NAV_THEME}>
+          <Stack
+            screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground } }}
+          >
+            <Stack.Protected guard={signedIn}>
+              <Stack.Screen name="(app)" />
+            </Stack.Protected>
+            <Stack.Protected guard={!signedIn}>
+              <Stack.Screen name="sign-in" options={{ animation: 'fade' }} />
+            </Stack.Protected>
+          </Stack>
+        </ThemeProvider>
+      )}
       {!splashGone && (
         <BrandSplash
-          done={minElapsed && status !== 'loading'}
-          onReady={hideNativeSplash}
+          done={fontsReady && splashReady && minElapsed && status !== 'loading'}
+          showWords={fontsReady}
+          onReady={onSplashReady}
           onHidden={onSplashHidden}
         />
       )}
