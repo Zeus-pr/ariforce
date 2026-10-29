@@ -11,6 +11,7 @@ import { useBottomSpace } from '@/components/floating-tab-bar';
 import { ListRow } from '@/components/list-row';
 import { ScrollView } from '@/components/scroll';
 import { SkeletonList } from '@/components/skeleton';
+import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useSubmittedHistory } from '@/lib/dcr/api';
 import { dateLabel, monthStartIST, todayIST } from '@/lib/dcr/dates';
@@ -19,7 +20,9 @@ import {
   STATUS_TONE,
   type Claim,
   dcrDays,
+  claimDcrRejected,
   ensureExpenseDraft,
+  serverDraftsExpense,
   expenseMessage,
   isEditable,
   monthLabel,
@@ -57,7 +60,17 @@ export default function ExpensesScreen() {
     staleTime: 60_000,
     queryFn: async () => {
       const out: Record<string, Claim | null> = {};
-      for (const m of months) out[m] = await ensureExpenseDraft(`${m}-01`, rejected);
+      if (await serverDraftsExpense()) {
+        // The server drafts on submit and flags rejected days: just read the month claims.
+        const list = await apiFetch<{ items: { id: string; month: string }[] }>(
+          '/v1/expense-claims',
+          { query: { userId: user?.id } },
+        );
+        for (const m of months) {
+          const c = list.items.find((x) => x.month === m);
+          out[m] = c ? await apiFetch<Claim>(`/v1/expense-claims/${c.id}`) : null;
+        }
+      } else for (const m of months) out[m] = await ensureExpenseDraft(`${m}-01`, rejected);
       void claimsQ.refetch();
       return out;
     },
@@ -80,10 +93,11 @@ export default function ExpensesScreen() {
   }, [counted, syncQ.data]);
 
   const rejectedSet = new Set(rejected);
-  const flagged = (c: { id: string }) => {
-    const full = Object.values(syncQ.data ?? {}).find((x) => x?.id === c.id);
-    return !!full?.lines.some((l) => l.dcrId && rejectedSet.has(l.dcrId));
-  };
+  const flagged = (c: { id: string }) =>
+    claimDcrRejected(c, () => {
+      const full = Object.values(syncQ.data ?? {}).find((x) => x?.id === c.id);
+      return !!full?.lines.some((l) => l.dcrId && rejectedSet.has(l.dcrId));
+    });
 
   const loading = dcrsQ.isPending || claimsQ.isPending;
 

@@ -18,6 +18,7 @@
  *     falls back to that store when the route does not exist (404 without an API error code).
  */
 import type { Dcr, DcrCall, Product } from '@ariforce/contracts';
+import { expenseCaps } from '../expense-caps';
 import type { TpDraftCard } from '../tp/adapter';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -86,6 +87,9 @@ type DcrWire = {
 
 /** Call on every /v1/dcrs/options response. */
 export function noteOptions(o: unknown) {
+  if (o && typeof o === 'object')
+    expenseCaps.serverDrafts =
+      (o as { autoExpenseOnDcrSubmit?: unknown }).autoExpenseOnDcrSubmit === true;
   if (o && typeof o === 'object' && 'products' in o && 'unlockRequest' in o) apiCaps.v2 = true;
 }
 

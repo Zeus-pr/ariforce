@@ -8,7 +8,7 @@ import { Button } from '@/components/button';
 import { Chip } from '@/components/chip';
 import { CallEditor } from '@/components/dcr/call-editor';
 import { dcrStyles, Errors, Field } from '@/components/dcr/field';
-import { ensureExpenseDraft } from '@/lib/expenses';
+import { autoDraftNote, ensureExpenseDraft } from '@/lib/expenses';
 import { LeaveFields } from '@/components/dcr/leave-fields';
 import { MeetingEditor } from '@/components/dcr/meeting-editor';
 import { MultiSelectSheet } from '@/components/dcr/multi-select-sheet';
@@ -520,11 +520,16 @@ export function DcrForm({
           key: submitKey.current,
         });
         setDcr(submitted);
-        // Day's expense draft with TA/DA (client side until the server does it on submit).
-        void ensureExpenseDraft(s.date).then(() =>
-          qc.invalidateQueries({ queryKey: ['expenses'] }),
+        // Day's expense draft with TA/DA: the server's (expenseDraft) when it drafts, else ours.
+        const note = autoDraftNote(submitted.expenseDraft);
+        if (!submitted.expenseDraft)
+          void ensureExpenseDraft(s.date).then(() =>
+            qc.invalidateQueries({ queryKey: ['expenses'] }),
+          );
+        Alert.alert(
+          'Submitted',
+          `Report for ${dateLabel(s.date)} submitted.${note ? `\n\n${note}` : ''}`,
         );
-        Alert.alert('Submitted', `Report for ${dateLabel(s.date)} submitted.`);
         router.back();
       } catch (e) {
         // Same as web dcr-flow.tsx: keep the key only when no answer came back (the submit may

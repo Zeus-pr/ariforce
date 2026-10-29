@@ -18,13 +18,71 @@ import {
 } from '@ariforce/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, apiFetch } from './api';
-import { reviewOf } from './dcr/adapter';
+import { noteOptions, reviewOf } from './dcr/adapter';
+import { todayIST } from './dcr/dates';
+import { expenseCaps } from './expense-caps';
 import type { PickedFile } from './file-pickers';
 
 export const CONTRACT = {
-  /** Server creates the day's expense draft (TA/DA) when a DCR is submitted. */
-  serverDraftsExpense: false,
+  /** Server drafts the day's TA/DA on DCR submit (options.autoExpenseOnDcrSubmit, runtime). */
+  get serverDraftsExpense() {
+    return expenseCaps.serverDrafts === true;
+  },
+};
+
+/** Read the company setting once if no options response has been seen yet. */
+export async function serverDraftsExpense(): Promise<boolean> {
+  if (expenseCaps.serverDrafts == null)
+    await apiFetch('/v1/dcrs/options', { query: { date: todayIST() } })
+      .then((o) => noteOptions(o))
+      .catch(() => {});
+  return expenseCaps.serverDrafts === true;
+}
+
+/** POST /v1/dcrs/:id/submit -> expenseDraft (e80d8f6); null when not drafted by the server. */
+export type ExpenseAutoDraft = {
+  status: 'drafted' | 'skipped' | 'error';
+  reason: 'claim_locked' | 'manual_line_exists' | 'no_allowance' | null;
+  date: string;
+  dcrId: string;
+  claimId: string | null;
+  claimStatus: ExpenseStatus | null;
+  claimCreated: boolean;
+  lines: number;
+  da: number;
+  ta: number;
+  km: number;
+  issues: string[];
+  error: { code: string; message: string } | null;
+};
+
+const SKIP_NOTE = {
+  claim_locked: 'the month’s claim is already submitted',
+  manual_line_exists: 'you already added an allowance line for that day',
+  no_allowance: 'this work type has no TA/DA',
 } as const;
+/** A short note for a skipped/failed server draft, or null when drafted (or not attempted). */
+export function autoDraftNote(d: ExpenseAutoDraft | null | undefined): string | null {
+  if (!d || d.status === 'drafted') return null;
+  if (d.status === 'error')
+    return 'Expense not drafted: TA/DA could not be calculated. Add it on the Expense screen.';
+  return `Expense not drafted: ${d.reason ? SKIP_NOTE[d.reason] : 'nothing to draft'}.`;
+}
+
+/** e80d8f6 fields (absent on older APIs: fall back to the client check). */
+export type LineFlags = {
+  autoTrigger?: 'allowances_run' | 'dcr_submit' | null;
+  dcrRejectedAt?: string | null;
+};
+export type ClaimFlags = { dcrRejectedDates?: string[] };
+export const lineDcrRejected = (l: Line, fallback: () => boolean) => {
+  const v = (l as Line & LineFlags).dcrRejectedAt;
+  return v !== undefined ? !!v : fallback();
+};
+export const claimDcrRejected = (c: object, fallback: () => boolean) => {
+  const v = (c as ClaimFlags).dcrRejectedDates;
+  return v !== undefined ? v.length > 0 : fallback();
+};
 
 export type Claim = ExpenseClaim;
 export type Line = Claim['lines'][number];
@@ -194,8 +252,8 @@ export function usePlaces(enabled: boolean) {
  * Skips when the server does it, or when the claim is no longer editable. Never throws.
  */
 export async function ensureExpenseDraft(date: string, rejectedDcrIds: string[] = []) {
-  if (CONTRACT.serverDraftsExpense) return null;
   try {
+    if (await serverDraftsExpense()) return null;
     const claim = await ensureClaim(monthOf(date));
     if (!isEditable(claim.status)) return claim;
     const r = await runAllowances(claim.id, false);

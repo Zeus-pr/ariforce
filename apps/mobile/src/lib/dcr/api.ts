@@ -10,6 +10,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { ApiError, apiFetch, idempotencyKey } from '../api';
+import type { ExpenseAutoDraft } from '../expenses';
 import { noteOptions, type OptionsV2 } from './adapter';
 import { monthStartIST, todayIST } from './dates';
 import type { CallKind, HqOption, Person, WorkTypeOption } from './model';
@@ -142,13 +143,14 @@ export function useSubmitDcr() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, version, key }: { id: string; version: number; key: string }) =>
-      apiFetch<Dcr>(`/v1/dcrs/${id}/submit`, {
+      apiFetch<Dcr & { expenseDraft?: ExpenseAutoDraft | null }>(`/v1/dcrs/${id}/submit`, {
         method: 'POST',
         headers: { 'idempotency-key': key },
         body: { version },
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: dcrKey });
+      void qc.invalidateQueries({ queryKey: ['expenses'] });
     },
   });
 }

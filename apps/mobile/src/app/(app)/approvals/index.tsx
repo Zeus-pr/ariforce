@@ -23,7 +23,7 @@ import {
 import { dateLabel, savedLabel } from '@/lib/dcr/dates';
 import { saveMessage } from '@/lib/dcr/errors';
 import { isApprover, isDirector } from '@/lib/roles';
-import { monthLabel, useClaimQueue } from '@/lib/expenses';
+import { claimDcrRejected, monthLabel, useClaimQueue } from '@/lib/expenses';
 import { formatINR } from '@/lib/money';
 import {
   daysLabel,
@@ -223,6 +223,11 @@ function Approvals({ myId, director }: { myId?: string; director: boolean }) {
                   tone="orange"
                   title={c.userName}
                   subtitle={`${monthLabel(c.month)} · ${formatINR(c.total)}`}
+                  trailing={
+                    claimDcrRejected(c, () => false) ? (
+                      <Chip label="DCR rejected" tone="red" />
+                    ) : undefined
+                  }
                   divider={i > 0}
                   onPress={() => router.push({ pathname: '/expenses/[id]', params: { id: c.id } })}
                 />

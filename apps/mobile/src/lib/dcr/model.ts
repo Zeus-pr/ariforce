@@ -463,6 +463,8 @@ export function dcrErrorMessage(e: ApiError): string {
       return 'This report was already submitted and is read-only.';
     case 'VERSION_CONFLICT':
       return 'This report changed on another device. Go back, open it again and retry.';
+    case 'NO_APPROVER':
+      return 'No Director is set up to review unlock requests yet. Ask your admin to add one, then try again.';
     case 'DAY_LOCKED':
       return 'This day is locked. Ask your manager to reopen it.';
     case 'DAY_ALREADY_SUBMITTED':

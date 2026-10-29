@@ -27,6 +27,8 @@ import {
   type AllowanceResult,
   type Line,
   checkFile,
+  claimDcrRejected,
+  lineDcrRejected,
   deleteReceipt,
   expenseMessage,
   isEditable,
@@ -85,10 +87,11 @@ export default function ClaimScreen() {
   const dcrById = new Map(dcrQs.flatMap((r) => (r.data ? [[r.data.id, r.data] as const] : [])));
   const dcrByDate = new Map([...dcrById.values()].map((d) => [d.date, d.id]));
   const notApproved = [...dcrById.values()].filter((d) => reviewOf(d).status !== 'approved');
-  const rejectedDcr = (l: Line) => {
-    const d = l.dcrId ? dcrById.get(l.dcrId) : undefined;
-    return !!d && reviewOf(d).status === 'rejected';
-  };
+  const rejectedDcr = (l: Line) =>
+    lineDcrRejected(l, () => {
+      const d = l.dcrId ? dcrById.get(l.dcrId) : undefined;
+      return !!d && reviewOf(d).status === 'rejected';
+    });
 
   const lines = useMemo(
     () =>
@@ -195,7 +198,7 @@ export default function ClaimScreen() {
                 {claim.rejectionReason && claim.status === 'rejected' ? (
                   <AppText variant="bodyMuted">Sent back: {claim.rejectionReason}</AppText>
                 ) : null}
-                {claim.lines.some(rejectedDcr) ? (
+                {claimDcrRejected(claim, () => claim.lines.some(rejectedDcr)) ? (
                   <Chip label="Has a day whose DCR was rejected" tone="red" />
                 ) : null}
               </Card>
