@@ -77,9 +77,11 @@ export function PullToRefresh({
   const scroll = Gesture.Native();
   const both = Gesture.Simultaneous(pan, scroll);
 
+  // Idle = invisible by default (opacity 0 in the base style), so nothing shows if the animated
+  // style hasn't applied yet; growth is a scaleX, not a % width.
   const pullBar = useAnimatedStyle(() => ({
-    width: `${Math.min(100, (pull.value / TRIGGER) * 100)}%`,
     opacity: pull.value > 0 ? 1 : 0,
+    transform: [{ scaleX: Math.min(1, pull.value / TRIGGER) }],
   }));
 
   const child = Children.only(children);
@@ -103,7 +105,7 @@ export function PullToRefresh({
             style={[styles.bar, styles.full, reduced ? null : PULSE]}
           />
         ) : (
-          <Animated.View style={[styles.bar, pullBar]} />
+          <Animated.View style={[styles.bar, styles.full, styles.idle, pullBar]} />
         )}
       </View>
     </View>
@@ -121,4 +123,5 @@ const styles = StyleSheet.create({
   },
   bar: { height: 4, borderRadius: radius.full, backgroundColor: colors.separator },
   full: { width: '100%' },
+  idle: { opacity: 0 },
 });
