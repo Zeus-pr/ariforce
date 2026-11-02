@@ -434,6 +434,7 @@ function CallDialog({
                 outletKind: kind,
                 outletId: doctorId,
                 checkInId: null,
+                presentationOpenedAt: null,
                 jointWorkUserIds: [],
                 productsDetailed: detailed.map((productId, i) => ({ productId, order: i + 1 })),
                 samples: Object.entries(samples)

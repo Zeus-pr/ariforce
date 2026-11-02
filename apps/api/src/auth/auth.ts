@@ -27,7 +27,7 @@ import type { MailService } from '../mail/mail.service';
 export const AUTH_BASE_PATH = '/v1/auth';
 /** Browser origins allowed for CORS (with credentials) and better-auth: WEB_ORIGIN, comma-separated. */
 export const webOrigins = () =>
-  (process.env.WEB_ORIGIN ?? 'http://localhost:3000,http://localhost:3200')
+  (process.env.WEB_ORIGIN ?? 'http://localhost:3000,http://localhost:3100,http://localhost:3200')
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);

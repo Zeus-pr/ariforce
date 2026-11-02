@@ -33,7 +33,15 @@ import {
   ReadAllResult,
   UnreadCount,
 } from './schemas/notifications';
+import { MeAttention, MeKpiQuery, MeToday, PlannedDoctors, PlannedDoctorsQuery } from './schemas/home';
 import { ApprovalDetail } from './schemas/approval-detail';
+import {
+  TourPlanItem,
+  TourPlanItemDecision,
+  TourPlanItemList,
+  TourPlanItemListQuery,
+  TourPlanItemUpsert,
+} from './schemas/tp-items';
 import * as z from 'zod';
 import { masterReadPermission } from './schemas/roles';
 import {
@@ -55,6 +63,7 @@ import {
   ProductPriceHistory,
   ProductPricesBulkRequest,
   ProductPricesBulkResponse,
+  ProductImageSet,
   ProductPricesUpdate,
 } from './schemas/product-prices';
 import {
@@ -70,6 +79,7 @@ import {
   WorkTypeUpdate,
 } from './schemas/products';
 import {
+  DcrDecision,
   Approval,
   ApprovalDecision,
   ApprovalListQuery,
@@ -100,6 +110,7 @@ import {
 import {
   AllowanceDraftRequest,
   AllowanceDraftResult,
+  DcrSubmitResult,
   AllowancePlace,
   AllowancePlaceInput,
   AllowancePlaceList,
@@ -499,9 +510,14 @@ function buildDocument(): OpenApiDocument {
           operationId: 'createUploadUrl',
           summary:
             'Presigned R2 PUT URL (10 min). Upload directly to R2, then save fileKey on the record.',
+          description:
+            'purpose product_image: image/jpeg, image/png or image/webp, at most 5 MB, needs products:prices; attach with PUT /v1/products/{id}/image. import_source needs imports:write. expense_receipt is refused (use the claim attachment routes).',
           requestBody: json(UploadUrlRequest),
           responses: {
             '200': { description: 'Presigned upload', ...json(UploadUrlResponse) },
+            '403': err(
+              'FORBIDDEN (product_image needs products:prices; import_source needs imports:write)',
+            ),
             '422': err('Validation failed (type/size)'),
             '503': err('Storage not configured'),
           },
@@ -776,6 +792,95 @@ function buildDocument(): OpenApiDocument {
           responses: { '200': { description: 'Page', ...json(page(TourPlan, 'TourPlanPage')) } },
         }),
       },
+      '/v1/tour-plans/items': {
+        get: op({
+          tags: ['TourPlans'],
+          operationId: 'listTourPlanItems',
+          summary: 'Tour plan items: mine=true for your own (newest first); else the team queue',
+          description:
+            'Without mine=true: items of your reporting line, never your own (approvals:decide or field:read, else 403), ordered by from. Use status=pending for the approval queue.',
+          requestParams: { query: TourPlanItemListQuery },
+          responses: {
+            '200': { description: 'Page', ...json(TourPlanItemList) },
+            '403': err('Team list without approvals:decide or field:read'),
+          },
+        }),
+        put: op({
+          tags: ['TourPlans'],
+          operationId: 'upsertTourPlanItem',
+          summary: 'Create (no id) or edit your draft/rejected item; the result is a draft',
+          requestBody: json(TourPlanItemUpsert),
+          responses: {
+            '200': { description: 'Saved (status draft)', ...json(TourPlanItem) },
+            '403': err('Not your item'),
+            '404': err('No such item'),
+            '409': err('TP_LOCKED (pending/approved) or VERSION_CONFLICT'),
+            '422': err(
+              'VALIDATION: to < from, more than 31 days, unknown/inactive or leave/holiday work type, details.kind mismatch, unknown or out-of-scope territories/users/SFC routes',
+            ),
+          },
+        }),
+      },
+      '/v1/tour-plans/items/{id}': {
+        get: op({
+          tags: ['TourPlans'],
+          operationId: 'getTourPlanItem',
+          summary: 'One item (owner, or the reporting line with approvals:decide/field:read)',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'OK', ...json(TourPlanItem) },
+            '404': err('Not found'),
+          },
+        }),
+        delete: op({
+          tags: ['TourPlans'],
+          operationId: 'deleteTourPlanItem',
+          summary: 'Delete your draft/rejected item',
+          requestParams: { path: IdParam },
+          responses: {
+            '204': { description: 'Deleted' },
+            '403': err('Not your item'),
+            '404': err('Not found'),
+            '409': err('TP_LOCKED (pending/approved)'),
+          },
+        }),
+      },
+      '/v1/tour-plans/items/{id}/submit': {
+        post: op({
+          tags: ['TourPlans'],
+          operationId: 'submitTourPlanItem',
+          summary: 'Send your draft/rejected item for approval (status pending)',
+          description:
+            "Creates one approval request routed to your reporting manager (anyone above with approvals:decide may decide; never yourself). Director (no manager): approved at submit by the system in the same transaction (status approved, decidedBy null, Approval.autoApproved true; audit approval.auto_approved, reason 'auto-approved, no manager').",
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'Pending', ...json(TourPlanItem) },
+            '403': err('Not your item'),
+            '404': err('Not found'),
+            '409': err(
+              'TP_LOCKED, or TP_OVERLAP (details.items): overlaps your pending/approved item',
+            ),
+            '422': err('TP_IN_PAST: from is before today (IST); or VALIDATION as for PUT'),
+          },
+        }),
+      },
+      '/v1/tour-plans/items/{id}/decision': {
+        post: op({
+          tags: ['TourPlans'],
+          operationId: 'decideTourPlanItem',
+          summary:
+            'Approve or reject a pending item (approvals:decide, reporting line, never your own)',
+          requestParams: { path: IdParam },
+          requestBody: json(TourPlanItemDecision),
+          responses: {
+            '200': { description: 'Decided', ...json(TourPlanItem) },
+            '403': err('Your own item, missing approvals:decide, or APPROVAL_NOT_YOUR_STEP'),
+            '404': err('Not found or outside your team'),
+            '409': err('CONFLICT: not pending'),
+            '422': err('REJECTION_REASON_REQUIRED'),
+          },
+        }),
+      },
       '/v1/tour-plans/standard': {
         get: op({
           tags: ['TourPlans'],
@@ -850,6 +955,8 @@ function buildDocument(): OpenApiDocument {
         post: op({
           tags: ['TourPlans'],
           operationId: 'submitTourPlan',
+          description:
+            "Each submission is one approval request to your reporting manager. Director (no manager): approved at submit by the system in the same transaction (status approved, decidedBy null, Approval.autoApproved true; audit approval.auto_approved, reason 'auto-approved, no manager').",
           requestParams: { path: z.object({ month: Month }) },
           requestBody: { required: false, ...json(TourPlanSubmit) },
           responses: {
@@ -861,7 +968,7 @@ function buildDocument(): OpenApiDocument {
             '404': err('No plan for the month'),
             '409': err('DAY_LOCKED (details.dates): a chosen day is already submitted or approved'),
             '422': err(
-              'EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty.',
+              'EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty',
             ),
           },
         }),
@@ -888,6 +995,8 @@ function buildDocument(): OpenApiDocument {
           operationId: 'upsertDcr',
           summary:
             "Create or update the caller's DCR for a date (idempotent on date + call clientIds)",
+          description:
+            'Director: submit sets status approved at once (approvedBy null, autoApproved true; audit dcr.auto_approved) and the day never locks (neverLocks true).',
           requestBody: json(DcrUpsert),
           responses: {
             '200': { description: 'Saved', ...json(Dcr) },
@@ -915,11 +1024,16 @@ function buildDocument(): OpenApiDocument {
         post: op({
           tags: ['DCR'],
           operationId: 'requestDcrCorrection',
-          summary: 'Ask your manager to reopen a locked day (gap #8)',
+          summary: "Ask the company's directors to reopen a locked day (gap #8)",
+          description:
+            'Routed to every active user holding dcr_unlock:decide (the directors), not your manager; any one of them decides, all of them see it in to_decide. One director: approverId is that director; several: approverId null (shared queue). Never routed to yourself. Earlier pending requests (manager-routed) stay as they are: directors already see and decide them.',
           requestBody: json(DcrCorrectionRequest),
           responses: {
             '201': { description: 'Approval request created', ...json(Approval) },
             '409': err('Day is not locked, or already unlocked'),
+            '422': err(
+              'NO_APPROVER (details.permission dcr_unlock:decide): nobody else in the company can decide unlock requests; ask an admin to assign the director role',
+            ),
           },
         }),
       },
@@ -1001,16 +1115,36 @@ function buildDocument(): OpenApiDocument {
           requestBody: json(DcrSubmit),
           responses: {
             '200': {
-              description: 'Submitted (also returned for a retry with the same key)',
-              ...json(Dcr),
+              description:
+                "Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Audited as expense.auto_drafted. Director (no manager): the report is approved at submit by the system (status approved, approvedBy null, autoApproved true; audit dcr.auto_approved) before the expense auto-draft, and the day never locks (no DAY_LOCKED, no unlock request).",
+              ...json(DcrSubmitResult),
             },
             '404': err('Not found (not your DCR)'),
             '409': err(
               'ALREADY_SUBMITTED (other key), DAY_ALREADY_SUBMITTED (another report of the date is submitted; details.existingId), IDEMPOTENCY_CONFLICT (key used on another DCR), VERSION_CONFLICT, DAY_LOCKED',
             ),
             '422': err(
-              'VALIDATION, SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND',
+              'VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND',
             ),
+          },
+        }),
+      },
+      '/v1/dcrs/{id}/decision': {
+        post: op({
+          tags: ['DCR'],
+          operationId: 'decideDcr',
+          summary:
+            'Approve or reject a submitted DCR (dcr:review); reject needs a comment (stored as rejectionReason)',
+          description:
+            "Scope as approvals: the DCR owner must be in your team; never your own. approve sets approvedAt/approvedBy. reject sets status rejected, rejectedAt, rejectedBy, rejectionReason; the row is kept as history, excluded from every count, and the rep may file and submit a new report for that day for 48 h, even past the lock. The queue is GET /v1/dcrs?status=submitted. Audited (dcr.approve / dcr.reject). On reject, the day's auto TA/DA lines are removed from the rep's draft/rejected month claim and any remaining line of that day (manual lines, or any line on a submitted/approved/paid claim) gets dcrRejectedAt (claim.dcrRejectedDates; approver flag dcr_rejected_lines); audited as expense.dcr_rejected_cleanup.",
+          requestParams: { path: IdParam },
+          requestBody: json(DcrDecision),
+          responses: {
+            '200': { description: 'Decided', ...json(Dcr) },
+            '403': err('FORBIDDEN (your own DCR, or no dcr:review)'),
+            '404': err('Not found (or outside your team)'),
+            '409': err('NOT_PENDING_REVIEW (not submitted; details.status)'),
+            '422': err('VALIDATION (comment 1-500 chars required to reject)'),
           },
         }),
       },
@@ -1358,9 +1492,11 @@ function buildDocument(): OpenApiDocument {
           tags: ['Leave'],
           operationId: 'applyLeave',
           summary: 'Apply for leave; starts the approval chain',
+          description:
+            "Approval goes to your reporting manager. Director (no manager): approved at submit by the system in the same transaction (status approved, decidedBy null, Approval.autoApproved true; audit approval.auto_approved, reason 'auto-approved, no manager').",
           requestBody: json(LeaveApply),
           responses: {
-            '201': { description: 'Pending request', ...json(LeaveRequest) },
+            '201': { description: 'Pending request (director: approved)', ...json(LeaveRequest) },
             '409': err('LEAVE_OVERLAP, LEAVE_DCR_EXISTS'),
             '422': err(
               'LEAVE_TYPE_UNKNOWN, LEAVE_HALF_DAY_NOT_ALLOWED, LEAVE_SPANS_YEARS, LEAVE_BACKDATE_WINDOW, LEAVE_TOO_FAR_AHEAD, LEAVE_NO_WORKING_DAYS, LEAVE_INSUFFICIENT_BALANCE, VALIDATION',
@@ -1779,6 +1915,8 @@ function buildDocument(): OpenApiDocument {
           operationId: 'draftExpenseAllowances',
           summary:
             'Owner, draft or rejected claim: compute DA/TA per DCR day of the month from the rate card and fare chart and replace the auto lines (dryRun: preview only). Manual lines are never touched.',
+          description:
+            "Only submitted or approved DCRs pay: draft days are listed with issue dcr_not_submitted, days whose only reports are rejected with dcr_rejected (no lines). Km: the place asked for, else the DCR's frozen SFC snapshot (round trip), else the previous or only fare-chart place.",
           requestParams: { path: IdParam },
           requestBody: json(AllowanceDraftRequest),
           responses: {
@@ -1799,11 +1937,15 @@ function buildDocument(): OpenApiDocument {
           operationId: 'submitExpenseClaim',
           summary:
             'Draft or rejected -> submitted; opens an approval request (subjectType expense) to your reporting manager, then up the chain (EXPENSE_APPROVAL_LEVELS, default 2)',
+          description:
+            "Director (no manager): approved at submit by the system (status approved, decidedBy null, decisionComment 'auto-approved, no manager'). The DCR gate still applies first: every line date needs an approved DCR (a director's DCRs are approved at their submit); otherwise the submit itself fails with 409 DCR_NOT_APPROVED and nothing changes (the claim stays draft/rejected).",
           requestParams: { path: IdParam },
           responses: {
-            '200': { description: 'Submitted', ...json(ExpenseClaim) },
+            '200': { description: 'Submitted (director: approved)', ...json(ExpenseClaim) },
             '404': err('Not found'),
-            '409': err('EXPENSE_NOT_EDITABLE'),
+            '409': err(
+              'EXPENSE_NOT_EDITABLE; DCR_NOT_APPROVED (director only, details.dates / dcrIds / dcrStatus): a line date has no approved DCR',
+            ),
             '422': err('EXPENSE_EMPTY or RECEIPT_REQUIRED (hotel lines need a confirmed receipt)'),
           },
         }),
@@ -1820,7 +1962,9 @@ function buildDocument(): OpenApiDocument {
             '200': { description: 'Claim after the decision', ...json(ExpenseClaim) },
             '403': err('Own claim, APPROVAL_NOT_YOUR_STEP or APPROVAL_ALREADY_DECIDED_BY_YOU'),
             '404': err('Not found'),
-            '409': err('Not submitted / already decided'),
+            '409': err(
+              'Not submitted / already decided; or DCR_NOT_APPROVED on approve: details {dates[], dcrIds[], dcrStatus{date: draft|submitted|rejected|missing}} (every line date needs an approved DCR of the owner)',
+            ),
             '422': err('REJECTION_REASON_REQUIRED: reject without a non-blank comment'),
           },
         }),
@@ -2009,10 +2153,12 @@ function buildDocument(): OpenApiDocument {
           requestBody: json(ApprovalDecision),
           responses: {
             '200': { description: 'Decided', ...json(Approval) },
-            '403': err('Own request, or requester not below you in the reporting line'),
+            '403': err(
+              'Own request, or requester not below you in the reporting line; APPROVAL_PERMISSION_REQUIRED (details.permission): dcr_unlock requests need dcr_unlock:decide (director only), expense needs expenses:approve',
+            ),
             '404': err('Not found'),
             '409': err(
-              'Already decided; LEAVE_DCR_CONFLICT when the final approval of a leave hits a submitted DCR (details.dates, details.dcrIds)',
+              'DCR_NOT_APPROVED (expense approve; details {dates[], dcrIds[], dcrStatus}). Already decided; LEAVE_DCR_CONFLICT when the final approval of a leave hits a submitted DCR (details.dates, details.dcrIds)',
             ),
             '422': err('REJECTION_REASON_REQUIRED: reject without a non-blank comment'),
           },
@@ -2029,6 +2175,65 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '200': { description: 'Page', ...json(ExceptionPage) },
             '422': err('Invalid filters'),
+          },
+        }),
+      },
+      '/v1/me/exceptions': {
+        get: op({
+          tags: ['Exceptions', 'Home'],
+          operationId: 'listMyExceptions',
+          summary: 'Your own exceptions (missing DCR, TP not submitted, ...); no field:read',
+          description:
+            'Same filters, order and page as GET /v1/exceptions, limited to rows where userId = you; userId and assignedToMe are ignored. Any signed-in user.',
+          requestParams: { query: ExceptionListQuery },
+          responses: {
+            '200': { description: 'Page', ...json(ExceptionPage) },
+            '422': err('Invalid filters'),
+          },
+        }),
+      },
+      '/v1/me/attention': {
+        get: op({
+          tags: ['Home'],
+          operationId: 'getMyAttention',
+          summary: 'Home badges in one call: waiting approvals by type, unread, exceptions, own requests',
+          description:
+            'Replaces the separate count calls on the home screen. Own data; team parts need a team plus dcr:review (dcrReview) or field:read (exceptions.team), else null.',
+          responses: { '200': { description: 'Counts', ...json(MeAttention) } },
+        }),
+      },
+      '/v1/me/today': {
+        get: op({
+          tags: ['Home'],
+          operationId: 'getMyToday',
+          summary: "Today card: punch status, today's tour plan, today's DCR",
+          responses: { '200': { description: 'Today', ...json(MeToday) } },
+        }),
+      },
+      '/v1/me/planned-doctors': {
+        get: op({
+          tags: ['Home'],
+          operationId: 'listMyPlannedDoctors',
+          summary: 'Doctors planned for a day: the monthly plan visits, then the TP item territories',
+          requestParams: { query: PlannedDoctorsQuery },
+          responses: {
+            '200': { description: 'Planned doctors', ...json(PlannedDoctors) },
+            '422': err('Invalid date'),
+          },
+        }),
+      },
+      '/v1/me/kpis': {
+        get: op({
+          tags: ['Home', 'KPIs'],
+          operationId: 'getMyKpis',
+          summary: 'Month-to-date home KPIs (HOME_KPIS) from the KPI engine; self or team',
+          description:
+            'from = the 1st of the month, to = today (or the month end for a past month). Same definitions and response as GET /v1/kpis (rollup self or team) without reports:read. team: your reporting line incl. you; 403 without a team.',
+          requestParams: { query: MeKpiQuery },
+          responses: {
+            '200': { description: 'Report', ...json(KpiReport) },
+            '403': err('No team, or a future month'),
+            '422': err('Invalid query'),
           },
         }),
       },
@@ -2191,6 +2396,45 @@ function buildDocument(): OpenApiDocument {
             },
             '403': err('FORBIDDEN (needs products:prices)'),
             '422': err('VALIDATION (rows missing, empty or more than 300)'),
+          },
+        }),
+      },
+      '/v1/products/{id}/image': {
+        put: op({
+          tags: ['Product prices'],
+          operationId: 'setProductImage',
+          summary:
+            'Attach an uploaded picture (upload-url purpose product_image, then PUT the bytes to R2). Replaces any current picture.',
+          description:
+            'The fileKey must be the caller company product_image key. The object is checked in R2: it must exist, be at most 5 MB, be image/jpeg|png|webp and its first bytes must match that type (a rejected upload is deleted). Bumps the product version/updatedAt, so GET /v1/products?updatedSince picks it up.',
+          requestParams: { path: IdParam },
+          requestBody: json(ProductImageSet),
+          responses: {
+            '200': {
+              description: 'Saved (row with imageFileKey and a fresh imageUrl)',
+              ...json(AdminProduct),
+            },
+            '403': err('FORBIDDEN (needs products:prices)'),
+            '404': err('PRODUCT_NOT_FOUND'),
+            '409': err('VERSION_CONFLICT (only when version is sent)'),
+            '422': err(
+              'VALIDATION; error.details.reason = IMAGE_KEY_INVALID (not a product_image key of your company), UPLOAD_MISSING (PUT the bytes first), UPLOAD_TOO_LARGE (> 5 MB), UPLOAD_TYPE_INVALID or UPLOAD_FORMAT_INVALID',
+            ),
+            '503': err('Storage not configured'),
+          },
+        }),
+        delete: op({
+          tags: ['Product prices'],
+          operationId: 'clearProductImage',
+          summary: 'Remove the product picture (idempotent). The R2 object is kept for audit.',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': {
+              description: 'Cleared (imageFileKey and imageUrl null)',
+              ...json(AdminProduct),
+            },
+            '403': err('FORBIDDEN (needs products:prices)'),
+            '404': err('PRODUCT_NOT_FOUND'),
           },
         }),
       },

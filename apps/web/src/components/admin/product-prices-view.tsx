@@ -161,7 +161,7 @@ export function ProductPricesView() {
   const nameOf = (id: string | null | undefined) => rows?.find((p) => p.id === id)?.name ?? id ?? '';
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex w-full min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex min-w-56 flex-1 flex-col gap-1.5">
           <Label htmlFor="pp-search">Search</Label>
@@ -198,16 +198,16 @@ export function ProductPricesView() {
           {debounced || missing ? 'No products match these filters.' : 'No products yet. Add products in Masters first.'}
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table data-testid="pp-table">
+        <div className="w-full min-w-0 rounded-lg border">
+          <Table className="table-fixed" data-testid="pp-table">
             <TableHeader>
               <TableRow>
                 <TableHead>Product</TableHead>
-                <TableHead className="w-28 text-right">MRP</TableHead>
-                <TableHead className="w-28 text-right">PTR</TableHead>
-                <TableHead className="w-28 text-right">PTS</TableHead>
-                <TableHead className="hidden lg:table-cell">Last price change</TableHead>
-                <TableHead className="w-32"><span className="sr-only">Actions</span></TableHead>
+                <TableHead className="w-28 text-right lg:w-32">MRP</TableHead>
+                <TableHead className="w-28 text-right lg:w-32">PTR</TableHead>
+                <TableHead className="w-28 text-right lg:w-32">PTS</TableHead>
+                <TableHead className="hidden whitespace-normal lg:table-cell lg:w-40">Last price change</TableHead>
+                <TableHead className="w-28 sm:w-32"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -216,7 +216,7 @@ export function ProductPricesView() {
                 const dirty = dirtyIds.includes(p.id);
                 return (
                   <TableRow key={p.id} data-testid="pp-row" data-code={p.code} data-dirty={dirty ? '' : undefined}>
-                    <TableCell className="align-top">
+                    <TableCell className="align-top whitespace-normal">
                       <div className="flex items-start gap-3">
                         <ProductImageCell
                           product={p}
@@ -226,8 +226,8 @@ export function ProductPricesView() {
                             setImageOpen(true);
                           }}
                         />
-                        <div className="min-w-0">
-                          <div className="font-medium">{p.name}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="[overflow-wrap:anywhere] font-medium">{p.name}</div>
                           <ProductSubline product={p} />
                           {p.ptr == null && <Badge variant="outline" className="mt-1 border-amber-500 text-amber-700" data-testid="pp-no-ptr">No PTR</Badge>}
                           {rowErr[p.id] && <p className="mt-1 text-xs text-destructive" role="alert" data-testid="pp-row-error">{rowErr[p.id]}</p>}
@@ -239,7 +239,7 @@ export function ProductPricesView() {
                         <Input
                           aria-label={`${k.toUpperCase()} for ${p.name}`}
                           inputMode="decimal"
-                          className="text-right tabular-nums md:text-base"
+                          className="w-full min-w-0 text-right tabular-nums md:text-base"
                           value={e?.[k] ?? fmt(p[k])}
                           onChange={(ev) => setEdit(p.id, k, ev.target.value)}
                           onKeyDown={(ev) => ev.key === 'Enter' && void saveRow(p)}
@@ -247,7 +247,7 @@ export function ProductPricesView() {
                         />
                       </TableCell>
                     ))}
-                    <TableCell className="hidden align-top text-xs text-muted-foreground lg:table-cell">
+                    <TableCell className="hidden align-top whitespace-normal text-xs text-muted-foreground lg:table-cell">
                       {p.pricesUpdatedAt ? <>{when(p.pricesUpdatedAt)}{p.updatedBy && <><br />{p.updatedBy.name}</>}</> : 'Never'}
                     </TableCell>
                     <TableCell className="align-top">
@@ -327,8 +327,8 @@ function ProductSubline({ product: p }: { product: AdminProduct & { composition?
   const comp = p.composition?.trim();
   const pack = p.packSize?.trim();
   return (
-    <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-      <span className="min-w-0 truncate" title={comp ?? p.code}>{comp || p.code}</span>
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="min-w-0 whitespace-normal [overflow-wrap:anywhere]" title={comp ?? p.code}>{comp || p.code}</span>
       {pack && (
         <span className="shrink-0 rounded-md border bg-muted/50 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-foreground/80">
           Strip · {pack}

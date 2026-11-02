@@ -3,18 +3,24 @@ import {
   DcrDetails,
   SFC_CATEGORY_BAND,
   dcrDetailsKind,
-  isDeviation,
   type Dcr,
+  type DcrSubmitResult,
   type DcrBand,
   type DcrDraftPut,
+  type DcrProductOption,
   type DcrSfcSnapshot,
   type SfcCategory,
+  groupDetailProducts,
+  productDisplayName,
 } from '@ariforce/contracts';
 import {
   companies,
+  dcrCalls,
+  approvalRequests,
   dcrSfcRoutes,
   dcrs,
   leaveRequests,
+  products,
   sfcRoutes,
   territories,
   users,
@@ -24,6 +30,7 @@ import {
 import {
   and,
   asc,
+  desc,
   eq,
   ilike,
   inArray,
@@ -41,11 +48,26 @@ import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { companySettings, localDate } from '../field/field.util';
-import { approvedLeaveDays, assertNotOnLeave } from '../leave/leave.util';
-import { DcrService } from './dcr.service';
+import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leave.util';
+import { StorageService } from '../files/storage.service';
+import {
+  SUBMITTED_STATUSES,
+  draftsNewestFirst,
+  rejectedNewestFirst,
+  isDaySubmittedViolation,
+  resolveDraftTarget,
+  submitConflict,
+  submittedOf,
+} from './day-report';
+import { approvedItemOn, itemCards } from '../plans/tp-items';
+import { DcrService, auditDcrAutoApproved, submitStatus } from './dcr.service';
+import { isDirector } from '../plans/auto-approve';
+import { ExpenseAutoDraftService } from '../expenses/auto-draft.service';
+import { resolveSfcCandidates, type SfcSource } from './sfc-resolve';
 
 type WorkTypeRow = typeof workTypes.$inferSelect;
-type RouteRow = typeof sfcRoutes.$inferSelect;
+/** A resolved candidate row: the sfc_routes row plus where it came from (own | hq fallback). */
+type RouteRow = typeof sfcRoutes.$inferSelect & { source: SfcSource };
 type DcrRow = typeof dcrs.$inferSelect;
 interface Hq {
   id: string;
@@ -53,9 +75,6 @@ interface Hq {
 }
 
 const num = (v: string | null) => (v === null ? null : Number(v));
-/** Categories whose band is `band` (ex -> ex_hq, hq -> hq, os -> outstation). */
-const categoriesFor = (band: DcrBand) =>
-  (Object.keys(SFC_CATEGORY_BAND) as SfcCategory[]).filter((c) => SFC_CATEGORY_BAND[c] === band);
 /** Band of a work type: field types with an allowance band only (Meeting and other non-field: none). */
 export const workTypeBand = (wt: Pick<WorkTypeRow, 'kind' | 'allowanceBand'>): DcrBand | null =>
   wt.kind === 'field' && wt.allowanceBand !== 'none' ? wt.allowanceBand : null;
@@ -74,6 +93,7 @@ const candidate = (r: RouteRow) => ({
   band: SFC_CATEGORY_BAND[r.category as SfcCategory],
   da: num(r.da),
   version: r.version,
+  source: r.source,
 });
 
 /**
@@ -86,7 +106,61 @@ export class DcrFlowService {
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
     private readonly dcr: DcrService,
+    private readonly storage: StorageService,
+    private readonly autoExpense: ExpenseAutoDraftService,
   ) {}
+
+  /** The caller's latest dcr_unlock (dcr_correction) request for the date, or null. */
+  private async unlockRequest(tx: Tx, p: Principal, date: string) {
+    const [r] = await tx
+      .select({
+        id: approvalRequests.id,
+        status: approvalRequests.state,
+        at: approvalRequests.createdAt,
+      })
+      .from(approvalRequests)
+      .where(
+        and(
+          eq(approvalRequests.entityType, 'dcr_correction'),
+          eq(approvalRequests.requestedBy, p.userId),
+          sql`${approvalRequests.payload}->>'date' = ${date}`,
+        ),
+      )
+      .orderBy(desc(approvalRequests.createdAt), desc(approvalRequests.id))
+      .limit(1);
+    return r ? { id: r.id, status: r.status, requestedAt: r.at.toISOString() } : null;
+  }
+
+  /** Active products for the DCR pickers, with the presigned image URL (memoised local signing). */
+  private async productOptions(tx: Tx, p: Principal): Promise<DcrProductOption[]> {
+    const rows = await tx
+      .select({
+        id: products.id,
+        divisionId: products.divisionId,
+        code: products.code,
+        name: products.name,
+        brand: products.brand,
+        composition: products.composition,
+        packSize: products.packSize,
+        form: products.form,
+        mrp: products.mrp,
+        pts: products.pts,
+        isSample: products.isSample,
+        imageFileKey: products.imageFileKey,
+      })
+      .from(products)
+      .where(and(isNull(products.deletedAt), eq(products.active, true)))
+      .orderBy(asc(sql`lower(${products.name})`), asc(products.id));
+    return Promise.all(
+      rows.map(async (r) => ({
+        ...r,
+        displayName: productDisplayName(r.name),
+        mrp: num(r.mrp),
+        pts: num(r.pts),
+        imageUrl: r.imageFileKey ? await this.storage.imageUrl(p.companyId, r.imageFileKey) : null,
+      })),
+    );
+  }
 
   private async workType(tx: Tx, id: string) {
     const [wt] = await tx
@@ -132,21 +206,24 @@ export class DcrFlowService {
     return hqIds.map((id) => ({ id, name: names.find((n) => n.id === id)?.name ?? '' }));
   }
 
-  /** The caller's live routes on these HQs whose category maps to `band`. */
-  private async candidates(tx: Tx, userId: string, hqIds: string[], band: DcrBand) {
+  /**
+   * SFC candidates on these HQs in `band`: the caller's own routes on an HQ where they have any,
+   * else that HQ's routes from any owner (de-duplicated). Single source of truth for sfc-match,
+   * draft/submit validation and the submit snapshot; rules in ./sfc-resolve.ts. Reads go through
+   * the tenant transaction, so RLS keeps them to the caller's company.
+   */
+  private async candidates(
+    tx: Tx,
+    userId: string,
+    hqIds: string[],
+    band: DcrBand,
+  ): Promise<RouteRow[]> {
     if (!hqIds.length) return [];
-    return tx
+    const rows = await tx
       .select()
       .from(sfcRoutes)
-      .where(
-        and(
-          eq(sfcRoutes.userId, userId),
-          inArray(sfcRoutes.hqTerritoryId, hqIds),
-          isNull(sfcRoutes.deletedAt),
-          inArray(sfcRoutes.category, categoriesFor(band)),
-        ),
-      )
-      .orderBy(asc(sfcRoutes.sortOrder), asc(sfcRoutes.id));
+      .where(and(inArray(sfcRoutes.hqTerritoryId, hqIds), isNull(sfcRoutes.deletedAt)));
+    return resolveSfcCandidates(rows, userId, hqIds, band);
   }
 
   options(p: Principal, date: string) {
@@ -157,10 +234,23 @@ export class DcrFlowService {
         .from(workTypes)
         .where(and(isNull(workTypes.deletedAt), eq(workTypes.active, true)))
         .orderBy(asc(workTypes.code));
-      const [row] = await tx
+      const rows = await tx
         .select()
         .from(dcrs)
         .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, date), isNull(dcrs.deletedAt)));
+      // Several drafts per day, at most one submitted report (0045); rejected ones are history.
+      const sub = submittedOf(rows);
+      const draftRows = draftsNewestFirst(rows);
+      const rejectedRows = rejectedNewestFirst(rows);
+      const ordered = [...(sub ? [sub] : []), ...draftRows, ...rejectedRows];
+      const dtos = ordered.length ? await this.dcr.toDto(tx, s, ordered) : [];
+      const submitted = sub ? dtos[0]! : null;
+      const rest = sub ? dtos.slice(1) : dtos;
+      const drafts = rest.slice(0, draftRows.length);
+      const rejected = rest.slice(draftRows.length);
+      // Always include day lock/unlock so clients know a day is open after an approved
+      // correction even when there is no DCR row yet.
+      const li = await this.dcr.lockInfo(tx, s, p.userId, date);
       return {
         date,
         workTypes: wts.map((w) => ({
@@ -172,7 +262,20 @@ export class DcrFlowService {
           usesSfc: workTypeBand(w) !== null,
           detailsKind: dcrDetailsKind(w),
         })),
-        dcr: row ? (await this.dcr.toDto(tx, s, [row]))[0]! : null,
+        dcr: submitted ?? drafts[0] ?? null,
+        submitted,
+        drafts,
+        rejected,
+        lockAt: li.lockAt.toISOString(),
+        unlockedUntil: li.unlockedUntil?.toISOString() ?? null,
+        locked: li.locked,
+        unlockRequest: await this.unlockRequest(tx, p, date),
+        tourPlanDrafts: await itemCards(tx, p.userId, localDate(new Date(), s.timezone)),
+        autoExpenseOnDcrSubmit: await this.autoExpense.enabled(tx, p),
+        ...(await this.productOptions(tx, p).then((products) => ({
+          products,
+          detailProducts: groupDetailProducts(products),
+        }))),
       };
     });
   }
@@ -223,7 +326,7 @@ export class DcrFlowService {
   }
 
   /** Anyone can work with anyone: active users of the company except the caller. */
-  workWith(p: Principal, q: { q?: string; limit: number }) {
+  workWith(p: Principal, q: { q?: string; ids?: string[]; limit: number }) {
     return this.tenant.run(p, async (tx) => {
       const term = q.q?.replace(/[\\%_]/g, (m) => `\\${m}`);
       const rows = await tx
@@ -239,9 +342,11 @@ export class DcrFlowService {
             eq(users.status, 'active'),
             isNull(users.deletedAt),
             ne(users.id, p.userId),
-            term
-              ? or(ilike(users.name, `%${term}%`), ilike(users.employeeCode, `${term}%`))
-              : undefined,
+            q.ids
+              ? inArray(users.id, q.ids)
+              : term
+                ? or(ilike(users.name, `%${term}%`), ilike(users.employeeCode, `${term}%`))
+                : undefined,
           ),
         )
         .orderBy(asc(users.name), asc(users.id))
@@ -292,7 +397,7 @@ export class DcrFlowService {
     });
   }
 
-  /** Chosen routes must be the caller's, on that HQ, live, and in the band. */
+  /** Chosen routes must be candidates: on that HQ, live, in the band, own or HQ fallback. */
   private async checkChoices(
     tx: Tx,
     p: Principal,
@@ -326,7 +431,7 @@ export class DcrFlowService {
       throw err(
         422,
         'SFC_MISMATCH',
-        'Route is not yours, not on that HQ, deleted, or not in the band',
+        'Route is not a candidate: not yours (or HQ fallback), not on that HQ, deleted, or not in the band',
         {
           sfcRouteIds: bad.map((c) => c.sfcRouteId),
           band,
@@ -409,29 +514,55 @@ export class DcrFlowService {
   draft(p: Principal, b: DcrDraftPut) {
     return this.tenant.run(p, async (tx) => {
       const s = await companySettings(tx, p);
-      if (b.date > localDate(new Date(), s.timezone))
+      // TP items: the approved item covering the date (asked for, or linked automatically).
+      const item = await approvedItemOn(tx, p.userId, b.date);
+      if (b.tourPlanItemId && b.tourPlanItemId !== item?.id)
+        throw err(422, 'VALIDATION', 'Not your approved tour plan for this date', {
+          field: 'tourPlanItemId',
+          reason: 'TOUR_PLAN_ITEM_MISMATCH',
+        });
+      // A future day may be drafted only from its approved tour plan item; submit opens on the day.
+      if (b.date > localDate(new Date(), s.timezone) && !b.tourPlanItemId)
         throw err(422, 'VALIDATION', 'DCR date is in the future');
-      const [cur] = await tx
+      // Lock the caller's live DCRs of the date: a concurrent submit of one of them is seen here.
+      const day = await tx
         .select()
         .from(dcrs)
-        .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, b.date)))
+        .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, b.date), isNull(dcrs.deletedAt)))
+        .orderBy(desc(dcrs.updatedAt), desc(dcrs.id))
         .for('update');
+      const byId = b.id
+        ? (day.find((r) => r.id === b.id) ??
+          (
+            await tx
+              .select()
+              .from(dcrs)
+              .where(and(eq(dcrs.id, b.id), eq(dcrs.userId, p.userId), isNull(dcrs.deletedAt)))
+              .for('update')
+          )[0])
+        : undefined;
       const li = await this.dcr.lockInfo(tx, s, p.userId, b.date);
       if (li.locked)
         throw err(409, 'DAY_LOCKED', 'This day is locked; request a correction', {
           lockAt: li.lockAt.toISOString(),
         });
-      if (cur && !cur.deletedAt && cur.status === 'submitted')
-        throw err(409, 'ALREADY_SUBMITTED', 'Submitted DCRs are read-only; request a correction', {
-          id: cur.id,
-        });
-      if (cur && b.version && b.version !== cur.version)
+      const target = resolveDraftTarget(b, byId, day);
+      if (target.action === 'error') {
+        if (target.status === 404) throw new NotFoundException('Draft not found');
+        const stale =
+          target.code === 'VERSION_CONFLICT'
+            ? b.id
+              ? byId
+              : draftsNewestFirst(day)[0]
+            : undefined;
         throw err(
-          409,
-          'VERSION_CONFLICT',
-          'Stale version',
-          (await this.dcr.toDto(tx, s, [cur]))[0],
+          target.status,
+          target.code,
+          target.message,
+          stale ? (await this.dcr.toDto(tx, s, [stale]))[0] : target.details,
         );
+      }
+      const cur = target.action === 'update' ? target.row : undefined;
 
       const wt = await this.workType(tx, b.workTypeId);
       const band = workTypeBand(wt);
@@ -450,7 +581,7 @@ export class DcrFlowService {
       const hqs = await this.resolveHqs(tx, p, b.territoryIds);
       await this.checkWorkWith(tx, b.workWithUserIds);
       await this.checkChoices(tx, p, b.sfcRoutes ?? [], hqs, band);
-      const { ptr } = await this.dcr.validateCalls(tx, p, b, cur?.id);
+      const { pts } = await this.dcr.validateCalls(tx, p, b, cur?.id);
       const plan = await this.dcr.plan(tx, p.userId, b.date);
 
       const vals = {
@@ -458,6 +589,7 @@ export class DcrFlowService {
         territoryId: b.territoryIds[0] ?? null,
         territoryIds: b.territoryIds,
         tourPlanId: plan.tourPlanId,
+        tourPlanItemId: item?.id ?? null,
         deviationReason: b.deviationReason?.trim() || null,
         band,
         details: b.details ?? null,
@@ -465,11 +597,7 @@ export class DcrFlowService {
         status: 'draft' as const,
       };
       const [row] = cur
-        ? await tx
-            .update(dcrs)
-            .set({ ...vals, deletedAt: null })
-            .where(eq(dcrs.id, cur.id))
-            .returning()
+        ? await tx.update(dcrs).set(vals).where(eq(dcrs.id, cur.id)).returning()
         : await tx
             .insert(dcrs)
             .values({
@@ -481,7 +609,7 @@ export class DcrFlowService {
             })
             .returning();
       const dcrId = row!.id;
-      await this.dcr.writeCalls(tx, p, dcrId, b.date, b.calls, ptr);
+      await this.dcr.writeCalls(tx, p, dcrId, b.date, b.calls, pts);
       await this.writeChoices(
         tx,
         p,
@@ -492,7 +620,7 @@ export class DcrFlowService {
       await this.audit.record(tx, p, 'dcr.draft_save', {
         entityType: 'dcr',
         entityId: dcrId,
-        after: { date: b.date, calls: b.calls.length, hqs: hqs.length },
+        after: { date: b.date, calls: b.calls.length, hqs: hqs.length, created: !cur },
       });
       const [fresh] = await tx.select().from(dcrs).where(eq(dcrs.id, dcrId));
       return (await this.dcr.toDto(tx, s, [fresh!]))[0]!;
@@ -508,10 +636,27 @@ export class DcrFlowService {
         .where(and(eq(dcrs.id, id), eq(dcrs.userId, p.userId), isNull(dcrs.deletedAt)))
         .for('update');
       if (!cur) throw new NotFoundException('DCR not found');
-      if (cur.status === 'submitted') {
-        if (cur.submitIdempotencyKey === key) return (await this.dcr.toDto(tx, s, [cur]))[0]!;
+      // Serialise with leave approval (LEAVE_DCR_CONFLICT): the approved-leave check below then sees
+      // any leave approved before us, and an approval after us sees this submitted DCR.
+      await lockDcrLeave(tx, p.userId);
+      // Retry with the same key: also for a director's report (approved at submit).
+      if (
+        (cur.status === 'submitted' || cur.status === 'approved') &&
+        cur.submitIdempotencyKey === key
+      )
+        return { ...(await this.dcr.toDto(tx, s, [cur]))[0]!, expenseDraft: null };
+      if (cur.status === 'submitted')
         throw err(409, 'ALREADY_SUBMITTED', 'Already submitted; request a correction', { id });
-      }
+      // Reviewed reports are read-only: approved stays, rejected is history (file a new draft).
+      if (cur.status !== 'draft')
+        throw err(
+          409,
+          'ALREADY_SUBMITTED',
+          cur.status === 'rejected'
+            ? 'Rejected DCRs are read-only; save a new draft for the day'
+            : 'Approved DCRs are read-only',
+          { id, status: cur.status },
+        );
       const [reused] = await tx
         .select({ id: dcrs.id })
         .from(dcrs)
@@ -519,6 +664,18 @@ export class DcrFlowService {
       if (reused)
         throw err(409, 'IDEMPOTENCY_CONFLICT', 'Idempotency-Key already used for another DCR', {
           id: reused.id,
+        });
+      // Only one submitted report per day; the other drafts of the day are kept.
+      const existingId = submitConflict(
+        cur.id,
+        await tx
+          .select()
+          .from(dcrs)
+          .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, cur.date), isNull(dcrs.deletedAt))),
+      );
+      if (existingId)
+        throw err(409, 'DAY_ALREADY_SUBMITTED', 'This day already has a submitted report', {
+          existingId,
         });
       if (version !== cur.version)
         throw err(
@@ -549,6 +706,7 @@ export class DcrFlowService {
         throw err(422, 'VALIDATION', 'Field work needs at least one call', { field: 'calls' });
       if (!field && dto.calls.length)
         throw err(422, 'VALIDATION', 'Calls need a field work type', { field: 'calls' });
+      this.dcr.assertPresentations(dto.calls);
       const hqs = await this.resolveHqs(tx, p, cur.territoryIds);
       await this.checkWorkWith(tx, cur.workWithUserIds);
       await this.details(tx, p, wt, cur);
@@ -565,18 +723,8 @@ export class DcrFlowService {
         cur.id,
       );
       const plan = await this.dcr.plan(tx, p.userId, cur.date);
-      if (isDeviation(plan.entries, cur.workTypeId, cur.territoryIds) && !cur.deviationReason)
-        throw err(
-          422,
-          'DEVIATION_REASON_REQUIRED',
-          'Worked plan differs from the approved tour plan; give a reason',
-          {
-            planned: plan.entries.map((e) => ({
-              workTypeId: e.workTypeId,
-              territoryIds: e.territoryIds,
-            })),
-          },
-        );
+      // TP feature: changes from the approved tour plan no longer need a deviation reason
+      // (deviationReason stays optional and is stored as given).
 
       // One route per HQ of the day: chosen and valid, or the single candidate.
       const chosen = band
@@ -644,24 +792,95 @@ export class DcrFlowService {
             ),
           );
       }
-      await tx
-        .update(dcrs)
-        .set({
-          status: 'submitted',
-          submittedAt: new Date(),
-          submittedBy: p.userId,
-          submitIdempotencyKey: key,
-          band,
-          tourPlanId: plan.tourPlanId,
-        })
-        .where(eq(dcrs.id, cur.id));
+      try {
+        // Savepoint: a race with another submit of the same day trips the partial unique index.
+        await tx.transaction(async (sp) => {
+          await sp
+            .update(dcrs)
+            .set({
+              // Director: approved now by the system (no manager); everyone else: submitted.
+              ...submitStatus(p, new Date()),
+              submittedAt: new Date(),
+              submittedBy: p.userId,
+              submitIdempotencyKey: key,
+              band,
+              tourPlanId: plan.tourPlanId,
+              tourPlanItemId: (await approvedItemOn(tx, p.userId, cur.date))?.id ?? null,
+            })
+            .where(eq(dcrs.id, cur.id));
+        });
+      } catch (e) {
+        if (!isDaySubmittedViolation(e)) throw e;
+        const [other] = await tx
+          .select({ id: dcrs.id })
+          .from(dcrs)
+          .where(
+            and(
+              eq(dcrs.userId, p.userId),
+              eq(dcrs.date, cur.date),
+              isNull(dcrs.deletedAt),
+              ne(dcrs.id, cur.id),
+              inArray(dcrs.status, [...SUBMITTED_STATUSES]),
+            ),
+          );
+        throw err(409, 'DAY_ALREADY_SUBMITTED', 'This day already has a submitted report', {
+          existingId: other?.id ?? null,
+        });
+      }
       await this.audit.record(tx, p, 'dcr.submit', {
         entityType: 'dcr',
         entityId: cur.id,
         after: { date: cur.date, calls: dto.calls.length, sfcRoutes: routes.map((r) => r.id) },
       });
+      if (isDirector(p)) await auditDcrAutoApproved(this.audit, tx, p, cur.id, cur.date);
+      // Server TA/DA (company setting autoExpenseOnDcrSubmit); never fails the submit.
+      const expenseDraft = await this.autoExpense.onDcrSubmit(tx, p, {
+        id: cur.id,
+        userId: p.userId,
+        date: cur.date,
+      });
       const [fresh] = await tx.select().from(dcrs).where(eq(dcrs.id, cur.id));
-      return (await this.dcr.toDto(tx, s, [fresh!]))[0]! satisfies Dcr;
+      await this.dcr.notifySubmit(tx, p, fresh!);
+      return {
+        ...((await this.dcr.toDto(tx, s, [fresh!]))[0]! satisfies Dcr),
+        expenseDraft,
+      } satisfies DcrSubmitResult;
+    });
+  }
+
+  /** DELETE /v1/dcrs/:id: soft-delete one of your drafts with its calls and SFC choices. */
+  remove(p: Principal, id: string) {
+    return this.tenant.run(p, async (tx) => {
+      const s = await companySettings(tx, p);
+      const [cur] = await tx
+        .select()
+        .from(dcrs)
+        .where(and(eq(dcrs.id, id), eq(dcrs.userId, p.userId), isNull(dcrs.deletedAt)))
+        .for('update');
+      if (!cur) throw new NotFoundException('DCR not found');
+      if (cur.status !== 'draft')
+        throw err(409, 'ALREADY_SUBMITTED', 'Submitted DCRs cannot be deleted', { id });
+      const li = await this.dcr.lockInfo(tx, s, p.userId, cur.date);
+      if (li.locked)
+        throw err(409, 'DAY_LOCKED', 'This day is locked; request a correction', {
+          lockAt: li.lockAt.toISOString(),
+        });
+      const now = new Date();
+      const calls = await tx
+        .update(dcrCalls)
+        .set({ deletedAt: now })
+        .where(and(eq(dcrCalls.dcrId, id), isNull(dcrCalls.deletedAt)))
+        .returning({ id: dcrCalls.id });
+      await tx
+        .update(dcrSfcRoutes)
+        .set({ deletedAt: now })
+        .where(and(eq(dcrSfcRoutes.dcrId, id), isNull(dcrSfcRoutes.deletedAt)));
+      await tx.update(dcrs).set({ deletedAt: now }).where(eq(dcrs.id, id));
+      await this.audit.record(tx, p, 'dcr.delete', {
+        entityType: 'dcr',
+        entityId: id,
+        before: { date: cur.date, status: cur.status, calls: calls.length },
+      });
     });
   }
 

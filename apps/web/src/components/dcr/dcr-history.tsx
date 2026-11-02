@@ -9,6 +9,7 @@ import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
 import { dateLabel } from '@/components/attendance/format';
 import { api, apiReady } from '@/lib/api';
+import { dcrBucket } from '@/lib/dcr/calendar';
 import { failureMessage, thrownMessage } from '@/lib/dcr/errors';
 import { DcrFlow } from './dcr-flow';
 import { Reveal, dcrSummary, istLabel } from './dcr-card-parts';
@@ -16,22 +17,34 @@ import { Reveal, dcrSummary, istLabel } from './dcr-card-parts';
 /**
  * History tab of the DCR page: the rep's own reports that left draft, newest day first, as cards that
  * expand in place into the same report layout, read-only. Data: GET /v1/dcrs?mine=true&sort=-date with
- * status=submitted (still before the day-lock cut-off) and status=locked (past it), from the last
- * WINDOW_DAYS days, then "Show older" drops the from bound. Locked rows that were never submitted are
- * old drafts, not history, and are left out.
+ * unfiltered status from the last WINDOW_DAYS days, then "Show older" drops the from bound. Locked
+ * rows that were never submitted are old drafts, not history, and are left out.
  */
 
 export const HISTORY_WINDOW_DAYS = 60;
 const PAGE = 20;
 const HIGHLIGHT_MS = 2600;
 
-type Status = 'submitted' | 'locked';
-type Phase = { key: string; status: Status; from?: string; to?: string; cursor: string | null; done: boolean };
+type Phase = { key: string; from?: string; to?: string; cursor: string | null; done: boolean };
 
-const shiftDay = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+const shiftDay = (d: string, n: number) =>
+  new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const isHistory = (d: Dcr) => d.status !== 'draft' && !!d.submittedAt;
 const newestDay = (a: Dcr, b: Dcr) =>
-  a.date < b.date ? 1 : a.date > b.date ? -1 : (b.submittedAt ?? b.updatedAt).localeCompare(a.submittedAt ?? a.updatedAt);
+  a.date < b.date
+    ? 1
+    : a.date > b.date
+      ? -1
+      : (b.submittedAt ?? b.updatedAt).localeCompare(a.submittedAt ?? a.updatedAt);
+
+function historyStatusLabel(d: Dcr) {
+  const status = dcrBucket(d);
+  if (status === 'approved') return 'Approved';
+  if (status === 'rejected') return 'Rejected';
+  if (status === 'locked') return 'Locked';
+  if (status === 'pending') return 'Pending';
+  return 'Submitted';
+}
 
 /** Keep ?tab=history and ?view=<id> in the address bar so a reload or shared link lands here. */
 function setUrl(view: string | null) {
@@ -63,8 +76,7 @@ export function DcrHistory({
   const since = shiftDay(today, -HISTORY_WINDOW_DAYS);
   const [items, setItems] = useState<Map<string, Dcr>>(new Map());
   const [phases, setPhases] = useState<Phase[]>(() => [
-    { key: 'submitted', status: 'submitted', from: since, cursor: null, done: false },
-    { key: 'locked', status: 'locked', from: since, cursor: null, done: false },
+    { key: 'current', from: since, cursor: null, done: false },
   ]);
   const [started, setStarted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -95,9 +107,8 @@ export function DcrHistory({
             params: {
               query: {
                 mine: 'true',
-                status: p.status,
                 sort: '-date',
-                limit: p.status === 'submitted' ? 100 : PAGE,
+                limit: PAGE,
                 ...(p.from ? { from: p.from } : {}),
                 ...(p.to ? { to: p.to } : {}),
                 ...(p.cursor ? { cursor: p.cursor } : {}),
@@ -114,7 +125,11 @@ export function DcrHistory({
         return n;
       });
       const next = new Map(targets.map((p, i) => [p.key, res[i]!.data!.nextCursor] as const));
-      setPhases((ps) => ps.map((p) => (next.has(p.key) ? { ...p, cursor: next.get(p.key) ?? null, done: !next.get(p.key) } : p)));
+      setPhases((ps) =>
+        ps.map((p) =>
+          next.has(p.key) ? { ...p, cursor: next.get(p.key) ?? null, done: !next.get(p.key) } : p,
+        ),
+      );
     } catch (e) {
       setError(thrownMessage(e));
     } finally {
@@ -129,10 +144,7 @@ export function DcrHistory({
 
   const showOlder = () => {
     const to = shiftDay(since, -1);
-    const more: Phase[] = [
-      { key: 'submitted-older', status: 'submitted', to, cursor: null, done: false },
-      { key: 'locked-older', status: 'locked', to, cursor: null, done: false },
-    ];
+    const more: Phase[] = [{ key: 'older', to, cursor: null, done: false }];
     phasesRef.current = [...phasesRef.current, ...more];
     setPhases(phasesRef.current);
     setOlder(true);
@@ -146,7 +158,10 @@ export function DcrHistory({
     setHighlight(submitted.id);
     setAnnounce(`Report for ${dateLabel(submitted.date)} submitted. It is in History now.`);
     focusTarget.current = `card:${submitted.id}`;
-    const t = window.setTimeout(() => setHighlight((h) => (h === submitted.id ? null : h)), HIGHLIGHT_MS);
+    const t = window.setTimeout(
+      () => setHighlight((h) => (h === submitted.id ? null : h)),
+      HIGHLIGHT_MS,
+    );
     return () => window.clearTimeout(t);
   }, [submitted]);
 
@@ -164,12 +179,15 @@ export function DcrHistory({
     const hit = items.get(viewId);
     if (hit) return expand(hit);
     void (async () => {
-      const r = await api.GET('/v1/dcrs/{id}', { params: { path: { id: viewId } } }).catch(() => null);
+      const r = await api
+        .GET('/v1/dcrs/{id}', { params: { path: { id: viewId } } })
+        .catch(() => null);
       const d = r?.data;
       if (d && isHistory(d)) {
         setItems((m) => new Map(m).set(d.id, d));
         expand(d);
-      } else if (d?.status === 'draft') toast.info('That report is still a draft. Find it under Today & drafts.');
+      } else if (d?.status === 'draft')
+        toast.info('That report is still a draft. Find it under Today & drafts.');
       else toast.error('Could not find that report. It may have been deleted.');
     })();
   }, [viewId, started, items, expand]);
@@ -207,14 +225,21 @@ export function DcrHistory({
 
   return (
     <div className="flex flex-col gap-4" data-testid="dcr-history">
-      <p className="sr-only" aria-live="polite">{announce}</p>
+      <p className="sr-only" aria-live="polite">
+        {announce}
+      </p>
       <h2 className="text-sm font-medium text-muted-foreground" id="dcr-history-h">
-        {older ? 'Submitted reports' : `Submitted reports, last ${HISTORY_WINDOW_DAYS} days`}
+        {older ? 'Reports' : `Reports, last ${HISTORY_WINDOW_DAYS} days`}
         {list.length ? ` (${list.length}${more ? '+' : ''})` : ''}
       </h2>
 
       {!started || (loading && !list.length) ? (
-        <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading your reports" data-testid="dcr-history-loading">
+        <div
+          className="flex flex-col gap-3"
+          aria-busy="true"
+          aria-label="Loading your reports"
+          data-testid="dcr-history-loading"
+        >
           <Skeleton className="h-20 w-full rounded-xl" />
           <Skeleton className="h-20 w-full rounded-xl" />
           <Skeleton className="h-20 w-full rounded-xl opacity-60" />
@@ -222,17 +247,31 @@ export function DcrHistory({
       ) : (
         <>
           {!list.length && !error && (
-            <div className="af-fade flex flex-col items-start gap-1 rounded-xl border border-dashed p-5 text-sm" data-testid="dcr-history-empty">
-              <p className="font-medium">{older ? 'No submitted reports yet' : `No submitted reports in the last ${HISTORY_WINDOW_DAYS} days`}</p>
-              <p className="text-muted-foreground">When you submit a daily report it shows up here, newest day first.</p>
+            <div
+              className="af-fade flex flex-col items-start gap-1 rounded-xl border border-dashed p-5 text-sm"
+              data-testid="dcr-history-empty"
+            >
+              <p className="font-medium">
+                {older ? 'No reports yet' : `No reports in the last ${HISTORY_WINDOW_DAYS} days`}
+              </p>
+              <p className="text-muted-foreground">
+                Submitted reports and their review status show up here, newest day first.
+              </p>
             </div>
           )}
-          <ul className="flex flex-col" aria-labelledby="dcr-history-h" data-testid="dcr-history-list">
+          <ul
+            className="flex flex-col"
+            aria-labelledby="dcr-history-h"
+            data-testid="dcr-history-list"
+          >
             {list.map((d) =>
               openId === d.id ? (
                 <li key={d.id} className="pb-3">
                   <Reveal key={`open-${d.id}`} closing={closing} onClosed={onClosed}>
-                    <div className="flex flex-col gap-4 rounded-2xl border bg-card p-4 shadow-sm sm:p-6" data-testid="dcr-history-open">
+                    <div
+                      className="flex flex-col gap-4 rounded-2xl border bg-card p-4 shadow-sm sm:p-6"
+                      data-testid="dcr-history-open"
+                    >
                       <div className="-mx-2 -mt-2 flex items-center justify-between gap-3">
                         <button
                           ref={headerRef}
@@ -243,7 +282,9 @@ export function DcrHistory({
                           className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                           data-testid="dcr-history-toggle"
                         >
-                          <span className="truncate text-base font-semibold tracking-tight">Submitted · {dateLabel(d.date)}</span>
+                          <span className="truncate text-base font-semibold tracking-tight">
+                            {historyStatusLabel(d)} · {dateLabel(d.date)}
+                          </span>
                           <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-sm text-muted-foreground">
                             Collapse <ChevronUp className="size-4" aria-hidden />
                           </span>
@@ -270,9 +311,18 @@ export function DcrHistory({
           </ul>
 
           {error && (
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-danger-soft p-4 text-sm" role="alert" data-testid="dcr-history-error">
+            <div
+              className="flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-danger-soft p-4 text-sm"
+              role="alert"
+              data-testid="dcr-history-error"
+            >
               {error}
-              <Button type="button" size="sm" variant="outline" onClick={() => void run(!started || !list.length)}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void run(!started || !list.length)}
+              >
                 <RotateCw aria-hidden /> Retry
               </Button>
             </div>
@@ -281,12 +331,27 @@ export function DcrHistory({
           {!error && (more || !older) && (
             <div className="flex justify-center">
               {more ? (
-                <Button type="button" variant="outline" className="min-h-11" disabled={loading} onClick={() => void run(false)} data-testid="dcr-history-more">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11"
+                  disabled={loading}
+                  onClick={() => void run(false)}
+                  data-testid="dcr-history-more"
+                >
                   {loading ? 'Loading…' : 'Load more'}
                 </Button>
               ) : (
-                <Button type="button" variant="ghost" className="min-h-11 text-muted-foreground" disabled={loading} onClick={showOlder} data-testid="dcr-history-older">
-                  <History aria-hidden /> {loading ? 'Loading…' : `Show reports before ${dateLabel(since)}`}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="min-h-11 text-muted-foreground"
+                  disabled={loading}
+                  onClick={showOlder}
+                  data-testid="dcr-history-older"
+                >
+                  <History aria-hidden />{' '}
+                  {loading ? 'Loading…' : `Show reports before ${dateLabel(since)}`}
                 </Button>
               )}
             </div>
@@ -310,13 +375,23 @@ function HistoryCard({
   highlighted: boolean;
   onOpen: () => void;
 }) {
-  const locked = d.status === 'locked';
+  const status = dcrBucket(d);
+  const label = historyStatusLabel(d);
+  const tone =
+    status === 'approved'
+      ? 'bg-success-soft text-success'
+      : status === 'rejected'
+        ? 'bg-danger-soft text-destructive'
+        : status === 'locked'
+          ? 'bg-muted text-muted-foreground'
+          : 'bg-accent/10 text-teal-700';
   return (
     <div
       className={cn(
         'rounded-xl border bg-card p-1.5 shadow-xs',
         'transition-[border-color,box-shadow,background-color] duration-700 ease-(--ease-out) hover:border-foreground/20 motion-reduce:transition-none',
-        highlighted && 'border-success/60 bg-success-soft/50 ring-2 ring-success/25 hover:border-success/60',
+        highlighted &&
+          'border-success/60 bg-success-soft/50 ring-2 ring-success/25 hover:border-success/60',
       )}
     >
       <button
@@ -337,16 +412,17 @@ function HistoryCard({
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="flex flex-wrap items-center gap-2">
             <span className="font-semibold tracking-tight">{dateLabel(d.date)}</span>
-            <span className="rounded-md bg-success-soft px-2 py-0.5 text-xs font-medium text-success">Submitted</span>
-            {locked && (
-              <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground" title="Past the edit cut-off for this day" data-testid="dcr-history-locked">
-                Locked
-              </span>
+            <span className={cn('rounded-md px-2 py-0.5 text-xs font-medium', tone)}>{label}</span>
+            {highlighted && (
+              <span className="af-fade text-xs font-medium text-success">Just now</span>
             )}
-            {highlighted && <span className="af-fade text-xs font-medium text-success">Just now</span>}
           </span>
           <span className="text-sm text-muted-foreground">{summary}</span>
-          {d.submittedAt && <span className="text-xs text-muted-foreground tabular-nums">Submitted {istLabel(d.submittedAt)}</span>}
+          {d.submittedAt && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              Submitted {istLabel(d.submittedAt)}
+            </span>
+          )}
         </span>
         <span
           className="flex size-10 shrink-0 items-center justify-center self-center rounded-md text-muted-foreground transition-colors duration-(--duration-fast) group-hover:bg-muted group-hover:text-foreground"

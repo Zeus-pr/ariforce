@@ -5,22 +5,21 @@ import request from 'supertest';
 import { Pool } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { T } from '@ariforce/db';
+import { T, U } from '@ariforce/db';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 import { pobValue } from '../src/dcr/dcr.service';
-import { createProduct } from './support';
+import { createProduct, insertStaff } from './support';
 
 const OWNER = process.env.DIRECT_URL;
 const APP = process.env.DATABASE_URL;
 const PASSWORD = process.env.DEMO_PASSWORD ?? 'ariforce-demo-pass';
 const ist = (d: Date) => new Date(d.getTime() + 5.5 * 36e5).toISOString().slice(0, 10);
-// Yesterday (still editable until the end of today); leave.test.ts puts bm2 on leave today.
-const DAY = ist(new Date(Date.now() - 864e5));
+const DAY = ist(new Date());
 const OLD = ist(new Date(Date.now() - 10 * 864e5));
 const RUN = Date.now().toString(36);
 
-// bm2 (T.otherArea) on DAY: dcr.test.ts and kpis.test.ts use bm, leave.test.ts uses bm2 today.
+// Dedicated current-day writers keep this integration test independent of other suites' DCRs.
 describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', () => {
   let app: INestApplication;
   const tok: Record<string, string> = {};
@@ -62,7 +61,7 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     calledAt: new Date().toISOString(),
     ...over,
   });
-  const put = (calls: unknown[], extra: Record<string, unknown> = {}, who = 'bm2') =>
+  const put = (calls: unknown[], extra: Record<string, unknown> = {}, who = 'writer') =>
     http()
       .put('/v1/dcrs')
       .set(as(who))
@@ -85,19 +84,33 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
         .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
       tok[who] = `Bearer ${res.headers['set-auth-token']}`;
     }
-    const wt = (await http().get('/v1/work-types?limit=50').set(as('bm2'))).body.items;
+    const writer = await insertStaff(
+      `pob-rcpa-${RUN}@example.test`,
+      'business_manager',
+      U.regional,
+      [T.otherArea],
+    );
+    const otherWriter = await insertStaff(
+      `pob-rcpa-peer-${RUN}@example.test`,
+      'business_manager',
+      U.area,
+      [T.hq],
+    );
+    tok.writer = writer.bearer;
+    tok.otherWriter = otherWriter.bearer;
+    const wt = (await http().get('/v1/work-types?limit=50').set(as('writer'))).body.items;
     field = wt.find((w: { kind: string }) => w.kind === 'field').id;
     doctor = (
       await http()
         .get(`/v1/doctors?territoryId=${T.otherArea}&approvalStatus=approved&limit=1`)
-        .set(as('bm2'))
+        .set(as('writer'))
     ).body.items[0].id;
     hqChemist = (await http().get(`/v1/chemists?territoryId=${T.hq}&limit=1`).set(as('bm'))).body
       .items[0].id;
     chemist = await outlet('chemists', T.otherArea);
     stockist = await outlet('stockists', T.otherArea);
-    priced = await createProduct(http, tok.bm!, tok.director!, { ptr: 12.35, admin: tok.sysadmin });
-    unpriced = await createProduct(http, tok.bm!, tok.director!, { ptr: null });
+    priced = await createProduct(http, tok.bm!, tok.director!, { pts: 12.35, admin: tok.sysadmin });
+    unpriced = await createProduct(http, tok.bm!, tok.director!, { pts: null });
     inactive = await createProduct(http, tok.bm!, tok.director!, { active: false });
   });
   const rowsValue = async (dcrId: string, productId: string) => {
@@ -118,13 +131,13 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     await app?.close();
   });
 
-  it('pobValue: quantity × PTR to 2 dp, null without PTR', () => {
+  it('pobValue: quantity × PTS to 2 dp, null without PTS', () => {
     expect(pobValue(3, '12.35')).toBe('37.05');
     expect(pobValue(7, '0.10')).toBe('0.70');
     expect(pobValue(3, null)).toBeNull();
   });
 
-  it('saves POB + RCPA on a chemist call and reads them back (value from PTR)', async () => {
+  it('saves POB + RCPA on a chemist call and reads them back (value from PTS)', async () => {
     const c = call({
       pob: [
         { productId: priced, quantity: 10, stockistId: stockist, value: 999 },
@@ -170,7 +183,7 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
       ]),
     );
     // GET returns the same lines; the old client shape (no rcpa) still saves and clears them.
-    const one = await http().get(`/v1/dcrs/${res.body.id}`).set(as('bm2'));
+    const one = await http().get(`/v1/dcrs/${res.body.id}`).set(as('writer'));
     expect(one.body.calls[0].rcpa).toHaveLength(3);
     const { rcpa: _drop, ...legacy } = c;
     const v = res.body.version;
@@ -186,7 +199,7 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     expect(back2.body.calls[0].pob).toHaveLength(2);
   });
 
-  it('accepts POB on doctor calls, rejects RCPA on doctor/stockist calls', async () => {
+  it('rejects POB on doctor calls and RCPA on doctor/stockist calls', async () => {
     const docPob = call({
       outletKind: 'doctor',
       outletId: doctor,
@@ -203,14 +216,15 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
       outletId: doctor,
       rcpa: [{ productId: priced, quantity: 1 }],
     });
-    const r = await put([docPob, stkRcpa, docRcpa]);
+    const doctorPob = await put([docPob]);
+    expect(doctorPob.status).toBe(422);
+    expect(doctorPob.body.error.details.callIds).toEqual([docPob.clientId]);
+    const r = await put([stkRcpa, docRcpa]);
     expect(r.status).toBe(422);
-    expect(r.body.error.details.pobOutletCallIds).toBeUndefined();
     expect(r.body.error.details.rcpaOutletCallIds).toEqual([stkRcpa.clientId, docRcpa.clientId]);
-    // POB alone on a stockist or doctor call is fine.
+    // POB alone on a chemist or stockist call is fine.
     const ok = await put([
-      call(),
-      docPob,
+      call({ pob: [{ productId: priced, quantity: 1 }] }),
       call({
         outletKind: 'stockist',
         outletId: stockist,
@@ -221,7 +235,7 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     type C = { outletKind: string; pob: { value: number | null }[] };
     const pobOf = (k: string) =>
       (ok.body.calls as C[]).find((c) => c.outletKind === k && c.pob.length)?.pob[0]?.value;
-    expect(pobOf('doctor')).toBe(12.35);
+    expect(pobOf('chemist')).toBe(12.35);
     expect(pobOf('stockist')).toBe(24.7);
   });
 
@@ -302,11 +316,11 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     const stale = await put([call()], { version: cur.body.version - 1 });
     expect(stale.status).toBe(409);
     expect(stale.body.error.code).toBe('VERSION_CONFLICT');
-    // bm cannot write bm2's chemist (out of scope) and PUT always targets the caller's own DCR.
+    // A BM outside the writer's territory cannot write the chemist's call.
     const other = await put(
       [call({ rcpa: [{ productId: priced, quantity: 1 }] })],
       { territoryIds: [T.hq] },
-      'bm',
+      'otherWriter',
     );
     expect(other.status).toBe(422);
     expect(other.body.error.details.chemistIds).toEqual([chemist]);
@@ -369,10 +383,10 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     expect((await http().get('/v1/rcpa/competitor-brands')).status).toBe(401);
   });
 
-  // Last: it re-saves DAY for bm2 (other tests above use DAY too).
-  it('a PTR change keeps saved POB values; new lines use the new PTR', async () => {
+  // Last: it re-saves DAY for the dedicated writer.
+  it('a PTS change keeps saved POB values; new lines use the new PTS', async () => {
     const prod = await createProduct(http, tok.bm!, tok.director!, {
-      ptr: 10,
+      pts: 10,
       admin: tok.sysadmin,
     });
     const c = call({ pob: [{ productId: prod, quantity: 2 }] });
@@ -382,17 +396,17 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     const pr = await http()
       .patch(`/v1/admin/products/${prod}/prices`)
       .set(as('sysadmin'))
-      .send({ ptr: 12 });
+      .send({ pts: 12 });
     expect(pr.status, JSON.stringify(pr.body)).toBe(200);
-    const read = await http().get(`/v1/dcrs/${first.body.id}`).set(as('bm2'));
+    const read = await http().get(`/v1/dcrs/${first.body.id}`).set(as('writer'));
     expect(read.body.calls[0].pob[0].value).toBe(20); // stored at write, never re-priced on read
     const kpi = await rowsValue(first.body.id, prod);
     expect(kpi).toBe('20.00');
-    // A new line (another rep's DCR) is priced at the new PTR.
+    // A new line (another rep's DCR) is priced at the new PTS.
     const second = await put(
       [call({ outletId: hqChemist, pob: [{ productId: prod, quantity: 2 }] })],
       { territoryIds: [T.hq] },
-      'bm',
+      'otherWriter',
     );
     expect(second.status, JSON.stringify(second.body)).toBe(200);
     expect(second.body.calls[0].pob[0].value).toBe(24);
@@ -405,9 +419,9 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     }
     expect(await rowsValue(first.body.id, prod)).toBe('20.00');
 
-    // Edited quantity = new line pricing (current PTR 12); an added product uses its current PTR.
+    // Edited quantity = new line pricing (current PTS 12); an added product uses its current PTS.
     const prod2 = await createProduct(http, tok.bm!, tok.director!, {
-      ptr: 5,
+      pts: 5,
       admin: tok.sysadmin,
     });
     const edited = await put([
@@ -424,8 +438,8 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
       b.calls[0]!.pob.find((x) => x.productId === id)!.value;
     expect(byProd(edited.body, prod)).toBe(36);
     expect(byProd(edited.body, prod2)).toBe(5);
-    // A later PTR change does not touch either line on another unchanged re-send.
-    await http().patch(`/v1/admin/products/${prod}/prices`).set(as('sysadmin')).send({ ptr: 15 });
+    // A later PTS change does not touch either line on another unchanged re-send.
+    await http().patch(`/v1/admin/products/${prod}/prices`).set(as('sysadmin')).send({ pts: 15 });
     const kept = await put([
       {
         ...c,

@@ -25,11 +25,12 @@ describe('mock team + employees (same rules as the API)', () => {
     const tree = (await (await call('abm', 'GET', '/v1/team')).json()) as any;
     expect(tree.rootId).toBe(abm.id);
     expect(tree.nodes[0].depth).toBe(0);
+    const hqId = fx.hqTerritories[0]!.id;
     const body = {
       name: 'New BM',
       email: 'new.bm@demo.ariforce.in',
       role: 'business_manager',
-      territoryIds: abm.territoryIds,
+      territoryIds: [hqId],
     };
     expect((await call('bm', 'POST', '/v1/employees', body)).status).toBe(403);
     expect(

@@ -19,14 +19,15 @@ import {
   Territory,
 } from '../index';
 import * as fx from './fixtures';
-import { ROLE_RANK, RoleKey, isRetiredRole } from '../schemas/roles';
+import { RoleKey, isRetiredRole } from '../schemas/roles';
 import { assignableTerritoryLevels } from '../schemas/territories';
 import { duplicateKeys, mapImportRow, type ImportLookup } from '../import/templates';
 import type { ImportEntity } from '../schemas/imports';
 import { SignInEmailBody } from '../schemas/auth';
+import { UploadUrlRequest } from '../schemas/files';
 import { kpiReport, productKpiReport } from './kpis';
 import { listNotifications, seedNotifications } from './notifications';
-import { mockEmployees, teamHandlers, teamProfileHandlers } from './team';
+import { teamHandlers, teamProfileHandlers } from './team';
 import { signupHandlers } from './signup';
 import { passwordResetHandlers } from './password-reset';
 import { allowanceHandlers } from './allowances';
@@ -53,6 +54,7 @@ import {
   DcrDraftPut,
   DcrOptions,
   DcrOptionsQuery,
+  DcrDecision,
   DcrSfcMatch,
   DcrSfcMatchQuery,
   DcrSubmit,
@@ -65,6 +67,15 @@ import {
   ImportRequest,
   type ImportRowResult,
   Product,
+  productDisplayName,
+  groupDetailProducts,
+  tpItemCard,
+  tpItemFiledDates,
+  TourPlanItem,
+  TourPlanItemDecision,
+  TourPlanItemList,
+  TourPlanItemListQuery,
+  TourPlanItemUpsert,
   ProductCreate,
   ProductHqMapping,
   StandardTourPlan,
@@ -427,15 +438,31 @@ export function createHandlers(baseUrl = '') {
     ...leaveHandlers(baseUrl, mockPrincipal),
     ...exceptionHandlers(baseUrl, mockPrincipal),
     http.get(`${baseUrl}/v1/health`, () => HttpResponse.json({ status: 'ok', warnings: [] })),
-    http.post(`${baseUrl}/v1/files/upload-url`, () =>
-      HttpResponse.json({
-        fileKey: 'mock/doctor_photo/2026/10/mock.jpg',
+    http.post(`${baseUrl}/v1/files/upload-url`, async ({ request }) => {
+      // Same validation as the API (e.g. product_image: jpeg/png/webp, <= 5 MB); key echoes the purpose.
+      const raw = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      const b = UploadUrlRequest.safeParse(raw ?? { purpose: 'doctor_photo' });
+      if (raw && !b.success)
+        return HttpResponse.json(
+          {
+            error: { code: 'VALIDATION', message: b.error.issues.map((i) => i.message).join('; ') },
+          },
+          { status: 422 },
+        );
+      const purpose = b.success ? b.data.purpose : 'doctor_photo';
+      const type = b.success ? b.data.contentType : 'image/jpeg';
+      const ext = { 'image/png': 'png', 'image/webp': 'webp' }[type as string] ?? 'jpg';
+      return HttpResponse.json({
+        fileKey: `mock/${purpose}/2026/10/${crypto.randomUUID()}.${ext}`,
         uploadUrl: 'https://mock-r2.invalid/upload',
         method: 'PUT',
-        headers: { 'content-type': 'image/jpeg' },
+        headers: {
+          'content-type': type,
+          ...(b.success ? { 'content-length': String(b.data.sizeBytes) } : {}),
+        },
         expiresAt: new Date(Date.now() + 600_000).toISOString(),
-      }),
-    ),
+      });
+    }),
     http.post(`${baseUrl}/v1/files/download-url`, () =>
       HttpResponse.json({
         downloadUrl: 'https://mock-r2.invalid/download',
@@ -500,24 +527,15 @@ export function createHandlers(baseUrl = '') {
       const url = new URL(request.url);
       const lvl = url.searchParams.get('level');
       const role = RoleKey.safeParse(url.searchParams.get('assignableForRole'));
-      if (url.searchParams.has('assignableForRole') && !role.success)
-        return HttpResponse.json(
-          { error: { code: 'VALIDATION', message: 'assignableForRole is not a role' } },
-          { status: 422 },
-        );
       const ok = role.success ? assignableTerritoryLevels(role.data) : null;
-      // HQ-level rows live apart so pickers that list leaf territories keep their fixtures.
-      const hqOnly = lvl === 'headquarter' || (!!ok && ok.length === 1 && ok[0] === 'headquarter');
       return list(
         Territory,
-        (hqOnly ? fx.hqTerritories : fx.territories).filter(
-          (t) => (!lvl || t.level === lvl) && (!ok || ok.includes(t.level)),
-        ),
+        fx.territories.filter((t) => (!lvl || t.level === lvl) && (!ok || ok.includes(t.level))),
         url,
       );
     }),
     http.get(`${baseUrl}/v1/territories/:id`, ({ params }) => {
-      const t = [...fx.territories, ...fx.hqTerritories].find((r) => r.id === params.id);
+      const t = fx.territories.find((r) => r.id === params.id);
       return t ? HttpResponse.json(Territory.parse(t)) : notFound();
     }),
     http.get(`${baseUrl}/v1/specialties`, ({ request }) =>
@@ -533,7 +551,20 @@ export function createHandlers(baseUrl = '') {
     ),
     ...crud(baseUrl, '/v1/chemists', Chemist, ChemistCreate, chemistRows, undefined, false),
     ...crud(baseUrl, '/v1/stockists', Stockist, StockistCreate, fx.stockists),
-    ...crud(baseUrl, '/v1/products', Product, ProductCreate, fx.products),
+    ...crud(
+      baseUrl,
+      '/v1/products',
+      // displayName is derived from name on every read (create, patch and import included).
+      z.preprocess(
+        (r) => ({
+          ...(r as object),
+          displayName: productDisplayName((r as { name: string }).name),
+        }),
+        Product,
+      ) as unknown as z.ZodType<Product>,
+      ProductCreate,
+      fx.products,
+    ),
     ...crud(baseUrl, '/v1/work-types', WorkType, WorkTypeCreate, fx.workTypes),
     ...fieldHandlers(baseUrl),
     ...teamProfileHandlers(baseUrl, mockPrincipal),
@@ -544,120 +575,17 @@ export function createHandlers(baseUrl = '') {
 function fieldHandlers(baseUrl: string) {
   const inbox = seedNotifications();
   const checkIns: CheckIn[] = [];
-  // Seeded plan behind the pending tour_plan approval, so approvers can review its days.
-  const seedTs = serverTime();
-  const tourPlans: TourPlan[] = [
-    {
-      companyId: fx.COMPANY_ID,
-      createdAt: seedTs,
-      updatedAt: seedTs,
-      deletedAt: null,
-      version: 1,
-      // #86: the seeded approval decides a submission (days 1-2); day 3 is still a draft.
-      id: '7a1c0de0-0086-4000-8000-000000000086',
-      userId: fx.approvals[0]!.requestedBy,
-      month: '2026-12',
-      kind: 'mtp',
-      status: 'submitted',
-      days: [1, 2, 3].map((d) => ({
-        date: `2026-12-0${d}`,
-        entries: [
-          {
-            session: 'full' as const,
-            workTypeId: fx.workTypes[0]!.id,
-            territoryIds: [fx.doctors[0]!.territoryId],
-            jointWorkUserIds: [],
-            plannedDoctorIds: fx.doctors.slice(0, 2).map((x) => x.id),
-            plannedChemistIds: [],
-            notes: d === 1 ? 'Cover the new hospital wing' : null,
-          },
-        ],
-        status: d < 3 ? ('submitted' as const) : ('draft' as const),
-        submissionId: d < 3 ? fx.approvals[0]!.subjectId : null,
-      })),
-      submissions: [
-        {
-          id: fx.approvals[0]!.subjectId,
-          tourPlanId: '7a1c0de0-0086-4000-8000-000000000086',
-          dates: ['2026-12-01', '2026-12-02'],
-          status: 'submitted',
-          approvalId: fx.approvals[0]!.id,
-          submitterNote: 'Hospital wing opens on the 1st',
-          submittedAt: seedTs,
-          decidedAt: null,
-          decidedBy: null,
-          decisionComment: null,
-          rejectionReason: null,
-          rejectedBy: null,
-          rejectedAt: null,
-        },
-      ],
-      submittedAt: seedTs,
-      decidedAt: null,
-      decidedBy: null,
-      decisionComment: null,
-      submitterNote: 'Hospital wing opens on the 1st',
-      rejectionReason: null,
-      rejectedBy: null,
-      rejectedAt: null,
-    } as TourPlan,
-    // #86 e2e seed: my own Feb 2027 plan. Day 1 was rejected (editable, resubmittable), day 2 approved (locked).
-    ((): TourPlan => {
-      const pid = '7a1c0de0-0086-4000-8000-000000000201';
-      const rej = '7a1c0de0-0086-4000-8000-000000000202';
-      const ok = '7a1c0de0-0086-4000-8000-000000000203';
-      const approver = { id: fx.approvals[0]!.requestedBy, name: 'Demo Vice President' };
-      const entry = (notes: string | null) => ({
-        session: 'full' as const,
-        workTypeId: fx.workTypes[0]!.id,
-        territoryIds: [fx.doctors[0]!.territoryId],
-        jointWorkUserIds: [],
-        plannedDoctorIds: [fx.doctors[0]!.id],
-        plannedChemistIds: [],
-        notes,
-      });
-      const sub = (id: string, date: string, status: 'approved' | 'rejected') => ({
-        id,
-        tourPlanId: pid,
-        dates: [date],
-        status,
-        approvalId: null,
-        submitterNote: null,
-        submittedAt: seedTs,
-        decidedAt: seedTs,
-        decidedBy: approver,
-        decisionComment: status === 'rejected' ? 'Wrong territory for the 1st' : 'Looks good',
-        rejectionReason: status === 'rejected' ? 'Wrong territory for the 1st' : null,
-        rejectedBy: status === 'rejected' ? approver : null,
-        rejectedAt: status === 'rejected' ? seedTs : null,
-      });
-      return {
-        companyId: fx.COMPANY_ID,
-        createdAt: seedTs,
-        updatedAt: seedTs,
-        deletedAt: null,
-        version: 1,
-        id: pid,
-        userId: fx.me.id,
-        month: '2027-02',
-        kind: 'mtp',
-        status: 'rejected',
-        days: [
-          { date: '2027-02-01', entries: [entry(null)], status: 'rejected', submissionId: rej },
-          { date: '2027-02-02', entries: [entry(null)], status: 'approved', submissionId: ok },
-        ],
-        submissions: [sub(rej, '2027-02-01', 'rejected'), sub(ok, '2027-02-02', 'approved')],
-        submittedAt: seedTs,
-        decidedAt: seedTs,
-        decidedBy: approver.id,
-        decisionComment: null,
-        submitterNote: null,
-        rejectionReason: null,
-        rejectedBy: null,
-        rejectedAt: null,
-      } as TourPlan;
-    })(),
-  ];
+  const tourPlans: TourPlan[] = [];
+  /** Tour plan items (TP feature); single-user mock: queue/decision only see other users' items. */
+  const tpItems: TourPlanItem[] = [];
+  const itemOut = (it: TourPlanItem): TourPlanItem => ({
+    ...it,
+    filedDates: tpItemFiledDates(
+      it.from,
+      it.to,
+      dcrs.filter((x) => x.userId === it.userId),
+    ),
+  });
   let stp: StandardTourPlan | null = null;
   const dcrs: Dcr[] = [];
   setMockSubmittedDcrLookup((userId, from, to) =>
@@ -716,9 +644,23 @@ function fieldHandlers(baseUrl: string) {
     source: 'own' as const,
   });
   // Multi-draft: several drafts per user and day, at most one submitted report.
-  const myDay = (date: string) =>
-    dcrs.filter((x) => x.date === date && x.userId === fx.me.id && !x.deletedAt);
-  const submittedOf = (date: string) => myDay(date).find((x) => x.status !== 'draft');
+  const myDay = (date: string) => dcrs.filter((x) => x.date === date && x.userId === fx.me.id);
+  const submittedOf = (date: string) =>
+    myDay(date).find((x) => x.status !== 'draft' && x.status !== 'rejected');
+  const rejectedOf = (date: string) =>
+    myDay(date)
+      .filter((x) => x.status === 'rejected')
+      .sort((a, b) => (b.rejectedAt ?? '').localeCompare(a.rejectedAt ?? ''));
+  const productOptions = () =>
+    fx.products
+      .filter((p) => p.active && !p.deletedAt)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((p) => ({
+        ...p,
+        displayName: productDisplayName(p.name),
+        imageFileKey: p.imageFileKey ?? null,
+        imageUrl: p.imageUrl ?? null,
+      }));
   const draftsOf = (date: string) =>
     myDay(date)
       .filter((x) => x.status === 'draft')
@@ -747,6 +689,29 @@ function fieldHandlers(baseUrl: string) {
           dcr: d ? withLock(d) : null,
           submitted: sub ? withLock(sub) : null,
           drafts: drafts.map(withLock),
+          rejected: rejectedOf(q.data.date).map(withLock),
+          unlockRequest: [...corrections].some(([, day]) => day === q.data.date)
+            ? {
+                id: [...corrections].filter(([, day]) => day === q.data.date).at(-1)![0],
+                status: (unlocked.get(q.data.date) ?? 0) > Date.now() ? 'approved' : 'pending',
+                requestedAt: serverTime(),
+              }
+            : null,
+          tourPlanDrafts: tpItems
+            .filter((it) => it.userId === fx.me.id)
+            .sort((a, b) => a.from.localeCompare(b.from))
+            .flatMap((it) => {
+              const c = tpItemCard(
+                it,
+                dcrs.filter((x) => x.userId === fx.me.id),
+                today(),
+              );
+              return c ? [{ ...itemOut(it), ...c }] : [];
+            }),
+          products: productOptions(),
+          detailProducts: groupDetailProducts(DcrOptions.shape.products.parse(productOptions())),
+          // Mock keeps client-side TA/DA drafting (the server setting is off here).
+          autoExpenseOnDcrSubmit: false,
         }),
       );
     }),
@@ -798,12 +763,25 @@ function fieldHandlers(baseUrl: string) {
     http.put(`${baseUrl}/v1/dcrs/draft`, async ({ request }) => {
       const b = DcrDraftPut.safeParse(await request.json());
       if (!b.success) return validation('Invalid DCR', z.treeifyError(b.error));
-      if (b.data.date > today()) return validation('DCR date is in the future');
+      const tpItem = tpItems.find(
+        (it) =>
+          it.userId === fx.me.id &&
+          it.status === 'approved' &&
+          it.from <= b.data.date &&
+          it.to >= b.data.date,
+      );
+      if (b.data.tourPlanItemId && b.data.tourPlanItemId !== tpItem?.id)
+        return dcrError(422, 'VALIDATION', 'Not your approved tour plan for this date', {
+          field: 'tourPlanItemId',
+          reason: 'TOUR_PLAN_ITEM_MISMATCH',
+        });
+      if (b.data.date > today() && !b.data.tourPlanItemId)
+        return validation('DCR date is in the future');
       if (isLocked(b.data.date))
         return dcrError(409, 'DAY_LOCKED', 'Day locked; request a correction');
       let d: (typeof dcrs)[number] | undefined;
       if (b.data.id) {
-        d = dcrs.find((x) => x.id === b.data.id && x.userId === fx.me.id && !x.deletedAt);
+        d = dcrs.find((x) => x.id === b.data.id && x.userId === fx.me.id);
         if (!d) return notFound();
         if (d.status !== 'draft')
           return dcrError(409, 'ALREADY_SUBMITTED', 'Read-only after submit');
@@ -856,6 +834,12 @@ function fieldHandlers(baseUrl: string) {
           workWithUserIds: [],
           sfcRoutes: [],
           submittedBy: null,
+          reviewStatus: null,
+          approvedAt: null,
+          approvedBy: null,
+          rejectedAt: null,
+          rejectedBy: null,
+          rejectionReason: null,
         };
         dcrs.push(d);
       } else d.version += 1;
@@ -885,12 +869,28 @@ function fieldHandlers(baseUrl: string) {
       if (!key) return validation('Idempotency-Key header is required');
       const b = DcrSubmit.safeParse(await request.json());
       if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
-      if (d.status === 'submitted')
-        return submitKeys.get(d.id) === key
-          ? HttpResponse.json(Dcr.parse(withLock(d)))
-          : dcrError(409, 'ALREADY_SUBMITTED', 'Already submitted');
+      // Same-key retry, also for a director's report (approved at submit).
+      if ((d.status === 'submitted' || d.status === 'approved') && submitKeys.get(d.id) === key)
+        return HttpResponse.json({ ...Dcr.parse(withLock(d)), expenseDraft: null });
+      if (d.status === 'submitted') return dcrError(409, 'ALREADY_SUBMITTED', 'Already submitted');
+      if (d.status !== 'draft')
+        return dcrError(409, 'ALREADY_SUBMITTED', 'Reviewed DCRs are read-only', {
+          id: d.id,
+          status: d.status,
+        });
       if (b.data.version !== d.version) return dcrError(409, 'VERSION_CONFLICT', 'Stale version');
       if (isLocked(d.date)) return dcrError(409, 'DAY_LOCKED', 'Day locked');
+      const noPres = d.calls.flatMap((c, i) =>
+        c.outletKind === 'doctor' && c.productsDetailed.length && !c.presentationOpenedAt
+          ? [{ i, id: c.id }]
+          : [],
+      );
+      if (noPres.length)
+        return validation('Open the presentation on every doctor call with products detailed', {
+          reason: 'PRESENTATION_NOT_OPENED',
+          callIndexes: noPres.map((x) => x.i),
+          callIds: noPres.map((x) => x.id),
+        });
       const other = submittedOf(d.date);
       if (other)
         return dcrError(409, 'DAY_ALREADY_SUBMITTED', 'This day already has a submitted report', {
@@ -924,18 +924,21 @@ function fieldHandlers(baseUrl: string) {
           })
         : [];
       submitKeys.set(d.id, key);
+      // Directors have no manager: the report is approved by the system at submit.
+      const auto = fx.me.roles.includes('director');
       Object.assign(d, {
-        status: 'submitted',
+        status: auto ? 'approved' : 'submitted',
+        ...(auto ? { approvedAt: frozenAt, approvedBy: null, autoApproved: true } : {}),
         submittedAt: frozenAt,
         submittedBy: fx.me.id,
         sfcRoutes: routes,
         version: d.version + 1,
         updatedAt: frozenAt,
       });
-      return HttpResponse.json(Dcr.parse(withLock(d)));
+      return HttpResponse.json({ ...Dcr.parse(withLock(d)), expenseDraft: null });
     }),
     http.delete(`${baseUrl}/v1/dcrs/:id`, ({ params }) => {
-      const d = dcrs.find((x) => x.id === params.id && x.userId === fx.me.id && !x.deletedAt);
+      const d = dcrs.find((x) => x.id === params.id && x.userId === fx.me.id);
       if (!d) return notFound();
       if (d.status !== 'draft')
         return dcrError(409, 'ALREADY_SUBMITTED', 'Submitted DCRs are read-only');
@@ -996,24 +999,74 @@ function fieldHandlers(baseUrl: string) {
     submissions: [],
   });
 
-  /** Day lock (#23): end of the IST day + dcrLockAfterHours; unlocked 48 h after an approved correction. */
+  /** Day lock: 00:00 IST the next day; unlocked 48 h after an approved correction or a rejection. */
   const corrections = new Map<string, string>();
   const unlocked = new Map<string, number>();
   const lockAt = (date: string) =>
-    new Date(
-      Date.parse(`${date}T00:00:00+05:30`) + 86_400_000 + fx.dcrLockAfterHours * 36e5,
-    ).toISOString();
+    new Date(Date.parse(`${date}T00:00:00+05:30`) + 86_400_000).toISOString();
+  // Directors' days never lock (no manager to unlock them).
+  const neverLocks = () => fx.me.roles.includes('director');
   const isLocked = (date: string) =>
-    Date.now() > Date.parse(lockAt(date)) && (unlocked.get(date) ?? 0) < Date.now();
+    !neverLocks() &&
+    Date.now() > Date.parse(lockAt(date)) &&
+    (unlocked.get(date) ?? 0) < Date.now();
   const withLock = (d: Dcr): Dcr => ({
     ...d,
+    neverLocks: neverLocks(),
     lockAt: lockAt(d.date),
     unlockedUntil:
       (unlocked.get(d.date) ?? 0) > Date.now()
         ? new Date(unlocked.get(d.date)!).toISOString()
         : null,
-    status: isLocked(d.date) ? 'locked' : d.status === 'locked' ? 'submitted' : d.status,
+    status:
+      d.status === 'approved' || d.status === 'rejected'
+        ? d.status
+        : isLocked(d.date)
+          ? 'locked'
+          : d.status === 'locked'
+            ? 'submitted'
+            : d.status,
+    reviewStatus:
+      d.status === 'approved' || d.status === 'rejected'
+        ? d.status
+        : d.status === 'draft'
+          ? null
+          : 'pending',
   });
+  /** Manager review (dcr:review): the mock reviewer is fx.me reviewing other users' DCRs. */
+  const reviewHandlers = () => [
+    http.post(`${baseUrl}/v1/dcrs/:id/decision`, async ({ params, request }) => {
+      const b = DcrDecision.safeParse(await request.json());
+      if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
+      const d = dcrs.find((x) => x.id === params.id);
+      if (!d) return notFound();
+      if (d.userId === fx.me.id)
+        return dcrError(403, 'FORBIDDEN', 'You cannot review your own DCR');
+      if (d.status !== 'submitted')
+        return dcrError(409, 'NOT_PENDING_REVIEW', 'Only submitted DCRs can be reviewed', {
+          id: d.id,
+          status: d.status,
+        });
+      const at = serverTime();
+      if (b.data.decision === 'reject') {
+        Object.assign(d, {
+          status: 'rejected',
+          rejectedAt: at,
+          rejectedBy: fx.me.id,
+          rejectionReason: b.data.comment,
+          updatedAt: at,
+        });
+        unlocked.set(d.date, Date.parse(at) + 48 * 36e5);
+      } else
+        Object.assign(d, {
+          status: 'approved',
+          approvedAt: at,
+          approvedBy: fx.me.id,
+          updatedAt: at,
+        });
+      return HttpResponse.json(Dcr.parse(withLock(d)));
+    }),
+  ];
 
   return [
     http.get(`${baseUrl}/v1/divisions`, ({ request }) =>
@@ -1064,45 +1117,23 @@ function fieldHandlers(baseUrl: string) {
           }
       }
       const role = url.searchParams.get('role');
-      // Like the API: q matches name, employee code or email.
-      const q = url.searchParams.get('q')?.toLowerCase();
-      url.searchParams.delete('q');
-      // territoryId covers the whole subtree, like the API.
-      const allTerrs = [...fx.territories, ...fx.hqTerritories];
-      const terr = url.searchParams.get('territoryId');
-      url.searchParams.delete('territoryId');
-      const under = (id: string) => {
-        for (let t = allTerrs.find((x) => x.id === id); t; t = allTerrs.find((x) => x.id === t!.parentId))
-          if (t.id === terr) return true;
-        return false;
-      };
-      const rows = mockEmployees()
-        .filter((u) => !terr || u.territoryIds.some(under))
+      const rows = fx.mockUsers
         .filter((u) => (wide || team.has(u.id)) && (!role || u.roles.includes(role as never)))
-        .filter((u) => !q || [u.name, u.employeeCode ?? '', u.email].some((x) => x.toLowerCase().includes(q)))
         .map((u) => ({
           id: u.id,
           name: u.name,
           email: u.email,
           employeeCode: u.employeeCode,
-          phone: u.phone,
           roles: u.roles,
           managerId: u.managerId,
           territoryIds: u.territoryIds,
-          status: u.status,
-          primaryRole: [...u.roles].sort((a, b) => ROLE_RANK[b] - ROLE_RANK[a])[0] ?? null,
-          rank: Math.max(0, ...u.roles.map((r) => ROLE_RANK[r])),
-          managerName: mockEmployees().find((m) => m.id === u.managerId)?.name ?? null,
-          designation: u.designation,
-          joinedOn: u.joinedOn,
-          territories: u.territoryIds
-            .map((id) => allTerrs.find((t) => t.id === id))
-            .filter((t): t is (typeof allTerrs)[number] => !!t)
-            .map((t) => ({ id: t.id, name: t.name, code: t.code, level: t.level })),
-          version: u.version,
+          status: 'active' as const,
+          primaryRole: u.roles[0] ?? null,
+          managerName: fx.mockUsers.find((m) => m.id === u.managerId)?.name ?? null,
+          version: 1,
           lastActiveAt: null,
-          hasLogin: u.status === 'active' || u.status === 'suspended',
-          inviteStatus: (u.status === 'invited' ? 'pending' : u.status === 'active' || u.status === 'suspended' ? 'accepted' : 'none') as 'pending' | 'accepted' | 'none',
+          hasLogin: true,
+          inviteStatus: 'accepted' as const,
           inviteExpiresAt: null,
         }));
       return list(UserSummary, rows, url);
@@ -1208,6 +1239,170 @@ function fieldHandlers(baseUrl: string) {
         [...days.values()].map((d) => ({ ...d, id: `${d.userId}|${d.date}` })) as never,
         new URL(request.url),
       );
+    }),
+    http.get(`${baseUrl}/v1/tour-plans/items`, ({ request }) => {
+      const q = TourPlanItemListQuery.safeParse(
+        Object.fromEntries(new URL(request.url).searchParams),
+      );
+      if (!q.success) return validation('Invalid query', z.treeifyError(q.error));
+      const mine = q.data.mine === 'true';
+      const rows = tpItems
+        .filter((it) => (mine ? it.userId === fx.me.id : it.userId !== fx.me.id))
+        .filter((it) => !q.data.status || it.status === q.data.status)
+        .sort((a, b) =>
+          mine ? b.updatedAt.localeCompare(a.updatedAt) : a.from.localeCompare(b.from),
+        );
+      const off = decodeCursor(q.data.cursor ?? null);
+      const page = rows.slice(off, off + q.data.limit);
+      return HttpResponse.json(
+        TourPlanItemList.parse({
+          items: page.map(itemOut),
+          nextCursor: off + q.data.limit < rows.length ? encodeCursor(off + q.data.limit) : null,
+          serverTime: serverTime(),
+        }),
+      );
+    }),
+    http.put(`${baseUrl}/v1/tour-plans/items`, async ({ request }) => {
+      const b = TourPlanItemUpsert.safeParse(await request.json());
+      if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
+      const wt = fx.workTypes.find((w) => w.id === b.data.plan.workTypeId && w.active);
+      if (!wt)
+        return dcrError(422, 'VALIDATION', 'Unknown or inactive work type', {
+          field: 'plan.workTypeId',
+        });
+      if (wt.kind === 'leave' || wt.kind === 'holiday')
+        return dcrError(422, 'VALIDATION', 'Plan leave through a leave request, not a tour plan', {
+          field: 'plan.workTypeId',
+        });
+      const want = dcrDetailsKind(wt);
+      if (b.data.plan.details && b.data.plan.details.kind !== want)
+        return dcrError(
+          422,
+          'VALIDATION',
+          want ? `details.kind must be '${want}'` : 'No details for this work type',
+          {
+            field: 'plan.details',
+            expected: want,
+          },
+        );
+      const ts = serverTime();
+      if (!b.data.id) {
+        const it: TourPlanItem = {
+          id: crypto.randomUUID(),
+          companyId: fx.COMPANY_ID,
+          userId: fx.me.id,
+          userName: fx.me.name,
+          from: b.data.from,
+          to: b.data.to,
+          status: 'draft',
+          rejectionReason: null,
+          plan: b.data.plan,
+          filedDates: [],
+          version: 1,
+          createdAt: ts,
+          updatedAt: ts,
+          submittedAt: null,
+          decidedAt: null,
+          decidedBy: null,
+        };
+        tpItems.push(it);
+        return HttpResponse.json(itemOut(it));
+      }
+      const it = tpItems.find((x) => x.id === b.data.id);
+      if (!it) return notFound();
+      if (it.userId !== fx.me.id)
+        return dcrError(403, 'FORBIDDEN', 'Only the owner can change a tour plan');
+      if (it.status !== 'draft' && it.status !== 'rejected')
+        return dcrError(409, 'TP_LOCKED', 'Only a draft or rejected tour plan can be changed', {
+          status: it.status,
+        });
+      if (b.data.version !== undefined && b.data.version !== it.version)
+        return dcrError(409, 'VERSION_CONFLICT', 'Tour plan changed since you read it', {
+          version: it.version,
+        });
+      Object.assign(it, {
+        from: b.data.from,
+        to: b.data.to,
+        plan: b.data.plan,
+        status: 'draft',
+        rejectionReason: null,
+        submittedAt: null,
+        decidedAt: null,
+        decidedBy: null,
+        version: it.version + 1,
+        updatedAt: ts,
+      });
+      return HttpResponse.json(itemOut(it));
+    }),
+    http.get(`${baseUrl}/v1/tour-plans/items/:id`, ({ params }) => {
+      const it = tpItems.find((x) => x.id === params.id);
+      return it ? HttpResponse.json(itemOut(it)) : notFound();
+    }),
+    http.post(`${baseUrl}/v1/tour-plans/items/:id/submit`, ({ params }) => {
+      const it = tpItems.find((x) => x.id === params.id);
+      if (!it) return notFound();
+      if (it.userId !== fx.me.id) return dcrError(403, 'FORBIDDEN', 'Only the owner can submit');
+      if (it.status !== 'draft' && it.status !== 'rejected')
+        return dcrError(409, 'TP_LOCKED', 'Only a draft or rejected tour plan can be changed', {
+          status: it.status,
+        });
+      if (it.from < today())
+        return dcrError(422, 'TP_IN_PAST', 'A tour plan must start today or later', {
+          field: 'from',
+        });
+      const hits = tpItems.filter(
+        (x) =>
+          x.id !== it.id &&
+          x.userId === it.userId &&
+          (x.status === 'pending' || x.status === 'approved') &&
+          x.from <= it.to &&
+          x.to >= it.from,
+      );
+      if (hits.length)
+        return dcrError(409, 'TP_OVERLAP', 'Overlaps a pending or approved tour plan', {
+          items: hits.map((x) => ({ id: x.id, from: x.from, to: x.to })),
+        });
+      const ts = serverTime();
+      Object.assign(it, {
+        status: 'pending',
+        submittedAt: ts,
+        updatedAt: ts,
+        version: it.version + 1,
+      });
+      return HttpResponse.json(itemOut(it));
+    }),
+    http.post(`${baseUrl}/v1/tour-plans/items/:id/decision`, async ({ params, request }) => {
+      const b = TourPlanItemDecision.safeParse(await request.json());
+      if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
+      const it = tpItems.find((x) => x.id === params.id);
+      if (!it) return notFound();
+      if (it.userId === fx.me.id)
+        return dcrError(403, 'FORBIDDEN', 'You cannot decide your own tour plan');
+      if (it.status !== 'pending') return conflict('This tour plan is not waiting for approval');
+      const comment = b.data.comment?.trim() || null;
+      if (b.data.decision === 'reject' && !comment)
+        return dcrError(422, 'REJECTION_REASON_REQUIRED', 'A reason is required to reject');
+      const ts = serverTime();
+      Object.assign(it, {
+        status: b.data.decision === 'approve' ? 'approved' : 'rejected',
+        rejectionReason: b.data.decision === 'reject' ? comment : null,
+        decidedAt: ts,
+        decidedBy: fx.me.id,
+        updatedAt: ts,
+        version: it.version + 1,
+      });
+      return HttpResponse.json(itemOut(it));
+    }),
+    http.delete(`${baseUrl}/v1/tour-plans/items/:id`, ({ params }) => {
+      const it = tpItems.find((x) => x.id === params.id);
+      if (!it) return notFound();
+      if (it.userId !== fx.me.id) return dcrError(403, 'FORBIDDEN', 'Only the owner can delete');
+      if (it.status !== 'draft' && it.status !== 'rejected')
+        return dcrError(409, 'TP_LOCKED', 'Only a draft or rejected tour plan can be changed', {
+          status: it.status,
+        });
+      tpItems.splice(tpItems.indexOf(it), 1);
+      return new HttpResponse(null, { status: 204 });
     }),
     http.get(`${baseUrl}/v1/tour-plans`, ({ request }) =>
       list(TourPlan, tourPlans, new URL(request.url)),
@@ -1408,6 +1603,7 @@ function fieldHandlers(baseUrl: string) {
         .slice(0, 20);
       return HttpResponse.json({ items });
     }),
+    ...reviewHandlers(),
     ...dcrFlowHandlers(),
     http.get(`${baseUrl}/v1/dcrs/:id`, ({ params }) => {
       const d = dcrs.find((x) => x.id === params.id);
@@ -1466,12 +1662,21 @@ function fieldHandlers(baseUrl: string) {
           duplicatePob,
           duplicateRcpa,
         });
-      const ptr = (id: string) => fx.products.find((p) => p.id === id)?.ptr ?? null;
+      const doctorPob = b.data.calls.flatMap((c, i) =>
+        c.outletKind === 'doctor' && c.pob.length ? [{ i, id: c.clientId }] : [],
+      );
+      if (doctorPob.length)
+        return validation('POB is not allowed on doctor calls', {
+          reason: 'POB_NOT_ALLOWED_FOR_DOCTOR',
+          callIndexes: doctorPob.map((x) => x.i),
+          callIds: doctorPob.map((x) => x.id),
+        });
+      const pts = (id: string) => fx.products.find((p) => p.id === id)?.pts ?? null;
       const calls = b.data.calls.map(({ clientId, ...c }) => ({
         ...c,
         id: clientId,
         pob: c.pob.map((l) => {
-          const r = ptr(l.productId);
+          const r = pts(l.productId);
           return { ...l, value: r == null ? null : Math.round(l.quantity * r * 100) / 100 };
         }),
       }));
@@ -1495,6 +1700,12 @@ function fieldHandlers(baseUrl: string) {
           workWithUserIds: [],
           sfcRoutes: [],
           submittedBy: null,
+          reviewStatus: null,
+          approvedAt: null,
+          approvedBy: null,
+          rejectedAt: null,
+          rejectedBy: null,
+          rejectionReason: null,
         };
         dcrs.push(d);
       } else d.version += 1;
@@ -1522,7 +1733,8 @@ function fieldHandlers(baseUrl: string) {
           crypto.randomUUID(),
         requestedBy: fx.me.id,
         requestedByName: fx.me.name,
-        approverId: fx.me.managerId,
+        // Routed to the company's directors (shared queue), not the manager.
+        approverId: null,
         status: 'pending',
         summary: `DCR correction ${b.data.date}`,
         comment: null,
@@ -1537,12 +1749,19 @@ function fieldHandlers(baseUrl: string) {
     http.get(`${baseUrl}/v1/approvals`, ({ request }) => {
       const url = new URL(request.url);
       const mine = url.searchParams.get('mine');
-      const rows =
+      // DCR unlock requests need dcr_unlock:decide (director only); others approvals:decide.
+      const can = (a: (typeof approvals)[number]) =>
+        a.status === 'pending' &&
+        a.requestedBy !== fx.me.id &&
+        fx.me.permissions.includes('approvals:decide') &&
+        (a.subjectType !== 'dcr_unlock' || fx.me.permissions.includes('dcr_unlock:decide'));
+      const rows = (
         mine === 'to_decide'
-          ? approvals.filter((a) => a.status === 'pending' && a.requestedBy !== fx.me.id)
+          ? approvals.filter(can)
           : mine === 'requested'
             ? approvals.filter((a) => a.requestedBy === fx.me.id)
-            : approvals;
+            : approvals
+      ).map((a) => ({ ...a, canDecide: can(a) }));
       return list(Approval, rows, url);
     }),
     http.post(`${baseUrl}/v1/approvals/:id/decision`, async ({ params, request }) => {
@@ -1561,6 +1780,15 @@ function fieldHandlers(baseUrl: string) {
         return HttpResponse.json(
           { error: { code: 'FORBIDDEN', message: 'You cannot decide your own request' } },
           { status: 403 },
+        );
+      if (a.subjectType === 'dcr_unlock' && !fx.me.permissions.includes('dcr_unlock:decide'))
+        return dcrError(
+          403,
+          'APPROVAL_PERMISSION_REQUIRED',
+          'Missing permission: dcr_unlock:decide',
+          {
+            permission: 'dcr_unlock:decide',
+          },
         );
       if (a.status !== 'pending') return conflict('Already decided');
       Object.assign(a, {

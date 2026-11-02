@@ -147,6 +147,7 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
         rejectedAt: null,
         paidAt: null,
         paymentRef: null,
+        dcrRejectedDates: [],
         version: 1,
       };
       claims.push(c);
@@ -173,6 +174,8 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
         claimId: f.c.id,
         source: 'manual' as const,
         allowancePlaceId: null,
+        autoTrigger: null,
+        dcrRejectedAt: null,
         attachments: [],
         version: 1,
       };
@@ -310,7 +313,13 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
           day.da = rate.daAmount;
           day.ta = rate.taFixed;
           const base = { date, notes: null, mileageKm: null, dcrId: day.dcrId, tourPlanId: null };
-          const auto = { claimId: f.c.id, source: 'auto' as const, allowancePlaceId: null };
+          const auto = {
+            claimId: f.c.id,
+            source: 'auto' as const,
+            allowancePlaceId: null,
+            autoTrigger: 'allowances_run' as const,
+            dcrRejectedAt: null,
+          };
           if (day.da)
             lines.push({
               ...base,

@@ -1,6 +1,7 @@
 import { NotificationsService } from '../notifications/notifications.service';
 import {
   ForbiddenException,
+  HttpException,
   Injectable,
   NotFoundException,
   type OnModuleInit,
@@ -28,7 +29,7 @@ import {
   workTypes,
   type Tx,
 } from '@ariforce/db';
-import { and, asc, eq, gte, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type * as z from 'zod';
 import type { Principal } from '../auth/principal';
@@ -37,9 +38,11 @@ import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { StorageService } from '../files/storage.service';
 import { ApprovalsService } from '../plans/approvals.service';
+import { deciderId, isDirector } from '../plans/auto-approve';
 import { nameRejecters, rejectionFields } from '../common/rejection';
 import { keyExt, sniffMatches } from './files.util';
 import { computeAllowances } from '../allowances/allowances.engine';
+import { isDayReport } from '../dcr/day-report';
 
 type ClaimRow = typeof expenseClaims.$inferSelect;
 type LineRow = typeof expenseLines.$inferSelect;
@@ -48,6 +51,10 @@ export type Decision = z.infer<typeof ExpenseDecision>;
 export type Category = ExpenseCategory;
 
 const EDITABLE = ['draft', 'rejected'];
+
+/** Distinct, sorted dates of live lines flagged dcr_rejected_at (claim.dcrRejectedDates). */
+export const rejectedDates = (ls: { date: string; dcrRejectedAt: Date | string | null }[]) =>
+  [...new Set(ls.filter((l) => l.dcrRejectedAt).map((l) => l.date))].sort();
 const FINANCE_VISIBLE: ExpenseStatus[] = ['approved', 'paid'];
 const monthStart = (m: string) => `${m}-01`;
 const nextMonth = (m: string) => {
@@ -56,6 +63,8 @@ const nextMonth = (m: string) => {
 };
 const num = (v: string | number | null) => (v === null ? null : Number(v));
 const iso = (d: Date | null) => d?.toISOString() ?? null;
+import { dcrApprovalGap, type DcrGap } from './dcr-gate';
+
 const r2 = (n: number) => Math.round(n * 100) / 100;
 export const approvalLevels = () => Math.max(1, Number(process.env.EXPENSE_APPROVAL_LEVELS ?? 2));
 
@@ -83,7 +92,7 @@ export class ExpensesService implements OnModuleInit {
           .set({
             status: approved ? 'approved' : 'rejected',
             decidedAt: new Date(),
-            decidedBy: p.userId,
+            decidedBy: deciderId(p),
             decisionComment: comment,
           })
           .where(and(eq(expenseClaims.id, req.entityId), eq(expenseClaims.status, 'submitted')));
@@ -104,6 +113,8 @@ export class ExpensesService implements OnModuleInit {
       {
         levels: approvalLevels(),
         permission: 'expenses:approve',
+        beforeApprove: (tx, _p, req) => this.assertDcrsApproved(tx, req.entityId),
+        onBlocked: (p, req, e) => this.notifyBlocked(p, req.entityId, e),
         onStep: async (tx, p, req, nextStep, nextApproverId) => {
           await this.audit.record(tx, p, 'expense.step_approved', {
             entityType: 'expense_claim',
@@ -131,6 +142,33 @@ export class ExpensesService implements OnModuleInit {
   }
 
   /** Approver view (GET /v1/approvals/{id}): the claim, allowance places and receipt read URLs. */
+  /** 409 DCR_NOT_APPROVED unless every line date of the claim has an approved DCR of its owner. */
+  private async assertDcrsApproved(tx: Tx, claimId: string) {
+    const [c] = await tx
+      .select({ userId: expenseClaims.userId })
+      .from(expenseClaims)
+      .where(eq(expenseClaims.id, claimId));
+    if (!c) return;
+    const lines = await tx
+      .select({ date: expenseLines.date })
+      .from(expenseLines)
+      .where(and(eq(expenseLines.claimId, claimId), isNull(expenseLines.deletedAt)));
+    const dates = [...new Set(lines.map((l) => l.date))];
+    if (!dates.length) return;
+    const rows = await tx
+      .select({ id: dcrs.id, date: dcrs.date, status: dcrs.status, updatedAt: dcrs.updatedAt })
+      .from(dcrs)
+      .where(and(eq(dcrs.userId, c.userId), inArray(dcrs.date, dates), isNull(dcrs.deletedAt)));
+    const gap = dcrApprovalGap(dates, rows);
+    if (gap)
+      throw err(
+        409,
+        'DCR_NOT_APPROVED',
+        'Every expense date needs an approved DCR before the claim can be approved',
+        gap,
+      );
+  }
+
   private async approvalDetail(tx: Tx, p: Principal, id: string): Promise<ApprovalSubject | null> {
     const [c] = await tx.select().from(expenseClaims).where(eq(expenseClaims.id, id));
     if (!c) return null;
@@ -259,6 +297,7 @@ export class ExpensesService implements OnModuleInit {
       {
         ...this.summary(c, u?.name ?? ''),
         approvalStep: c.status === 'submitted' ? step : null,
+        dcrRejectedDates: rejectedDates(lines),
         lines: lines.map((l) => this.lineDto(l, atts)),
       },
     ]);
@@ -283,6 +322,7 @@ export class ExpensesService implements OnModuleInit {
       ...rejectionFields(c.status, c.decisionComment, c.decidedBy, iso(c.decidedAt)),
       paidAt: iso(c.paidAt),
       paymentRef: c.paymentRef,
+      dcrRejectedDates: [] as string[],
       version: c.version,
     };
   }
@@ -300,6 +340,8 @@ export class ExpensesService implements OnModuleInit {
       tourPlanId: l.tourPlanId,
       source: l.source,
       allowancePlaceId: l.allowancePlaceId,
+      autoTrigger: l.source === 'auto' ? (l.autoTrigger ?? null) : null,
+      dcrRejectedAt: iso(l.dcrRejectedAt),
       attachments: atts.filter((a) => a.lineId === l.id).map((a) => this.attDto(a)),
       version: l.version,
     };
@@ -356,11 +398,31 @@ export class ExpensesService implements OnModuleInit {
             )
             .groupBy(expenseLines.claimId)
         : [];
+      const flagged = rows.length
+        ? await tx
+            .select({
+              claimId: expenseLines.claimId,
+              date: expenseLines.date,
+              dcrRejectedAt: expenseLines.dcrRejectedAt,
+            })
+            .from(expenseLines)
+            .where(
+              and(
+                inArray(
+                  expenseLines.claimId,
+                  rows.map((r) => r.c.id),
+                ),
+                isNull(expenseLines.deletedAt),
+                sql`${expenseLines.dcrRejectedAt} is not null`,
+              ),
+            )
+        : [];
       return {
         items: await nameRejecters(
           tx,
           rows.map((r) => ({
             ...this.summary(r.c, r.name),
+            dcrRejectedDates: rejectedDates(flagged.filter((x) => x.claimId === r.c.id)),
             lineCount: counts.find((x) => x.id === r.c.id)?.n ?? 0,
           })),
         ),
@@ -410,7 +472,14 @@ export class ExpensesService implements OnModuleInit {
       const [d] = await tx
         .select({ date: dcrs.date })
         .from(dcrs)
-        .where(and(eq(dcrs.id, l.dcrId), eq(dcrs.userId, p.userId), isNull(dcrs.deletedAt)));
+        .where(
+          and(
+            eq(dcrs.id, l.dcrId),
+            eq(dcrs.userId, p.userId),
+            isNull(dcrs.deletedAt),
+            ne(dcrs.status, 'rejected'),
+          ),
+        );
       if (!d) throw err(422, 'VALIDATION', 'dcrId must be your own DCR', { field: 'dcrId' });
       if (d.date !== l.date)
         throw err(422, 'VALIDATION', 'dcrId must be the DCR for the same date', { field: 'dcrId' });
@@ -482,7 +551,7 @@ export class ExpensesService implements OnModuleInit {
       await this.checkLine(tx, p, c, l);
       await tx
         .update(expenseLines)
-        .set({ ...this.lineValues(l), source: 'manual' })
+        .set({ ...this.lineValues(l), source: 'manual', autoTrigger: null })
         .where(eq(expenseLines.id, lineId));
       await this.recomputeTotal(tx, c.id);
       await this.audit.record(tx, p, 'expense.line_updated', {
@@ -546,6 +615,7 @@ export class ExpensesService implements OnModuleInit {
             mileageKm: l.mileageKm === null ? null : l.mileageKm.toFixed(2),
             dcrId: l.dcrId,
             source: 'auto' as const,
+            autoTrigger: 'allowances_run' as const,
             calc: l.calc,
             allowancePlaceId: l.placeId,
           })),
@@ -565,7 +635,58 @@ export class ExpensesService implements OnModuleInit {
     });
   }
 
-  submit(p: Principal, id: string) {
+  /**
+   * expense.blocked ('DCRs waiting for you') after a DCR_NOT_APPROVED gate failure (approve, or a
+   * director's auto-approved submit). The whole action rolled back, so this runs in its own
+   * transaction, best effort. To the claimant's dcr:review chain (who can approve the DCRs), not the
+   * actor; a director claimant has no chain, so nobody (the director sees the 409 inline).
+   */
+  async notifyBlocked(p: Principal, claimId: string, e: unknown) {
+    const r =
+      e instanceof HttpException ? (e.getResponse() as { code?: string; details?: unknown }) : null;
+    if (r?.code !== 'DCR_NOT_APPROVED') return;
+    const gap = (r.details ?? {}) as Partial<DcrGap>;
+    await this.notifications.afterRollback(p, async (tx) => {
+      const [c] = await tx
+        .select({ userId: expenseClaims.userId, month: expenseClaims.month, name: users.name })
+        .from(expenseClaims)
+        .innerJoin(users, eq(users.id, expenseClaims.userId))
+        .where(eq(expenseClaims.id, claimId));
+      if (!c) return;
+      const reviewers = await this.notifications.reviewerChain(tx, c.userId, 'dcr:review');
+      await this.notifications.notifyMany(
+        tx,
+        p,
+        {
+          type: 'expense.blocked',
+          entityType: 'expense_claim',
+          entityId: claimId,
+          dedupeKey: `expense.blocked:${claimId}:${(gap.dates ?? []).join(',')}`,
+          data: {
+            claimId,
+            month: c.month,
+            ownerId: c.userId,
+            ownerName: c.name,
+            dates: gap.dates ?? [],
+            dcrIds: gap.dcrIds ?? [],
+            dcrStatus: gap.dcrStatus ?? {},
+          },
+        },
+        reviewers,
+      );
+    });
+  }
+
+  async submit(p: Principal, id: string) {
+    try {
+      return await this.submitTx(p, id);
+    } catch (e) {
+      if (isDirector(p)) await this.notifyBlocked(p, id, e);
+      throw e;
+    }
+  }
+
+  private submitTx(p: Principal, id: string) {
     return this.tenant.run(p, async (tx) => {
       const c = await this.ownEditable(tx, p, id);
       const dto = await this.toDto(tx, c);
@@ -598,6 +719,9 @@ export class ExpensesService implements OnModuleInit {
         entityId: c.id,
         after: { total: dto.total, lines: dto.lines.length, approvalId: reqId },
       });
+      // Director: approved now by the system; the DCR gate still applies (409 DCR_NOT_APPROVED
+      // rolls the whole submit back: the claim stays draft/rejected).
+      await this.approvals.autoApprove(tx, p, reqId);
       await this.notifications.notify(tx, p, {
         type: 'expense.submitted',
         recipientId: await this.approvals.currentApprover(tx, reqId),
@@ -681,7 +805,7 @@ export class ExpensesService implements OnModuleInit {
       // A receipt on a drafted TA/DA line makes it the rep's own (kept on re-run).
       await tx
         .update(expenseLines)
-        .set({ source: 'manual' })
+        .set({ source: 'manual', autoTrigger: null })
         .where(and(eq(expenseLines.id, lineId), eq(expenseLines.source, 'auto')));
       await this.audit.record(tx, p, 'expense.attachment_requested', {
         entityType: 'expense_attachment',
@@ -826,6 +950,7 @@ export class ExpensesService implements OnModuleInit {
         and(
           eq(dcrs.userId, c.userId),
           isNull(dcrs.deletedAt),
+          isDayReport(dcrs),
           gte(dcrs.date, c.month),
           lt(dcrs.date, nextMonth(m)),
         ),

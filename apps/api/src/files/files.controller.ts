@@ -36,6 +36,8 @@ export class FilesController {
       );
     if (body.purpose === 'import_source' && !p.permissions.includes('imports:write'))
       throw new ForbiddenException('Missing permission: imports:write');
+    if (body.purpose === 'product_image' && !p.permissions.includes('products:prices'))
+      throw new ForbiddenException('Missing permission: products:prices');
     const res = await this.storage.uploadUrl(p.companyId, body);
     await this.tenant.run(p, (tx) =>
       this.audit.record(tx, p, 'file.upload_url', {

@@ -15,6 +15,13 @@ const reason = (d: NotifyData) =>
 const comment = (d: NotifyData) => (d.comment ? ` Comment: ${s(d.comment)}` : '');
 const amount = (d: NotifyData) =>
   typeof d.total === 'number' || typeof d.total === 'string' ? ` (INR ${s(d.total)})` : '';
+const on = (d: NotifyData) => (d.date ? ` for ${s(d.date)}` : '');
+const by = (d: NotifyData, who: string) =>
+  d.autoApproved ? 'automatically (no manager)' : `by ${who}`;
+const plan = (d: NotifyData) =>
+  d.from
+    ? `tour plan ${d.from === d.to || !d.to ? `for ${s(d.from)}` : `${s(d.from)} to ${s(d.to)}`}`
+    : `${d.month ? `${s(d.month)} ` : ''}tour plan`;
 const claim = (d: NotifyData) => `${d.month ? `${s(d.month)} ` : ''}expense claim`;
 
 /** English title/body rendered once, at notification time. */
@@ -29,7 +36,7 @@ export function render(type: NotificationType, d: NotifyData): { title: string; 
     case 'leave.approved':
       return {
         title: 'Leave approved',
-        body: `Your ${kind(d)}${range(d)} was approved by ${who}.${comment(d)}`,
+        body: `Your ${kind(d)}${range(d)} was approved ${by(d, who)}.${d.autoApproved ? '' : comment(d)}`,
       };
     case 'leave.rejected':
       return {
@@ -46,7 +53,38 @@ export function render(type: NotificationType, d: NotifyData): { title: string; 
     case 'expense.approved':
       return {
         title: 'Expense claim approved',
-        body: `Your ${claim(d)}${amount(d)} was approved by ${who}.${comment(d)}`,
+        body: `Your ${claim(d)}${amount(d)} was approved ${by(d, who)}.${d.autoApproved ? '' : comment(d)}`,
+      };
+    case 'expense.blocked': {
+      const dates = Array.isArray(d.dates) ? d.dates.map(s).join(', ') : '';
+      return {
+        title: 'DCRs waiting for you',
+        body: `${d.ownerName ? s(d.ownerName) : 'A team member'}'s ${claim(d)} can't be approved until the DCRs${dates ? ` for ${dates}` : ''} are approved.`,
+      };
+    }
+    case 'tour_plan.submitted':
+      return { title: 'Tour plan to review', body: `${who} submitted the ${plan(d)}.` };
+    case 'dcr.submitted':
+      return { title: 'DCR to review', body: `${who} submitted the DCR${on(d)}.` };
+    case 'dcr.approved':
+      return {
+        title: 'DCR approved',
+        body: `Your DCR${on(d)} was approved ${by(d, who)}.`,
+      };
+    case 'dcr.rejected':
+      return {
+        title: 'DCR rejected',
+        body: `Your DCR${on(d)} was rejected by ${who}.${reason(d)}`,
+      };
+    case 'dcr_unlock.submitted':
+      return {
+        title: 'DCR correction to review',
+        body: `${who} asked to correct the DCR${on(d)}.${d.reason ? ` Reason: ${s(d.reason)}` : ''}`,
+      };
+    case 'dcr_unlock.approved':
+      return {
+        title: 'DCR correction approved',
+        body: `Your DCR correction${on(d)} was approved by ${who}. The day is open for editing.`,
       };
     case 'expense.rejected':
       return {
@@ -69,7 +107,7 @@ export function render(type: NotificationType, d: NotifyData): { title: string; 
     case 'tour_plan.approved':
       return {
         title: 'Tour plan approved',
-        body: `Your ${d.month ? `${s(d.month)} ` : ''}tour plan was approved by ${who}.${comment(d)}`,
+        body: `Your ${plan(d)} was approved ${by(d, who)}.${d.autoApproved ? '' : comment(d)}`,
       };
     case 'doctor.approved':
       return {
@@ -79,7 +117,7 @@ export function render(type: NotificationType, d: NotifyData): { title: string; 
     case 'tour_plan.rejected':
       return {
         title: 'Tour plan rejected',
-        body: `Your ${d.month ? `${s(d.month)} ` : ''}tour plan was rejected by ${who}.${reason(d)}`,
+        body: `Your ${plan(d)} was rejected by ${who}.${reason(d)}`,
       };
     case 'doctor.rejected':
       return {

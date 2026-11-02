@@ -29,7 +29,7 @@ System Admin screen for product MRP / PTR / PTS. POB value stays **quantity × P
 | `POST /v1/admin/products/prices/bulk`       | `{rows: [{productId \| code, mrp?, ptr?, pts?}]}` (1..300) | 200 `ProductPricesBulkResponse`  |
 | `GET /v1/admin/products/{id}/price-history` | -                                                          | 200 `ProductPriceHistory` (≤200) |
 
-`AdminProduct`: `id, code, name, brand, divisionId, active, mrp, ptr, pts, updatedAt, updatedBy{id,name}|null,
+`AdminProduct`: `id, code, name, brand, composition, packSize, divisionId, active, mrp, ptr, pts, updatedAt, updatedBy{id,name}|null,
 pricesUpdatedAt|null, version` (`updatedBy` = last price change from history).
 
 Validation: each price 0..1,000,000, at most 2 decimals; PTR ≤ MRP on the merged row (422 `PTR_ABOVE_MRP`);
@@ -38,6 +38,19 @@ stale `version` → 409 `VERSION_CONFLICT`; unknown or other-company product →
 Bulk: each row in its own transaction; result per row `{index, productId, productCode, status:
 updated|unchanged|failed, code, message}` plus `summary {total, updated, unchanged, failed}` and `bulkId`.
 Row errors: `VALIDATION`, `PRODUCT_NOT_FOUND`, `PTR_ABOVE_MRP`. Codes match case-insensitively.
+
+## Product image (migration 0047)
+
+Upload box on the prices admin; the DCR picker reads the same `imageUrl` from `GET /v1/products`.
+
+1. `POST /v1/files/upload-url` `{purpose: 'product_image', contentType: image/jpeg|png|webp, sizeBytes <= 5 MB, fileName?}`
+   -> `{fileKey, uploadUrl, method: 'PUT', headers, expiresAt}` (10 min).
+2. `PUT uploadUrl` with the raw bytes and exactly `headers` (content-type, content-length are signed).
+3. `PUT /v1/products/{id}/image` `{fileKey, version?}` -> 200 `AdminProduct` with `imageUrl` and the new `version`.
+4. `DELETE /v1/products/{id}/image` -> 200 `AdminProduct` (`imageUrl: null`).
+
+All need `products:prices`. `products.image_file_key` holds the R2 key only. `imageUrl` is a presigned GET valid
+30-60 min; re-fetch the list for a fresh one.
 
 ## Decisions for lead
 

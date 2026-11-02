@@ -31,6 +31,7 @@ import {
   WorkTypeCreate,
   WorkTypeUpdate,
   type Permission,
+  productDisplayName,
 } from '@ariforce/contracts';
 import {
   chemists,
@@ -74,6 +75,11 @@ export interface MasterDef {
   wideWrite: boolean;
   writePermission: Permission;
   sort: Record<string, AnyPgColumn>;
+  /**
+   * Picker lists (doctors, chemists, stockists, products): default order and sort=name are A-Z by
+   * lower(name), then id, so the order is total and the offset cursor stays stable.
+   */
+  nameOrder?: AnyPgColumn;
   search: AnyPgColumn[];
   filters?: (q: Q) => (SQL | undefined)[];
   /** DB row -> plain object (dto parse strips internal columns). */
@@ -132,6 +138,7 @@ const outlet = (
   create: c,
   update: u,
   territoryCol: table.territoryId,
+  nameOrder: table.name,
   wideWrite: false,
   writePermission: 'masters:write',
   sort: {
@@ -144,6 +151,7 @@ const outlet = (
   filters: (q) => [
     q.territoryId ? inSubtree(table.territoryId, String(q.territoryId)) : undefined,
     linksTerritory ? localTerritory(table.localTerritoryId, q.localTerritoryId) : undefined,
+    q.ids ? inArray(table.id, String(q.ids).toLowerCase().split(',')) : undefined,
   ],
   fromRow: withLocation,
   toRow: locationToRow,
@@ -158,6 +166,7 @@ export const MASTERS: Record<string, MasterDef> = {
     create: DoctorCreate,
     update: DoctorUpdate,
     territoryCol: doctors.territoryId,
+    nameOrder: doctors.name,
     wideWrite: false,
     writePermission: 'masters:write',
     sort: {
@@ -189,6 +198,7 @@ export const MASTERS: Record<string, MasterDef> = {
     listQuery: ProductListQuery,
     create: ProductCreate,
     update: ProductUpdate,
+    nameOrder: products.name,
     wideWrite: true,
     writePermission: 'masters:write',
     sort: { code: products.code, name: products.name, updatedAt: products.updatedAt },
@@ -206,6 +216,7 @@ export const MASTERS: Record<string, MasterDef> = {
     ],
     fromRow: (r) => ({
       ...r,
+      displayName: productDisplayName(String(r.name)),
       mrp: r.mrp == null ? null : Number(r.mrp),
       ptr: r.ptr == null ? null : Number(r.ptr),
       pts: r.pts == null ? null : Number(r.pts),

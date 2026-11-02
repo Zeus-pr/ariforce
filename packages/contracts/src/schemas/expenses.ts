@@ -93,6 +93,18 @@ export const ExpenseLine = z
         'auto = drafted by TA/DA (#39) and replaced on re-run; editing or attaching a receipt makes it manual',
     }),
     allowancePlaceId: Id.nullable().meta({ description: 'Fare-chart place used for TA (#39)' }),
+    autoTrigger: z
+      .enum(['allowances_run', 'dcr_submit'])
+      .nullable()
+      .default(null)
+      .meta({
+        description:
+          'What wrote an auto line (POST .../allowances or DCR submit); null on manual lines',
+      }),
+    dcrRejectedAt: Timestamp.nullable().default(null).meta({
+      description:
+        "Set when the day's DCR was rejected after this line was added (the line stays on a submitted/approved/paid claim; auto lines on draft/rejected claims are removed instead)",
+    }),
     attachments: z.array(ExpenseAttachment),
     version: z.int(),
   })
@@ -126,6 +138,10 @@ export const ExpenseClaim = z
     }),
     paidAt: Timestamp.nullable(),
     paymentRef: z.string().nullable(),
+    dcrRejectedDates: z.array(DateOnly).default([]).meta({
+      description:
+        'Dates of live lines whose DCR was rejected (lines[].dcrRejectedAt set); approvers see the flag dcr_rejected_lines on the Approval',
+    }),
     version: z.int(),
   })
   .meta({ id: 'ExpenseClaim' });

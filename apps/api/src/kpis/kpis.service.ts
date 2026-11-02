@@ -147,16 +147,27 @@ export class KpisService {
             paths: null,
           },
         ];
-      case 'byUser':
-        return Promise.all(
-          team.map(async (t) => ({
-            userId: t.id,
-            territoryId: null,
-            label: t.name,
-            users: [t.id],
-            paths: await ownPaths(t.id),
-          })),
-        );
+      case 'byUser': {
+        const userIds = team.map((t) => t.id);
+        const paths = userIds.length
+          ? await rows<{ user_id: string; path: string }>(
+              tx,
+              sql`select ut.user_id, t.path from user_territories ut
+                    join territories t on t.id = ut.territory_id
+                   where ut.user_id = any(${arr(userIds)}) and t.deleted_at is null`,
+            )
+          : [];
+        const byUser = new Map<string, string[]>();
+        for (const row of paths)
+          byUser.set(row.user_id, [...(byUser.get(row.user_id) ?? []), row.path]);
+        return team.map((t) => ({
+          userId: t.id,
+          territoryId: null,
+          label: t.name,
+          users: [t.id],
+          paths: byUser.get(t.id) ?? [],
+        }));
+      }
       case 'byTerritory': {
         const scope = p.scopePaths
           ? sql`and (${sql.join(
@@ -184,23 +195,34 @@ export class KpisService {
         // With children present, report the children (the parent row would double-count).
         const list = ts.length > 1 ? ts.filter((t) => t.id !== q.territoryId) : ts;
         const ids = team.map((t) => t.id);
-        return Promise.all(
-          list.map(async (t) => ({
-            userId: null,
-            territoryId: t.id,
-            label: t.name,
-            paths: [t.path],
-            users: ids.length
-              ? (
-                  await rows<{ user_id: string }>(
-                    tx,
-                    sql`select distinct ut.user_id from user_territories ut join territories x on x.id = ut.territory_id
-                        where (x.path = ${t.path} or starts_with(x.path, ${t.path}::text || '.')) and ut.user_id = any(${arr(ids)})`,
+        const members =
+          list.length && ids.length
+            ? await rows<{ group_id: number; user_id: string }>(
+                tx,
+                sql`with target_territories(group_id, path) as (
+                    values ${sql.join(
+                      list.map((t, i) => sql`(${i}::int, ${t.path}::text)`),
+                      sql`, `,
+                    )}
                   )
-                ).map((r) => r.user_id)
-              : [],
-          })),
-        );
+                  select tt.group_id, ut.user_id
+                    from target_territories tt
+                    join territories x on x.path = tt.path or starts_with(x.path, tt.path || '.')
+                    join user_territories ut on ut.territory_id = x.id
+                   where ut.user_id = any(${arr(ids)}) and x.deleted_at is null
+                   group by tt.group_id, ut.user_id`,
+              )
+            : [];
+        const usersByGroup = new Map<number, string[]>();
+        for (const row of members)
+          usersByGroup.set(row.group_id, [...(usersByGroup.get(row.group_id) ?? []), row.user_id]);
+        return list.map((t, index) => ({
+          userId: null,
+          territoryId: t.id,
+          label: t.name,
+          paths: [t.path],
+          users: usersByGroup.get(index) ?? [],
+        }));
       }
     }
   }
@@ -210,46 +232,6 @@ export class KpisService {
     const ms = months(from, to);
     const none = !g.users.length;
     const u = none ? sql`array[]::uuid[]` : arr(g.users);
-    const [d] = await rows<Record<string, string | null>>(
-      tx,
-      sql`select count(*) filter (where field_day) as field_days,
-                 coalesce(sum(doctor_calls) filter (where field_day), 0) as doctor_calls,
-                 coalesce(sum(chemist_calls) filter (where field_day), 0) as chemist_calls,
-                 count(*) filter (where dcr_submitted) as submitted,
-                 count(*) filter (where dcr_on_time) as on_time
-          from kpi_user_day where user_id = any(${u}) and date between ${from}::date and ${upto}::date`,
-    );
-    // Off days: DCR leave/holiday kinds plus approved leave (#51), max fraction per user-day, no Sundays.
-    const [off] = await rows<{ off_days: string | null }>(
-      tx,
-      sql`select coalesce(sum(f), 0) as off_days from (
-            select user_id, date, max(f) as f from (
-              select user_id, date, 1::numeric as f from kpi_user_day
-               where work_type_kind in ('leave','holiday') and user_id = any(${u})
-                 and date between ${from}::date and ${upto}::date
-              union all
-              select user_id, date, fraction from kpi_user_leave_day
-               where user_id = any(${u}) and date between ${from}::date and ${upto}::date
-            ) x where extract(dow from date) <> 0 group by user_id, date) y`,
-    );
-    if (d) d.off_days = off?.off_days ?? '0';
-    const [m] = await rows<Record<string, string | null>>(
-      tx,
-      sql`select coalesce(sum(msl_size),0) as msl, coalesce(sum(unique_doctors_seen),0) as seen,
-                 coalesce(sum(frequency_met_doctors),0) as freq
-          from kpi_user_month where user_id = any(${u}) and month = any(${txt(ms)}::date[])`,
-    );
-    const [pob] = await rows<{ v: string | null }>(
-      tx,
-      sql`select coalesce(sum(p.value),0) as v from dcr_calls c
-          join dcr_call_products p on p.call_id = c.id and p.kind = 'pob' and p.deleted_at is null
-          where c.deleted_at is null and c.user_id = any(${u}) and c.date between ${from}::date and ${to}::date`,
-    );
-    const [tp] = await rows<{ planned: string | null; met: string | null }>(
-      tx,
-      sql`select coalesce(sum(planned_visits),0) as planned, coalesce(sum(planned_visits_met),0) as met
-          from kpi_tp_adherence_month where user_id = any(${u}) and month = any(${txt(ms)}::date[])`,
-    );
     const pathCond =
       g.paths === null
         ? sql`true`
@@ -259,61 +241,116 @@ export class KpisService {
               sql` or `,
             )})`
           : sql`false`;
-    const sales = await rows<{
-      kind: string;
-      actual: string;
-      target: string | null;
-      ly: string | null;
-    }>(
+    const [data] = await rows<Record<string, string | null>>(
       tx,
-      sql`select s.kind, coalesce(sum(s.actual_value),0) as actual, sum(s.target_value) as target, sum(s.ly_value) as ly
-          from kpi_sales_month s join territories t on t.id = s.territory_id
-          where s.month = any(${txt(ms)}::date[]) and ${pathCond} group by s.kind`,
+      sql`with day as (
+            select count(*) filter (where field_day) as field_days,
+                   coalesce(sum(doctor_calls) filter (where field_day), 0) as doctor_calls,
+                   coalesce(sum(chemist_calls) filter (where field_day), 0) as chemist_calls,
+                   count(*) filter (where dcr_submitted) as submitted,
+                   count(*) filter (where dcr_on_time) as on_time
+              from kpi_user_day
+             where user_id = any(${u}) and date between ${from}::date and ${upto}::date
+          ), off_rows as (
+            select user_id, date, 1::numeric as fraction from kpi_user_day
+             where work_type_kind in ('leave','holiday') and user_id = any(${u})
+               and date between ${from}::date and ${upto}::date
+            union all
+            select user_id, date, fraction from kpi_user_leave_day
+             where user_id = any(${u}) and date between ${from}::date and ${upto}::date
+          ), off as (
+            select coalesce(sum(fraction), 0) as off_days from (
+              select user_id, date, max(fraction) as fraction from off_rows
+               where extract(dow from date) <> 0 group by user_id, date
+            ) days_off
+          ), monthly as (
+            select coalesce(sum(msl_size), 0) as msl,
+                   coalesce(sum(unique_doctors_seen), 0) as seen,
+                   coalesce(sum(frequency_met_doctors), 0) as freq
+              from kpi_user_month where user_id = any(${u}) and month = any(${txt(ms)}::date[])
+          ), pob as (
+            select coalesce(sum(p.value), 0) as value
+              from dcr_day_calls c
+              join dcr_call_products p on p.call_id = c.id and p.kind = 'pob' and p.deleted_at is null
+             where c.deleted_at is null and c.user_id = any(${u})
+               and c.date between ${from}::date and ${to}::date
+          ), tp as (
+            select coalesce(sum(planned_visits), 0) as planned,
+                   coalesce(sum(planned_visits_met), 0) as met
+              from kpi_tp_adherence_month
+             where user_id = any(${u}) and month = any(${txt(ms)}::date[])
+          ), sales as (
+            select s.kind, coalesce(sum(s.actual_value), 0) as actual,
+                   sum(s.target_value) as target, sum(s.ly_value) as ly
+              from kpi_sales_month s join territories t on t.id = s.territory_id
+             where s.month = any(${txt(ms)}::date[]) and ${pathCond}
+             group by s.kind
+          )
+          select day.field_days, day.doctor_calls, day.chemist_calls, day.submitted, day.on_time,
+                 off.off_days, monthly.msl, monthly.seen, monthly.freq, pob.value as pob_value,
+                 tp.planned, tp.met,
+                 (select actual from sales where kind = 'primary') as primary_actual,
+                 (select target from sales where kind = 'primary') as primary_target,
+                 (select ly from sales where kind = 'primary') as primary_ly,
+                 (select actual from sales where kind = 'secondary') as secondary_actual,
+                 (select target from sales where kind = 'secondary') as secondary_target
+            from day cross join off cross join monthly cross join pob cross join tp`,
     );
-    const sk = (k: string) => sales.find((s) => s.kind === k);
-    const fieldDays = num(d?.field_days);
-    const submitted = num(d?.submitted);
+    const fieldDays = num(data?.field_days);
+    const submitted = num(data?.submitted);
     const workingDays = Math.max(
       0,
-      g.users.length * calendarWorkingDates(from, upto).length - num(d?.off_days),
+      g.users.length * calendarWorkingDates(from, upto).length - num(data?.off_days),
     );
-    const msl = num(m?.msl);
-    const seen = num(m?.seen);
-    const pri = sk('primary');
-    const sec = sk('secondary');
+    const msl = num(data?.msl);
+    const seen = num(data?.seen);
     const all: Record<KpiKey, () => Metric> = {
-      call_average: () => ratio('call_average', num(d?.doctor_calls), fieldDays, 'ratio'),
+      call_average: () => ratio('call_average', num(data?.doctor_calls), fieldDays, 'ratio'),
       chemist_call_average: () =>
-        ratio('chemist_call_average', num(d?.chemist_calls), fieldDays, 'ratio'),
+        ratio('chemist_call_average', num(data?.chemist_calls), fieldDays, 'ratio'),
       coverage_pct: () => ratio('coverage_pct', seen, msl, 'percent'),
       frequency_compliance_pct: () =>
-        ratio('frequency_compliance_pct', num(m?.freq), msl, 'percent'),
+        ratio('frequency_compliance_pct', num(data?.freq), msl, 'percent'),
       missed_doctor_pct: () => ratio('missed_doctor_pct', msl - seen, msl, 'percent'),
       unique_doctors_seen: () => count('unique_doctors_seen', seen),
       doctor_visits_per_day: () =>
-        ratio('doctor_visits_per_day', num(d?.doctor_calls), fieldDays, 'ratio'),
+        ratio('doctor_visits_per_day', num(data?.doctor_calls), fieldDays, 'ratio'),
       dcr_compliance_pct: () => ratio('dcr_compliance_pct', submitted, workingDays, 'percent'),
-      dcr_on_time_pct: () => ratio('dcr_on_time_pct', num(d?.on_time), submitted, 'percent'),
-      tp_adherence_pct: () => ratio('tp_adherence_pct', num(tp?.met), num(tp?.planned), 'percent'),
+      dcr_on_time_pct: () => ratio('dcr_on_time_pct', num(data?.on_time), submitted, 'percent'),
+      tp_adherence_pct: () =>
+        ratio('tp_adherence_pct', num(data?.met), num(data?.planned), 'percent'),
       msl_size: () => count('msl_size', msl),
-      pob_value: () => count('pob_value', num(pob?.v), 'inr'),
+      pob_value: () => count('pob_value', num(data?.pob_value), 'inr'),
       pob_achievement_pct: () => ({
         kpi: 'pob_achievement_pct',
         value: null,
-        numerator: num(pob?.v),
+        numerator: num(data?.pob_value),
         denominator: null,
         unit: 'percent',
         target: null,
       }),
-      primary_sales_value: () => count('primary_sales_value', num(pri?.actual), 'inr'),
+      primary_sales_value: () => count('primary_sales_value', num(data?.primary_actual), 'inr'),
       primary_achievement_pct: () =>
-        ratio('primary_achievement_pct', num(pri?.actual), num(pri?.target), 'percent', 100),
-      secondary_sales_value: () => count('secondary_sales_value', num(sec?.actual), 'inr'),
+        ratio(
+          'primary_achievement_pct',
+          num(data?.primary_actual),
+          num(data?.primary_target),
+          'percent',
+          100,
+        ),
+      secondary_sales_value: () =>
+        count('secondary_sales_value', num(data?.secondary_actual), 'inr'),
       secondary_achievement_pct: () =>
-        ratio('secondary_achievement_pct', num(sec?.actual), num(sec?.target), 'percent', 100),
+        ratio(
+          'secondary_achievement_pct',
+          num(data?.secondary_actual),
+          num(data?.secondary_target),
+          'percent',
+          100,
+        ),
       growth_vs_ly_pct: () => {
-        const ly = num(pri?.ly);
-        const r = ratio('growth_vs_ly_pct', num(pri?.actual) - ly, ly, 'percent');
+        const ly = num(data?.primary_ly);
+        const r = ratio('growth_vs_ly_pct', num(data?.primary_actual) - ly, ly, 'percent');
         return r;
       },
     };

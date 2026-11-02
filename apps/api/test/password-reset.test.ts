@@ -3,13 +3,14 @@ import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { Pool } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PASSWORD_RESET_ERROR_CODES as CODES } from '@ariforce/contracts';
 import { T, U } from '@ariforce/db';
 import { bearerFor, insertRetiredHolder, insertStaff } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 import { rateLimitStore } from '../src/common/rate-limit';
+import { TeamService } from '../src/team/team.service';
 import { MAIL_SENDER, type MailMessage, type MailSender } from '../src/mail/mail.service';
 
 const OWNER = process.env.DIRECT_URL;
@@ -197,5 +198,36 @@ describe.skipIf(!OWNER || !APP)('forgot password / reset (real API, mocked mail)
     const m = mail.sent.find((x) => x.to === email && x.kind === 'invite');
     expect(m?.text).toMatch(/\/invite\?token=[\w%-]+/);
     expect(m?.text).toContain(`Invitee ${RUN}`);
+  });
+
+  it('an invite whose transaction rolls back sends no email', async () => {
+    const admin = await bearerFor(
+      http,
+      'sysadmin',
+      process.env.DEMO_PASSWORD ?? 'ariforce-demo-pass',
+    );
+    const email = `pw.${RUN}.rollback@example.test`;
+    // Fail create() after the invite row is written, inside the same transaction.
+    const team = app.get(TeamService) as unknown as { nodes: () => Promise<unknown> };
+    const spy = vi.spyOn(team, 'nodes').mockRejectedValueOnce(new Error('boom'));
+    try {
+      const r = await http()
+        .post('/v1/employees')
+        .set('authorization', admin)
+        .send({
+          name: `Rollback ${RUN}`,
+          email,
+          role: 'business_manager',
+          territoryIds: [T.hq],
+          managerId: U.area,
+        });
+      expect(r.status).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
+    await tick();
+    expect(mail.sent.filter((x) => x.to === email)).toEqual([]);
+    const left = await pool.query('select 1 from users where email = $1', [email]);
+    expect(left.rowCount).toBe(0);
   });
 });
