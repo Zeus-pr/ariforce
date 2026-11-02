@@ -1374,11 +1374,11 @@
             "in": "query",
             "name": "ids",
             "schema": {
-              "description": "Batch fetch: comma-separated doctor ids (max 100). Only doctors you can read are returned; others are silently absent. Pass limit=100 to get all in one page.",
+              "description": "Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page.",
               "type": "string",
               "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$"
             },
-            "description": "Batch fetch: comma-separated doctor ids (max 100). Only doctors you can read are returned; others are silently absent. Pass limit=100 to get all in one page."
+            "description": "Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page."
           }
         ],
         "responses": {
@@ -2037,6 +2037,16 @@
               ]
             },
             "description": "Only rows linked to this territory (level `territory`, exact match), or `none` for rows not linked to any territory"
+          },
+          {
+            "in": "query",
+            "name": "ids",
+            "schema": {
+              "description": "Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page.",
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$"
+            },
+            "description": "Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page."
           }
         ],
         "responses": {
@@ -2595,6 +2605,16 @@
               "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
             },
             "description": "Only rows in this territory or any descendant (within the caller scope)"
+          },
+          {
+            "in": "query",
+            "name": "ids",
+            "schema": {
+              "description": "Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page.",
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$"
+            },
+            "description": "Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page."
           }
         ],
         "responses": {
@@ -7680,6 +7700,14 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "ids",
+            "schema": {
+              "description": "Comma-separated user ids to resolve saved Work With selections",
+              "type": "string"
             }
           }
         ],
@@ -14254,6 +14282,404 @@
           },
           "422": {
             "description": "Invalid filters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me/exceptions": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Exceptions",
+          "Home"
+        ],
+        "operationId": "listMyExceptions",
+        "summary": "Your own exceptions (missing DCR, TP not submitted, ...); no field:read",
+        "description": "Same filters, order and page as GET /v1/exceptions, limited to rows where userId = you; userId and assignedToMe are ignored. Any signed-in user.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "description": "Comma-separated: open, acknowledged, resolved, dismissed",
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "schema": {
+              "description": "Comma-separated: low, medium, high",
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "ruleCode",
+            "schema": {
+              "description": "Comma-separated: dcr_missing, punch_without_dcr, dcr_late, low_call_average, no_punch_in, geofence_breach, tp_not_submitted, coverage_gap",
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "userId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assignedToMe",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "periodDate >= from",
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "description": "periodDate >= from"
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "periodDate <= to",
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "description": "periodDate <= to"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "Opaque cursor from `nextCursor`",
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Opaque cursor from `nextCursor`"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid filters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me/attention": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Home"
+        ],
+        "operationId": "getMyAttention",
+        "summary": "Home badges in one call: waiting approvals by type, unread, exceptions, own requests",
+        "description": "Replaces the separate count calls on the home screen. Own data; team parts need a team plus dcr:review (dcrReview) or field:read (exceptions.team), else null.",
+        "responses": {
+          "200": {
+            "description": "Counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeAttention"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me/today": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Home"
+        ],
+        "operationId": "getMyToday",
+        "summary": "Today card: punch status, today's tour plan, today's DCR",
+        "responses": {
+          "200": {
+            "description": "Today",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeToday"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me/planned-doctors": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Home"
+        ],
+        "operationId": "listMyPlannedDoctors",
+        "summary": "Doctors planned for a day: the monthly plan visits, then the TP item territories",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "schema": {
+              "description": "Default: today (company timezone)",
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "description": "Default: today (company timezone)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Planned doctors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannedDoctors"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid date",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me/kpis": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Home",
+          "KPIs"
+        ],
+        "operationId": "getMyKpis",
+        "summary": "Month-to-date home KPIs (HOME_KPIS) from the KPI engine; self or team",
+        "description": "from = the 1st of the month, to = today (or the month end for a past month). Same definitions and response as GET /v1/kpis (rollup self or team) without reports:read. team: your reporting line incl. you; 403 without a team.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "default": "self",
+              "description": "self: you; team: your whole reporting line incl. you (403 without a team)",
+              "type": "string",
+              "enum": [
+                "self",
+                "team"
+              ]
+            },
+            "description": "self: you; team: your whole reporting line incl. you (403 without a team)"
+          },
+          {
+            "in": "query",
+            "name": "month",
+            "schema": {
+              "description": "Default: this month, from the 1st to today",
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "example": "2026-11"
+            },
+            "description": "Default: this month, from the 1st to today"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KpiReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No team, or a future month",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid query",
             "content": {
               "application/json": {
                 "schema": {
@@ -25600,6 +26026,28 @@
             "default": false,
             "description": "Company setting: the server drafts TA/DA expense lines on DCR submit (submit response expenseDraft). Clients switch off client-side drafting when true; absent (older API) = false",
             "type": "boolean"
+          },
+          "lockAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "ISO-8601 timestamp (UTC)"
+          },
+          "unlockedUntil": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "locked": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -31872,6 +32320,571 @@
         "required": [
           "id",
           "name"
+        ],
+        "additionalProperties": false
+      },
+      "MeAttention": {
+        "type": "object",
+        "properties": {
+          "serverTime": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "ISO-8601 timestamp (UTC)"
+          },
+          "notifications": {
+            "type": "object",
+            "properties": {
+              "unread": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "unread"
+            ],
+            "additionalProperties": false
+          },
+          "approvals": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "byType": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "enum": [
+                    "tour_plan",
+                    "tour_plan_item",
+                    "dcr_unlock",
+                    "leave",
+                    "expense",
+                    "doctor"
+                  ]
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "required": [
+                  "tour_plan",
+                  "tour_plan_item",
+                  "dcr_unlock",
+                  "leave",
+                  "expense",
+                  "doctor"
+                ]
+              }
+            },
+            "required": [
+              "total",
+              "byType"
+            ],
+            "additionalProperties": false,
+            "description": "Waiting for you: pending requests whose current step names you, or a shared queue listing you (dcr_unlock to directors). Never your own requests. All six keys always present"
+          },
+          "dcrReview": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "pending": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "pending"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Team DCRs submitted and not yet reviewed (needs dcr:review); null without it"
+          },
+          "exceptions": {
+            "type": "object",
+            "properties": {
+              "mine": {
+                "type": "object",
+                "properties": {
+                  "open": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "high": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "open",
+                  "high"
+                ],
+                "additionalProperties": false,
+                "description": "Your own open exceptions (high = severity high)"
+              },
+              "team": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "open": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "high": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "open",
+                      "high"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Open exceptions of your team, excluding yours (needs field:read); else null"
+              }
+            },
+            "required": [
+              "mine",
+              "team"
+            ],
+            "additionalProperties": false
+          },
+          "myRequests": {
+            "type": "object",
+            "properties": {
+              "pending": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "unlockPending": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "rejectedLast7Days": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "pending",
+              "unlockPending",
+              "rejectedLast7Days"
+            ],
+            "additionalProperties": false,
+            "description": "Requests you raised that are still pending / were rejected recently"
+          },
+          "myDcr": {
+            "type": "object",
+            "properties": {
+              "draftsOpen": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991,
+                "description": "Your draft DCRs not yet submitted"
+              },
+              "rejectedOpen": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991,
+                "description": "Your rejected DCRs to fix and resubmit"
+              }
+            },
+            "required": [
+              "draftsOpen",
+              "rejectedOpen"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "serverTime",
+          "notifications",
+          "approvals",
+          "dcrReview",
+          "exceptions",
+          "myRequests",
+          "myDcr"
+        ],
+        "additionalProperties": false
+      },
+      "MeToday": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Today in the company's timezone"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "serverTime": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "ISO-8601 timestamp (UTC)"
+          },
+          "punch": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "$ref": "#/components/schemas/PunchStatus"
+              },
+              "inAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                    "description": "ISO-8601 timestamp (UTC)"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "outAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                    "description": "ISO-8601 timestamp (UTC)"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "inAt",
+              "outAt"
+            ],
+            "additionalProperties": false
+          },
+          "tourPlan": {
+            "type": "object",
+            "properties": {
+              "itemId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUIDv7 identifier",
+                    "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Approved tour plan item covering today, if any"
+              },
+              "workTypeId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUIDv7 identifier",
+                    "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "workTypeName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "territoryIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUIDv7 identifier",
+                  "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                }
+              },
+              "monthPlanId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUIDv7 identifier",
+                    "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "monthPlanStatus": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "plannedVisits": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991,
+                "description": "Doctor visits planned today (monthly plan)"
+              }
+            },
+            "required": [
+              "itemId",
+              "workTypeId",
+              "workTypeName",
+              "territoryIds",
+              "monthPlanId",
+              "monthPlanStatus",
+              "plannedVisits"
+            ],
+            "additionalProperties": false
+          },
+          "dcr": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUIDv7 identifier",
+                    "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "submitted",
+                      "approved",
+                      "rejected"
+                    ]
+                  },
+                  "calls": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "lockAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                    "description": "ISO-8601 timestamp (UTC)"
+                  },
+                  "locked": {
+                    "type": "boolean"
+                  },
+                  "neverLocks": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "status",
+                  "calls",
+                  "lockAt",
+                  "locked",
+                  "neverLocks"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Today's DCR (latest non-deleted), null when none yet"
+          }
+        },
+        "required": [
+          "date",
+          "timezone",
+          "serverTime",
+          "punch",
+          "tourPlan",
+          "dcr"
+        ],
+        "additionalProperties": false
+      },
+      "PunchStatus": {
+        "type": "string",
+        "enum": [
+          "not_in",
+          "in",
+          "out"
+        ]
+      },
+      "PlannedDoctors": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Calendar date (YYYY-MM-DD, IST)"
+          },
+          "tourPlanId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tpItemId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlannedDoctor"
+            },
+            "description": "tour_plan first, then by name; max 500"
+          }
+        },
+        "required": [
+          "date",
+          "tourPlanId",
+          "tpItemId",
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "PlannedDoctor": {
+        "type": "object",
+        "properties": {
+          "doctorId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "name": {
+            "type": "string"
+          },
+          "specialtyId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "categoryId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "territoryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "tour_plan",
+              "tp_item_territory"
+            ],
+            "description": "tour_plan: a planned visit for the date in the month's plan; tp_item_territory: a doctor in a territory of the approved tour plan item for the date"
+          },
+          "visited": {
+            "type": "boolean",
+            "description": "Called on that date in your DCR"
+          },
+          "lastCallDate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                "description": "Calendar date (YYYY-MM-DD, IST)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "doctorId",
+          "name",
+          "specialtyId",
+          "categoryId",
+          "territoryId",
+          "source",
+          "visited",
+          "lastCallDate"
         ],
         "additionalProperties": false
       },

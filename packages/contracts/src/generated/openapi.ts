@@ -2309,6 +2309,100 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/me/exceptions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Your own exceptions (missing DCR, TP not submitted, ...); no field:read
+     * @description Same filters, order and page as GET /v1/exceptions, limited to rows where userId = you; userId and assignedToMe are ignored. Any signed-in user.
+     */
+    get: operations['listMyExceptions'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/me/attention': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Home badges in one call: waiting approvals by type, unread, exceptions, own requests
+     * @description Replaces the separate count calls on the home screen. Own data; team parts need a team plus dcr:review (dcrReview) or field:read (exceptions.team), else null.
+     */
+    get: operations['getMyAttention'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/me/today': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Today card: punch status, today's tour plan, today's DCR */
+    get: operations['getMyToday'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/me/planned-doctors': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Doctors planned for a day: the monthly plan visits, then the TP item territories */
+    get: operations['listMyPlannedDoctors'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/me/kpis': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Month-to-date home KPIs (HOME_KPIS) from the KPI engine; self or team
+     * @description from = the 1st of the month, to = today (or the month end for a past month). Same definitions and response as GET /v1/kpis (rollup self or team) without reports:read. team: your reporting line incl. you; 403 without a team.
+     */
+    get: operations['getMyKpis'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/exceptions/summary': {
     parameters: {
       query?: never;
@@ -5582,6 +5676,13 @@ export interface components {
        * @default false
        */
       autoExpenseOnDcrSubmit: boolean;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      lockAt?: string;
+      unlockedUntil?: string | null;
+      locked?: boolean;
     };
     DcrWorkTypeOption: {
       /**
@@ -7415,6 +7516,137 @@ export interface components {
       id: string;
       name: string;
     };
+    MeAttention: {
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      notifications: {
+        unread: number;
+      };
+      /** @description Waiting for you: pending requests whose current step names you, or a shared queue listing you (dcr_unlock to directors). Never your own requests. All six keys always present */
+      approvals: {
+        total: number;
+        byType: {
+          [key: string]: number;
+        };
+      };
+      /** @description Team DCRs submitted and not yet reviewed (needs dcr:review); null without it */
+      dcrReview: {
+        pending: number;
+      } | null;
+      exceptions: {
+        /** @description Your own open exceptions (high = severity high) */
+        mine: {
+          open: number;
+          high: number;
+        };
+        /** @description Open exceptions of your team, excluding yours (needs field:read); else null */
+        team: {
+          open: number;
+          high: number;
+        } | null;
+      };
+      /** @description Requests you raised that are still pending / were rejected recently */
+      myRequests: {
+        pending: number;
+        unlockPending: number;
+        rejectedLast7Days: number;
+      };
+      myDcr: {
+        /** @description Your draft DCRs not yet submitted */
+        draftsOpen: number;
+        /** @description Your rejected DCRs to fix and resubmit */
+        rejectedOpen: number;
+      };
+    };
+    MeToday: {
+      /**
+       * Format: date
+       * @description Today in the company's timezone
+       */
+      date: string;
+      timezone: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      punch: {
+        status: components['schemas']['PunchStatus'];
+        inAt: string | null;
+        outAt: string | null;
+      };
+      tourPlan: {
+        /** @description Approved tour plan item covering today, if any */
+        itemId: string | null;
+        workTypeId: string | null;
+        workTypeName: string | null;
+        territoryIds: string[];
+        monthPlanId: string | null;
+        monthPlanStatus: string | null;
+        /** @description Doctor visits planned today (monthly plan) */
+        plannedVisits: number;
+      };
+      /** @description Today's DCR (latest non-deleted), null when none yet */
+      dcr: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        /** @enum {string} */
+        status: 'draft' | 'submitted' | 'approved' | 'rejected';
+        calls: number;
+        /**
+         * Format: date-time
+         * @description ISO-8601 timestamp (UTC)
+         */
+        lockAt: string;
+        locked: boolean;
+        neverLocks: boolean;
+      } | null;
+    };
+    /** @enum {string} */
+    PunchStatus: 'not_in' | 'in' | 'out';
+    PlannedDoctors: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      tourPlanId: string | null;
+      tpItemId: string | null;
+      /** @description tour_plan first, then by name; max 500 */
+      items: components['schemas']['PlannedDoctor'][];
+    };
+    PlannedDoctor: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      doctorId: string;
+      name: string;
+      specialtyId: string | null;
+      categoryId: string | null;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      /**
+       * @description tour_plan: a planned visit for the date in the month's plan; tp_item_territory: a doctor in a territory of the approved tour plan item for the date
+       * @enum {string}
+       */
+      source: 'tour_plan' | 'tp_item_territory';
+      /** @description Called on that date in your DCR */
+      visited: boolean;
+      lastCallDate: string | null;
+    };
     ExceptionSummary: {
       /**
        * Format: date
@@ -8628,7 +8860,7 @@ export interface operations {
         specialtyId?: string;
         categoryId?: string;
         approvalStatus?: 'pending' | 'approved' | 'rejected';
-        /** @description Batch fetch: comma-separated doctor ids (max 100). Only doctors you can read are returned; others are silently absent. Pass limit=100 to get all in one page. */
+        /** @description Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page. */
         ids?: string;
       };
       header?: never;
@@ -9048,6 +9280,8 @@ export interface operations {
         territoryId?: string;
         /** @description Only rows linked to this territory (level `territory`, exact match), or `none` for rows not linked to any territory */
         localTerritoryId?: string | 'none';
+        /** @description Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page. */
+        ids?: string;
       };
       header?: never;
       path?: never;
@@ -9404,6 +9638,8 @@ export interface operations {
         includeTotal?: 'true' | 'false';
         /** @description Only rows in this territory or any descendant (within the caller scope) */
         territoryId?: string;
+        /** @description Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page. */
+        ids?: string;
       };
       header?: never;
       path?: never;
@@ -12400,6 +12636,7 @@ export interface operations {
       query?: {
         q?: string;
         limit?: number;
+        ids?: string;
       };
       header?: never;
       path?: never;
@@ -16898,6 +17135,244 @@ export interface operations {
         };
       };
       /** @description Invalid filters */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listMyExceptions: {
+    parameters: {
+      query?: {
+        status?: string;
+        severity?: string;
+        ruleCode?: string;
+        userId?: string;
+        assignedToMe?: 'true' | 'false';
+        /** @description periodDate >= from */
+        from?: string;
+        /** @description periodDate <= to */
+        to?: string;
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExceptionPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Invalid filters */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getMyAttention: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Counts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['MeAttention'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getMyToday: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Today */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['MeToday'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listMyPlannedDoctors: {
+    parameters: {
+      query?: {
+        /** @description Default: today (company timezone) */
+        date?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Planned doctors */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PlannedDoctors'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Invalid date */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getMyKpis: {
+    parameters: {
+      query?: {
+        /** @description self: you; team: your whole reporting line incl. you (403 without a team) */
+        scope?: 'self' | 'team';
+        /** @description Default: this month, from the 1st to today */
+        month?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Report */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['KpiReport'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description No team, or a future month */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Invalid query */
       422: {
         headers: {
           [name: string]: unknown;

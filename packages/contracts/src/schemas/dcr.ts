@@ -184,20 +184,6 @@ const WorkWithIds = IdList.meta({
 export const DcrWorkWithQuery = z
   .object({
     q: z.string().trim().max(100).optional(),
-    ids: z
-      .string()
-      .transform((s) =>
-        s
-          .split(',')
-          .map((x) => x.trim())
-          .filter(Boolean),
-      )
-      .pipe(z.array(Id).min(1).max(20))
-      .optional()
-      .meta({
-        description:
-          'Resolve saved Work With selections by comma-separated user ids (max 20).',
-      }),
     limit: z.coerce.number().int().min(1).max(100).default(50),
     ids: WorkWithIds.optional(),
   })
