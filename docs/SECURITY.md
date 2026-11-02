@@ -37,8 +37,9 @@ Hardening from the Cutly audit. One section per issue.
 
 ## Client IP and rate limits (#77)
 
-- `apps/api/src/common/client-ip.ts` `clientIp(req)`: with `CLIENT_IP_MODE=cloudflare` the
-  `CF-Connecting-IP` header (if a valid IP), else the TCP peer address. `X-Forwarded-For` is never
+- `apps/api/src/common/client-ip.ts` `clientIp(req)`: with `CLIENT_IP_MODE=cloudflare` use
+  `CF-Connecting-IP`; with `CLIENT_IP_MODE=railway` use `X-Real-IP`; otherwise use the TCP peer.
+  A missing or invalid forwarded IP falls back to the TCP peer. `X-Forwarded-For` is never
   read. A middleware writes the result to the internal header `x-ariforce-client-ip` (client
   values overwritten), which is the only header better-auth reads for its IP (sessions, its own
   limiter). Audit rows and sign-up use the same IP.
@@ -60,6 +61,12 @@ Hardening from the Cutly audit. One section per issue.
 - Over the limit: **429** `{ error: { code: "RATE_LIMITED", message, details: { retryAfterSeconds } } }`
   plus a `Retry-After` header (seconds). better-auth's own built-in limiter stays on as well.
 - Tests: `apps/api/test/client-ip-ratelimit.test.ts` (XFF spoofing, CF mode, 429 shape).
+
+Railway mode is safe only when public traffic passes through Railway's HTTP edge, no raw TCP
+proxy exposes the API, and all services able to reach it over private networking are trusted.
+The edge overwrites `X-Real-IP` and uses Cloudflare's client IP for requests from its trusted
+Cloudflare IPv4 ranges. Private-network requests bypass this sanitization. See
+[Railway's proxy trust guidance](https://station.railway.com/questions/secure-express-proxy-trust-forwarded-he-aa788da4).
 
 ### Cloudflare rules to add at deploy (lead)
 

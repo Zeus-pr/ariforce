@@ -29,6 +29,21 @@ describe('clientIp (#77)', () => {
     expect(clientIp(req('10.0.0.5', { 'x-forwarded-for': '1.2.3.4' }))).toBe('10.0.0.5');
     expect(clientIp(req('10.0.0.5', { 'cf-connecting-ip': 'not-an-ip' }))).toBe('10.0.0.5');
   });
+  it('railway mode uses only a valid X-Real-IP supplied by the Railway edge', () => {
+    process.env.CLIENT_IP_MODE = 'railway';
+    expect(
+      clientIp(
+        req('10.0.0.5', {
+          'x-real-ip': '203.0.113.9',
+          'cf-connecting-ip': '198.51.100.1',
+          'x-forwarded-for': '192.0.2.1',
+        }),
+      ),
+    ).toBe('203.0.113.9');
+    expect(clientIp(req('10.0.0.5', { 'x-real-ip': '2001:db8::1' }))).toBe('2001:db8::1');
+    expect(clientIp(req('10.0.0.5', { 'x-real-ip': '203.0.113.9, 192.0.2.1' }))).toBe('10.0.0.5');
+    expect(clientIp(req('10.0.0.5', { 'cf-connecting-ip': '203.0.113.9' }))).toBe('10.0.0.5');
+  });
 });
 
 describe('MemoryRateLimitStore', () => {

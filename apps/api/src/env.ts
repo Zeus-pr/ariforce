@@ -71,7 +71,9 @@ export const ProdEnv = z.object({
   JOBS_POLL_MS: intStr.optional(),
   JOBS_BATCH_SIZE: intStr.optional(),
   JOBS_LOCK_TIMEOUT_S: intStr.optional(),
-  CLIENT_IP_MODE: z.enum(['cloudflare', 'socket'], 'must be cloudflare or socket').optional(),
+  CLIENT_IP_MODE: z
+    .enum(['cloudflare', 'railway', 'socket'], 'must be cloudflare, railway or socket')
+    .optional(),
   EXPENSE_APPROVAL_LEVELS: z.enum(['1', '2'], 'must be 1 or 2').optional(),
   INVITE_RETURN_LINK: z
     .string()

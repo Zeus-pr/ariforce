@@ -98,7 +98,7 @@ Names and purpose only. Source: `apps/api/src/config/env.ts` (validated at boot 
 | `NODE_ENV`                 | —    | `production` turns on env validation, HSTS, hides `/docs` and `/openapi.json`, and enables the jobs runner                 |
 | `PORT`                     | no   | API port (default 4000)                                                                                                    |
 | `DB_POOL_MAX`              | no   | Postgres pool size                                                                                                         |
-| `CLIENT_IP_MODE`           | no   | `cloudflare` (trust `CF-Connecting-IP`) or `socket`; `X-Forwarded-For` is never trusted                                    |
+| `CLIENT_IP_MODE`           | no   | `cloudflare`, `railway`, or `socket`; see `docs/SECURITY.md` for ingress requirements                                      |
 | `AUTH_RATE_PER_IP`         | no   | Sign-in attempts per IP per 15 min (default 20; other auth routes 3×)                                                      |
 | `INVITE_RATE_PER_IP`       | no   | Invite accepts per IP per hour (default 10)                                                                                |
 | `SIGNUP_RATE_PER_IP`       | no   | Sign-up requests per IP per hour (default 10; sign-up options 6×)                                                          |
