@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+.next
+.env.local
+.env.*.local
+.git
+.gitignore
+README.md
+.DS_Store
+coverage
+.turbo
+dist
+build
+*.log
+e2e
