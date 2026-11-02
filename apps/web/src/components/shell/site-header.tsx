@@ -19,14 +19,14 @@ import {
 } from '@ariforce/ui/components/dropdown-menu';
 import { SidebarTrigger } from '@ariforce/ui/components/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@ariforce/ui/components/tooltip';
-import { signOut } from '@/lib/mock-auth';
+import { signOut } from '@/lib/auth';
 import { ROLES, ROLE_LABEL, type Role } from '@/lib/roles';
 import { CommandPalette } from '@/components/search/command-palette';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { useRole } from './role-context';
 
 export function SiteHeader() {
-  const { role, setRole, user, previewing } = useRole();
+  const { role, user } = useRole();
   const router = useRouter();
   const name = user?.name ?? '';
   const [searchOpen, setSearchOpen] = useState(false);
@@ -113,7 +113,7 @@ export function SiteHeader() {
                 </Avatar>
                 <span className="hidden text-left leading-tight sm:block">
                   <span className="block text-sm font-medium">{name}</span>
-                  <span className="block text-xs text-muted-foreground">{ROLE_LABEL[role]}{previewing ? ' (preview)' : ''}</span>
+                <span className="block text-xs text-muted-foreground">{ROLE_LABEL[role]}</span>
                 </span>
               </Button>
             </DropdownMenuTrigger>
@@ -122,17 +122,6 @@ export function SiteHeader() {
                 <span className="block text-sm font-medium">{name}</span>
                 <span className="block truncate text-xs text-muted-foreground">{user?.email}</span>
               </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                Preview as role (mock)
-              </DropdownMenuLabel>
-              <DropdownMenuRadioGroup value={role} onValueChange={(v) => setRole(v as Role)}>
-                {ROLES.map((r) => (
-                  <DropdownMenuRadioItem key={r} value={r}>
-                    {ROLE_LABEL[r]}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={onSignOut} data-testid="sign-out">
                 <LogOut />

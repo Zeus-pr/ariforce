@@ -13,18 +13,12 @@ import { Label } from '@ariforce/ui/components/label';
 import Link from 'next/link';
 import { SUSPENDED_MESSAGE } from '@/lib/auth-errors';
 import {
-  MOCK_PASSWORD,
-  MOCK_USERS,
   PENDING_MESSAGE,
   REJECTED_MESSAGE,
   signIn,
-  signInReal,
   type SignInError,
-} from '@/lib/mock-auth';
-import { signupAdapter } from '@/lib/signup/adapter';
-import { REAL } from '@/lib/api';
+} from '@/lib/auth';
 import { canSee, homeFor } from '@/lib/nav';
-import { ROLE_LABEL } from '@/lib/roles';
 
 export function SignInForm() {
   const router = useRouter();
@@ -50,26 +44,8 @@ export function SignInForm() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (pending) return;
-    setPending(REAL);
-    let result: Awaited<ReturnType<typeof signInReal>>;
-    if (REAL) result = await signInReal(email, password);
-    else {
-      // Mock: a sign-up request for this email wins over the wrong-password error.
-      const st = await signupAdapter.statusFor(email, password);
-      result =
-        st === 'pending'
-          ? { field: 'password', message: PENDING_MESSAGE, account: 'pending' }
-          : st === 'rejected'
-            ? { field: 'password', message: REJECTED_MESSAGE, account: 'rejected' }
-            : st === 'approved'
-              ? {
-                  field: 'password',
-                  message:
-                    'Approved. New accounts sign in on the real server; the mock only has demo accounts.',
-                  account: 'pending',
-                }
-              : signIn(email, password);
-    }
+    setPending(true);
+    const result = await signIn(email, password);
     if ('field' in result) setPending(false);
     if ('field' in result) {
       setError(result);
@@ -89,31 +65,12 @@ export function SignInForm() {
     router.replace(safe ?? homeFor(result.role));
   };
 
-  const pick = (addr: string) => {
-    setEmail(addr);
-    setPassword(MOCK_PASSWORD);
-    setError(null);
-    passwordRef.current?.focus();
-  };
-
   const err = (f: SignInError['field']) =>
     error?.field === f && !error.account ? error.message : null;
 
   return (
     <>
       <div className="af-page rounded-lg border bg-card p-5 shadow-xs sm:p-6">
-        {!REAL && (
-          <p
-            role="note"
-            data-testid="mock-note"
-            className="af-enter af-enter-form mb-5 border-l-2 border-warning pl-3 text-[13px] leading-snug text-warning-text"
-            style={{ '--i': 0 } as React.CSSProperties}
-          >
-            Mock sign-in. Demo accounts only, nothing leaves this browser. Password for every
-            account: <span className="font-medium">{MOCK_PASSWORD}</span>
-          </p>
-        )}
-
         {error?.account && (
           <div
             role="status"
@@ -225,31 +182,6 @@ export function SignInForm() {
             Request an account
           </Link>
         </p>
-
-        {!REAL && (
-          <details
-            className="af-enter af-enter-form group mt-5 border-t pt-4"
-            style={{ '--i': 4 } as React.CSSProperties}
-          >
-            <summary className="cursor-pointer list-none text-sm font-medium text-primary outline-none focus-visible:underline [&::-webkit-details-marker]:hidden">
-              Demo accounts (one per role)
-            </summary>
-            <ul className="mt-3 grid gap-0.5" data-testid="mock-users">
-              {MOCK_USERS.map((u) => (
-                <li key={u.id}>
-                  <button
-                    type="button"
-                    onClick={() => pick(u.email)}
-                    className="flex w-full items-baseline justify-between gap-3 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors duration-(--duration-fast) hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-                  >
-                    <span className="truncate font-medium">{ROLE_LABEL[u.role]}</span>
-                    <span className="shrink-0 text-muted-foreground tabular-nums">{u.email}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
       </div>
     </>
   );

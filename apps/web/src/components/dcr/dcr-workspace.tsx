@@ -28,7 +28,7 @@ import { toast } from '@ariforce/ui/components/sonner';
 import { dateLabel, todayIST } from '@/components/attendance/format';
 import { thisMonthIST } from '@/components/tour-plans/month';
 import { api, apiReady, toApiError } from '@/lib/api';
-import { useSession } from '@/lib/mock-auth';
+import { useSession } from '@/lib/auth';
 import {
   cursorFromYmd,
   dcrPillsByDate,

@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { useSession } from '@/lib/mock-auth';
+import { useSession } from '@/lib/auth';
 import { canSee, homeFor } from '@/lib/nav';
 
 /**

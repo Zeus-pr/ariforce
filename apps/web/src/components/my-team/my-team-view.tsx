@@ -17,7 +17,7 @@ import { toast } from '@ariforce/ui/components/sonner';
 import { useRole } from '@/components/shell/role-context';
 import { ROLE_SHORT } from '@/lib/roles';
 import { REAL, api, apiReady } from '@/lib/api';
-import { teamAdapter } from '@/lib/team-adapter/adapter';
+import { apiTeamAdapter } from '@/lib/team-adapter/adapter';
 import type { Employee, Hq, OrgTree } from '@/lib/team-adapter/types';
 import { EmployeeSheet, type SheetState } from './employee-sheet';
 import { OrgTree as Tree } from './org-tree';
@@ -65,9 +65,9 @@ export function MyTeamView() {
   const load = useCallback(async () => {
     try {
       const [t, u, h] = await Promise.all([
-        teamAdapter.tree(role),
-        teamAdapter.unassigned(role),
-        teamAdapter.hqs(role),
+        apiTeamAdapter.tree(role),
+        apiTeamAdapter.unassigned(role),
+        apiTeamAdapter.hqs(role),
       ]);
       setTree(t);
       setUnassigned(u.items);
@@ -83,7 +83,7 @@ export function MyTeamView() {
     void load();
   }, [load]);
 
-  const hqMap = useMemo(() => new Map(teamAdapter.allHqs().map((h) => [h.id, h])), [tree]);
+  const hqMap = useMemo(() => new Map(apiTeamAdapter.allHqs().map((h) => [h.id, h])), [tree]);
   const pending = useMemo(() => (tree ? tree.nodes.filter((e) => e.id !== tree.rootId && e.invited && e.active) : []), [tree]);
   const below = useMemo(() => (tree ? tree.nodes.filter((e) => e.id !== tree.rootId) : []), [tree]);
   const managers = useMemo(
@@ -132,7 +132,7 @@ export function MyTeamView() {
               <Send /> Invite all pending ({pending.length})
             </Button>
           )}
-          {teamAdapter.creatableRoles(role).length > 0 && (
+          {apiTeamAdapter.creatableRoles(role).length > 0 && (
             <Button variant="outline" onClick={() => setBulk(true)} data-testid="add-several">
               <Users /> Add several
             </Button>
@@ -297,7 +297,7 @@ function Assign({
     <Select
       onValueChange={async (id) => {
         try {
-          await teamAdapter.update(role, employee.id, { managerId: id });
+          await apiTeamAdapter.update(role, employee.id, { managerId: id });
           onDone(`${employee.name} now reports to ${managers.find((m) => m.id === id)?.name}.`);
         } catch (e) {
           toast.error(e instanceof Error ? e.message : 'Could not assign.');

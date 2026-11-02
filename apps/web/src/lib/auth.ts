@@ -1,60 +1,23 @@
 /**
- * Authentication. In mock mode (default): There is no server, no real credential and nothing secret here: one demo user
- * per role and a shared demo password that is printed on the sign-in page. The session is a user id in
- * localStorage. In real mode (NEXT_PUBLIC_API_MODE=real) signInReal uses better-auth + GET /v1/me and keeps
- * only the profile in localStorage (the session itself is the HTTP-only cookie).
+ * Production authentication using better-auth + GET /v1/me
+ * Session is the HTTP-only cookie; profile is stored in localStorage.
  */
 import { useSyncExternalStore } from 'react';
 import { rateLimitMessage, SUSPENDED_MESSAGE } from '@/lib/auth-errors';
 import { ROLES, ROLE_LABEL, roleLevel, type Role } from './roles';
-import { API_URL, REAL, api, setAccountStateHandler, setUnauthenticatedHandler } from './api';
+import { API_URL, api, setAccountStateHandler, setUnauthenticatedHandler } from './api';
 
-export const MOCK_PASSWORD = 'ariforce-demo';
-import { SESSION_KEY } from './auth-boot';
+export { SESSION_KEY } from './auth-boot';
 
-export { SESSION_KEY };
+export type User = { id: string; name: string; email: string; role: Role; territory: string };
 
-export type MockUser = { id: string; name: string; email: string; role: Role; territory: string };
+export type Session = { userId: string; role?: Role; user?: User };
 
-const NAMES: Partial<Record<Role, [string, string]>> = {
-  business_manager: ['Rahul Sen', 'Kolkata South HQ'],
-  area_business_manager: ['Priya Ghosh', 'Kolkata Area'],
-  regional_business_manager: ['Arjun Das', 'East Bengal Region'],
-  zonal_business_manager: ['Meera Iyer', 'East Zone'],
-  sales_manager: ['Vikram Rao', 'India'],
-  general_manager: ['Anita Kapoor', 'India'],
-  vice_president: ['Sanjay Mehta', 'India'],
-  director: ['Kavita Bose', 'India'],
-  system_admin: ['System Admin', 'Head office'],
-};
-
-const EMAIL: Partial<Record<Role, string>> = {
-  business_manager: 'bm',
-  area_business_manager: 'abm',
-  regional_business_manager: 'rbm',
-  zonal_business_manager: 'zbm',
-  sales_manager: 'sm',
-  general_manager: 'gm',
-  vice_president: 'vp',
-  director: 'director',
-  system_admin: 'admin',
-};
-
-/** Demo users for the web's roles (Distribution Head and Accountant have no portal access). */
-export const MOCK_USERS: MockUser[] = ROLES.filter((r) => NAMES[r] && EMAIL[r]).map((role) => ({
-  id: `mock-${EMAIL[role]}`,
-  name: NAMES[role]![0],
-  territory: NAMES[role]![1],
-  email: `${EMAIL[role]}@demo.ariforce.test`,
-  role,
-}));
-
-/** `role` is copied in so the pre-paint head script can gate routes without the user table. */
-export type Session = { userId: string; role?: Role; previewRole?: Role; user?: MockUser };
-export type SignedIn = { user: MockUser; role: Role; previewing: boolean };
+export type SignedIn = { user: User; role: Role };
 
 let cache: { raw: string | null; value: SignedIn | null } = { raw: null, value: null };
 const listeners = new Set<() => void>();
+const SESSION_KEY = 'ariforce-session';
 
 function read(): SignedIn | null {
   let raw: string | null = null;
@@ -67,17 +30,9 @@ function read(): SignedIn | null {
   let value: SignedIn | null = null;
   try {
     const s = raw ? (JSON.parse(raw) as Session) : null;
-    // Real mode: the user came from GET /v1/me at sign-in. Mock mode: one of the demo users.
-    const user =
-      s &&
-      (REAL
-        ? s.user?.id === s.userId
-          ? s.user
-          : undefined
-        : MOCK_USERS.find((u) => u.id === s.userId));
+    const user = s && s.user?.id === s.userId ? s.user : undefined;
     if (user) {
-      const preview = s.previewRole && ROLES.includes(s.previewRole) ? s.previewRole : undefined;
-      value = { user, role: preview ?? user.role, previewing: !!preview && preview !== user.role };
+      value = { user, role: user.role };
     }
   } catch {
     // storage blocked (private mode): treat as signed out
@@ -125,32 +80,6 @@ export const PENDING_MESSAGE =
 export const REJECTED_MESSAGE =
   'Your sign-up request was not approved. Contact your administrator.';
 
-export function signIn(email: string, password: string): MockUser | SignInError {
-  const e = email.trim().toLowerCase();
-  if (!e) return { field: 'email', message: 'Enter your work email.' };
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
-    return { field: 'email', message: 'That doesn\u2019t look like an email address.' };
-  if (!password) return { field: 'password', message: 'Enter your password.' };
-  const user = MOCK_USERS.find((u) => u.email === e);
-  if (!user)
-    return {
-      field: 'email',
-      message: 'No demo account uses this email. Pick one from the list below.',
-    };
-  if (password !== MOCK_PASSWORD)
-    return { field: 'password', message: `Wrong password. The demo password is ${MOCK_PASSWORD}.` };
-  write({ userId: user.id, role: user.role });
-  return user;
-}
-
-export function signOut() {
-  if (REAL)
-    void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(
-      () => {},
-    );
-  write(null);
-}
-
 /** Highest sales role wins; system admin only when nothing else; null when no role has portal access. */
 function primaryRole(roles: string[]): Role | null {
   const known = roles.filter((r): r is Role => (ROLES as readonly string[]).includes(r));
@@ -161,8 +90,8 @@ function primaryRole(roles: string[]): Role | null {
   return sales[0] ?? (known.includes('system_admin') ? 'system_admin' : 'business_manager');
 }
 
-/** REAL mode sign-in: better-auth email sign-in (session cookie), then GET /v1/me. */
-export async function signInReal(email: string, password: string): Promise<MockUser | SignInError> {
+/** Sign in via better-auth email (session cookie), then GET /v1/me. */
+export async function signIn(email: string, password: string): Promise<User | SignInError> {
   const e = email.trim().toLowerCase();
   if (!e) return { field: 'email', message: 'Enter your work email.' };
   if (!password) return { field: 'password', message: 'Enter your password.' };
@@ -204,7 +133,7 @@ export async function signInReal(email: string, password: string): Promise<MockU
       void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(() => {});
       return { field: 'password', message: NO_PORTAL_MESSAGE };
     }
-    const user: MockUser = {
+    const user: User = {
       id: me.id,
       name: me.name,
       email: me.email,
@@ -216,6 +145,13 @@ export async function signInReal(email: string, password: string): Promise<MockU
   } catch {
     return { field: 'password', message: 'Could not reach the server. Check your connection.' };
   }
+}
+
+export function signOut() {
+  void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(
+    () => {},
+  );
+  write(null);
 }
 
 if (typeof window !== 'undefined')
@@ -233,15 +169,5 @@ if (typeof window !== 'undefined')
         `/sign-in${p !== '/' ? `?next=${encodeURIComponent(p + location.search)}` : ''}`,
       );
   });
-
-export function setPreviewRole(role: Role) {
-  const s = read();
-  if (s)
-    write({
-      userId: s.user.id,
-      role: s.user.role,
-      previewRole: role === s.user.role ? undefined : role,
-    });
-}
 
 export const roleLabel = (r: Role) => ROLE_LABEL[r];

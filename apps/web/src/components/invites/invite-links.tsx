@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from '@ariforce/ui/components/dialog';
 import { toast } from '@ariforce/ui/components/sonner';
-import { teamAdapter } from '@/lib/team-adapter/adapter';
+import { apiTeamAdapter } from '@/lib/team-adapter/adapter';
 import type { Employee, InviteResult } from '@/lib/team-adapter/types';
 import type { Role } from '@/lib/roles';
 
@@ -105,7 +105,7 @@ export function InviteOne({ role, employee, sentBefore }: { role: Role; employee
           onClick={async () => {
             setBusy(true);
             try {
-              setRes(await teamAdapter.invite(role, employee.id));
+              setRes(await apiTeamAdapter.invite(role, employee.id));
             } catch (e) {
               toast.error(e instanceof Error ? e.message : 'Could not create the invite.');
             } finally {
@@ -130,7 +130,7 @@ export function InviteAll({ role, people, onClose }: { role: Role; people: Emplo
     const out: NonNullable<typeof rows> = [];
     for (const p of people) {
       try {
-        out.push(await teamAdapter.invite(role, p.id));
+        out.push(await apiTeamAdapter.invite(role, p.id));
       } catch (e) {
         out.push({ id: p.id, name: p.name, error: e instanceof Error ? e.message : 'Failed' });
       }

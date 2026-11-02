@@ -7,7 +7,7 @@ import { Button } from '@ariforce/ui/components/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@ariforce/ui/components/dialog';
 import { Label } from '@ariforce/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ariforce/ui/components/select';
-import { teamAdapter } from '@/lib/team-adapter/adapter';
+import { apiTeamAdapter } from '@/lib/team-adapter/adapter';
 import type { BulkInviteResult, EmployeeInput, Hq } from '@/lib/team-adapter/types';
 import { ROLE_LABEL, type Role, type SalesRole } from '@/lib/roles';
 import { CopyButton, InviteLink } from './invite-links';
@@ -36,7 +36,7 @@ const STATUS: Record<'invited' | 'skipped' | 'failed', { label: string; variant:
 
 /** "Add several": creates and invites new people via POST /v1/employees/invite-bulk (sent in chunks of 200). */
 export function BulkInvite({ role, managerId, hqs, onClose }: { role: Role; managerId: string; hqs: Hq[]; onClose: (changed: boolean) => void }) {
-  const roles = teamAdapter.creatableRoles(role);
+  const roles = apiTeamAdapter.creatableRoles(role);
   const [newRole, setNewRole] = useState<SalesRole | ''>(roles[0] ?? '');
   const [hqId, setHqId] = useState(hqs[0]?.id ?? '');
   const [text, setText] = useState('');
@@ -52,7 +52,7 @@ export function BulkInvite({ role, managerId, hqs, onClose }: { role: Role; mana
     setErr(null);
     const inputs: EmployeeInput[] = parsed.ok.map((p) => ({ ...p, role: newRole, hqId, managerId }));
     try {
-      setRes(await teamAdapter.inviteBulk(role, inputs, setProgress));
+      setRes(await apiTeamAdapter.inviteBulk(role, inputs, setProgress));
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not send the invites.');
     }

@@ -15,7 +15,7 @@ import {
 import { toast } from '@ariforce/ui/components/sonner';
 import { api, apiReady } from '@/lib/api';
 import { territoryQueryFor } from '@/lib/assign-errors';
-import { useSession } from '@/lib/mock-auth';
+import { useSession } from '@/lib/auth';
 import { ROLE_LABEL, roleLevel, type Role } from '@/lib/roles';
 import {
   SignupError,
@@ -26,7 +26,7 @@ import {
   type SignupRequest,
   type SignupStatus,
 } from '@/lib/signup/adapter';
-import { teamAdapter } from '@/lib/team-adapter/adapter';
+import { apiTeamAdapter } from '@/lib/team-adapter/adapter';
 import type { Employee } from '@/lib/team-adapter/types';
 
 const SELECT =
@@ -286,7 +286,7 @@ function ApproveDialog({
 
   useEffect(() => {
     let live = true;
-    void teamAdapter
+    void apiTeamAdapter
       .tree(viewer)
       .then((t) => live && setPeople(t.nodes))
       .catch(() => {});
