@@ -29,7 +29,6 @@ import {
   HISTORY_DAYS,
   productTally,
   SAMPLE_CAP_PER_MONTH,
-  sampleVisits,
   visitsFrom,
   type Visit,
 } from './doctor-data';
@@ -185,11 +184,7 @@ function Doctor360({ id }: { id: string }) {
   const category = lk.categories.find((c) => c.id === doc?.categoryId);
   const target = category?.visitsPerMonth ?? 0;
   const today = todayYmd();
-  const isSample = real !== null && real.length === 0;
-  const visits = useMemo(
-    () => (real === null ? null : real.length ? real : sampleVisits(id, today, target || 2)),
-    [real, id, today, target],
-  );
+  const visits = real;
   const month = thisMonth();
   const thisMonthVisits = (visits ?? []).filter((v) => v.date.startsWith(month));
   const samplesThisMonth = thisMonthVisits.reduce(
@@ -265,15 +260,6 @@ function Doctor360({ id }: { id: string }) {
             >
               <Pencil /> Edit
             </Button>
-          )}
-          {isSample && (
-            <Badge
-              variant="outline"
-              className="border-dashed font-normal text-muted-foreground"
-              data-testid="sample-badge"
-            >
-              Sample visit history
-            </Badge>
           )}
         </div>
         <p className="text-sm text-muted-foreground">
@@ -445,12 +431,6 @@ function Doctor360({ id }: { id: string }) {
           </Card>
         </div>
       </div>
-      {isSample && (
-        <p className="text-xs text-muted-foreground">
-          Sample data: no calls to this doctor are recorded yet, so the visit history above is
-          illustrative.
-        </p>
-      )}
     </div>
   );
 }

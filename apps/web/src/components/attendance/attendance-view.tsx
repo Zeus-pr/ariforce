@@ -20,14 +20,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@ariforce/ui/components/select';
-import { api, apiReady, MOCKING, toApiError } from '@/lib/api';
+import { api, apiReady, toApiError } from '@/lib/api';
 import { isFieldRole } from '@/lib/roles';
 import { useRole } from '@/components/shell/role-context';
 import { CheckInMap, MapLegend } from './check-in-map';
 import { dateLabel, kindLabel, timeIST, todayIST } from './format';
-
-/** Kolkata North centroid from the demo fixtures; used only when the browser gives no fix in mock mode. */
-const DEMO_FIX = { lat: 22.6, lng: 88.4 };
 
 type Fix = {
   location: { lat: number; lng: number };
@@ -38,16 +35,9 @@ type Fix = {
 };
 
 function getFix(): Promise<Fix> {
-  const demo = (): Fix => ({
-    location: DEMO_FIX,
-    accuracyM: 25,
-    capturedAt: new Date().toISOString(),
-    isMock: false,
-    demo: true,
-  });
   return new Promise((resolve, reject) => {
     if (!('geolocation' in navigator))
-      return MOCKING ? resolve(demo()) : reject(new Error('This browser has no location access.'));
+      return reject(new Error('This browser has no location access.'));
     navigator.geolocation.getCurrentPosition(
       (p) =>
         resolve({
@@ -57,7 +47,7 @@ function getFix(): Promise<Fix> {
           isMock: false,
           demo: false,
         }),
-      (e) => (MOCKING ? resolve(demo()) : reject(new Error(e.message || 'Location unavailable.'))),
+      (e) => reject(new Error(e.message || 'Location unavailable.')),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
     );
   });
@@ -478,11 +468,6 @@ function TodayPanel({
             </>
           )}
         </div>
-      )}
-      {MOCKING && (
-        <p className="mt-3 text-xs text-muted-foreground">
-          Mock mode: if the browser gives no location, a demo point in Kolkata North is used.
-        </p>
       )}
     </section>
   );

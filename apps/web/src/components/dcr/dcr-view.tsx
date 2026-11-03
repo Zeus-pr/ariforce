@@ -26,10 +26,9 @@ import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
 import { dateLabel, timeIST, todayIST } from '@/components/attendance/format';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
-import { api, apiReady, MOCKING, toApiError } from '@/lib/api';
+import { api, apiReady, toApiError } from '@/lib/api';
 import { saveMessage } from '@/lib/leave/model';
 import { productImageUrl } from '@/lib/products/product-image';
-import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
 import { OutletPicker, TerritoryFilter } from '@/components/pickers/pickers';
 import { territoryLabel, workTerritories } from '@/lib/territories';
 import {
@@ -53,15 +52,6 @@ type PickProduct = {
   isSample: boolean;
   imageUrl: string | null;
 };
-
-/** In mock mode the picker uses Arighna's real product names (local mock seed); live mode uses GET /v1/products. */
-const SEED_PRODUCTS: PickProduct[] = MOCK_PRODUCT_SEED.map((p) => ({
-  id: p.id,
-  name: p.name,
-  detail: p.composition,
-  isSample: true,
-  imageUrl: null,
-}));
 
 type Call = Omit<Dcr['calls'][number], 'id'> & { clientId: string };
 type Kind = Call['outletKind'];
@@ -121,8 +111,7 @@ function DcrDay({ today }: { today: string }) {
       if (st.data) setStockists(st.data.items.map((x) => ({ id: x.id, name: x.name })));
       if (w.data) setWorkTypes(w.data.items.filter((x) => x.active));
       if (d.data) setDoctors(d.data.items);
-      if (MOCKING) setProducts(SEED_PRODUCTS);
-      else if (p.data)
+      if (p.data)
         setProducts(
           p.data.items
             .filter((x) => x.active)

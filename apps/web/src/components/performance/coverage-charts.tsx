@@ -75,28 +75,3 @@ export function CoverageBarsChart({
     </ChartFrame>
   );
 }
-
-export function CategoryChart({ cats }: { cats: { category: string; coverage: number }[] }) {
-  const reduced = useReducedMotion();
-  return (
-    <ChartFrame height={220} label="Coverage by doctor category">
-      <BarChart
-        data={cats ?? []}
-        margin={{ top: 12, right: 12, left: -12, bottom: 0 }}
-        barSize={32}
-      >
-        <CartesianGrid vertical={false} stroke={CHART.grid} />
-        <XAxis dataKey="category" {...axisProps} />
-        <YAxis domain={[0, 100]} unit="%" {...axisProps} />
-        <ChartTooltip format={(v) => `${v}%`} />
-        <Bar
-          dataKey="coverage"
-          name="Coverage"
-          fill={CHART.series[0]}
-          radius={[3, 3, 0, 0]}
-          isAnimationActive={!reduced}
-        />
-      </BarChart>
-    </ChartFrame>
-  );
-}
