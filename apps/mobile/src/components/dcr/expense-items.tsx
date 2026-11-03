@@ -8,10 +8,11 @@ import { TextField } from '@/components/text-field';
 import {
   DCR_EXPENSE_CATEGORIES,
   expenseAmount,
+  expenseOutcome,
   sendableExpenses,
   type DcrExpenseItem,
 } from '@/lib/dcr/v2-adapter';
-import { CATEGORY_LABEL, monthOf, useClaim, useMyClaims } from '@/lib/expenses';
+import { CATEGORY_LABEL } from '@/lib/expenses';
 import { colors, spacing } from '@/theme';
 import { dcrStyles, Field } from './field';
 
@@ -122,23 +123,12 @@ export function ExpenseItems({
   );
 }
 
-/** Read-only "Added to expenses: ₹X (n items)" for a filed DCR, opens the claim. */
-export function DcrExpenseChip({
-  dcrId,
-  date,
-  userId,
-}: {
-  dcrId: string;
-  date: string;
-  userId: string | undefined;
-}) {
+/** Read-only "Added to expenses: ₹X (n items)" from the server's outcome only; opens the claim. */
+export function DcrExpenseChip({ dcr }: { dcr: object }) {
   const router = useRouter();
-  const claims = useMyClaims(userId);
-  const id = claims.data?.find((c) => c.month === monthOf(date))?.id;
-  const claim = useClaim(id);
-  const lines = (claim.data?.lines ?? []).filter((l) => l.dcrId === dcrId && l.source !== 'auto');
-  if (!id || !lines.length) return null;
-  const total = lines.reduce((a, l) => a + Number(l.amount), 0);
+  const out = expenseOutcome(dcr);
+  if (!out || !out.count) return null;
+  const { claimId: id, total, count } = out;
   return (
     <Pressable
       accessibilityRole="link"
@@ -146,7 +136,7 @@ export function DcrExpenseChip({
       style={styles.chip}
     >
       <AppText variant="small" style={styles.chipText}>
-        {`Added to expenses: ${inr(total)} (${lines.length} item${lines.length === 1 ? '' : 's'})`}
+        {`Added to expenses: ${inr(total)} (${count} item${count === 1 ? '' : 's'})`}
       </AppText>
       <Icon name="chevron-right" size={16} color={colors.teal} />
     </Pressable>

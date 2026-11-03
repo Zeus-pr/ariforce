@@ -1,14 +1,11 @@
 import type { DcrDetails } from '@ariforce/contracts';
-import { apiFetch } from '@/lib/api';
-import { ensureClaim, isEditable, monthOf, type Claim } from '@/lib/expenses';
 
 /**
  * DCR v2 adapter — the ONLY place that knows how "From place / To place" and DCR expenses
  * reach the API. The contracts have no such fields yet (assumed names below, pending Architect).
  *
  * - Flag off (default): places ride inside the existing `remarks` text as a tagged first line;
- *   expenses are posted after submit as ordinary lines on that month's claim
- *   (POST /v1/expense-claims/{id}/lines with dcrId) — both use today's contract.
+ *   the Expenses section is hidden and nothing about expenses is sent.
  * - Flag on (EXPO_PUBLIC_DCR_V2_FIELDS=1): sends the assumed fields instead.
  *     details.fromPlace / details.toPlace  (meeting, training, office)
  *     Dcr body `expenses: [{ category, amount, note }]`; response `expenseClaimId`,
@@ -78,38 +75,17 @@ export const expenseBodyExtras = (items: DcrExpenseItem[]) =>
 
 export type ExpenseOutcome = { claimId: string; total: number; count: number } | null;
 
-/** After submit: flag on reads the server outcome; flag off posts the lines to the day's claim. */
-export async function flowExpenses(
-  date: string,
-  dcr: { id: string } & Record<string, unknown>,
-  items: DcrExpenseItem[],
-): Promise<ExpenseOutcome> {
-  const list = sendableExpenses(items);
-  if (!list.length) return null;
-  if (DCR_V2_FIELDS) {
-    const id = dcr.expenseClaimId as string | undefined;
-    return id
-      ? { claimId: id, total: Number(dcr.expenseTotal ?? 0), count: Number(dcr.expenseCount ?? 0) }
-      : null;
-  }
-  const claim: Claim = await ensureClaim(monthOf(date));
-  if (!isEditable(claim.status)) return null;
-  let total = 0;
-  for (const i of list) {
-    const amount = expenseAmount(i.amount)!;
-    await apiFetch(`/v1/expense-claims/${claim.id}/lines`, {
-      method: 'POST',
-      body: {
-        date,
-        category: i.category,
-        amount,
-        notes: i.note.trim() || null,
-        mileageKm: null,
-        dcrId: dcr.id,
-        tourPlanId: null,
-      },
-    });
-    total += amount;
-  }
-  return { claimId: claim.id, total, count: list.length };
+/**
+ * Server-side outcome only (assumed names expenseClaimId / expenseTotal / expenseCount).
+ * The app never creates claim lines itself: the server links DCR expenses idempotently on submit.
+ */
+export function expenseOutcome(dcr: object | null | undefined): ExpenseOutcome {
+  if (!DCR_V2_FIELDS || !dcr) return null;
+  const d = dcr as { expenseClaimId?: unknown; expenseTotal?: unknown; expenseCount?: unknown };
+  if (typeof d.expenseClaimId !== 'string' || !d.expenseClaimId) return null;
+  return {
+    claimId: d.expenseClaimId,
+    total: Number(d.expenseTotal ?? 0),
+    count: Number(d.expenseCount ?? 0),
+  };
 }

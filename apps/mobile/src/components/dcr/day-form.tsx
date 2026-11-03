@@ -18,7 +18,7 @@ import { SfcSection } from '@/components/dcr/sfc-section';
 import { useBottomSpace } from '@/components/floating-tab-bar';
 import { Icon } from '@/components/icon';
 import { DcrExpenseChip, ExpenseItems } from './expense-items';
-import { expenseBodyExtras, flowExpenses, readPlaces } from '@/lib/dcr/v2-adapter';
+import { DCR_V2_FIELDS, expenseBodyExtras, expenseOutcome, readPlaces } from '@/lib/dcr/v2-adapter';
 import { SelectSheet } from '@/components/masters/select-sheet';
 import { KeyboardAwareScrollView } from '@/components/scroll';
 import { TextField } from '@/components/text-field';
@@ -563,9 +563,8 @@ export function DcrForm({
           ...expenseBodyExtras(s.expenses ?? []),
         });
         setDcr(submitted);
-        // Optional DCR expenses -> that month's claim (see lib/dcr/v2-adapter.ts).
-        const added = await flowExpenses(s.date, submitted, s.expenses ?? []).catch(() => null);
-        if (added) void qc.invalidateQueries({ queryKey: ['expenses'] });
+        // Server links DCR expenses to the claim; we only read its outcome (v2-adapter).
+        const added = expenseOutcome(submitted);
         // Day's expense draft with TA/DA: the server's (expenseDraft) when it drafts, else ours.
         const note = autoDraftNote(submitted.expenseDraft);
         if (!submitted.expenseDraft)
@@ -1147,10 +1146,10 @@ export function DcrForm({
           />
         ) : null}
 
-        {!isTp && s.workOn ? (
+        {DCR_V2_FIELDS && !isTp && s.workOn ? (
           readOnly ? (
             dcr && dcr.status !== 'draft' ? (
-              <DcrExpenseChip dcrId={dcr.id} date={s.date} userId={user?.id} />
+              <DcrExpenseChip dcr={dcr} />
             ) : null
           ) : (
             <ExpenseItems
