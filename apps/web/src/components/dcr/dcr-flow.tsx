@@ -50,6 +50,15 @@ import { failureMessage, thrownMessage } from '@/lib/dcr/errors';
 import { productImageUrl } from '@/lib/products/product-image';
 import { bandOf } from '@/lib/dcr/bands';
 import { ChoiceSelect } from './choice-select';
+import { DcrExpenses } from './dcr-expenses';
+import {
+  defaultCategory,
+  draftsOf,
+  expensesOf,
+  linkOutcome,
+  rememberCategories,
+  type SubmitExpenseInfo,
+} from '@/lib/dcr/expenses';
 import {
   CallCard,
   type CustomerScope,
@@ -139,6 +148,8 @@ const fresh = (date: string): FlowState => ({
   office: emptyOffice(),
   leaveRequestId: '',
   deviationReason: '',
+  expenses: [],
+  expensesSent: false,
 });
 
 function Step({
@@ -202,6 +213,8 @@ function Flow({
   const [apiMissing, setApiMissing] = useState(false);
   const [missingHqIds, setMissingHqIds] = useState<string[]>([]);
   const [showErrors, setShowErrors] = useState(false);
+  /** What happened to the day's expenses at submit (shown once, in the submitted panel). */
+  const [expenseOutcome, setExpenseOutcome] = useState<string | null>(null);
   const [saving, setSaving] = useState<'draft' | 'submit' | null>(null);
   const [reload, setReload] = useState(0);
   const [sfcTick, setSfcTick] = useState(0);
@@ -332,6 +345,8 @@ function Flow({
           d.sfcRoutes.map((x) => [x.hqTerritoryId, x.sfcRouteId]),
         );
         next.calls = callsFromDcr(d, names.current);
+        next.expenses = draftsOf(expensesOf(d));
+        next.expensesSent = next.expenses.length > 0;
         const det = d.details;
         if (det?.kind === 'meeting' || det?.kind === 'training')
           next.meeting = {
@@ -658,6 +673,9 @@ function Flow({
           return false;
         }
         saved = sub.data;
+        const items = expensesOf(saved);
+        rememberCategories(saved.workTypeId, items);
+        setExpenseOutcome(linkOutcome(items, sub.data as SubmitExpenseInfo));
       }
       setDcr(saved);
       setDirty(false);
@@ -780,6 +798,7 @@ function Flow({
                   ? 'The day is locked, so it is read-only. Request an unlock if something needs correcting.'
                   : 'It is read-only now. Ask your manager if something needs correcting.'}
               </p>
+              {expenseOutcome && <p data-testid="dcr-expense-outcome">{expenseOutcome}</p>}
             </div>
           </div>
           {(dayLocked || dcr?.status === 'locked') && (
@@ -1256,6 +1275,21 @@ function Flow({
             errors={errorsFor('leave')}
           />
         </Step>
+      )}
+
+      {s.workOn && (!readOnly || s.expenses.length > 0) && (
+        <DcrExpenses
+          rows={s.expenses}
+          onChange={(rows) => update({ expenses: rows })}
+          readOnly={readOnly}
+          defaultCategory={() => defaultCategory(s.workTypeId)}
+          showErrors={showErrors}
+        />
+      )}
+      {errorsFor('expenses').length > 0 && (
+        <p className="-mt-4 text-sm text-destructive" role="alert">
+          {errorsFor('expenses')[0]}
+        </p>
       )}
 
       {s.workOn && (askDeviation || !!s.deviationReason) && (

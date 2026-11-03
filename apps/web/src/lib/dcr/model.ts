@@ -4,6 +4,7 @@
  * Admin work and Leave (by detailsKind), plus any other work type as-is (e.g. Holiday).
  */
 import type { Dcr, DcrBand, DcrDetails, DcrDraftPut, DcrSfcMatch } from '@ariforce/contracts';
+import { expenseProblems, itemsOf, type DcrExpenseItem, type ExpenseDraft } from './expenses';
 import { bandOf, categoryFitsBand, sfcCategoryOf } from './bands';
 import type { ApiError } from '@/lib/api';
 import { dcrDateNotTodayMessage } from './date-rule';
@@ -249,6 +250,10 @@ export type FlowState = {
   leaveRequestId: string;
   /** Why the day differs from the approved tour plan; asked for when submit says DEVIATION_REASON_REQUIRED. */
   deviationReason: string;
+  /** Optional day expenses (any work type). */
+  expenses: ExpenseDraft[];
+  /** The saved report had expenses, so an empty list must be sent to clear them. */
+  expensesSent: boolean;
 };
 
 const minutes = (v: string) => {
@@ -319,6 +324,8 @@ export function problems(s: FlowState): { key: string; text: string }[] {
   const add = (key: string, text: string) => p.push({ key, text });
   const b = s.workOn?.branch;
   if (!s.workOn) add('workOn', 'Choose what you worked on.');
+  const exp = expenseProblems(s.expenses);
+  if (exp) add('expenses', exp);
   if (b === 'field') {
     if (!s.workTypeId) add('band', 'Choose the band: HQ, EX or OS.');
     else if (!s.territoryIds.length) add('territory', 'Choose the territory you worked.');
@@ -380,7 +387,7 @@ export function problems(s: FlowState): { key: string; text: string }[] {
 export function draftBody(
   s: FlowState,
   saved?: { id: string; version: number } | null,
-): DcrDraftPut {
+): DcrDraftPut & { expenses?: DcrExpenseItem[] } {
   const field = s.workOn?.branch === 'field';
   const routes =
     field && s.sfc.state === 'ok'
@@ -430,6 +437,9 @@ export function draftBody(
             calledAt: isoOf(s.date, c.time),
           }))
       : [],
+    // Contract #121: omitted = keep the saved list. Left out when there never were any, so an API
+    // without DCR expenses yet sees the same body as before.
+    ...(s.expenses.length || s.expensesSent ? { expenses: itemsOf(s.expenses) } : {}),
     ...(saved ? { id: saved.id, version: saved.version } : {}),
   };
 }
@@ -459,6 +469,8 @@ export function callsFromDcr(d: Dcr, names: Map<string, string>): CallDraft[] {
 /** Plain words for the redesign's error codes. */
 export function dcrErrorMessage(e: ApiError): string {
   switch (e.code) {
+    case 'DCR_EXPENSE_CATEGORY_INVALID':
+      return 'One of the expenses has a category that can’t be used here. Choose Travel, Hotel, Food or Other.';
     case 'SFC_NO_MATCH':
       return 'No matching SFC record for this band and territory. Change the territory or band, or ask your manager to add the route to your SFC.';
     case 'SFC_ROUTE_REQUIRED':
