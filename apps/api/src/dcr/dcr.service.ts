@@ -33,7 +33,7 @@ import { SUBMITTED_STATUSES, dayReport, isDaySubmittedViolation } from './day-re
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { CheckInsService, err } from '../field/checkins.service';
-import { companySettings, localDate, type CompanySettings } from '../field/field.util';
+import { companySettings, type CompanySettings } from '../field/field.util';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { ApprovalsService } from '../plans/approvals.service';
 import { autoApproveAudit, isDirector, systemPrincipal } from '../plans/auto-approve';
