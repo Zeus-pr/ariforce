@@ -32,3 +32,25 @@ export function rangeOf(key: RangeKey, today: string): { from: string; to: strin
       return { from: add(today, -29), to: today };
   }
 }
+
+/** Inclusive number of days in a range. */
+export const daysIn = (from: string, to: string) =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+
+/** Months (YYYY-MM) a range touches, oldest first. */
+export function monthsIn(from: string, to: string): string[] {
+  const out: string[] = [];
+  let y = Number(from.slice(0, 4));
+  let m = Number(from.slice(5, 7));
+  const end = to.slice(0, 7);
+  for (;;) {
+    const ym = `${y}-${String(m).padStart(2, '0')}`;
+    out.push(ym);
+    if (ym >= end || out.length > 24) return out;
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+}
