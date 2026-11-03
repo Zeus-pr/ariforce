@@ -1755,7 +1755,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide */
+    /**
+     * Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide
+     * @description Without limit and cursor: all matching claims, response { items } exactly as before. With limit and/or cursor: one page (limit default 50, max 200), ordered month desc, user name, id, and the response adds limit, total and nextCursor (null on the last page). Invalid cursor: 422 VALIDATION.
+     */
     get: operations['listExpenseClaims'];
     put?: never;
     /** Create your claim for a month (one per user per month); returns the existing one with 200 */
@@ -6740,6 +6743,12 @@ export interface components {
     };
     ExpenseClaimList: {
       items: components['schemas']['ExpenseClaimSummary'][];
+      /** @description Paged reads only (limit or cursor sent) */
+      limit?: number;
+      /** @description Paged reads only: claims matching the filters (all pages) */
+      total?: number;
+      /** @description Paged reads only: pass as cursor for the next page; null on the last page */
+      nextCursor?: string | null;
     };
     ExpenseClaimSummary: {
       /**
@@ -14974,6 +14983,10 @@ export interface operations {
         month?: string;
         userId?: string;
         status?: components['schemas']['ExpenseStatus'];
+        /** @description Opt-in paging (default 50 once cursor is sent). Without limit and cursor every readable claim is returned, as before */
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
       };
       header?: never;
       path?: never;
@@ -15001,6 +15014,15 @@ export interface operations {
       };
       /** @description Signed in but not allowed (role, hierarchy or tenant) */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (bad limit or cursor) */
+      422: {
         headers: {
           [name: string]: unknown;
         };

@@ -115,7 +115,20 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
           total: total({ ...c, lines } as Claim),
           lineCount: lines.length,
         }));
-      return HttpResponse.json(ExpenseClaimList.parse({ items }));
+      if (!q.has('limit') && !q.has('cursor'))
+        return HttpResponse.json(ExpenseClaimList.parse({ items }));
+      // Opt-in paging, same envelope as the API (offset cursor `o:<n>` base64).
+      const limit = Math.min(Math.max(Number(q.get('limit') ?? 50) || 50, 1), 200);
+      const offset = Number(/^o:(\d+)$/.exec(atob(q.get('cursor') ?? btoa('o:0')))?.[1] ?? 0);
+      const pageItems = items.slice(offset, offset + limit);
+      return HttpResponse.json(
+        ExpenseClaimList.parse({
+          items: pageItems,
+          limit,
+          total: items.length,
+          nextCursor: offset + limit < items.length ? btoa(`o:${offset + limit}`) : null,
+        }),
+      );
     }),
     http.post(`${B}/expense-claims`, async ({ request }) => {
       const g = auth(request);
