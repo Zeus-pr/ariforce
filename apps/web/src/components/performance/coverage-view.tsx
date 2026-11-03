@@ -1,47 +1,49 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, XAxis, YAxis } from 'recharts';
-import { axisProps, CHART, ChartFrame, ChartTooltip } from '@/components/charts/chart';
-import { KpiCards } from '@/components/dashboard/dashboard-view';
+import { KpiCards } from '@/components/dashboard/kpi-cards';
 import { useRole } from '@/components/shell/role-context';
 import { api, apiReady } from '@/lib/api';
 import { monthLabel } from '@/lib/period';
-import { useReducedMotion } from '@/lib/use-reduced-motion';
 import {
   ChartCard,
   exportedAt,
   MonthSwitch,
-  num,
   pct,
   PerfTable,
   SampleBadge,
   useMonth,
-  type PerfCol,
 } from './perf-ui';
-import { breakdownFor, pick, usePerf, val, type Row } from './use-perf';
+import { breakdownFor, pick, usePerf, val } from './use-perf';
+import { coverageCols, COVERAGE_KPIS } from './coverage-kpis';
 
-export const COVERAGE_KPIS = [
-  'coverage_pct',
-  'frequency_compliance_pct',
-  'missed_doctor_pct',
-  'unique_doctors_seen',
-  'msl_size',
-  'call_average',
-] as const;
-
-export const coverageCols = (first: string): PerfCol<Row>[] => [
-  { header: first, get: (r) => r.label },
-  { header: 'MSL size', get: (r) => val(r, 'msl_size') },
-  { header: 'Doctors seen', get: (r) => val(r, 'unique_doctors_seen') },
-  { header: 'Coverage', get: (r) => val(r, 'coverage_pct'), format: pct },
-  { header: 'Frequency compliance', get: (r) => val(r, 'frequency_compliance_pct'), format: pct },
-  { header: 'Missed doctors', get: (r) => val(r, 'missed_doctor_pct'), format: pct },
-  { header: 'Call average', get: (r) => val(r, 'call_average'), format: num },
-];
-
-const short = (s: string) => (s.length > 12 ? `${s.slice(0, 11)}…` : s);
+const CoverageTrendChart = dynamic(
+  () => import('./coverage-charts').then((m) => m.CoverageTrendChart),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[220px] animate-pulse rounded-md bg-muted/40" aria-busy="true" />
+    ),
+  },
+);
+const CoverageBarsChart = dynamic(
+  () => import('./coverage-charts').then((m) => m.CoverageBarsChart),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[220px] animate-pulse rounded-md bg-muted/40" aria-busy="true" />
+    ),
+  },
+);
+const CategoryChart = dynamic(() => import('./coverage-charts').then((m) => m.CategoryChart), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[220px] animate-pulse rounded-md bg-muted/40" aria-busy="true" />
+  ),
+});
 
 /** Coverage by doctor category. No contract (CONTRACT-GAPS #19): sample split of the headline coverage over the real categories. */
 function useCategorySample(coverage: number | null) {
@@ -69,7 +71,6 @@ export function CoverageView() {
   const { role } = useRole();
   const month = useMonth();
   const perf = usePerf(role, month, COVERAGE_KPIS);
-  const reduced = useReducedMotion();
   const by = breakdownFor(role);
   const cats = useCategorySample(val(perf?.head, 'coverage_pct'));
   if (!month) return <div className="h-96" aria-busy="true" />;
@@ -101,83 +102,15 @@ export function CoverageView() {
       />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <ChartCard title="Coverage over six months">
-          <ChartFrame height={220} label="Coverage over six months">
-            <LineChart data={trend} margin={{ top: 12, right: 12, left: -12, bottom: 0 }}>
-              <CartesianGrid vertical={false} stroke={CHART.grid} />
-              <XAxis dataKey="name" {...axisProps} />
-              <YAxis domain={[0, 100]} unit="%" {...axisProps} />
-              <ChartTooltip format={(v) => `${v}%`} />
-              <Legend iconType="plainline" wrapperStyle={{ fontSize: 12 }} />
-              <Line
-                dataKey="coverage"
-                name="Coverage"
-                stroke={CHART.series[0]}
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive={!reduced}
-              />
-              <Line
-                dataKey="frequency"
-                name="Frequency compliance"
-                stroke={CHART.series[1]}
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive={!reduced}
-              />
-            </LineChart>
-          </ChartFrame>
+          <CoverageTrendChart trend={trend} />
         </ChartCard>
         {by ? (
           <ChartCard title={`Coverage by ${first.toLowerCase()}`}>
-            <ChartFrame height={220} label={`Coverage by ${first.toLowerCase()}`}>
-              <BarChart
-                data={bars}
-                margin={{ top: 12, right: 12, left: -12, bottom: 0 }}
-                barGap={2}
-              >
-                <CartesianGrid vertical={false} stroke={CHART.grid} />
-                <XAxis dataKey="name" {...axisProps} interval={0} tickFormatter={short} />
-                <YAxis domain={[0, 100]} unit="%" {...axisProps} />
-                <ChartTooltip format={(v) => `${v}%`} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar
-                  dataKey="coverage"
-                  name="Coverage"
-                  fill={CHART.series[0]}
-                  radius={[3, 3, 0, 0]}
-                  isAnimationActive={!reduced}
-                />
-                <Bar
-                  dataKey="frequency"
-                  name="Frequency compliance"
-                  fill={CHART.series[1]}
-                  radius={[3, 3, 0, 0]}
-                  isAnimationActive={!reduced}
-                />
-              </BarChart>
-            </ChartFrame>
+            <CoverageBarsChart bars={bars} label={`Coverage by ${first.toLowerCase()}`} />
           </ChartCard>
         ) : (
           <ChartCard title="Coverage by doctor category" badge={<SampleBadge />}>
-            <ChartFrame height={220} label="Coverage by doctor category">
-              <BarChart
-                data={cats ?? []}
-                margin={{ top: 12, right: 12, left: -12, bottom: 0 }}
-                barSize={32}
-              >
-                <CartesianGrid vertical={false} stroke={CHART.grid} />
-                <XAxis dataKey="category" {...axisProps} />
-                <YAxis domain={[0, 100]} unit="%" {...axisProps} />
-                <ChartTooltip format={(v) => `${v}%`} />
-                <Bar
-                  dataKey="coverage"
-                  name="Coverage"
-                  fill={CHART.series[0]}
-                  radius={[3, 3, 0, 0]}
-                  isAnimationActive={!reduced}
-                />
-              </BarChart>
-            </ChartFrame>
+            <CategoryChart cats={cats ?? []} />
           </ChartCard>
         )}
       </div>

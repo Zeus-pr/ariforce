@@ -1,11 +1,12 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+
 import { ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@ariforce/ui/components/button';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import type { KpiReport, Territory } from '@ariforce/contracts';
 import { Card, CardDescription, CardHeader, CardTitle } from '@ariforce/ui/components/card';
 import {
@@ -17,13 +18,18 @@ import {
   TableRow,
 } from '@ariforce/ui/components/table';
 import { cn } from '@ariforce/ui/lib/utils';
-import { axisProps, CHART, ChartFrame, ChartTooltip } from '@/components/charts/chart';
-import { KpiCards } from '@/components/dashboard/dashboard-view';
+import { KpiCards } from '@/components/dashboard/kpi-cards';
 import { formatKpi, HEADLINE, KPI_META, TEAM_COLUMNS } from '@/components/dashboard/kpi-meta';
 import { ExportMenu } from '@/components/export/export-menu';
 import { api, apiReady } from '@/lib/api';
 import { monthLabel, thisMonth } from '@/lib/period';
-import { useReducedMotion } from '@/lib/use-reduced-motion';
+
+const TeamCoverageChart = dynamic(() => import('./team-charts').then((m) => m.TeamCoverageChart), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[220px] animate-pulse rounded-md bg-muted/40" aria-busy="true" />
+  ),
+});
 
 const LEVEL: Record<Territory['level'], string> = {
   national: 'Country',
@@ -49,7 +55,6 @@ export function TeamView() {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const reduced = useReducedMotion();
   const [tree, setTree] = useState<Territory[] | null>(null);
   const [home, setHome] = useState<string | null>(null);
   // Results are keyed by the view they belong to, so a drill never shows the previous level's rows.
@@ -295,31 +300,7 @@ export function TeamView() {
               </CardTitle>
             </CardHeader>
             <div className="px-2 pb-2">
-              <ChartFrame height={220} label={`Coverage by ${listLabel}`}>
-                <BarChart
-                  data={chart}
-                  margin={{ top: 12, right: 12, left: -12, bottom: 0 }}
-                  barSize={28}
-                >
-                  <CartesianGrid vertical={false} stroke={CHART.grid} />
-                  <XAxis
-                    dataKey="name"
-                    {...axisProps}
-                    interval={0}
-                    tickFormatter={(v: string) => (v.length > 14 ? `${v.slice(0, 13)}…` : v)}
-                  />
-                  <YAxis domain={[0, 100]} unit="%" {...axisProps} />
-                  <ChartTooltip format={(v) => `${v}%`} />
-                  <Bar
-                    dataKey="coverage"
-                    name="Coverage"
-                    fill={CHART.primary}
-                    radius={[3, 3, 0, 0]}
-                    isAnimationActive={!reduced}
-                    animationDuration={500}
-                  />
-                </BarChart>
-              </ChartFrame>
+              <TeamCoverageChart chart={chart} listLabel={listLabel} />
             </div>
           </Card>
         </div>
