@@ -3505,7 +3505,17 @@ export interface components {
       note?: string | null;
     };
     /** @enum {string} */
-    ExpenseCategory: 'travel' | 'hotel' | 'food' | 'mileage' | 'allowance' | 'other';
+    ExpenseCategory:
+      | 'travel'
+      | 'hotel'
+      | 'food'
+      | 'mileage'
+      | 'allowance'
+      | 'courier'
+      | 'mobile'
+      | 'team_meeting'
+      | 'additional_ta_da'
+      | 'other';
     DcrSubmit: {
       version: number;
       /** @description Day expenses; when sent they replace the saved draft list before submit. Omit to submit the saved list. The server links them into the month claim (clients never create the lines) */

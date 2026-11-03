@@ -400,6 +400,13 @@
       "when": 1793340700000,
       "tag": "0056_expense_lines_origin",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1793427100000,
+      "tag": "0057_expense_categories",
+      "breakpoints": true
     }
   ]
 }

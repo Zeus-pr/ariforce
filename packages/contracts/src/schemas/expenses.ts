@@ -10,6 +10,10 @@ export const EXPENSE_CATEGORIES = [
   'food',
   'mileage',
   'allowance',
+  'courier',
+  'mobile',
+  'team_meeting',
+  'additional_ta_da',
   'other',
 ] as const;
 export const ExpenseCategory = z.enum(EXPENSE_CATEGORIES).meta({ id: 'ExpenseCategory' });

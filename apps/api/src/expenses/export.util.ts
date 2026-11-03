@@ -1,11 +1,21 @@
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import type { ExpensesService } from './expenses.service';
+import {
+  buildStatementRows,
+  statementTotals,
+  type MoneyColumn,
+  type StatementInput,
+} from './statement';
 
 type Data = Awaited<ReturnType<ExpensesService['reportData']>>;
 
 /** Excel: "Claims" (one row per claim with reconciliation) and "Lines" (every line with day flags). */
-export async function toXlsx(month: string, data: Data): Promise<Buffer> {
+export async function toXlsx(
+  month: string,
+  data: Data,
+  statements: StatementInput[] = [],
+): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'AriForce';
   const s = wb.addWorksheet('Claims');
@@ -64,6 +74,8 @@ export async function toXlsx(month: string, data: Data): Promise<Buffer> {
       });
     }
   l.getRow(1).font = { bold: true };
+  const used = new Set<string>(['Claims', 'Lines']);
+  for (const st of statements) addStatementSheet(wb, st, used);
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
@@ -111,4 +123,115 @@ export function toPdf(month: string, data: Data): Promise<Buffer> {
     }
     doc.end();
   });
+}
+
+const MONEY_HEADERS: [MoneyColumn, string][] = [
+  ['ta', 'Travel Allowance'],
+  ['da', 'Daily Allowance'],
+  ['additional', 'Additional TA DA'],
+  ['courier', 'Courier'],
+  ['mobile', 'Mobile'],
+  ['teamMeeting', 'Team Meeting Expense'],
+  ['other', 'Other Expense'],
+];
+
+function sheetName(base: string, used: Set<string>): string {
+  const clean = base.replace(/[\\/?*[\]:]/g, ' ').slice(0, 28) || 'Statement';
+  let name = clean;
+  for (let i = 2; used.has(name); i++) name = `${clean.slice(0, 26)} ${i}`;
+  used.add(name);
+  return name;
+}
+
+/** Expense Claim Report: header block, one row per day, totals row, signature footer. */
+function addStatementSheet(wb: ExcelJS.Workbook, st: StatementInput, used: Set<string>) {
+  const h = st.header;
+  const rows = buildStatementRows(st);
+  const t = statementTotals(rows);
+  const s = wb.addWorksheet(sheetName(h.userName, used));
+  const [y, m] = st.month.split('-').map(Number) as [number, number];
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const dmy = (d: string) => d.split('-').reverse().join('-');
+  const pairs: [string, string][] = [
+    ['Company Name', h.company],
+    ['Employee Name', h.userName],
+    ['Employee Number', h.employeeCode ?? '-'],
+    ['Designation', h.designation ?? '-'],
+    ['HQ', h.hq ?? '-'],
+    ['Region Name', h.region ?? '-'],
+    ['Division', h.division ?? '-'],
+    ['Date of Joining', h.joinedOn ? dmy(h.joinedOn) : '-'],
+    ['Manager Name', h.managerName ? `${h.managerName} (${h.managerCode ?? '-'})` : '-'],
+    [
+      'Period',
+      `01-${String(m).padStart(2, '0')}-${y} to ${last}-${String(m).padStart(2, '0')}-${y}`,
+    ],
+    ['Status', h.status],
+    ['Employee Mobile Number', h.phone ?? '-'],
+    ['Email ID', h.email ?? '-'],
+    ['Total Expense', String(t.total.toFixed(2))],
+  ];
+  s.addRow(['Expense Claim Report']).font = { bold: true, size: 14 };
+  for (const [k, v] of pairs) {
+    const r = s.addRow([k, v]);
+    r.getCell(1).font = { bold: true };
+  }
+  s.addRow([]);
+  const head = s.addRow([
+    'Date',
+    'Activity Name',
+    'DCR Status',
+    'Category',
+    'Work Place',
+    'From-To, Mode',
+    'Distance',
+    'Doctors Met',
+    'Accompanist Count',
+    ...MONEY_HEADERS.map(([, label]) => label),
+    'Total Expense',
+    'Remarks',
+  ]);
+  head.font = { bold: true };
+  const widths = [12, 22, 12, 12, 24, 40, 10, 12, 12, 14, 14, 14, 10, 10, 14, 14, 14, 40];
+  widths.forEach((w, i) => (s.getColumn(i + 1).width = w));
+  const dash = (n: number) => (n ? n : '-');
+  for (const r of rows)
+    s.addRow([
+      dmy(r.date),
+      r.activity,
+      r.dcrStatus,
+      r.category,
+      r.workPlace,
+      r.route,
+      dash(r.distance),
+      dash(r.doctorsMet),
+      dash(r.accompanists),
+      ...MONEY_HEADERS.map(([k]) => dash(r.money[k])),
+      dash(r.total),
+      r.remarks || '-',
+    ]);
+  const tot = s.addRow([
+    'Total',
+    '',
+    '',
+    '',
+    '',
+    '',
+    t.distance,
+    t.doctorsMet,
+    t.accompanists,
+    ...MONEY_HEADERS.map(([k]) => t.money[k]),
+    t.total,
+    '',
+  ]);
+  tot.font = { bold: true };
+  s.addRow([]);
+  s.addRow([
+    `Employee: ${h.employeeCode ?? h.userName}`,
+    '',
+    '',
+    '',
+    '',
+    `Manager: ${h.managerName ?? ''}`,
+  ]).font = { bold: true };
 }
