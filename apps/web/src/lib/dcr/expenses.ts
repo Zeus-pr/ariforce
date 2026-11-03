@@ -126,14 +126,25 @@ export function rememberCategories(workTypeId: string, items: DcrExpenseItem[]) 
   }
 }
 
-/** The small outcome line after submit. Null when there was nothing to add. */
-export function linkOutcome(items: DcrExpenseItem[], link: DcrExpenseLink | null | undefined) {
-  if (!items.length) return null;
-  const total = money(items.reduce((t, i) => t + i.amount, 0));
-  const what = `${items.length === 1 ? '1 expense' : `${items.length} expenses`} (${total})`;
-  if (link?.status === 'skipped' && link.reason === 'claim_locked')
-    return `${what} stay on this report. This month's claim is already submitted, so they were not added to it.`;
+/** Expense fields of the submit response (contract #121). All optional: older APIs omit them. */
+export type SubmitExpenseInfo = {
+  dcrExpenses?: DcrExpenseLink | null;
+  expenseClaimId?: string | null;
+  expenseTotal?: number | null;
+  expenseCount?: number | null;
+};
+
+/** The one calm line after submit; null when there is nothing to say. The submit itself succeeded. */
+export function linkOutcome(items: DcrExpenseItem[], res: SubmitExpenseInfo): string | null {
+  const link = res.dcrExpenses;
+  if (link?.status === 'skipped' && link.reason === 'no_expenses') return null;
+  const count = res.expenseCount ?? items.length;
+  if (!count) return null;
+  const total = res.expenseTotal ?? items.reduce((t, i) => t + i.amount, 0);
+  const what = `${count === 1 ? '1 expense' : `${count} expenses`} (${money(total)})`;
+  if (link?.status === 'skipped')
+    return `This month’s expense claim is already submitted, so ${count === 1 ? 'this expense was' : 'these expenses were'} saved on the report but not added to the claim.`;
   if (link?.status === 'error')
-    return `${what} could not be added to your expense claim yet. They are saved on this report.`;
+    return `${what} could not be added to your expense claim. ${count === 1 ? 'It stays' : 'They stay'} on this report.`;
   return `${what} will be added to your expense claim.`;
 }

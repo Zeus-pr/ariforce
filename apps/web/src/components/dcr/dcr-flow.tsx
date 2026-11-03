@@ -57,7 +57,7 @@ import {
   expensesOf,
   linkOutcome,
   rememberCategories,
-  type DcrExpenseLink,
+  type SubmitExpenseInfo,
 } from '@/lib/dcr/expenses';
 import {
   CallCard,
@@ -672,9 +672,7 @@ function Flow({
         saved = sub.data;
         const items = expensesOf(saved);
         rememberCategories(saved.workTypeId, items);
-        setExpenseOutcome(
-          linkOutcome(items, (sub.data as { dcrExpenses?: DcrExpenseLink | null }).dcrExpenses),
-        );
+        setExpenseOutcome(linkOutcome(items, sub.data as SubmitExpenseInfo));
       }
       setDcr(saved);
       setDirty(false);

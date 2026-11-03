@@ -4,10 +4,10 @@
  * Admin work and Leave (by detailsKind), plus any other work type as-is (e.g. Holiday).
  */
 import type { Dcr, DcrBand, DcrDetails, DcrDraftPut, DcrSfcMatch } from '@ariforce/contracts';
+import { expenseProblems, itemsOf, type DcrExpenseItem, type ExpenseDraft } from './expenses';
 import { bandOf, categoryFitsBand, sfcCategoryOf } from './bands';
 import type { ApiError } from '@/lib/api';
 import { dcrDateNotTodayMessage } from './date-rule';
-import { expenseProblems, itemsOf, type DcrExpenseItem, type ExpenseDraft } from './expenses';
 
 export type WorkTypeOption = {
   id: string;
@@ -427,6 +427,8 @@ export function callsFromDcr(d: Dcr, names: Map<string, string>): CallDraft[] {
 /** Plain words for the redesign's error codes. */
 export function dcrErrorMessage(e: ApiError): string {
   switch (e.code) {
+    case 'DCR_EXPENSE_CATEGORY_INVALID':
+      return 'One of the expenses has a category that can’t be used here. Choose Travel, Hotel, Food or Other.';
     case 'SFC_NO_MATCH':
       return 'No matching SFC record for this band and territory. Change the territory or band, or ask your manager to add the route to your SFC.';
     case 'SFC_ROUTE_REQUIRED':
