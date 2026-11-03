@@ -22,7 +22,6 @@ export type DcrExpenseItem = {
   category: DcrExpenseCategory;
   amount: number;
   note?: string | null;
-  receiptRef?: string | null;
 };
 
 export type DcrExpenseLink = {
@@ -143,7 +142,7 @@ export function linkOutcome(items: DcrExpenseItem[], res: SubmitExpenseInfo): st
   const total = res.expenseTotal ?? items.reduce((t, i) => t + i.amount, 0);
   const what = `${count === 1 ? '1 expense' : `${count} expenses`} (${money(total)})`;
   if (link?.status === 'skipped')
-    return `This month’s expense claim is already submitted, so ${count === 1 ? 'this expense was' : 'these expenses were'} saved on the report but not added to the claim.`;
+    return `This month’s expense claim is already submitted or closed, so ${count === 1 ? 'this expense was' : 'these expenses were'} saved on the report but not added to the claim.`;
   if (link?.status === 'error')
     return `${what} could not be added to your expense claim. ${count === 1 ? 'It stays' : 'They stay'} on this report.`;
   return `${what} will be added to your expense claim.`;
