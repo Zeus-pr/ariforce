@@ -23,7 +23,15 @@ export const approvalRequests = pgTable(
     id: pk(),
     companyId: companyId().references(() => companies.id),
     entityType: text('entity_type', {
-      enum: ['tour_plan', 'dcr_correction', 'doctor', 'leave', 'expense', 'tp_deviation'],
+      enum: [
+        'tour_plan',
+        'dcr_correction',
+        'doctor',
+        'leave',
+        'expense',
+        'tp_deviation',
+        'tour_plan_item',
+      ],
     }).notNull(),
     entityId: uuid('entity_id').notNull(),
     requestedBy: uuid('requested_by')

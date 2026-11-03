@@ -4,10 +4,23 @@ import { useMemo, useState } from 'react';
 import { LoaderCircle } from 'lucide-react';
 import type { LeaveBalanceItem, LeaveSettings, LeaveType } from '@/lib/leave/model';
 import { Button } from '@ariforce/ui/components/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@ariforce/ui/components/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@ariforce/ui/components/dialog';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ariforce/ui/components/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@ariforce/ui/components/select';
 import { toast } from '@ariforce/ui/components/sonner';
 import { EmptyOptions } from '@/components/forms/empty-options';
 import { api, toApiError } from '@/lib/api';
@@ -24,11 +37,21 @@ type Props = {
 
 const FULL = 'full';
 
-export function ApplyLeaveDialog({ open, onOpenChange, types, settings, balances, onApplied }: Props) {
+export function ApplyLeaveDialog({
+  open,
+  onOpenChange,
+  types,
+  settings,
+  balances,
+  onApplied,
+}: Props) {
   const t0 = today();
   const backdate = settings?.backdateDays ?? 14;
   const earliest = addDays(t0, -backdate);
-  const latest = settings?.maxFutureDays != null ? addDays(t0, settings.maxFutureDays) : `${t0.slice(0, 4)}-12-31`;
+  const latest =
+    settings?.maxFutureDays != null
+      ? addDays(t0, settings.maxFutureDays)
+      : `${t0.slice(0, 4)}-12-31`;
   const weeklyOff = settings?.weeklyOffDays ?? [0];
 
   const [code, setCode] = useState('');
@@ -50,11 +73,14 @@ export function ApplyLeaveDialog({ open, onOpenChange, types, settings, balances
     if (!code) return 'Choose a leave type.';
     if (!from || !to) return 'Choose the dates.';
     if (to < from) return 'The end date is before the start date.';
-    if (from < earliest) return `Leave can start no earlier than ${dateLabel(earliest)} (${backdate} days back).`;
+    if (from < earliest)
+      return `Leave can start no earlier than ${dateLabel(earliest)} (${backdate} days back).`;
     if (from > latest) return `Leave can start no later than ${dateLabel(latest)}.`;
-    if (from.slice(0, 4) !== to.slice(0, 4)) return 'Leave cannot cross 31 December. Split it into two requests.';
+    if (from.slice(0, 4) !== to.slice(0, 4))
+      return 'Leave cannot cross 31 December. Split it into two requests.';
     if (days === 0) return 'Every selected date is a weekly off.';
-    if (after !== null && after < 0) return `Not enough balance: ${bal!.available} available, ${days} requested.`;
+    if (after !== null && after < 0)
+      return `Not enough balance: ${bal!.available} available, ${days} requested.`;
     return null;
   }, [code, from, to, earliest, latest, backdate, days, after, bal]);
 
@@ -89,7 +115,9 @@ export function ApplyLeaveDialog({ open, onOpenChange, types, settings, balances
         <DialogHeader>
           <DialogTitle>Apply for leave</DialogTitle>
           <DialogDescription>
-            Your manager approves it{settings && settings.approvalLevels > 1 ? `, then their manager` : ''}. You can backdate up to {backdate} days.
+            Your manager approves it
+            {settings && settings.approvalLevels > 1 ? `, then their manager` : ''}. You can
+            backdate up to {backdate} days.
           </DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
@@ -100,13 +128,19 @@ export function ApplyLeaveDialog({ open, onOpenChange, types, settings, balances
                 <SelectValue placeholder="Choose a type" />
               </SelectTrigger>
               <SelectContent>
-                {types.length === 0 && <EmptyOptions>No leave types are set up yet. Ask your administrator.</EmptyOptions>}
+                {types.length === 0 && (
+                  <EmptyOptions>
+                    No leave types are set up yet. Ask your administrator.
+                  </EmptyOptions>
+                )}
                 {types.map((t) => {
                   const b = balances.find((x) => x.typeCode === t.code);
                   return (
                     <SelectItem key={t.code} value={t.code}>
                       {t.name}
-                      <span className="ml-2 text-muted-foreground">{b?.available == null ? (b ? 'no limit' : '') : `${b.available} left`}</span>
+                      <span className="ml-2 text-muted-foreground">
+                        {b?.available == null ? (b ? 'no limit' : '') : `${b.available} left`}
+                      </span>
                     </SelectItem>
                   );
                 })}
@@ -133,12 +167,23 @@ export function ApplyLeaveDialog({ open, onOpenChange, types, settings, balances
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="leave-to">To</Label>
-              <Input id="leave-to" data-testid="leave-to" type="date" min={from} value={to} onChange={(e) => (setTo(e.target.value), setError(null))} />
+              <Input
+                id="leave-to"
+                data-testid="leave-to"
+                type="date"
+                min={from}
+                value={to}
+                onChange={(e) => (setTo(e.target.value), setError(null))}
+              />
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="leave-half">Duration</Label>
-            <Select value={single && type?.halfDayAllowed !== false ? half : FULL} onValueChange={setHalf} disabled={!single || type?.halfDayAllowed === false}>
+            <Select
+              value={single && type?.halfDayAllowed !== false ? half : FULL}
+              onValueChange={setHalf}
+              disabled={!single || type?.halfDayAllowed === false}
+            >
               <SelectTrigger id="leave-half" data-testid="leave-half" className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -148,7 +193,9 @@ export function ApplyLeaveDialog({ open, onOpenChange, types, settings, balances
                 <SelectItem value="pm">Half day, afternoon</SelectItem>
               </SelectContent>
             </Select>
-            {!single && <p className="text-xs text-muted-foreground">Half days are for a single date.</p>}
+            {!single && (
+              <p className="text-xs text-muted-foreground">Half days are for a single date.</p>
+            )}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="leave-reason">Reason (optional)</Label>
@@ -162,9 +209,17 @@ export function ApplyLeaveDialog({ open, onOpenChange, types, settings, balances
               className="min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm"
             />
           </div>
-          <div className="rounded-md bg-muted/60 px-3 py-2 text-sm" data-testid="leave-summary" aria-live="polite">
-            <span className="font-medium tabular-nums" data-testid="leave-days">{daysLabel(days)}</span>
-            {weeklyOff.length > 0 && !single && <span className="text-muted-foreground"> (weekly offs not counted)</span>}
+          <div
+            className="rounded-md bg-muted/60 px-3 py-2 text-sm"
+            data-testid="leave-summary"
+            aria-live="polite"
+          >
+            <span className="font-medium tabular-nums" data-testid="leave-days">
+              {daysLabel(days)}
+            </span>
+            {weeklyOff.length > 0 && !single && (
+              <span className="text-muted-foreground"> (weekly offs not counted)</span>
+            )}
             {type && (
               <span className="block text-muted-foreground" data-testid="leave-balance-after">
                 {bal?.available == null

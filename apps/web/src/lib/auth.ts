@@ -1,57 +1,21 @@
 /**
- * Authentication. In mock mode (default): There is no server, no real credential and nothing secret here: one demo user
- * per role and a shared demo password that is printed on the sign-in page. The session is a user id in
- * localStorage. In real mode (NEXT_PUBLIC_API_MODE=real) signInReal uses better-auth + GET /v1/me and keeps
- * only the profile in localStorage (the session itself is the HTTP-only cookie).
+ * Production authentication using better-auth + GET /v1/me
+ * Session is the HTTP-only cookie; profile is stored in localStorage.
  */
 import { useSyncExternalStore } from 'react';
 import { rateLimitMessage, SUSPENDED_MESSAGE } from '@/lib/auth-errors';
 import { ROLES, ROLE_LABEL, roleLevel, type Role } from './roles';
-import { API_URL, REAL, api, setAccountStateHandler, setUnauthenticatedHandler } from './api';
+import { API_URL, api, setAccountStateHandler, setUnauthenticatedHandler } from './api';
 
-export const MOCK_PASSWORD = 'ariforce-demo';
 import { SESSION_KEY } from './auth-boot';
 
 export { SESSION_KEY };
 
-export type MockUser = { id: string; name: string; email: string; role: Role; territory: string };
+export type User = { id: string; name: string; email: string; role: Role; territory: string };
 
-const NAMES: Partial<Record<Role, [string, string]>> = {
-  business_manager: ['Rahul Sen', 'Kolkata South HQ'],
-  area_business_manager: ['Priya Ghosh', 'Kolkata Area'],
-  regional_business_manager: ['Arjun Das', 'East Bengal Region'],
-  zonal_business_manager: ['Meera Iyer', 'East Zone'],
-  sales_manager: ['Vikram Rao', 'India'],
-  general_manager: ['Anita Kapoor', 'India'],
-  vice_president: ['Sanjay Mehta', 'India'],
-  director: ['Kavita Bose', 'India'],
-  system_admin: ['System Admin', 'Head office'],
-};
+export type Session = { userId: string; role?: Role; user?: User };
 
-const EMAIL: Partial<Record<Role, string>> = {
-  business_manager: 'bm',
-  area_business_manager: 'abm',
-  regional_business_manager: 'rbm',
-  zonal_business_manager: 'zbm',
-  sales_manager: 'sm',
-  general_manager: 'gm',
-  vice_president: 'vp',
-  director: 'director',
-  system_admin: 'admin',
-};
-
-/** Demo users for the web's roles (Distribution Head and Accountant have no portal access). */
-export const MOCK_USERS: MockUser[] = ROLES.filter((r) => NAMES[r] && EMAIL[r]).map((role) => ({
-  id: `mock-${EMAIL[role]}`,
-  name: NAMES[role]![0],
-  territory: NAMES[role]![1],
-  email: `${EMAIL[role]}@demo.ariforce.test`,
-  role,
-}));
-
-/** `role` is copied in so the pre-paint head script can gate routes without the user table. */
-export type Session = { userId: string; role?: Role; previewRole?: Role; user?: MockUser };
-export type SignedIn = { user: MockUser; role: Role; previewing: boolean };
+export type SignedIn = { user: User; role: Role };
 
 let cache: { raw: string | null; value: SignedIn | null } = { raw: null, value: null };
 const listeners = new Set<() => void>();
@@ -67,17 +31,9 @@ function read(): SignedIn | null {
   let value: SignedIn | null = null;
   try {
     const s = raw ? (JSON.parse(raw) as Session) : null;
-    // Real mode: the user came from GET /v1/me at sign-in. Mock mode: one of the demo users.
-    const user =
-      s &&
-      (REAL
-        ? s.user?.id === s.userId
-          ? s.user
-          : undefined
-        : MOCK_USERS.find((u) => u.id === s.userId));
+    const user = s && s.user?.id === s.userId ? s.user : undefined;
     if (user) {
-      const preview = s.previewRole && ROLES.includes(s.previewRole) ? s.previewRole : undefined;
-      value = { user, role: preview ?? user.role, previewing: !!preview && preview !== user.role };
+      value = { user, role: user.role };
     }
   } catch {
     // storage blocked (private mode): treat as signed out
@@ -125,32 +81,6 @@ export const PENDING_MESSAGE =
 export const REJECTED_MESSAGE =
   'Your sign-up request was not approved. Contact your administrator.';
 
-export function signIn(email: string, password: string): MockUser | SignInError {
-  const e = email.trim().toLowerCase();
-  if (!e) return { field: 'email', message: 'Enter your work email.' };
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
-    return { field: 'email', message: 'That doesn\u2019t look like an email address.' };
-  if (!password) return { field: 'password', message: 'Enter your password.' };
-  const user = MOCK_USERS.find((u) => u.email === e);
-  if (!user)
-    return {
-      field: 'email',
-      message: 'No demo account uses this email. Pick one from the list below.',
-    };
-  if (password !== MOCK_PASSWORD)
-    return { field: 'password', message: `Wrong password. The demo password is ${MOCK_PASSWORD}.` };
-  write({ userId: user.id, role: user.role });
-  return user;
-}
-
-export function signOut() {
-  if (REAL)
-    void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(
-      () => {},
-    );
-  write(null);
-}
-
 /** Highest sales role wins; system admin only when nothing else; null when no role has portal access. */
 function primaryRole(roles: string[]): Role | null {
   const known = roles.filter((r): r is Role => (ROLES as readonly string[]).includes(r));
@@ -161,8 +91,95 @@ function primaryRole(roles: string[]): Role | null {
   return sales[0] ?? (known.includes('system_admin') ? 'system_admin' : 'business_manager');
 }
 
-/** REAL mode sign-in: better-auth email sign-in (session cookie), then GET /v1/me. */
-export async function signInReal(email: string, password: string): Promise<MockUser | SignInError> {
+/** Password was right; the server emailed a 6-digit code that must be entered next. */
+export type OtpChallenge = { otp: true; email: string };
+export type OtpError = { message: string; restart?: boolean };
+
+async function sendLoginOtp(): Promise<OtpError | null> {
+  try {
+    const res = await fetch(`${API_URL}/v1/auth/two-factor/send-otp`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.status === 429)
+      return {
+        message: rateLimitMessage({ response: res, error: await res.json().catch(() => null) }),
+      };
+    if (res.ok) return null;
+    // The password step expired or never happened: start over.
+    return { message: 'Your sign-in expired. Enter your password again.', restart: true };
+  } catch {
+    return { message: 'Could not reach the server. Check your connection.' };
+  }
+}
+
+/** Resend the sign-in code (the password step must have happened in this browser). */
+export const resendLoginOtp = sendLoginOtp;
+
+/** After the session exists: load the profile and store the signed-in user. */
+async function finishSignIn(): Promise<User | SignInError> {
+  const { data: me } = await api.GET('/v1/me');
+  if (!me)
+    return { field: 'password', message: 'Signed in, but your profile could not be loaded.' };
+  const role = primaryRole(me.roles);
+  if (!role) {
+    // Signed in, but no role with portal access (e.g. Distribution Head, Accountant): sign out again.
+    void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(
+      () => {},
+    );
+    return { field: 'password', message: NO_PORTAL_MESSAGE };
+  }
+  const user: User = {
+    id: me.id,
+    name: me.name,
+    email: me.email,
+    role,
+    territory: me.companyName,
+  };
+  write({ userId: me.id, role, user });
+  return user;
+}
+
+/** Second sign-in step: the emailed code. Completes the session, then loads the profile. */
+export async function verifyLoginOtp(code: string): Promise<User | SignInError | OtpError> {
+  const c = code.replace(/\s/g, '');
+  if (!/^\d{6}$/.test(c)) return { message: 'Enter the 6-digit code from your email.' };
+  try {
+    const res = await fetch(`${API_URL}/v1/auth/two-factor/verify-otp`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: c }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.status === 429)
+      return {
+        message: rateLimitMessage({ response: res, error: await res.json().catch(() => null) }),
+      };
+    if (!res.ok) {
+      const b = (await res.json().catch(() => null)) as { code?: string } | null;
+      if (b?.code === 'INVALID_TWO_FACTOR_COOKIE')
+        return { message: 'Your sign-in expired. Enter your password again.', restart: true };
+      if (b?.code === 'TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE' || b?.code === 'OTP_HAS_EXPIRED')
+        return { message: 'That code is no longer valid. Ask for a new one.' };
+      if (b?.code === 'ACCOUNT_TEMPORARILY_LOCKED')
+        return { message: 'Too many wrong codes. Try again later.' };
+      return { message: 'That code is not right. Check it and try again.' };
+    }
+    return await finishSignIn();
+  } catch {
+    return { message: 'Could not reach the server. Check your connection.' };
+  }
+}
+
+/** Sign in via better-auth email (session cookie), then the emailed code when enabled, then GET /v1/me. */
+export async function signIn(
+  email: string,
+  password: string,
+): Promise<User | SignInError | OtpChallenge> {
   const e = email.trim().toLowerCase();
   if (!e) return { field: 'email', message: 'Enter your work email.' };
   if (!password) return { field: 'password', message: 'Enter your password.' };
@@ -175,7 +192,10 @@ export async function signInReal(email: string, password: string): Promise<MockU
       signal: AbortSignal.timeout(8000),
     });
     if (res.status === 429)
-      return { field: 'password', message: rateLimitMessage({ response: res, error: await res.json().catch(() => null) }) };
+      return {
+        field: 'password',
+        message: rateLimitMessage({ response: res, error: await res.json().catch(() => null) }),
+      };
     if (res.status === 403) {
       // better-auth shape { code, message } (no error wrapper); accept the wrapped shape too.
       const b = (await res.json().catch(() => null)) as {
@@ -195,27 +215,23 @@ export async function signInReal(email: string, password: string): Promise<MockU
     if (res.status === 401 || res.status === 400 || res.status === 403)
       return { field: 'password', message: 'Email or password is wrong.' };
     if (!res.ok) return { field: 'password', message: 'Could not sign in. Try again in a moment.' };
-    const { data: me } = await api.GET('/v1/me');
-    if (!me)
-      return { field: 'password', message: 'Signed in, but your profile could not be loaded.' };
-    const role = primaryRole(me.roles);
-    if (!role) {
-      // Signed in, but no role with portal access (e.g. Distribution Head, Accountant): sign out again.
-      void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(() => {});
-      return { field: 'password', message: NO_PORTAL_MESSAGE };
+    const body = (await res.json().catch(() => null)) as { twoFactorRedirect?: boolean } | null;
+    if (body?.twoFactorRedirect) {
+      const failed = await sendLoginOtp();
+      if (failed) return { field: 'password', message: failed.message };
+      return { otp: true, email: e };
     }
-    const user: MockUser = {
-      id: me.id,
-      name: me.name,
-      email: me.email,
-      role,
-      territory: me.companyName,
-    };
-    write({ userId: me.id, role, user });
-    return user;
+    return await finishSignIn();
   } catch {
     return { field: 'password', message: 'Could not reach the server. Check your connection.' };
   }
+}
+
+export function signOut() {
+  void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(
+    () => {},
+  );
+  write(null);
 }
 
 if (typeof window !== 'undefined')
@@ -233,15 +249,5 @@ if (typeof window !== 'undefined')
         `/sign-in${p !== '/' ? `?next=${encodeURIComponent(p + location.search)}` : ''}`,
       );
   });
-
-export function setPreviewRole(role: Role) {
-  const s = read();
-  if (s)
-    write({
-      userId: s.user.id,
-      role: s.user.role,
-      previewRole: role === s.user.role ? undefined : role,
-    });
-}
 
 export const roleLabel = (r: Role) => ROLE_LABEL[r];

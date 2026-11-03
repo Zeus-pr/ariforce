@@ -32,8 +32,10 @@ import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { companySettings, localDate } from '../field/field.util';
 import { ApprovalsService } from '../plans/approvals.service';
+import { deciderId } from '../plans/auto-approve';
 import { nameRejecters, rejectionFields } from '../common/rejection';
-import { addDay, countedDates } from './leave.util';
+import { addDay, assertNoSubmittedDcr, countedDates } from './leave.util';
+import { submittedReportSql } from '../dcr/day-report';
 
 type ReqRow = typeof leaveRequests.$inferSelect;
 type PolicyRow = typeof leavePolicies.$inferSelect;
@@ -114,12 +116,26 @@ export class LeaveService implements OnModuleInit {
     this.approvals.register(
       'leave',
       async (tx, p, req, approved, comment) => {
+        // Final approval only (intermediate steps never reach this hook): refuse while a submitted
+        // DCR sits on any leave date. Runs in the decision transaction; rolls the decision back.
+        if (approved) {
+          const [lr] = await tx
+            .select({
+              userId: leaveRequests.userId,
+              fromDate: leaveRequests.fromDate,
+              toDate: leaveRequests.toDate,
+            })
+            .from(leaveRequests)
+            .where(and(eq(leaveRequests.id, req.entityId), eq(leaveRequests.status, 'pending')))
+            .for('update');
+          if (lr) await assertNoSubmittedDcr(tx, lr.userId, lr.fromDate, lr.toDate);
+        }
         await tx
           .update(leaveRequests)
           .set({
             status: approved ? 'approved' : 'rejected',
             decidedAt: new Date(),
-            decidedBy: p.userId,
+            decidedBy: deciderId(p),
             decisionComment: comment,
           })
           .where(and(eq(leaveRequests.id, req.entityId), eq(leaveRequests.status, 'pending')));
@@ -242,6 +258,10 @@ export class LeaveService implements OnModuleInit {
       .insert(leaveSettings)
       .values({ companyId, backdateDays: LEAVE_DEFAULT_BACKDATE_DAYS })
       .onConflictDoNothing();
+    await this.ensureDefaultPolicies(tx, companyId);
+  }
+
+  private async ensureDefaultPolicies(tx: Tx, companyId: string) {
     await tx
       .insert(leavePolicies)
       .values(
@@ -273,6 +293,13 @@ export class LeaveService implements OnModuleInit {
 
   private async policyRows(tx: Tx, p: Principal): Promise<PolicyRow[]> {
     await this.settingsRow(tx, p.companyId);
+    const rows = await tx
+      .select()
+      .from(leavePolicies)
+      .where(isNull(leavePolicies.deletedAt))
+      .orderBy(asc(leavePolicies.sortOrder), asc(leavePolicies.code));
+    if (rows.length) return rows;
+    await this.ensureDefaultPolicies(tx, p.companyId);
     return tx
       .select()
       .from(leavePolicies)
@@ -570,7 +597,8 @@ export class LeaveService implements OnModuleInit {
       if (!b.half) {
         const worked = await tx.execute<{ date: string }>(sql`
           select to_char(d.date, 'YYYY-MM-DD') as date from dcrs d join work_types w on w.id = d.work_type_id
-          where d.user_id = ${p.userId} and d.deleted_at is null and w.kind in ('field', 'non_field')
+          where d.user_id = ${p.userId} and ${submittedReportSql('d')}
+            and w.kind in ('field', 'non_field')
             and d.date between ${b.fromDate}::date and ${b.toDate}::date order by 1`);
         const hit = worked.rows.map((r) => r.date).filter((d) => dates.includes(d));
         if (hit.length)
@@ -629,6 +657,8 @@ export class LeaveService implements OnModuleInit {
           approvalId: reqId,
         },
       });
+      // Director: approved now by the system (no manager).
+      await this.approvals.autoApprove(tx, p, reqId);
       await this.notifications.notify(tx, p, {
         type: 'leave.submitted',
         recipientId: await this.approvals.currentApprover(tx, reqId),
@@ -889,37 +919,92 @@ export class LeaveService implements OnModuleInit {
         .select({ id: users.id })
         .from(users)
         .where(and(isNull(users.deletedAt), ne(users.status, 'rejected')));
+      const userIds = people.map((u) => u.id);
+      const policyIds = pols.map((pol) => pol.id);
+      const [grantRows, requestRows, existing] =
+        userIds.length && policyIds.length
+          ? await Promise.all([
+              tx
+                .select({
+                  userId: leaveGrants.userId,
+                  policyId: leaveGrants.policyId,
+                  kind: leaveGrants.kind,
+                  days: sql<string>`sum(${leaveGrants.days})`,
+                })
+                .from(leaveGrants)
+                .where(
+                  and(
+                    inArray(leaveGrants.userId, userIds),
+                    eq(leaveGrants.year, fromYear),
+                    isNull(leaveGrants.deletedAt),
+                  ),
+                )
+                .groupBy(leaveGrants.userId, leaveGrants.policyId, leaveGrants.kind),
+              tx
+                .select({
+                  userId: leaveRequests.userId,
+                  policyId: leaveRequests.policyId,
+                  status: leaveRequests.status,
+                  days: sql<string>`sum(${leaveRequests.days})`,
+                })
+                .from(leaveRequests)
+                .where(
+                  and(
+                    inArray(leaveRequests.userId, userIds),
+                    eq(leaveRequests.year, fromYear),
+                    isNull(leaveRequests.deletedAt),
+                    inArray(leaveRequests.status, ACTIVE),
+                  ),
+                )
+                .groupBy(leaveRequests.userId, leaveRequests.policyId, leaveRequests.status),
+              tx
+                .select()
+                .from(leaveGrants)
+                .where(
+                  and(
+                    inArray(leaveGrants.userId, userIds),
+                    inArray(leaveGrants.policyId, policyIds),
+                    eq(leaveGrants.year, fromYear + 1),
+                    eq(leaveGrants.kind, 'carry_forward'),
+                    isNull(leaveGrants.deletedAt),
+                  ),
+                ),
+            ])
+          : [[], [], []];
+      const grantTotals = new Map(
+        grantRows.map((r) => [`${r.userId}:${r.policyId}:${r.kind}`, n(r.days)]),
+      );
+      const requestTotals = new Map(
+        requestRows.map((r) => [`${r.userId}:${r.policyId}:${r.status}`, n(r.days)]),
+      );
+      const existingByKey = new Map(
+        existing.map((grant) => [`${grant.userId}:${grant.policyId}`, grant]),
+      );
+      const updates: { id: string; days: string }[] = [];
+      const deletes: string[] = [];
+      const inserts: (typeof leaveGrants.$inferInsert)[] = [];
       let written = 0;
       let total = 0;
-      for (const u of people)
-        for (const it of await this.balanceItems(tx, u.id, fromYear, pols)) {
-          const pol = pols.find((x) => x.code === it.typeCode)!;
+      for (const u of people) {
+        for (const pol of pols) {
+          const grant = (kind: string) => grantTotals.get(`${u.id}:${pol.id}:${kind}`) ?? 0;
+          const request = (status: string) => requestTotals.get(`${u.id}:${pol.id}:${status}`) ?? 0;
+          const unlimited = pol.annualQuota === null && !pol.grantOnly;
+          const opening = r1(grant('opening') + grant('carry_forward'));
+          const quota = unlimited ? 0 : pol.grantOnly ? 0 : Number(pol.annualQuota);
+          const granted = r1(grant('grant') + grant('adjustment'));
+          const available = unlimited
+            ? null
+            : r1(opening + quota + granted - request('approved') - request('pending'));
           const cap = pol.carryForwardCap === null ? Infinity : Number(pol.carryForwardCap);
-          const days = r1(Math.max(0, Math.min(cap, it.available ?? 0)));
-          const [cur] = await tx
-            .select()
-            .from(leaveGrants)
-            .where(
-              and(
-                eq(leaveGrants.userId, u.id),
-                eq(leaveGrants.policyId, pol.id),
-                eq(leaveGrants.year, fromYear + 1),
-                eq(leaveGrants.kind, 'carry_forward'),
-                isNull(leaveGrants.deletedAt),
-              ),
-            );
+          const days = r1(Math.max(0, Math.min(cap, available ?? 0)));
+          const cur = existingByKey.get(`${u.id}:${pol.id}`);
           if (cur && Number(cur.days) === days) continue;
-          if (cur)
-            await tx
-              .update(leaveGrants)
-              .set(
-                days > 0
-                  ? { days: days.toFixed(1), grantedBy: p.userId }
-                  : { deletedAt: new Date() },
-              )
-              .where(eq(leaveGrants.id, cur.id));
-          else if (days > 0)
-            await tx.insert(leaveGrants).values({
+          if (cur) {
+            if (days > 0) updates.push({ id: cur.id, days: days.toFixed(1) });
+            else deletes.push(cur.id);
+          } else if (days > 0)
+            inserts.push({
               companyId: p.companyId,
               userId: u.id,
               policyId: pol.id,
@@ -933,6 +1018,32 @@ export class LeaveService implements OnModuleInit {
           written++;
           total = r1(total + days);
         }
+      }
+      for (let i = 0; i < updates.length; i += 500) {
+        const batch = updates.slice(i, i + 500);
+        await tx
+          .update(leaveGrants)
+          .set({
+            days: sql`case ${leaveGrants.id} ${sql.join(
+              batch.map((row) => sql`when ${row.id}::uuid then ${row.days}::numeric`),
+              sql` `,
+            )} else ${leaveGrants.days} end`,
+            grantedBy: p.userId,
+          })
+          .where(
+            inArray(
+              leaveGrants.id,
+              batch.map((row) => row.id),
+            ),
+          );
+      }
+      for (let i = 0; i < deletes.length; i += 500)
+        await tx
+          .update(leaveGrants)
+          .set({ deletedAt: new Date() })
+          .where(inArray(leaveGrants.id, deletes.slice(i, i + 500)));
+      for (let i = 0; i < inserts.length; i += 500)
+        await tx.insert(leaveGrants).values(inserts.slice(i, i + 500));
       await this.audit.record(tx, p, 'leave.carry_forward', {
         entityType: 'leave_policy',
         after: { fromYear, written, totalDays: total },

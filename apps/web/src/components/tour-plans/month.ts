@@ -1,4 +1,8 @@
-const ym = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' });
+const ym = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Kolkata',
+  year: 'numeric',
+  month: '2-digit',
+});
 /** Current month in IST as YYYY-MM. */
 export const thisMonthIST = () => ym.format(new Date());
 
@@ -22,5 +26,10 @@ export const weekdayMon = (ymd: string) => (new Date(`${ymd}T00:00:00Z`).getUTCD
 
 const ml = new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 export const monthLabel = (month: string) => ml.format(new Date(`${month}-01T00:00:00Z`));
-const dl = new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+const dl = new Intl.DateTimeFormat('en-IN', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'UTC',
+});
 export const dayLabel = (ymd: string) => dl.format(new Date(`${ymd}T00:00:00Z`));

@@ -94,4 +94,14 @@ export class MailService {
       html: `<p>Your AriForce password reset code is <strong>${esc(code)}</strong>.</p><p>It expires in ${minutes} minutes and can be tried 3 times.</p><p>If you did not ask for this, ignore this email; your password is unchanged.</p>`,
     });
   }
+
+  loginCode(to: string, code: string, minutes: number) {
+    return this.send({
+      kind: 'login_code',
+      to,
+      subject: 'Your AriForce sign-in code',
+      text: `Your AriForce sign-in code is ${code}. It expires in ${minutes} minutes and can be tried 3 times.\n\nIf you did not try to sign in, change your password.`,
+      html: `<p>Your AriForce sign-in code is <strong>${esc(code)}</strong>.</p><p>It expires in ${minutes} minutes and can be tried 3 times.</p><p>If you did not try to sign in, change your password.</p>`,
+    });
+  }
 }

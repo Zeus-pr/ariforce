@@ -196,7 +196,10 @@ export const NAV: NavItem[] = [
     href: '/admin/invites',
     icon: UserPlus,
     // System admin with users:write (the API's isAdmin): any hierarchy role, any HQ, company-wide.
-    roles: ROLES.filter((r) => isSystemAdmin(r) && (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never)),
+    roles: ROLES.filter(
+      (r) =>
+        isSystemAdmin(r) && (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
+    ),
     section: 'admin',
   },
   {
@@ -205,7 +208,10 @@ export const NAV: NavItem[] = [
     href: '/admin/people',
     icon: UserCog,
     // Same gate as Invite people: system admin with users:write.
-    roles: ROLES.filter((r) => isSystemAdmin(r) && (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never)),
+    roles: ROLES.filter(
+      (r) =>
+        isSystemAdmin(r) && (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
+    ),
     section: 'admin',
   },
   {
@@ -223,7 +229,9 @@ export const NAV: NavItem[] = [
     icon: CircleAlert,
     // The rules API needs field:read too (sysadmin gets 403), so hide it from roles without it.
     roles: ROLES.filter((r) =>
-      ['settings:write', 'field:read'].every((p) => (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes(p as never)),
+      ['settings:write', 'field:read'].every((p) =>
+        (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes(p as never),
+      ),
     ),
     section: 'admin',
   },

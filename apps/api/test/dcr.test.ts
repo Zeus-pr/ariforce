@@ -83,11 +83,12 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
     pob: [],
     checkInId: null,
     remarks: null,
+    presentationOpenedAt: new Date().toISOString(),
     calledAt: new Date().toISOString(),
     ...over,
   });
 
-  it('links the approved tour plan, requires a deviation reason, validates calls', async () => {
+  it('links the approved tour plan, allows deviations without a reason, validates calls', async () => {
     const future = await http()
       .put('/v1/dcrs')
       .set(as('bm'))
@@ -97,8 +98,7 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
       .put('/v1/dcrs')
       .set(as('bm'))
       .send({ date: TODAY, workTypeId: leave, territoryIds: [], calls: [] });
-    expect(dev.status).toBe(422);
-    expect(dev.body.error.code).toBe('DEVIATION_REASON_REQUIRED');
+    expect(dev.status, JSON.stringify(dev.body)).toBe(200);
     const callsOnLeave = await http()
       .put('/v1/dcrs')
       .set(as('bm'))
@@ -200,7 +200,14 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
     const mgr = await http().get(`/v1/dcrs?from=${TODAY}&to=${TODAY}`).set(as('abm'));
     expect(mgr.body.items.map((d: { id: string }) => d.id)).toContain(sub.body.id);
     expect((await http().get(`/v1/dcrs/${sub.body.id}`).set(as('abm'))).status).toBe(200);
-    expect((await http().put('/v1/dcrs').set(as('abm')).send({})).status).toBe(403);
+    expect(
+      (
+        await http()
+          .put('/v1/dcrs')
+          .set(as('abm'))
+          .send({ date: TODAY, workTypeId: field, territoryIds: [T.hq], calls: [] })
+      ).status,
+    ).toBe(200);
   });
 
   it('locks old days; correction request + approval unlocks for 48h (gap #8)', async () => {
@@ -229,7 +236,7 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
       (
         await http()
           .post(`/v1/approvals/${req.body.id}/decision`)
-          .set(as('abm'))
+          .set(as('director'))
           .send({ decision: 'approve' })
       ).status,
     ).toBe(200);

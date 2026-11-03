@@ -12,7 +12,7 @@ import * as z from 'zod';
 import { CurrentPrincipal, Public } from '../auth/decorators';
 import type { Principal } from '../auth/principal';
 import { ZodPipe } from '../common/zod.pipe';
-import { clientIp } from '../common/client-ip';
+import { clientIp, ipRateKey } from '../common/client-ip';
 import { enforce, LIMITS } from '../common/rate-limit';
 import { TeamService } from './team.service';
 
@@ -81,7 +81,9 @@ export class TeamController {
     @Body(new ZodPipe(InviteAccept)) b: z.infer<typeof InviteAccept>,
     @Req() req: Request,
   ) {
-    await enforce([{ key: `invite-accept:ip:${clientIp(req) ?? '?'}`, ...LIMITS.inviteAccept() }]);
+    await enforce([
+      { key: `invite-accept:ip:${ipRateKey(clientIp(req))}`, ...LIMITS.inviteAccept() },
+    ]);
     return this.svc.accept(b.token, b.password);
   }
 }

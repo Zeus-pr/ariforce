@@ -3,6 +3,7 @@ node_modules
 .turbo
 dist
 coverage
+!apps/web/src/app/(app)/coverage/
 *.tsbuildinfo
 next-env.d.ts
 .env*
@@ -18,3 +19,5 @@ test-results
 playwright-report
 # SSD-local test HOME / caches (scripts/vitest.sh)
 .cache/
+# Tool logs (e.g. tailwindcss-<pid>.log)
+*.log

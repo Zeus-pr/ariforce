@@ -67,7 +67,6 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
   const as = (who: string) => ({ authorization: tok[who]! });
   let company = '';
   let field = '';
-  let leave = '';
   const dcr = async (user: string, date: string, status: string, wt = field) => {
     const id = uuidv7();
     await owner.query(
@@ -102,12 +101,6 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
     field = (
       await owner.query(
         `select id from work_types where company_id = $1 and counts_as_field_day order by code limit 1`,
-        [company],
-      )
-    ).rows[0].id;
-    leave = (
-      await owner.query(
-        `select id from work_types where company_id = $1 and not counts_as_field_day order by code limit 1`,
         [company],
       )
     ).rows[0].id;
@@ -149,8 +142,9 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
   });
 
   it('full flow: draft, lines, receipts, chain approval, finance, export, pay', async () => {
-    const d3 = await dcr(U.rep, d(3), 'submitted');
-    await dcr(U.rep, d(5), 'draft', leave);
+    const d3 = await dcr(U.rep, d(3), 'approved');
+    await dcr(U.rep, d(4), 'approved');
+    await dcr(U.rep, d(5), 'approved');
     const otherDcr = await dcr(U.otherRep, d(3), 'submitted');
 
     const c1 = await http().post('/v1/expense-claims').set(as('bm')).send({ month: M });
@@ -297,14 +291,14 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
     // Reconciliation against DCR days.
     r = await http().get(`/v1/expense-claims/${id}/reconciliation`).set(as('sysadmin'));
     expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ claimedDays: 3, dcrDays: 1, matchedDays: 1, total: 2620.5 });
-    expect(r.body.unmatchedAmount).toBe(2120.5);
+    expect(r.body).toMatchObject({ claimedDays: 3, dcrDays: 3, matchedDays: 3, total: 2620.5 });
+    expect(r.body.unmatchedAmount).toBe(0);
     const flags = Object.fromEntries(
       r.body.days.map((x: { date: string; flags: string[] }) => [x.date, x.flags]),
     );
     expect(flags[d(3)]).toEqual([]);
-    expect(flags[d(4)]).toEqual(['no_dcr']);
-    expect(flags[d(5)]).toEqual(['dcr_not_submitted', 'non_field_day']);
+    expect(flags[d(4)]).toEqual([]);
+    expect(flags[d(5)]).toEqual([]);
 
     // Reports + exports, scoped.
     r = await http().get(`/v1/expense-reports?month=${M}`).set(as('sysadmin'));
@@ -421,7 +415,9 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
     expect(perms.filter((x) => x.startsWith('expenses:'))).toEqual(['expenses:pay']);
     expect(perms.filter((x) => x.startsWith('finance:'))).toEqual([]);
 
-    const mk = async (who: string, amount: number) => {
+    const mk = async (who: 'bm' | 'bm2' | 'abm' | 'rbm', amount: number) => {
+      const userId = { bm: U.rep, bm2: U.otherRep, abm: U.area, rbm: U.regional }[who];
+      await dcr(userId, day(2), 'approved');
       const c = await http().post('/v1/expense-claims').set(as(who)).send({ month: A });
       expect(c.status, JSON.stringify(c.body)).toBe(201);
       const r = await http()

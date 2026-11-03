@@ -27,6 +27,7 @@ import { profileExceptions } from '../exceptions/exceptions.engine';
 import { approvedLeaveDays } from '../leave/leave.util';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { TeamService, type Person } from './team.service';
+import { dayReportSql, submittedReportSql } from '../dcr/day-report';
 
 type Gran = z.infer<typeof PerformanceGranularity>;
 type Range = { granularity?: Gran; from?: string; to?: string };
@@ -164,7 +165,8 @@ export class TeamProfileService {
       const [dcr] = await rows<{ kind: string }>(
         tx,
         sql`select wt.kind::text as kind from dcrs r join work_types wt on wt.id = r.work_type_id
-            where r.user_id = ${userId} and r.date = ${today}::date and r.deleted_at is null limit 1`,
+            where r.user_id = ${userId} and r.date = ${today}::date and r.deleted_at is null
+              and ${dayReportSql('r')} limit 1`,
       );
       const ts = (v: Date | string | null | undefined) => (v ? new Date(v).toISOString() : null);
       const pin = caps.find((x) => x.kind === 'punch_in');
@@ -241,7 +243,8 @@ export class TeamProfileService {
             tx,
             sql`select to_char(r.date, 'YYYY-MM-DD') as d, wt.kind::text as kind from dcrs r
                 join work_types wt on wt.id = r.work_type_id
-                where r.user_id = ${userId} and r.deleted_at is null and r.date between ${from}::date and ${upto}::date`,
+                where r.user_id = ${userId} and ${submittedReportSql('r')}
+                  and r.date between ${from}::date and ${upto}::date`,
           )
         ).map((r) => [r.d, r.kind]),
       );
@@ -341,18 +344,31 @@ export class TeamProfileService {
         }`;
       const r = await rows<Record<string, string | null>>(
         tx,
-        sql`select o.id, o.name, o.qualification, sp.name as specialty, dc.name as category,
-                   o.territory_id, t.name as territory_name, o.city, l.required_visits,
-                   (select count(*) from dcr_calls c where c.user_id = ${userId} and c.outlet_kind = 'doctor'
-                      and c.outlet_id = o.id and c.deleted_at is null
-                      and c.date >= ${monthStart(today)}::date and c.date <= ${today}::date) as visits,
-                   (select to_char(max(c.date), 'YYYY-MM-DD') from dcr_calls c where c.user_id = ${userId}
-                      and c.outlet_kind = 'doctor' and c.outlet_id = o.id and c.deleted_at is null) as last_visit
-            from kpi_user_doctor_list l join doctors o on o.id = l.doctor_id
-            join territories t on t.id = o.territory_id
-            left join specialties sp on sp.id = o.specialty_id
-            left join doctor_categories dc on dc.id = o.category_id
-            where ${where} order by o.name, o.id limit ${limit + 1} offset ${off}`,
+        sql`with doctor_page as (
+              select o.id, o.name, o.qualification, sp.name as specialty, dc.name as category,
+                     o.territory_id, t.name as territory_name, o.city, l.required_visits
+                from kpi_user_doctor_list l join doctors o on o.id = l.doctor_id
+                join territories t on t.id = o.territory_id
+                left join specialties sp on sp.id = o.specialty_id
+                left join doctor_categories dc on dc.id = o.category_id
+               where ${where}
+               order by o.name, o.id limit ${limit + 1} offset ${off}
+            ), visit_summary as (
+              select c.outlet_id,
+                     count(*) filter (
+                       where c.date >= ${monthStart(today)}::date and c.date <= ${today}::date
+                     ) as visits,
+                     max(c.date) as last_visit
+                from dcr_day_calls c
+                join doctor_page dp on dp.id = c.outlet_id
+               where c.user_id = ${userId} and c.outlet_kind = 'doctor' and c.deleted_at is null
+               group by c.outlet_id
+            )
+            select dp.id, dp.name, dp.qualification, dp.specialty, dp.category, dp.territory_id,
+                   dp.territory_name, dp.city, dp.required_visits,
+                   coalesce(v.visits, 0) as visits, to_char(v.last_visit, 'YYYY-MM-DD') as last_visit
+              from doctor_page dp left join visit_summary v on v.outlet_id = dp.id
+             order by dp.name, dp.id`,
       );
       const total = q.includeTotal
         ? num(
@@ -394,11 +410,21 @@ export class TeamProfileService {
       const where = sql`o.deleted_at is null and t.deleted_at is null and ${this.outletFilter(paths, q)}`;
       const r = await rows<Record<string, string | null>>(
         tx,
-        sql`select o.id, o.name, o.territory_id, t.name as territory_name, o.city,
-                   (select to_char(max(c.date), 'YYYY-MM-DD') from dcr_calls c where c.user_id = ${userId}
-                      and c.outlet_kind = 'chemist' and c.outlet_id = o.id and c.deleted_at is null) as last_visit
-            from chemists o join territories t on t.id = o.territory_id
-            where ${where} order by o.name, o.id limit ${limit + 1} offset ${off}`,
+        sql`with chemist_page as (
+              select o.id, o.name, o.territory_id, t.name as territory_name, o.city
+                from chemists o join territories t on t.id = o.territory_id
+               where ${where}
+               order by o.name, o.id limit ${limit + 1} offset ${off}
+            ), visit_summary as (
+              select c.outlet_id, max(c.date) as last_visit
+                from dcr_day_calls c join chemist_page cp on cp.id = c.outlet_id
+               where c.user_id = ${userId} and c.outlet_kind = 'chemist' and c.deleted_at is null
+               group by c.outlet_id
+            )
+            select cp.id, cp.name, cp.territory_id, cp.territory_name, cp.city,
+                   to_char(v.last_visit, 'YYYY-MM-DD') as last_visit
+              from chemist_page cp left join visit_summary v on v.outlet_id = cp.id
+             order by cp.name, cp.id`,
       );
       const total = q.includeTotal
         ? num(

@@ -236,6 +236,7 @@ export const products: Product[] = [
     divisionId: fid(9, 1),
     code: 'ARI-ATV10',
     name: 'Atorvastatin 10 mg',
+    displayName: 'Atorvastatin',
     brand: 'Arilip',
     composition: 'Atorvastatin 10 mg',
     packSize: '10 x 10 tablets',
@@ -245,6 +246,8 @@ export const products: Product[] = [
     pts: 86.4,
     isSample: true,
     active: true,
+    imageFileKey: null,
+    imageUrl: null,
   },
   {
     ...base,
@@ -252,6 +255,7 @@ export const products: Product[] = [
     divisionId: fid(9, 2),
     code: 'ARI-PCM650',
     name: 'Paracetamol 650 mg',
+    displayName: 'Paracetamol',
     brand: 'Arifev',
     composition: 'Paracetamol 650 mg',
     packSize: '15 tablets',
@@ -261,6 +265,8 @@ export const products: Product[] = [
     pts: 21.6,
     isSample: false,
     active: true,
+    imageFileKey: null,
+    imageUrl: null,
   },
 ];
 export const productHqMappings: ProductHqMapping[] = [

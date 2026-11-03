@@ -19,7 +19,12 @@ const PAGE = MOCKING ? 3 : 20;
 
 function when(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 export function NotificationBell({ pageSize = PAGE }: { pageSize?: number }) {
@@ -139,7 +144,11 @@ export function NotificationBell({ pageSize = PAGE }: { pageSize?: number }) {
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[min(22rem,calc(100vw-1rem))] p-0" data-testid="notif-panel">
+      <DropdownMenuContent
+        align="end"
+        className="w-[min(22rem,calc(100vw-1rem))] p-0"
+        data-testid="notif-panel"
+      >
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="text-sm font-medium">Notifications</span>
           <Button
@@ -160,7 +169,10 @@ export function NotificationBell({ pageSize = PAGE }: { pageSize?: number }) {
             </p>
           )}
           {!loading && !error && items.length === 0 && (
-            <p className="px-3 py-6 text-center text-sm text-muted-foreground" data-testid="notif-empty">
+            <p
+              className="px-3 py-6 text-center text-sm text-muted-foreground"
+              data-testid="notif-empty"
+            >
               No notifications yet.
             </p>
           )}
@@ -179,8 +191,11 @@ export function NotificationBell({ pageSize = PAGE }: { pageSize?: number }) {
                     className={`mt-1.5 size-2 shrink-0 rounded-full ${n.readAt ? 'bg-transparent' : 'bg-primary'}`}
                   />
                   <span className="min-w-0 flex-1">
-                    <span className={`block text-sm ${n.readAt ? '' : 'font-medium'}`}>{n.title}</span>
-                    {n.type.endsWith('.rejected') && typeof (n.data?.reason ?? n.data?.comment) === 'string' ? (
+                    <span className={`block text-sm ${n.readAt ? '' : 'font-medium'}`}>
+                      {n.title}
+                    </span>
+                    {n.type.endsWith('.rejected') &&
+                    typeof (n.data?.reason ?? n.data?.comment) === 'string' ? (
                       <span className="block text-xs text-red-900" data-testid="notif-rejection">
                         {rejectionText(
                           String(n.data?.reason ?? n.data?.comment),
@@ -191,7 +206,9 @@ export function NotificationBell({ pageSize = PAGE }: { pageSize?: number }) {
                     ) : (
                       <span className="block text-xs text-muted-foreground">{n.body}</span>
                     )}
-                    <span className="block text-[11px] text-muted-foreground">{when(n.createdAt)}</span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      {when(n.createdAt)}
+                    </span>
                   </span>
                   {!n.readAt && <span className="sr-only">Unread</span>}
                 </button>
@@ -212,7 +229,9 @@ export function NotificationBell({ pageSize = PAGE }: { pageSize?: number }) {
               </Button>
             </div>
           )}
-          {loading && items.length === 0 && <p className="px-3 py-4 text-sm text-muted-foreground">Loading…</p>}
+          {loading && items.length === 0 && (
+            <p className="px-3 py-4 text-sm text-muted-foreground">Loading…</p>
+          )}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

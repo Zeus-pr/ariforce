@@ -6,7 +6,13 @@ import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { cn } from '@ariforce/ui/lib/utils';
 
-export type PickOption = { id: string; name: string; hint?: string | null; badge?: string | null; disabledReason?: string | null };
+export type PickOption = {
+  id: string;
+  name: string;
+  hint?: string | null;
+  badge?: string | null;
+  disabledReason?: string | null;
+};
 export type PickPage = { items: PickOption[]; nextCursor: string | null; error?: string };
 
 /**
@@ -75,8 +81,15 @@ export function AsyncPicker({
   const name = (id: string) => seen.current.get(id)?.name ?? labels?.get(id) ?? 'Selected earlier';
   const toggle = (o: PickOption) => {
     if (o.disabledReason) return;
-    const next = multiple ? (value.includes(o.id) ? value.filter((x) => x !== o.id) : [...value, o.id]) : [o.id];
-    onChange(next, next.map((id) => seen.current.get(id) ?? { id, name: name(id) }));
+    const next = multiple
+      ? value.includes(o.id)
+        ? value.filter((x) => x !== o.id)
+        : [...value, o.id]
+      : [o.id];
+    onChange(
+      next,
+      next.map((id) => seen.current.get(id) ?? { id, name: name(id) }),
+    );
   };
 
   return (
@@ -84,19 +97,51 @@ export function AsyncPicker({
       {multiple && value.length > 0 && (
         <div className="flex flex-wrap gap-1.5" data-testid={`${testId}-chips`}>
           {value.map((id) => (
-            <span key={id} className="inline-flex items-center gap-1 rounded-full border bg-muted px-2.5 py-0.5 text-xs" data-testid={`${testId}-chip`}>
+            <span
+              key={id}
+              className="inline-flex items-center gap-1 rounded-full border bg-muted px-2.5 py-0.5 text-xs"
+              data-testid={`${testId}-chip`}
+            >
               {name(id)}
-              <button type="button" aria-label={`Remove ${name(id)}`} onClick={() => onChange(value.filter((x) => x !== id), [])}><X className="size-3" /></button>
+              <button
+                type="button"
+                aria-label={`Remove ${name(id)}`}
+                onClick={() =>
+                  onChange(
+                    value.filter((x) => x !== id),
+                    [],
+                  )
+                }
+              >
+                <X className="size-3" />
+              </button>
             </span>
           ))}
         </div>
       )}
-      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${label.toLowerCase()}`} aria-label={`Search ${label.toLowerCase()}`} className="md:text-base" data-testid={`${testId}-search`} />
-      <div role="listbox" aria-label={label} aria-multiselectable={multiple} className="max-h-56 overflow-y-auto rounded-md border" data-testid={`${testId}-list`}>
+      <Input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder={`Search ${label.toLowerCase()}`}
+        aria-label={`Search ${label.toLowerCase()}`}
+        className="md:text-base"
+        data-testid={`${testId}-search`}
+      />
+      <div
+        role="listbox"
+        aria-label={label}
+        aria-multiselectable={multiple}
+        className="max-h-56 overflow-y-auto rounded-md border"
+        data-testid={`${testId}-list`}
+      >
         {items === null ? (
-          <p className="p-3 text-sm text-muted-foreground" aria-busy="true">Loading…</p>
+          <p className="p-3 text-sm text-muted-foreground" aria-busy="true">
+            Loading…
+          </p>
         ) : items.length === 0 ? (
-          <p className="p-3 text-sm text-muted-foreground" data-testid={`${testId}-empty`}>{error ?? emptyText}</p>
+          <p className="p-3 text-sm text-muted-foreground" data-testid={`${testId}-empty`}>
+            {error ?? emptyText}
+          </p>
         ) : (
           items.map((o) => {
             const on = value.includes(o.id);
@@ -108,23 +153,50 @@ export function AsyncPicker({
                 aria-selected={on}
                 aria-disabled={!!o.disabledReason}
                 onClick={() => toggle(o)}
-                className={cn('flex w-full items-center justify-between gap-2 border-b px-3 py-2 text-left text-sm last:border-b-0', on && 'bg-primary/10 font-medium', o.disabledReason ? 'cursor-not-allowed text-muted-foreground' : 'hover:bg-muted')}
+                className={cn(
+                  'flex w-full items-center justify-between gap-2 border-b px-3 py-2 text-left text-sm last:border-b-0',
+                  on && 'bg-primary/10 font-medium',
+                  o.disabledReason ? 'cursor-not-allowed text-muted-foreground' : 'hover:bg-muted',
+                )}
                 data-testid={`${testId}-option`}
                 data-id={o.id}
               >
                 <span className="min-w-0">
                   <span className="block truncate">{o.name}</span>
-                  {(o.disabledReason || o.hint) && <span className="block truncate text-xs text-muted-foreground">{o.disabledReason ?? o.hint}</span>}
+                  {(o.disabledReason || o.hint) && (
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {o.disabledReason ?? o.hint}
+                    </span>
+                  )}
                 </span>
-                {o.badge && <span className="shrink-0 rounded border px-1.5 py-0.5 text-xs" data-testid={`${testId}-badge`}>{o.badge}</span>}
+                {o.badge && (
+                  <span
+                    className="shrink-0 rounded border px-1.5 py-0.5 text-xs"
+                    data-testid={`${testId}-badge`}
+                  >
+                    {o.badge}
+                  </span>
+                )}
               </button>
             );
           })
         )}
       </div>
-      {error && items && items.length > 0 && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {error && items && items.length > 0 && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
       {cursor && (
-        <Button type="button" size="sm" variant="outline" className="self-start" disabled={busy} onClick={() => void more()} data-testid={`${testId}-more`}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="self-start"
+          disabled={busy}
+          onClick={() => void more()}
+          data-testid={`${testId}-more`}
+        >
           {busy ? 'Loading…' : 'Show more'}
         </Button>
       )}

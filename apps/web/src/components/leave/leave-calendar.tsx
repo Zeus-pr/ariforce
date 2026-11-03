@@ -5,7 +5,14 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { LeaveCalendarEntry } from '@/lib/leave/model';
 import { Button } from '@ariforce/ui/components/button';
 import { cn } from '@ariforce/ui/lib/utils';
-import { datesOf, dayLabel, monthLabel, shiftMonth, thisMonthIST, weekdayMon } from '@/components/tour-plans/month';
+import {
+  datesOf,
+  dayLabel,
+  monthLabel,
+  shiftMonth,
+  thisMonthIST,
+  weekdayMon,
+} from '@/components/tour-plans/month';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { dow, leaveMessage, today } from '@/lib/leave/model';
 
@@ -26,7 +33,10 @@ export function LeaveCalendar({ weeklyOff, team }: { weeklyOff: number[]; team: 
       setItems(null);
       await apiReady();
       const r = await api
-        .GET('/v1/leave/calendar', { params: { query: { from: ds[0]!, to: ds.at(-1)!, includePending: 'true' } }, signal: ac.signal })
+        .GET('/v1/leave/calendar', {
+          params: { query: { from: ds[0]!, to: ds.at(-1)!, includePending: 'true' } },
+          signal: ac.signal,
+        })
         .catch(() => null);
       if (ac.signal.aborted || !r) return;
       if (r.error) return setError(leaveMessage(toApiError(r)));
@@ -40,17 +50,33 @@ export function LeaveCalendar({ weeklyOff, team }: { weeklyOff: number[]; team: 
   const lead = weekdayMon(`${month}-01`);
 
   return (
-    <section aria-labelledby="leave-cal-h" className="flex flex-col gap-3" data-testid="leave-calendar">
+    <section
+      aria-labelledby="leave-cal-h"
+      className="flex flex-col gap-3"
+      data-testid="leave-calendar"
+    >
       <div className="flex items-center justify-between gap-2">
         <h2 id="leave-cal-h" className="text-base font-semibold" aria-live="polite">
           {monthLabel(month)}
-          <span className="ml-2 text-sm font-normal text-muted-foreground">{team ? 'You and your team' : 'Your leave'}</span>
+          <span className="ml-2 text-sm font-normal text-muted-foreground">
+            {team ? 'You and your team' : 'Your leave'}
+          </span>
         </h2>
         <div className="flex gap-1">
-          <Button variant="outline" size="icon" aria-label="Previous month" onClick={() => setMonth((m) => shiftMonth(m, -1))}>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Previous month"
+            onClick={() => setMonth((m) => shiftMonth(m, -1))}
+          >
             <ChevronLeft />
           </Button>
-          <Button variant="outline" size="icon" aria-label="Next month" onClick={() => setMonth((m) => shiftMonth(m, 1))}>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Next month"
+            onClick={() => setMonth((m) => shiftMonth(m, 1))}
+          >
             <ChevronRight />
           </Button>
         </div>
@@ -65,17 +91,23 @@ export function LeaveCalendar({ weeklyOff, team }: { weeklyOff: number[]; team: 
           <span className="size-3 rounded-sm bg-emerald-200" /> Approved
         </span>
         <span className="inline-flex items-center gap-1">
-          <span className="size-3 rounded-sm border border-dashed border-amber-500 bg-amber-50" /> Waiting
+          <span className="size-3 rounded-sm border border-dashed border-amber-500 bg-amber-50" />{' '}
+          Waiting
         </span>
       </div>
-      <div className="hidden grid-cols-7 gap-px text-xs font-medium text-muted-foreground sm:grid" aria-hidden>
+      <div
+        className="hidden grid-cols-7 gap-px text-xs font-medium text-muted-foreground sm:grid"
+        aria-hidden
+      >
         {WEEK.map((w) => (
           <span key={w} className="px-2">
             {w}
           </span>
         ))}
       </div>
-      <ol className={cn('grid grid-cols-1 gap-1.5 sm:grid-cols-7', items === null && 'animate-pulse')}>
+      <ol
+        className={cn('grid grid-cols-1 gap-1.5 sm:grid-cols-7', items === null && 'animate-pulse')}
+      >
         {Array.from({ length: lead }, (_, i) => (
           <li key={`pad${i}`} className="hidden sm:block" aria-hidden />
         ))}
@@ -108,7 +140,9 @@ export function LeaveCalendar({ weeklyOff, team }: { weeklyOff: number[]; team: 
                   title={`${e.userName}: ${e.typeCode}${e.half ? ' (half day)' : ''}, ${e.status === 'approved' ? 'approved' : 'waiting'}`}
                   className={cn(
                     'truncate rounded px-1.5 py-0.5',
-                    e.status === 'approved' ? 'bg-emerald-100 text-emerald-900' : 'border border-dashed border-amber-500 bg-amber-50 text-amber-900',
+                    e.status === 'approved'
+                      ? 'bg-emerald-100 text-emerald-900'
+                      : 'border border-dashed border-amber-500 bg-amber-50 text-amber-900',
                   )}
                 >
                   {team ? `${e.userName.split(' ')[0]} · ` : ''}

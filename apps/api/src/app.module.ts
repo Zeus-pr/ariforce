@@ -16,6 +16,7 @@ import { LeaveModule } from './leave/leave.module';
 import { AllowancesModule } from './allowances/allowances.module';
 import { SfcModule } from './sfc/sfc.module';
 import { ExceptionsModule } from './exceptions/exceptions.module';
+import { HomeModule } from './home/home.module';
 import { ProductPricesModule } from './product-prices/product-prices.module';
 import { MeController } from './me/me.controller';
 import { OpenApiController } from './openapi/openapi.controller';
@@ -35,6 +36,7 @@ import { OpenApiController } from './openapi/openapi.controller';
     LeaveModule,
     TeamModule,
     ExceptionsModule,
+    HomeModule,
     ProductPricesModule,
     AllowancesModule,
     SfcModule,

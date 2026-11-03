@@ -10,6 +10,79 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## feat/dcr-pob-review (2026-10-29): expense approval needs approved DCRs; unlock decisions director-only
+
+Migration 0051 (roles.permissions: dcr_unlock:decide for director).
+
+- Behaviour (breaking for approvers): approving an expense claim (any step; POST
+  /v1/approvals/{id}/decision and POST /v1/expenses/{id}/decision) needs an APPROVED DCR of the
+  owner on every line date, else 409 DCR_NOT_APPROVED, details {dates[], dcrIds[], dcrStatus{date:
+  draft|submitted|rejected|missing}}. Rejecting is unaffected.
+- New permission `dcr_unlock:decide` (director only). DCR unlock/correction requests
+  (subjectType dcr_unlock) need it: 403 APPROVAL_PERMISSION_REQUIRED {permission}. They are left out
+  of `mine=to_decide` for everyone else. Other approval types keep approvals:decide; dcr:review is
+  unchanged (ABM and up).
+- Additive: `Approval.canDecide` (list and get): whether the caller can decide it now.
+
+## feat/dcr-pob-review (2026-10-29): tour plan items (one day or from-to) as DCR draft cards
+
+Migration 0050 (additive: table tour_plan_items, dcrs.tour_plan_item_id).
+
+- Additive: `TourPlanItem` {id, companyId, userId, userName, from, to (<= 31 days), status
+  draft|pending|approved|rejected, rejectionReason, plan {workTypeId, territoryIds,
+  workWithUserIds, sfcRoutes[{hqTerritoryId, sfcRouteId}], details|null}, filedDates, version,
+  createdAt, updatedAt, submittedAt, decidedAt, decidedBy}.
+- New endpoints: GET /v1/tour-plans/items (?mine=true own, newest first; else team, never own,
+  approvals:decide or field:read; ?status), GET/DELETE /v1/tour-plans/items/{id}, PUT
+  /v1/tour-plans/items (create or edit draft/rejected -> draft), POST .../{id}/submit (-> pending,
+  one approval request routed like the monthly TP), POST .../{id}/decision {decision, comment}
+  (approvals:decide, reporting line, never your own; comment required to reject).
+  Errors: TP_LOCKED, TP_OVERLAP, TP_IN_PAST, VERSION_CONFLICT, REJECTION_REASON_REQUIRED.
+- Additive: `DcrOptions.tourPlanDrafts[]` = approved items + {pendingDates, draftDates,
+  fileableDates}. Listed while an unfiled day is today (IST) or later.
+- Additive: `DcrDraftPut.tourPlanItemId`; `Dcr.tourPlanItemId`. The date must lie in an approved
+  item of yours (422 VALIDATION, details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date
+  may be drafted; submit still needs the day. Without it, the covering approved item is linked.
+- Behaviour (relaxing): 422 DEVIATION_REASON_REQUIRED is no longer raised (DCR flow submit and legacy
+  PUT /v1/dcrs).
+- GET /v1/approvals omits tour plan item requests (they have their own queue).
+- Monthly TourPlan unchanged (TourPlanEntry is back to its c44b325 shape).
+
+## feat/dcr-pob-review (2026-10-29): product displayName, doctor detailing picker
+
+- Additive: `Product.displayName` and `AdminProduct.displayName` (readOnly, derived from `name`
+  without strength numbers: 'ARIPIX 10' -> 'ARIPIX', 'ESCINEX CZ 10/0.25' -> 'ESCINEX CZ'). Helper
+  `productDisplayName()` exported from @ariforce/contracts. `DcrProductOption.displayName`.
+- Additive: `DcrOptions.detailProducts[]` `{displayName, productId, productIds[], composition,
+imageFileKey, imageUrl}`: one entry per displayName (A-Z); `productId` = first SKU with a
+  picture, else the first. Store `productId` in `productsDetailed`.
+- GET /v1/doctors|chemists|stockists|products default and sort=name order: lower(name), id.
+
+## feat/dcr-pob-review (2026-10-29): POB at PTS, doctor presentation, manager review, IST lock
+
+Needs migrations 0048 + 0049 (not applied yet).
+
+- **Breaking**: `PobLine.value` is now priced at `products.pts` (was PTR). POB on a doctor call is
+  rejected: 422 `VALIDATION`, `details.reason = POB_NOT_ALLOWED_FOR_DOCTOR`, `details.callIndexes/callIds`.
+- **Breaking**: on submit, every doctor call with non-empty `productsDetailed` needs
+  `DcrCall.presentationOpenedAt` (ISO, nullable; accepted by PUT /v1/dcrs/draft and PUT /v1/dcrs).
+  Otherwise 422 `VALIDATION`, `details.reason = PRESENTATION_NOT_OPENED`, `details.callIndexes/callIds`.
+- **Breaking**: `DcrCall.calledAt` is readOnly: set by the server when the call (clientId) is first
+  saved, kept on re-save; client values are ignored.
+- **Breaking**: day lock is 00:00 Asia/Kolkata on the day after the DCR date (was company tz + 24 h).
+  `companies.dcr_lock_after_hours` no longer applies to DCRs (also the missed-DCR exception deadline).
+- **Breaking (widened enum)**: `Dcr.status` adds `approved`, `rejected`. New `Dcr.reviewStatus`
+  (pending|approved|rejected|null), `approvedAt`, `approvedBy`, `rejectedAt`, `rejectedBy`, `rejectionReason`.
+- **Breaking**: GET /v1/dcrs: team scope only for callers with `dcr:review` (and not `mine=true`);
+  everyone else sees only their own DCRs. `status` filter accepts draft|submitted|locked|approved|rejected.
+- New POST /v1/dcrs/{id}/decision `{decision: approve|reject, comment?}` (comment 1-500 required to
+  reject, stored as `rejectionReason`). 403 own DCR, 404 outside team, 409 `NOT_PENDING_REVIEW`.
+- New permission `dcr:review` (ABM..director, system_admin).
+- Rejected reports count nowhere (no `DAY_ALREADY_SUBMITTED`, not `options.submitted`), are listed in
+  `options.rejected`, and reopen the day for 48 h for the rep.
+- `DcrOptions` adds `rejected[]`, `unlockRequest {id,status,requestedAt}|null`, `products[]`
+  (id, divisionId, code, name, brand, composition, packSize, form, mrp, pts, isSample, imageFileKey, imageUrl).
+
 ## Breaking changes
 
 | Feature (commit)                                               | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -29,6 +102,29 @@ response enums, or changed server behaviour for the same request).
 | Security #77 (`16e1116`)                                       | Auth, sign-up and invite-accept routes can return `429 RATE_LIMITED` with `Retry-After`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Health (`a72e145`)                                             | `HealthWarning` dropped `companyId` / `companySlug` and became aggregate (`NO_WORK_TYPES` with `count`). Only clients of `0c97952` are affected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | TP submit (`36c29f5`, superseded by `0bb7b40`)                 | `POST /v1/tour-plans/{month}/submit` 422 rule changed: weekly offs and past days of the current month (IST) are no longer required                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+
+## Product image (`feat/product-image`, migration 0047)
+
+Additive. Products get a picture, uploaded from the product prices admin and shown in the DCR picker.
+
+- `FilePurpose` gains `product_image` (snake_case like the others). `POST /v1/files/upload-url` with that
+  purpose: `image/jpeg|png|webp` only, `sizeBytes` <= 5 MB (422 `VALIDATION` otherwise), needs
+  `products:prices` (403 `FORBIDDEN`).
+- `Product` (`GET /v1/products`, `/v1/products/{id}`, PATCH response) and `AdminProduct` (`GET /v1/admin/products`,
+  price PATCH response) gain `imageFileKey: string|null` and `imageUrl: string|null`. `imageUrl` is a presigned
+  R2 GET for `<img src>`, signed for 60 min from the start of a 30-min window (valid >= 30 min, same URL within
+  the window). Null if no picture or storage is off. Not settable through product create/update/import.
+- `AdminProduct` also gains `composition: string|null` and `packSize: string|null` (existing
+  `products.composition` / `products.pack_size` columns; no migration).
+- New `PUT /v1/products/{id}/image` `{fileKey, version?}` -> 200 `AdminProduct` (new `version`, fresh `imageUrl`).
+  The object is HEAD-checked in R2 (exists, <= 5 MB, allowed type matching the key extension) and its magic bytes
+  sniffed; a rejected upload is deleted. Errors: 404 `PRODUCT_NOT_FOUND`, 403 `FORBIDDEN`, 409 `VERSION_CONFLICT`
+  (only if `version` sent), 422 `VALIDATION` with `details.reason` `IMAGE_KEY_INVALID` | `UPLOAD_MISSING` |
+  `UPLOAD_TOO_LARGE` | `UPLOAD_TYPE_INVALID` | `UPLOAD_FORMAT_INVALID`, 503 storage not configured.
+- New `DELETE /v1/products/{id}/image` -> 200 `AdminProduct` (`imageUrl: null`; version bumped only if a picture
+  was removed). Idempotent. The R2 object is kept for audit.
+- Setting or clearing bumps the product `version`/`updatedAt` (row trigger), so `?updatedSince` syncs pick it up.
+  Audit actions `product.image_set`, `product.image_cleared`, `product.image_rejected`.
 
 ## Territory link import + `localTerritoryId` (`feat/territory-importer`)
 

@@ -7,7 +7,10 @@ import path from 'node:path';
 const BASE = process.env.BASE_URL ?? 'http://localhost:3000';
 const BROWSER = process.env.BROWSER ?? 'chromium';
 const engine = { chromium, webkit }[BROWSER];
-const OUT = path.resolve(import.meta.dirname, `../../../docs/evidence/dashboard${BROWSER === 'chromium' ? '' : '-' + BROWSER}`);
+const OUT = path.resolve(
+  import.meta.dirname,
+  `../../../docs/evidence/dashboard${BROWSER === 'chromium' ? '' : '-' + BROWSER}`,
+);
 fs.mkdirSync(OUT, { recursive: true });
 let ok = true;
 const check = (c, m) => {
@@ -16,7 +19,12 @@ const check = (c, m) => {
 };
 const VIEWS = {
   desktop: { viewport: { width: 1440, height: 900 } },
-  mobile: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 },
+  mobile: {
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 2,
+  },
 };
 const browser = await engine.launch();
 const errors = [];
@@ -24,18 +32,24 @@ const ID = { director: 'director', area_business_manager: 'abm', business_manage
 
 async function open(role, view = 'desktop') {
   const ctx = await browser.newContext(VIEWS[view]);
-  await ctx.addInitScript((s) => {
-    sessionStorage.setItem('af:splash-seen', '1');
-    localStorage.setItem('af:mock-session', s);
-  }, JSON.stringify({ userId: `mock-${ID[role]}`, role }));
+  await ctx.addInitScript(
+    (s) => {
+      sessionStorage.setItem('af:splash-seen', '1');
+      localStorage.setItem('af:mock-session', s);
+    },
+    JSON.stringify({ userId: `mock-${ID[role]}`, role }),
+  );
   const page = await ctx.newPage();
   page.on('console', (m) => {
-    if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(`${role}/${view}: ${m.text()}`);
+    if (m.type() === 'error' && !/Failed to load resource/.test(m.text()))
+      errors.push(`${role}/${view}: ${m.text()}`);
   });
   page.on('pageerror', (e) => errors.push(`${role}/${view}: ${e.message}`));
   await page.goto(`${BASE}/`, { waitUntil: 'load' });
   await page.getByTestId('kpi-card').first().waitFor();
-  await page.waitForFunction(() => !document.querySelector('[data-testid=kpi-card] .animate-pulse'));
+  await page.waitForFunction(
+    () => !document.querySelector('[data-testid=kpi-card] .animate-pulse'),
+  );
   return { ctx, page };
 }
 
@@ -47,18 +61,36 @@ async function open(role, view = 'desktop') {
   const cov = page.locator('[data-testid=kpi-card][data-kpi=coverage_pct]');
   check(/%/.test(await cov.textContent()), 'coverage shows a percent');
   check(/Target|No target set/.test(await cov.textContent()), 'card shows target state');
-  check((await page.getByText('to confirm with Arighna').count()) > 0, '"to confirm with Arighna" label present');
+  check(
+    (await page.getByText('to confirm with Arighna').count()) > 0,
+    '"to confirm with Arighna" label present',
+  );
   check((await page.getByTestId('kpi-formula').count()) === 0, 'formulas collapsed by default');
   await page.getByTestId('kpi-expand').click();
-  check((await page.getByTestId('kpi-expand').getAttribute('aria-expanded')) === 'true', 'expand sets aria-expanded');
+  check(
+    (await page.getByTestId('kpi-expand').getAttribute('aria-expanded')) === 'true',
+    'expand sets aria-expanded',
+  );
   const f = await page.locator('[data-kpi=coverage_pct] [data-testid=kpi-formula]').textContent();
-  check(/÷/.test(f) && /MSL size/.test(f), `coverage numerator ÷ denominator (${f.replace(/\s+/g, ' ')})`);
-  check((await cov.getAttribute('title'))?.includes('to confirm with Arighna'), 'hover title carries formula');
+  check(
+    /÷/.test(f) && /MSL size/.test(f),
+    `coverage numerator ÷ denominator (${f.replace(/\s+/g, ' ')})`,
+  );
+  check(
+    (await cov.getAttribute('title'))?.includes('to confirm with Arighna'),
+    'hover title carries formula',
+  );
   await page.getByTestId('kpi-product-row').first().waitFor();
   check((await page.getByTestId('kpi-product-row').count()) >= 1, 'product-wise KPI rows');
   check((await page.getByTestId('kpi-team').count()) === 1, 'director sees team table');
-  check((await page.getByText('Sample data').count()) >= 1, 'uncovered exceptions labelled Sample data');
-  await page.getByTestId('dash-approvals').getByText(/waiting on you/).waitFor();
+  check(
+    (await page.getByText('Sample data').count()) >= 1,
+    'uncovered exceptions labelled Sample data',
+  );
+  await page
+    .getByTestId('dash-approvals')
+    .getByText(/waiting on you/)
+    .waitFor();
   await page.screenshot({ path: path.join(OUT, 'director-desktop.png'), fullPage: true });
   await ctx.close();
 }
@@ -69,7 +101,10 @@ async function open(role, view = 'desktop') {
   check(scope.startsWith('Your team'), `ABM scope is team (${scope})`);
   await page.getByTestId('kpi-team-row').first().waitFor();
   check((await page.getByTestId('kpi-team-row').count()) >= 1, 'ABM team rows from byUser');
-  check((await page.getByRole('heading', { name: 'Needs attention' }).count()) === 1, 'Needs attention layout kept');
+  check(
+    (await page.getByRole('heading', { name: 'Needs attention' }).count()) === 1,
+    'Needs attention layout kept',
+  );
   await page.screenshot({ path: path.join(OUT, 'abm-desktop.png'), fullPage: true });
   await ctx.close();
 }
@@ -81,7 +116,9 @@ for (const view of ['desktop', 'mobile']) {
   check((await page.getByTestId('kpi-team').count()) === 0, `BM has no team table (${view})`);
   check((await page.getByTestId('dash-approvals').count()) === 0, `BM has no approvals (${view})`);
   if (view === 'mobile') {
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    );
     check(!overflow, 'no horizontal page overflow on mobile');
   }
   await page.screenshot({ path: path.join(OUT, `bm-${view}.png`), fullPage: true });

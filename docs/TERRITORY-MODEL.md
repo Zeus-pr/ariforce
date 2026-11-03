@@ -69,7 +69,9 @@ In-file checks: same HQ + entity + name with different territories -> `error` `c
 (all such rows); exact repeats -> `skipped` `duplicate_in_file`. Near duplicates (backfill rule) are
 listed, never merged. Re-running a file changes nothing. Audit: `territory.import_create` per
 territory, `territory_links.apply` with the linked ids per entity (rollback marker), dry runs via the
-endpoint `territory_links.dry_run`. Not stored in `import_jobs`.
+endpoint `territory_links.dry_run`. Not stored in `import_jobs`. Against a shared/production DB use the
+CLI's `--read-only` (one `SET TRANSACTION READ ONLY` transaction, verified, always rolled back; works
+through the Supabase transaction pooler, where `PGOPTIONS` is ignored).
 
 DTOs: `Doctor.localTerritoryId`, `Chemist.localTerritoryId` (nullable, read-only; cleared when the
 HQ `territoryId` changes on PATCH). List filter `localTerritoryId=<id>` or `none` on
@@ -93,4 +95,4 @@ column yet; load masters first, then run the link import.
 
 SFC category is a fixed enum `ex` | `hq` | `os` mapped to the DCR band `ex_hq` / `hq` / `outstation`;
 legacy text is converted by a data fix. Change list and misfit proposals: `docs/DCR-REDESIGN-DESIGN.md`.
-Meeting never uses SFC. Work With: anyone; recorded, not part of the SFC match (employee + HQ + band).
+Meeting never uses SFC. Work With: anyone; recorded, not part of the SFC match (HQ + band: the filer's own routes on that HQ, else the HQ's routes; see DCR-REDESIGN-DESIGN.md).

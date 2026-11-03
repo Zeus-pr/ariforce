@@ -83,6 +83,39 @@ export const tourPlanSubmissions = pgTable(
   ],
 );
 
+/**
+ * Tour plan item (0050): a one-day or from-to plan with the DCR's day fields in `plan` (workTypeId,
+ * territoryIds, workWithUserIds, sfcRoutes, details). draft -> submitted (API 'pending', one
+ * approval_requests row, entity_type 'tour_plan_item') -> approved | rejected.
+ */
+export const tourPlanItems = pgTable(
+  'tour_plan_items',
+  {
+    id: pk(),
+    companyId: companyId().references(() => companies.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    fromDate: date('from_date').notNull(),
+    toDate: date('to_date').notNull(),
+    status: docStatus('status').notNull().default('draft'),
+    plan: jsonb('plan').$type<Record<string, unknown>>().notNull(),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    decidedBy: uuid('decided_by').references(() => users.id),
+    decisionComment: text('decision_comment'),
+    ...syncCols(),
+  },
+  (t) => [
+    index('tour_plan_items_user_idx').on(t.companyId, t.userId, t.fromDate),
+    index('tour_plan_items_status_idx').on(t.companyId, t.status),
+    check(
+      'tour_plan_items_range_ck',
+      sql`${t.toDate} >= ${t.fromDate} AND ${t.toDate} - ${t.fromDate} <= 30`,
+    ),
+  ],
+);
+
 /** Standard tour plan (STP, #20): one weekly-pattern template per user, copied into monthly plans. */
 export const standardTourPlans = pgTable(
   'standard_tour_plans',
@@ -136,6 +169,8 @@ export const dcrs = pgTable(
       .default(sql`'{}'::uuid[]`),
     /** The approved monthly TP the day was compared against (#22). */
     tourPlanId: uuid('tour_plan_id').references(() => tourPlans.id),
+    /** The approved tour plan item the day was filed from (0050). */
+    tourPlanItemId: uuid('tour_plan_item_id').references(() => tourPlanItems.id),
     status: docStatus('status').notNull().default('draft'),
     /** Reason when the day deviates from the approved TP. */
     deviationReason: text('deviation_reason'),
@@ -152,10 +187,20 @@ export const dcrs = pgTable(
     submittedBy: uuid('submitted_by').references(() => users.id),
     /** Idempotency-Key of POST /v1/dcrs/{id}/submit (0043). */
     submitIdempotencyKey: text('submit_idempotency_key'),
+    /** Manager review (0048): approve keeps counting; reject excludes the report everywhere. */
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    approvedBy: uuid('approved_by').references(() => users.id),
+    rejectedAt: timestamp('rejected_at', { withTimezone: true }),
+    rejectedBy: uuid('rejected_by').references(() => users.id),
+    rejectionReason: text('rejection_reason'),
     ...syncCols(),
   },
   (t) => [
-    uniqueIndex('dcrs_user_date_uq').on(t.companyId, t.userId, t.date),
+    // 0045: several drafts per user and day; at most one live submitted/approved report.
+    uniqueIndex('dcrs_user_date_submitted_uq')
+      .on(t.companyId, t.userId, t.date)
+      .where(sql`status IN ('submitted', 'approved') AND deleted_at IS NULL`),
+    index('dcrs_user_date_idx').on(t.companyId, t.userId, t.date),
     uniqueIndex('dcrs_submit_key_uq')
       .on(t.companyId, t.userId, t.submitIdempotencyKey)
       .where(sql`submit_idempotency_key IS NOT NULL`),
@@ -164,6 +209,10 @@ export const dcrs = pgTable(
     check(
       'dcrs_submit_key_ck',
       sql`submit_idempotency_key IS NULL OR length(submit_idempotency_key) BETWEEN 1 AND 200`,
+    ),
+    check(
+      'dcrs_rejected_ck',
+      sql`status <> 'rejected' OR (rejected_at IS NOT NULL AND rejected_by IS NOT NULL AND length(rejection_reason) BETWEEN 1 AND 500)`,
     ),
   ],
 );
@@ -220,6 +269,8 @@ export const dcrCalls = pgTable(
       .notNull()
       .default(sql`'{}'::uuid[]`),
     remarks: text('remarks'),
+    /** When the presentation was shown to the doctor (0048); required on submit for detailed doctor calls. */
+    presentationOpenedAt: timestamp('presentation_opened_at', { withTimezone: true }),
     ...syncCols(),
   },
   (t) => [

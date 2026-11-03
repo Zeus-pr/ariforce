@@ -1,6 +1,15 @@
 'use client';
 
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, RotateCw, Search, X } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  RotateCw,
+  Search,
+  X,
+} from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
@@ -92,19 +101,25 @@ export function DataTable<T>({
       .then((data) => setState({ status: 'ready', data }))
       .catch((e: unknown) => {
         if (ctrl.signal.aborted) return;
-        setState({ status: 'error', message: e instanceof Error ? e.message : 'Something went wrong.' });
+        setState({
+          status: 'error',
+          message: e instanceof Error ? e.message : 'Something went wrong.',
+        });
       });
     return () => ctrl.abort();
   }, [key, source, reloadKey, retry]);
 
   const data = state.status === 'error' ? undefined : state.data;
   const loading = state.status === 'loading';
-  const totalPages = data?.total != null ? Math.max(1, Math.ceil(data.total / query.pageSize)) : null;
+  const totalPages =
+    data?.total != null ? Math.max(1, Math.ceil(data.total / query.pageSize)) : null;
   const from = (query.page - 1) * query.pageSize + 1;
 
   const toggleSort = (id: string) => {
     const s = query.sort;
-    setQuery({ sort: !s || s.id !== id ? { id, desc: false } : s.desc ? null : { id, desc: true } });
+    setQuery({
+      sort: !s || s.id !== id ? { id, desc: false } : s.desc ? null : { id, desc: true },
+    });
   };
 
   return (
@@ -149,7 +164,10 @@ export function DataTable<T>({
       </div>
 
       {state.status === 'error' ? (
-        <div role="alert" className="flex flex-col items-center gap-3 rounded-lg border bg-card p-8 text-center">
+        <div
+          role="alert"
+          className="flex flex-col items-center gap-3 rounded-lg border bg-card p-8 text-center"
+        >
           <p className="font-medium">Couldn&apos;t load {label}</p>
           <p className="text-sm text-muted-foreground">{state.message}</p>
           <Button variant="outline" size="sm" onClick={() => setRetry((n) => n + 1)}>
@@ -180,7 +198,11 @@ export function DataTable<T>({
                           >
                             {c.header}
                             {active ? (
-                              active.desc ? <ArrowDown className="size-3.5" /> : <ArrowUp className="size-3.5" />
+                              active.desc ? (
+                                <ArrowDown className="size-3.5" />
+                              ) : (
+                                <ArrowUp className="size-3.5" />
+                              )
                             ) : (
                               <ArrowUpDown className="size-3.5 opacity-40" />
                             )}
@@ -217,7 +239,11 @@ export function DataTable<T>({
                             if (e.key === 'Enter') onRowClick(row);
                           })
                         }
-                        className={cn('af-enter', onRowClick && 'cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none')}
+                        className={cn(
+                          'af-enter',
+                          onRowClick &&
+                            'cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none',
+                        )}
                       >
                         {columns.map((c) => (
                           <TableCell key={c.id} className={c.className}>
@@ -243,7 +269,12 @@ export function DataTable<T>({
                   const primary = columns.find((c) => c.mobile === 'primary') ?? columns[0]!;
                   const rest = columns.filter((c) => c !== primary && c.mobile === 'secondary');
                   return (
-                    <li key={rowKey(row)} data-testid="card-row" className="af-enter" style={{ '--i': i } as React.CSSProperties}>
+                    <li
+                      key={rowKey(row)}
+                      data-testid="card-row"
+                      className="af-enter"
+                      style={{ '--i': i } as React.CSSProperties}
+                    >
                       <button
                         type="button"
                         disabled={!onRowClick}
@@ -289,10 +320,16 @@ export function DataTable<T>({
         </>
       )}
 
-      <nav aria-label={`${label} pages`} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+      <nav
+        aria-label={`${label} pages`}
+        className="flex flex-wrap items-center justify-between gap-2 text-sm"
+      >
         <div className="flex items-center gap-2 text-muted-foreground">
           <span className="hidden sm:inline">Rows per page</span>
-          <Select value={String(query.pageSize)} onValueChange={(v) => setQuery({ pageSize: Number(v) })}>
+          <Select
+            value={String(query.pageSize)}
+            onValueChange={(v) => setQuery({ pageSize: Number(v) })}
+          >
             <SelectTrigger size="sm" className="w-20" aria-label="Rows per page">
               <SelectValue />
             </SelectTrigger>

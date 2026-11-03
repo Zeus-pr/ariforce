@@ -72,6 +72,15 @@ describe.skipIf(!OWNER || !APP)('notifications (real API)', () => {
     );
   };
   const types = async (who: string, id: string) => (await inbox(who, id)).map((n) => n.type);
+  const approvedDcr = async (userId: string, date: string) => {
+    await owner.query(
+      `insert into dcrs (id, company_id, user_id, date, work_type_id, status)
+       select gen_random_uuid(), u.company_id, u.id, $2, wt.id, 'approved'
+       from users u join work_types wt on wt.company_id = u.company_id
+       where u.id = $1 and wt.counts_as_field_day limit 1`,
+      [userId, date],
+    );
+  };
 
   beforeAll(async () => {
     process.env.EXPENSE_APPROVAL_LEVELS = '2';
@@ -83,6 +92,8 @@ describe.skipIf(!OWNER || !APP)('notifications (real API)', () => {
     for (const who of ['bm', 'bm2', 'abm', 'rbm', 'accountant', 'sysadmin', 'director']) {
       tok[who] = await bearerFor(http, who, PASSWORD);
     }
+    const types = await http().get('/v1/leave/types').set(as('director'));
+    expect(types.status, JSON.stringify(types.body)).toBe(200);
     const s = await http()
       .put('/v1/leave/settings')
       .set(as('director'))
@@ -170,6 +181,7 @@ describe.skipIf(!OWNER || !APP)('notifications (real API)', () => {
   });
 
   it('expense: submitted -> approvers, approved / paid -> claimant', async () => {
+    await approvedDcr(U.rep, `${MONTH}-03`);
     let r = await http().post('/v1/expense-claims').set(as('bm')).send({ month: MONTH });
     expect(r.status, JSON.stringify(r.body)).toBe(201);
     const id = r.body.id as string;
