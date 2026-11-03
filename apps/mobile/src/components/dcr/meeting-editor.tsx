@@ -5,15 +5,10 @@ import { SelectSheet } from '@/components/masters/select-sheet';
 import { TextField } from '@/components/text-field';
 import type { FlowState } from '@/lib/dcr/model';
 import { dcrStyles, Field } from './field';
-import { TimeField } from './time-field';
+import { TimeRange } from './time-range';
 
-const MEETING_TYPES = [
-  'Cycle meeting',
-  'Area review',
-  'Regional review',
-  'Conference or CME',
-  'Team meeting',
-];
+/** Meeting has exactly two types (stored as the DCR/TP details `title`). */
+export const MEETING_TYPES = ['Cycle Meeting', 'Review Meeting'];
 const TRAINING_TYPES = [
   'Product training',
   'Induction',
@@ -21,8 +16,6 @@ const TRAINING_TYPES = [
   'Compliance training',
   'Refresher training',
 ];
-
-const digits = (v: string) => v.replace(/\D/g, '').slice(0, 3);
 
 /** Meeting or training details (web dcr-sections MeetingSection). */
 export function MeetingEditor({
@@ -67,20 +60,11 @@ export function MeetingEditor({
         error={errors.location?.[0]}
         maxLength={200}
       />
-      <TimeField
-        label="Start time"
-        value={value.startTime}
-        onChange={(startTime) => onChange({ ...value, startTime })}
-        editable={!readOnly}
-        error={errors.startTime?.[0]}
-      />
-      <TextField
-        label="Duration (minutes)"
-        value={value.durationMin}
-        onChangeText={(d) => onChange({ ...value, durationMin: digits(d) })}
-        editable={!readOnly}
-        keyboardType="number-pad"
-        error={errors.durationMin?.[0]}
+      <TimeRange
+        value={value}
+        readOnly={readOnly}
+        errors={{ startTime: errors.startTime?.[0], endTime: errors.endTime?.[0] }}
+        onChange={onChange}
       />
       {kind === 'training' ? (
         <TextField
@@ -111,7 +95,8 @@ export function MeetingEditor({
         title="Type"
         options={[
           ...presets.map((p) => ({ value: p, label: p })),
-          { value: '__other', label: 'Other…' },
+          // Meeting is a closed list; training keeps a free-text Other.
+          ...(kind === 'training' ? [{ value: '__other', label: 'Other…' }] : []),
         ]}
         value={presets.includes(value.title) ? value.title : value.title ? '__other' : null}
         onPick={(v) => {

@@ -4,6 +4,7 @@ import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { DecisionBar } from '@/components/approvals/decision-bar';
+import { DetailsTime } from '@/components/approvals/details-time';
 import { DcrSfcReview } from '@/components/approvals/sfc-review';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
@@ -170,6 +171,7 @@ function Review({ id, repName }: { id: string; repName: string }) {
             {'description' in d.details ? (
               <AppText variant="body">{d.details.description}</AppText>
             ) : null}
+            <DetailsTime details={d.details} />
           </Card>
         ) : null}
 

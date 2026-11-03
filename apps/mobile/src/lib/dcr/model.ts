@@ -182,6 +182,8 @@ export type MeetingForm = {
   mode: 'in_person' | 'online';
   location: string;
   startTime: string;
+  /** UI only: duration is derived from start and end (contract stores durationMin). */
+  endTime: string;
   durationMin: string;
   attendees: string;
   remarks: string;
@@ -191,6 +193,7 @@ export type OfficeForm = {
   taskType: string;
   description: string;
   startTime: string;
+  endTime: string;
   durationMin: string;
   remarks: string;
 };
@@ -199,6 +202,7 @@ export const emptyMeeting = (): MeetingForm => ({
   mode: 'in_person',
   location: '',
   startTime: '',
+  endTime: '',
   durationMin: '',
   attendees: '',
   remarks: '',
@@ -208,6 +212,7 @@ export const emptyOffice = (): OfficeForm => ({
   taskType: '',
   description: '',
   startTime: '',
+  endTime: '',
   durationMin: '',
   remarks: '',
 });
@@ -241,6 +246,32 @@ export type FlowState = {
   /** Approved tour plan item this day is filed from (sent once the TP API is live). */
   tourPlanItemId?: string | null;
 };
+
+const toMin = (hhmm: string) =>
+  HHMM.test(hhmm) ? Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) : null;
+
+/** Minutes from start to end (same day), or null when either is missing or end is not after start. */
+export function spanMinutes(start: string, end: string): number | null {
+  const a = toMin(start);
+  const b = toMin(end);
+  return a === null || b === null || b <= a ? null : b - a;
+}
+
+/** HH:mm `mins` after `start` (for hydrating an end time from a saved duration), or ''. */
+export function plusMinutes(start: string, mins: number): string {
+  const a = toMin(start);
+  if (a === null || !(mins > 0) || a + mins >= 24 * 60) return '';
+  const t = a + mins;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+}
+
+/** "1 h 30 min" style label. */
+export function durationLabel(mins: number | null): string {
+  if (!mins) return '—';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return [h ? `${h} h` : '', m ? `${m} min` : ''].filter(Boolean).join(' ');
+}
 
 const minutes = (v: string) => {
   const n = Number(v);
@@ -336,17 +367,23 @@ export function problems(
   }
   if (b === 'meeting' || b === 'training') {
     const m = s.meeting;
-    const what = b === 'meeting' ? 'meeting' : 'training';
-    if (!m.title.trim()) add('title', `Choose the ${what} type, or pick Other and type it in.`);
+    if (!m.title.trim())
+      add(
+        'title',
+        b === 'meeting'
+          ? 'Choose Cycle Meeting or Review Meeting.'
+          : 'Choose the training type, or pick Other and type it in.',
+      );
     if (m.mode === 'in_person' && !m.location.trim()) add('location', 'Enter where it was held.');
     if (!HHMM.test(m.startTime)) add('startTime', 'Enter the start time.');
-    if (!minutes(m.durationMin)) add('durationMin', 'Enter the duration in minutes (1 to 720).');
+    timeRangeProblem(m, add);
   }
   if (b === 'office') {
     const o = s.office;
     if (!o.taskType.trim()) add('taskType', 'Choose the task type, or pick Other and type it in.');
     if (!o.description.trim()) add('description', 'Describe the task.');
-    if (!minutes(o.durationMin)) add('durationMin', 'Enter the duration in minutes (1 to 720).');
+    if (!HHMM.test(o.startTime)) add('startTime', 'Enter the start time.');
+    timeRangeProblem(o, add);
   }
   if (b === 'leave' && !s.leaveRequestId)
     add('leave', 'Choose or apply for the leave that covers this date.');
@@ -479,4 +516,19 @@ export function dcrErrorMessage(e: ApiError): string {
     default:
       return e.message || 'Could not save. Try again.';
   }
+}
+
+function timeRangeProblem(
+  r: { startTime: string; endTime: string; durationMin: string },
+  add: (key: string, text: string) => void,
+) {
+  if (!HHMM.test(r.endTime)) {
+    // Older records may carry only a duration; they stay valid until the times are edited.
+    if (!(minutes(r.durationMin) && !r.endTime && !HHMM.test(r.startTime)))
+      add('endTime', 'Enter the end time.');
+    return;
+  }
+  const span = spanMinutes(r.startTime, r.endTime);
+  if (HHMM.test(r.startTime) && span === null) add('endTime', 'End time must be after the start.');
+  else if (span !== null && span > 720) add('endTime', 'A session can be at most 12 hours.');
 }

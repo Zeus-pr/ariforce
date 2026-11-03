@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { DecisionBar } from '@/components/approvals/decision-bar';
 import { TpSfcReview } from '@/components/approvals/sfc-review';
+import { DetailsTime } from '@/components/approvals/details-time';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
@@ -131,6 +132,7 @@ function Review({ id }: { id: string }) {
           ) : null}
           {det && 'title' in det ? <AppText variant="body">{det.title}</AppText> : null}
           {det && 'description' in det ? <AppText variant="body">{det.description}</AppText> : null}
+          <DetailsTime details={det} />
         </Card>
 
         <TpSfcReview item={t} />
