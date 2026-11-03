@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@ariforce/ui/components/button';
 import {
@@ -16,7 +17,12 @@ import { useRole } from '@/components/shell/role-context';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { thrownMessage } from '@/lib/dcr/errors';
 import { decideTourPlanItem, fetchPendingTourPlanItems, type TpItem } from '@/lib/tour-plans/items';
-import { TourPlanItemEditor } from './tour-plan-item-editor';
+
+// 790-line editor dialog: loaded on its own chunk, after the page.
+const TourPlanItemEditor = dynamic(
+  () => import('./tour-plan-item-editor').then((m) => m.TourPlanItemEditor),
+  { ssr: false },
+);
 
 const rangeLabel = (from: string, to: string) => {
   const label = (date: string) =>
