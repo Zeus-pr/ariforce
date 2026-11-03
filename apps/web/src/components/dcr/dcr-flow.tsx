@@ -21,7 +21,7 @@ import { cn } from '@ariforce/ui/lib/utils';
 import { dateLabel, todayIST } from '@/components/attendance/format';
 import { dcrDateClosedText, dcrDateOpen } from '@/lib/dcr/date-rule';
 import Link from 'next/link';
-import { api, apiReady, MOCKING, toApiError, type ApiError } from '@/lib/api';
+import { api, apiReady, toApiError, type ApiError } from '@/lib/api';
 import {
   BANDS,
   KIND_LABEL,
@@ -415,20 +415,12 @@ function Flow({
     };
   }, [field, s.territoryIds.length, peopleQ, peopleTick, readOnly, savedWorkWithIds, dcr]);
 
-  // Products for detailing. Mock: Arighna's real product names (loaded lazily, never in the real bundle path).
+  // Products for detailing (GET /v1/products).
   useEffect(() => {
     if (!field) return;
     let live = true;
     setProductsError(null);
     void (async () => {
-      if (MOCKING) {
-        const { MOCK_PRODUCT_SEED } = await import('@/mocks/product-seed');
-        if (live)
-          setProducts(
-            MOCK_PRODUCT_SEED.map((p) => ({ id: p.id, label: p.name, hint: p.composition })),
-          );
-        return;
-      }
       const p = await getProducts();
       const r = { ...p, data: p.data && { items: p.data } };
       if (!live) return;

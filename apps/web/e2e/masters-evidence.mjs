@@ -33,9 +33,9 @@ async function open(view, theme, extra = {}) {
   const ctx = await browser.newContext({ ...VIEWS[view], colorScheme: theme, ...extra });
   await ctx.addInitScript(() => {
     sessionStorage.setItem('af:splash-seen', '1');
-    if (!localStorage.getItem('af:mock-session'))
+    if (!localStorage.getItem('af:session'))
       localStorage.setItem(
-        'af:mock-session',
+        'af:session',
         JSON.stringify({ userId: 'mock-admin', role: 'system_admin' }),
       );
   });

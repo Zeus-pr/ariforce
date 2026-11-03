@@ -36,7 +36,7 @@ import {
   TableRow,
 } from '@ariforce/ui/components/table';
 import { useRole } from '@/components/shell/role-context';
-import { MOCKING, api, apiReady, toApiError } from '@/lib/api';
+import { api, apiReady, toApiError } from '@/lib/api';
 import {
   STATUS_FILTERS,
   STATUS_LABEL,
@@ -50,7 +50,7 @@ import {
 import { getMe } from '@/lib/query';
 
 const ALL = 'all';
-const PAGE = MOCKING ? 2 : 50;
+const PAGE = 50;
 const sevClass = {
   high: 'bg-red-100 text-red-800',
   medium: 'bg-amber-100 text-amber-900',
@@ -354,11 +354,7 @@ function ExceptionDetail({
   useEffect(() => {
     // Mock: /v1/me is not persona-scoped by default, so name the persona explicitly.
     void apiReady()
-      .then(() =>
-        MOCKING
-          ? api.GET('/v1/me', { headers: { 'x-mock-user': role } }).then((r) => r.data ?? null)
-          : getMe(),
-      )
+      .then(() => getMe())
       .then((m) => m && setMe(m.id))
       .catch(() => {});
   }, [role]);

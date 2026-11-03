@@ -7,7 +7,7 @@ import { rateLimitMessage, SUSPENDED_MESSAGE } from '@/lib/auth-errors';
 import { ROLES, ROLE_LABEL, roleLevel, type Role } from './roles';
 import { API_URL, api, setAccountStateHandler, setUnauthenticatedHandler } from './api';
 
-import { SESSION_KEY } from './auth-boot';
+import { SESSION_KEY, migrateLegacySession } from './auth-boot';
 import { meQuery, queryClient } from './query';
 
 export { SESSION_KEY };
@@ -21,7 +21,13 @@ export type SignedIn = { user: User; role: Role };
 let cache: { raw: string | null; value: SignedIn | null } = { raw: null, value: null };
 const listeners = new Set<() => void>();
 
+let migrated = false;
+
 function read(): SignedIn | null {
+  if (!migrated) {
+    migrated = true;
+    migrateLegacySession();
+  }
   let raw: string | null = null;
   try {
     raw = localStorage.getItem(SESSION_KEY);

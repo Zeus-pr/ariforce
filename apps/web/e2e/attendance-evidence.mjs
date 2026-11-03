@@ -41,9 +41,9 @@ for (const view of ['desktop', 'mobile']) {
   });
   await ctx.addInitScript(() => {
     sessionStorage.setItem('af:splash-seen', '1');
-    if (!localStorage.getItem('af:mock-session'))
+    if (!localStorage.getItem('af:session'))
       localStorage.setItem(
-        'af:mock-session',
+        'af:session',
         JSON.stringify({ userId: 'mock-bm', role: 'business_manager' }),
       );
   });
@@ -134,7 +134,7 @@ for (const view of ['desktop', 'mobile']) {
   // Approver view: no punch panel, sees the day table.
   await page.evaluate(() =>
     localStorage.setItem(
-      'af:mock-session',
+      'af:session',
       JSON.stringify({ userId: 'mock-rbm', role: 'regional_business_manager' }),
     ),
   );
@@ -146,7 +146,7 @@ for (const view of ['desktop', 'mobile']) {
   );
   await page.evaluate(() =>
     localStorage.setItem(
-      'af:mock-session',
+      'af:session',
       JSON.stringify({ userId: 'mock-director', role: 'director' }),
     ),
   );

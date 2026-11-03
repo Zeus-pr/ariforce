@@ -53,7 +53,7 @@ for (const view of ['desktop', 'mobile']) {
   await ctx.addInitScript(
     (s) => {
       sessionStorage.setItem('af:splash-seen', '1');
-      if (!localStorage.getItem('af:mock-session')) localStorage.setItem('af:mock-session', s);
+      if (!localStorage.getItem('af:session')) localStorage.setItem('af:session', s);
     },
     session({ userId: 'mock-director', role: 'director' }),
   );

@@ -1,6 +1,5 @@
 'use client';
 
-import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { Approval, KpiReport, ProductKpiReport } from '@ariforce/contracts';
@@ -24,10 +23,11 @@ import { approvalDecisionMessage } from '@/lib/leave/model';
 import { isApprover, isFieldRole, type Role } from '@/lib/roles';
 import { ApprovalReview } from '@/components/approvals/approval-review';
 import { RejectDialog } from '@/components/approvals/reject-dialog';
-import { MOCK_ATTENTION, type Severity } from '@/mocks/dashboard';
 import { formatKpi, HEADLINE, KPI_META, TEAM_COLUMNS } from './kpi-meta';
 import { KpiCards } from './kpi-cards';
 import { rollupFor } from './rollup';
+
+type Severity = 'high' | 'medium' | 'low';
 
 export { KpiCards, rollupFor };
 
@@ -57,14 +57,6 @@ const monthLabel = (m: string) =>
   new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
     new Date(`${m}-01T00:00:00Z`),
   );
-
-function SampleBadge() {
-  return (
-    <Badge variant="outline" className="border-dashed font-normal text-muted-foreground">
-      Sample data
-    </Badge>
-  );
-}
 
 function FormulaNote() {
   return (
@@ -231,37 +223,6 @@ function Attention({ rows, className }: { rows: KpiReport['rows']; className?: s
               <p className="mt-0.5 text-sm text-muted-foreground">{a.detail}</p>
               <p className="mt-1 text-xs text-muted-foreground">{a.who}</p>
             </div>
-          </li>
-        ))}
-      </ul>
-      <div className="flex items-center justify-between gap-2 border-t bg-muted/30 px-4 py-2">
-        <p className="text-xs font-medium text-muted-foreground">
-          Not in the API yet: geofence, late DCR, sample stock
-        </p>
-        <SampleBadge />
-      </div>
-      <ul className="divide-y opacity-80" data-testid="attention-sample">
-        {MOCK_ATTENTION.filter((a) => /geofence|stock|DCR missing/i.test(a.title)).map((a) => (
-          <li key={a.id} className="grid grid-cols-[4.5rem_1fr_auto] items-start gap-3 px-4 py-3">
-            <span
-              className={cn(
-                'pt-0.5 text-xs font-medium tracking-wide uppercase',
-                SEVERITY[a.severity].text,
-              )}
-            >
-              {SEVERITY[a.severity].label}
-            </span>
-            <div className="min-w-0">
-              <p className="font-medium">{a.title}</p>
-              <p className="mt-0.5 text-sm text-muted-foreground">{a.detail}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {a.who} · {a.area} · {a.age}
-              </p>
-            </div>
-            <Button variant="ghost" size="sm" className="shrink-0" disabled>
-              {a.action}
-              <ArrowRight className="size-3.5" />
-            </Button>
           </li>
         ))}
       </ul>
