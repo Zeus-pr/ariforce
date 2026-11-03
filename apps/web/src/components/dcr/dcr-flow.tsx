@@ -19,6 +19,7 @@ import { Skeleton } from '@ariforce/ui/components/skeleton';
 import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
 import { dateLabel, todayIST } from '@/components/attendance/format';
+import { dcrDateClosedText, dcrDateOpen } from '@/lib/dcr/date-rule';
 import Link from 'next/link';
 import { api, apiReady, MOCKING, toApiError, type ApiError } from '@/lib/api';
 import {
@@ -229,10 +230,11 @@ function Flow({
   const field = branch === 'field';
   const blocked = !!daySubmitted && dcr?.status !== 'submitted';
   const unlockedOpen = !!unlockedUntil && Date.parse(unlockedUntil) > Date.now();
-  const readOnly =
-    ((dcr?.status === 'submitted' || dcr?.status === 'locked' || dayLocked) && !unlockedOpen) ||
-    blocked ||
-    gone;
+  const lockedView =
+    (dcr?.status === 'submitted' || dcr?.status === 'locked' || dayLocked) && !unlockedOpen;
+  /** Today only (IST); a past day only while unlocked. Other days are view-only. */
+  const dateClosed = !dcrDateOpen(s.date, today, unlockedUntil);
+  const readOnly = lockedView || dateClosed || blocked || gone;
   const savedWorkWithIds = readOnly ? (dcr?.workWithUserIds ?? []).join(',') : '';
   const dayHqIds = useMemo(() => hqIdsOf(rows, s.territoryIds), [rows, s.territoryIds]);
   // Per HQ of the day: the picked level-'territory' rows under it, or none when the HQ itself was picked (whole HQ).
@@ -945,10 +947,20 @@ function Flow({
         </div>
       )}
 
+      {dateClosed && !lockedView && !blocked && !gone && (
+        <div
+          className="rounded-xl border bg-muted/40 p-4 text-sm"
+          role="status"
+          data-testid="dcr-date-closed"
+        >
+          {dcrDateClosedText(s.date, today)}
+        </div>
+      )}
+
       {!dateLocked && !dcr && (
         <Step
           title="Date"
-          hint="Any day that isn’t locked. You can keep several drafts for the same day and submit one."
+          hint="Today only. A past day can be filled only after your manager reopens it."
           testId="dcr-step-date"
         >
           <div className="flex flex-col gap-1.5">
@@ -959,6 +971,7 @@ function Flow({
               id="dcr-date"
               type="date"
               value={s.date}
+              min={today}
               max={today}
               onChange={(e) => {
                 const v = e.target.value;
