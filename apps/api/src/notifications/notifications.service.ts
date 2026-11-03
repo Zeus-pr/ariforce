@@ -66,14 +66,44 @@ export class NotificationsService {
     }
   }
 
-  /** notify() once per recipient (deduped; null / self skipped as in notify()). */
+  /**
+   * notify() for each recipient (deduped; null / self skipped as in notify()), as one multi-row job
+   * insert in one savepoint per event.
+   */
   async notifyMany(
     tx: Tx,
     p: Principal,
     ev: Omit<NotifyEvent, 'recipientId'>,
     recipientIds: (string | null | undefined)[],
   ) {
-    for (const r of new Set(recipientIds)) await this.notify(tx, p, { ...ev, recipientId: r });
+    const to = [...new Set(recipientIds)].filter(
+      (r): r is string => !!r && (p.system || r !== p.userId),
+    );
+    if (!to.length) return;
+    if (to.length === 1) return this.notify(tx, p, { ...ev, recipientId: to[0]! });
+    const data = p.system
+      ? { ...(ev.data ?? {}), autoApproved: true, reason: AUTO_APPROVE_REASON }
+      : ev.data;
+    try {
+      await tx.transaction((sp) =>
+        this.jobs.enqueueMany(
+          sp,
+          p.companyId,
+          'notify',
+          to.map((r) => ({
+            payload: {
+              ...ev,
+              ...(data !== undefined && { data }),
+              recipientId: r,
+              actorId: p.system ? null : p.userId,
+            },
+            dedupeKey: `${r}:${ev.dedupeKey}`,
+          })),
+        ),
+      );
+    } catch (e) {
+      this.log.error(`enqueue ${ev.type} failed: ${(e as Error).message}`);
+    }
   }
 
   /**
