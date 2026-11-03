@@ -16,7 +16,13 @@ import { SignupInline } from '@/components/signups/signup-requests-view';
  * (e.g. a manager above the requester) — shown plainly. Leave/expense/doctor requests that are not in the
  * approvals store (mock leave/expense flows) fall back to the subject's own endpoint.
  */
-export function ApprovalReview({ approval }: { approval: Approval }) {
+export function ApprovalReview({
+  approval,
+  readOnly = false,
+}: {
+  approval: Approval;
+  readOnly?: boolean;
+}) {
   const t = approval.subjectType;
   const [detail, setDetail] = useState<ApprovalDetail | null | undefined>(undefined);
   useEffect(() => {
@@ -53,7 +59,7 @@ export function ApprovalReview({ approval }: { approval: Approval }) {
         <DoctorReview a={approval} />
       ) : t === 'dcr' ? (
         <div className="flex flex-col gap-4">
-          <DcrReportBody id={approval.subjectId} inline />
+          <DcrReportBody id={approval.subjectId} inline readOnly={readOnly} />
         </div>
       ) : t === 'signup' ? (
         <SignupInline id={approval.subjectId} />

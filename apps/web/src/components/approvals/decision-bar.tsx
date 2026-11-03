@@ -10,7 +10,7 @@ import { approvalDecisionMessage } from '@/lib/leave/model';
 import { RejectDialog } from './reject-dialog';
 
 /** Approve / Reject (reason required) for one approval request, in place. */
-export function DecisionBar({ approval: a }: { approval: Approval }) {
+export function DecisionBar({ approval: a, onDone }: { approval: Approval; onDone?: () => void }) {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -27,6 +27,7 @@ export function DecisionBar({ approval: a }: { approval: Approval }) {
       toast.success(decision === 'approve' ? `${a.summary} approved` : `${a.summary} rejected`);
       setRejecting(false);
       void qc.invalidateQueries({ queryKey: ['approvals-org'] });
+      onDone?.();
     } catch {
       toast.error('Could not reach the server. Nothing was saved; try again.');
     } finally {
