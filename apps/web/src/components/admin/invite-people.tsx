@@ -21,6 +21,7 @@ import { ROLES, ROLE_LABEL, roleLevel, type Role } from '@/lib/roles';
 import type { InviteResult } from '@/lib/team-adapter/types';
 import { cn } from '@ariforce/ui/lib/utils';
 import { getTerritories } from '@/lib/query';
+import { allPages } from '@/lib/paging';
 
 type User = components['schemas']['UserSummary'];
 export type Terr = { id: string; name: string; code: string; level: string };
@@ -610,9 +611,13 @@ function PendingInvites({ hqs }: { hqs: Terr[] | null }) {
   const [busy, setBusy] = useState<string | null>(null);
   const load = useCallback(async () => {
     await apiReady();
-    const r = await api.GET('/v1/users', {
-      params: { query: { status: 'invited', limit: 200 } as never },
-    });
+    const r = await allPages((cursor) =>
+      api.GET('/v1/users', {
+        params: {
+          query: { status: 'invited', limit: 200, ...(cursor ? { cursor } : {}) } as never,
+        },
+      }),
+    );
     setRows(r.data?.items ?? []);
   }, []);
   useEffect(() => {
