@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- generic drizzle glue over many master tables */
+import { authContextWriteIf } from '../auth/auth-context-cache';
 import { ConflictException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   duplicateKeys,
@@ -112,207 +113,211 @@ export class ImportsService {
         { code: 'VALIDATION', message: 'fileKey must come from an import_source upload' },
         422,
       );
-    return this.tenant.run(p, async (tx) => {
-      if (idemKey) {
-        const [prev] = await tx
-          .select()
-          .from(importJobs)
-          .where(and(eq(importJobs.idempotencyKey, idemKey), eq(importJobs.dryRun, req.dryRun)));
-        if (prev) {
-          if (prev.entity !== entity || prev.onDuplicate !== req.onDuplicate)
-            throw new ConflictException({
-              code: 'IDEMPOTENCY_CONFLICT',
-              message: 'Idempotency-Key reused with a different request',
-            });
-          return this.load(tx, prev.id);
+    return authContextWriteIf(
+      entity === 'territories',
+      p.companyId,
+      this.tenant.run(p, async (tx) => {
+        if (idemKey) {
+          const [prev] = await tx
+            .select()
+            .from(importJobs)
+            .where(and(eq(importJobs.idempotencyKey, idemKey), eq(importJobs.dryRun, req.dryRun)));
+          if (prev) {
+            if (prev.entity !== entity || prev.onDuplicate !== req.onDuplicate)
+              throw new ConflictException({
+                code: 'IDEMPOTENCY_CONFLICT',
+                message: 'Idempotency-Key reused with a different request',
+              });
+            return this.load(tx, prev.id);
+          }
         }
-      }
-      const lk = await this.lookup(tx, p);
-      const idx = await this.existing(tx, entity);
-      const seen = new Map<string, number>();
-      const createdTerr = new Map<string, { id: string; path: string }>();
-      const takenPaths = new Set(lk.territoryPath.values());
-      const jobId = uuidv7();
-      const results: (ImportRowResult & { raw: Row })[] = [];
+        const lk = await this.lookup(tx, p);
+        const idx = await this.existing(tx, entity);
+        const seen = new Map<string, number>();
+        const createdTerr = new Map<string, { id: string; path: string }>();
+        const takenPaths = new Set(lk.territoryPath.values());
+        const jobId = uuidv7();
+        const results: (ImportRowResult & { raw: Row })[] = [];
 
-      for (const [i, raw] of req.rows.entries()) {
-        const row = i + 1;
-        const res = (o: Partial<ImportRowResult>) =>
-          results.push({
-            row,
-            status: 'valid',
-            errors: [],
-            id: null,
-            duplicateOf: null,
-            duplicateRule: null,
-            raw,
-            ...o,
-          });
-        const m = mapImportRow(entity, raw, lk);
-        if (!m.body) {
-          res({ status: 'error', errors: m.errors });
-          continue;
-        }
-        let body: Row = m.body;
-        if (entity === 'territories') {
-          // parent_code may refer to a row created earlier in this file
-          const pc = body.parentCode as string | null;
-          const parentId = pc ? (lk.territory(pc) ?? createdTerr.get(pc)?.id) : null;
-          if (pc && !parentId) {
-            res({
-              status: 'error',
-              errors: [
-                {
-                  column: 'parent_code',
-                  code: 'unknown_code',
-                  message: `Unknown or out-of-scope territory code '${pc}'`,
-                },
-              ],
+        for (const [i, raw] of req.rows.entries()) {
+          const row = i + 1;
+          const res = (o: Partial<ImportRowResult>) =>
+            results.push({
+              row,
+              status: 'valid',
+              errors: [],
+              id: null,
+              duplicateOf: null,
+              duplicateRule: null,
+              raw,
+              ...o,
             });
+          const m = mapImportRow(entity, raw, lk);
+          if (!m.body) {
+            res({ status: 'error', errors: m.errors });
             continue;
           }
-          if (!pc && body.level !== 'national') {
-            res({
-              status: 'error',
-              errors: [
-                {
-                  column: 'parent_code',
-                  code: 'required',
-                  message: 'parent_code is required below national level',
-                },
-              ],
-            });
-            continue;
+          let body: Row = m.body;
+          if (entity === 'territories') {
+            // parent_code may refer to a row created earlier in this file
+            const pc = body.parentCode as string | null;
+            const parentId = pc ? (lk.territory(pc) ?? createdTerr.get(pc)?.id) : null;
+            if (pc && !parentId) {
+              res({
+                status: 'error',
+                errors: [
+                  {
+                    column: 'parent_code',
+                    code: 'unknown_code',
+                    message: `Unknown or out-of-scope territory code '${pc}'`,
+                  },
+                ],
+              });
+              continue;
+            }
+            if (!pc && body.level !== 'national') {
+              res({
+                status: 'error',
+                errors: [
+                  {
+                    column: 'parent_code',
+                    code: 'required',
+                    message: 'parent_code is required below national level',
+                  },
+                ],
+              });
+              continue;
+            }
+            const parentPath = parentId
+              ? (lk.territoryPath.get(parentId) ?? createdTerr.get(pc!)?.path)
+              : null;
+            const id = uuidv7();
+            const c = body.centroid as { lat: number; lng: number } | null;
+            body = {
+              id,
+              code: body.code,
+              name: body.name,
+              level: body.level,
+              parentId,
+              path: childPath(parentId, parentPath, String(body.code), id, takenPaths),
+              centroid: c ? { x: c.lng, y: c.lat } : null,
+            };
+            takenPaths.add(String(body.path));
           }
-          const parentPath = parentId
-            ? (lk.territoryPath.get(parentId) ?? createdTerr.get(pc!)?.path)
-            : null;
-          const id = uuidv7();
-          const c = body.centroid as { lat: number; lng: number } | null;
-          body = {
-            id,
-            code: body.code,
-            name: body.name,
-            level: body.level,
-            parentId,
-            path: childPath(parentId, parentPath, String(body.code), id, takenPaths),
-            centroid: c ? { x: c.lng, y: c.lat } : null,
-          };
-          takenPaths.add(String(body.path));
-        }
-        const keys = duplicateKeys(entity, body);
-        const inFile = keys.find((k) => seen.has(`${k.rule}:${k.key}`));
-        if (inFile) {
-          res({
-            status: 'error',
-            duplicateRule: 'in_file',
-            errors: [
-              {
-                column: null,
-                code: 'duplicate_in_file',
-                message: `Same ${inFile.rule} as row ${seen.get(`${inFile.rule}:${inFile.key}`)}`,
-              },
-            ],
-          });
-          continue;
-        }
-        for (const k of keys) seen.set(`${k.rule}:${k.key}`, row);
-        const hitKey = keys.find((k) => idx.has(`${k.rule}:${k.key}`));
-        if (hitKey) {
-          const hit = idx.get(`${hitKey.rule}:${hitKey.key}`)!;
-          const dup = {
-            id: hit.id as string,
-            duplicateOf: hit.id as string,
-            duplicateRule: hitKey.rule,
-          };
-          if (req.onDuplicate === 'error') {
+          const keys = duplicateKeys(entity, body);
+          const inFile = keys.find((k) => seen.has(`${k.rule}:${k.key}`));
+          if (inFile) {
             res({
               status: 'error',
-              ...dup,
+              duplicateRule: 'in_file',
               errors: [
                 {
                   column: null,
-                  code: 'duplicate',
-                  message: `Matches existing record by ${hitKey.rule}`,
+                  code: 'duplicate_in_file',
+                  message: `Same ${inFile.rule} as row ${seen.get(`${inFile.rule}:${inFile.key}`)}`,
                 },
               ],
             });
-          } else if (req.onDuplicate === 'update' && entity !== 'territories') {
-            if (req.dryRun) res({ status: 'valid', ...dup });
-            else
-              await this.saveRow(tx, res, async (t2) => {
-                await this.masters.patch(t2, def, p, hit.id as string, body, 'import_update');
-                return { status: 'updated', ...dup };
-              });
-          } else res({ status: req.dryRun ? 'duplicate' : 'skipped', ...dup });
-          continue;
-        }
-        if (req.dryRun) {
-          res({ status: 'valid' });
-          if (entity === 'territories')
-            createdTerr.set(String(body.code), { id: String(body.id), path: String(body.path) });
-          continue;
-        }
-        await this.saveRow(tx, res, async (t2) => {
-          if (entity === 'territories') {
-            const [t] = await t2
-              .insert(territories)
-              .values({ ...(body as any), companyId: p.companyId })
-              .returning({ id: territories.id });
-            createdTerr.set(String(body.code), { id: t!.id, path: String(body.path) });
-            return { status: 'created', id: t!.id };
+            continue;
           }
-          const dto = await this.masters.insert(t2, def, p, body, 'import_create');
-          return { status: 'created', id: dto.id as string };
-        });
-      }
+          for (const k of keys) seen.set(`${k.rule}:${k.key}`, row);
+          const hitKey = keys.find((k) => idx.has(`${k.rule}:${k.key}`));
+          if (hitKey) {
+            const hit = idx.get(`${hitKey.rule}:${hitKey.key}`)!;
+            const dup = {
+              id: hit.id as string,
+              duplicateOf: hit.id as string,
+              duplicateRule: hitKey.rule,
+            };
+            if (req.onDuplicate === 'error') {
+              res({
+                status: 'error',
+                ...dup,
+                errors: [
+                  {
+                    column: null,
+                    code: 'duplicate',
+                    message: `Matches existing record by ${hitKey.rule}`,
+                  },
+                ],
+              });
+            } else if (req.onDuplicate === 'update' && entity !== 'territories') {
+              if (req.dryRun) res({ status: 'valid', ...dup });
+              else
+                await this.saveRow(tx, res, async (t2) => {
+                  await this.masters.patch(t2, def, p, hit.id as string, body, 'import_update');
+                  return { status: 'updated', ...dup };
+                });
+            } else res({ status: req.dryRun ? 'duplicate' : 'skipped', ...dup });
+            continue;
+          }
+          if (req.dryRun) {
+            res({ status: 'valid' });
+            if (entity === 'territories')
+              createdTerr.set(String(body.code), { id: String(body.id), path: String(body.path) });
+            continue;
+          }
+          await this.saveRow(tx, res, async (t2) => {
+            if (entity === 'territories') {
+              const [t] = await t2
+                .insert(territories)
+                .values({ ...(body as any), companyId: p.companyId })
+                .returning({ id: territories.id });
+              createdTerr.set(String(body.code), { id: t!.id, path: String(body.path) });
+              return { status: 'created', id: t!.id };
+            }
+            const dto = await this.masters.insert(t2, def, p, body, 'import_create');
+            return { status: 'created', id: dto.id as string };
+          });
+        }
 
-      const count = (s: string) => results.filter((r) => r.status === s).length;
-      const totals = {
-        rows: results.length,
-        valid: count('valid'),
-        created: count('created'),
-        updated: count('updated'),
-        duplicate: count('duplicate'),
-        skipped: count('skipped'),
-        error: count('error'),
-      };
-      await tx.insert(importJobs).values({
-        id: jobId,
-        companyId: p.companyId,
-        entity,
-        dryRun: req.dryRun,
-        status: req.dryRun ? 'validated' : 'completed',
-        onDuplicate: req.onDuplicate,
-        fileName: req.fileName ?? null,
-        fileKey: req.fileKey ?? null,
-        idempotencyKey: idemKey ?? null,
-        totals,
-        createdBy: p.userId,
-        finishedAt: new Date(),
-      });
-      for (let i = 0; i < results.length; i += 500)
-        await tx.insert(importRows).values(
-          results.slice(i, i + 500).map((r) => ({
-            id: uuidv7(),
-            companyId: p.companyId,
-            jobId,
-            rowNo: r.row,
-            status: r.status,
-            raw: r.raw,
-            errors: r.errors,
-            entityId: r.id,
-            duplicateOf: r.duplicateOf,
-            duplicateRule: r.duplicateRule,
-          })),
-        );
-      await this.audit.record(tx, p, req.dryRun ? 'import.dry_run' : 'import.apply', {
-        entityType: 'import_job',
-        entityId: jobId,
-        after: { entity, totals, fileKey: req.fileKey ?? null },
-      });
-      return this.load(tx, jobId);
-    });
+        const count = (s: string) => results.filter((r) => r.status === s).length;
+        const totals = {
+          rows: results.length,
+          valid: count('valid'),
+          created: count('created'),
+          updated: count('updated'),
+          duplicate: count('duplicate'),
+          skipped: count('skipped'),
+          error: count('error'),
+        };
+        await tx.insert(importJobs).values({
+          id: jobId,
+          companyId: p.companyId,
+          entity,
+          dryRun: req.dryRun,
+          status: req.dryRun ? 'validated' : 'completed',
+          onDuplicate: req.onDuplicate,
+          fileName: req.fileName ?? null,
+          fileKey: req.fileKey ?? null,
+          idempotencyKey: idemKey ?? null,
+          totals,
+          createdBy: p.userId,
+          finishedAt: new Date(),
+        });
+        for (let i = 0; i < results.length; i += 500)
+          await tx.insert(importRows).values(
+            results.slice(i, i + 500).map((r) => ({
+              id: uuidv7(),
+              companyId: p.companyId,
+              jobId,
+              rowNo: r.row,
+              status: r.status,
+              raw: r.raw,
+              errors: r.errors,
+              entityId: r.id,
+              duplicateOf: r.duplicateOf,
+              duplicateRule: r.duplicateRule,
+            })),
+          );
+        await this.audit.record(tx, p, req.dryRun ? 'import.dry_run' : 'import.apply', {
+          entityType: 'import_job',
+          entityId: jobId,
+          after: { entity, totals, fileKey: req.fileKey ?? null },
+        });
+        return this.load(tx, jobId);
+      }),
+    );
   }
 
   /** One savepoint per row: a DB failure marks the row as error without losing the others. */

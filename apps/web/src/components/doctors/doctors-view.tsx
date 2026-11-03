@@ -1,5 +1,7 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+
 import { PlaceholderTag } from '@/components/masters/placeholder';
 
 import { ArrowLeft, FileSpreadsheet, MapPin, Pencil, Phone, Plus } from 'lucide-react';
@@ -13,19 +15,16 @@ import { RejectionNote } from '@/components/approvals/rejection-note';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import type { Doctor } from '@ariforce/contracts';
 import { Badge } from '@ariforce/ui/components/badge';
 import { Card, CardDescription, CardHeader, CardTitle } from '@ariforce/ui/components/card';
 import { cn } from '@ariforce/ui/lib/utils';
-import { axisProps, CHART, ChartFrame, ChartTooltip } from '@/components/charts/chart';
 import { DataTable } from '@/components/data-table/data-table';
 import type { Column } from '@/components/data-table/types';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
 import { masterSource } from '@/components/masters/source';
 import { api, apiReady } from '@/lib/api';
 import { addDays, monthLabel, shortDate, thisMonth, todayYmd } from '@/lib/period';
-import { useReducedMotion } from '@/lib/use-reduced-motion';
 import {
   HISTORY_DAYS,
   productTally,
@@ -35,6 +34,13 @@ import {
   type Visit,
 } from './doctor-data';
 import { useProductNames } from './products';
+
+const VisitsChart = dynamic(() => import('./doctor-charts').then((m) => m.VisitsChart), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[170px] animate-pulse rounded-md bg-muted/40" aria-busy="true" />
+  ),
+});
 
 export function DoctorsView() {
   const id = useSearchParams().get('id');
@@ -141,7 +147,6 @@ const FEEDBACK: Record<string, string> = {
 function Doctor360({ id }: { id: string }) {
   const lk = useLookups();
   const names = useProductNames();
-  const reduced = useReducedMotion();
   const [doc, setDoc] = useState<Doctor | null | undefined>(undefined);
   const [real, setReal] = useState<Visit[] | null>(null);
   const { role } = useRole();
@@ -403,26 +408,7 @@ function Doctor360({ id }: { id: string }) {
               <CardTitle className="text-sm">Visits per month</CardTitle>
             </CardHeader>
             <div className="px-2 pb-2">
-              <ChartFrame height={170} label="Visits per month">
-                <BarChart
-                  data={monthly}
-                  margin={{ top: 12, right: 12, left: -24, bottom: 0 }}
-                  barSize={32}
-                >
-                  <CartesianGrid vertical={false} stroke={CHART.grid} />
-                  <XAxis dataKey="name" {...axisProps} />
-                  <YAxis allowDecimals={false} {...axisProps} />
-                  <ChartTooltip />
-                  <Bar
-                    dataKey="visits"
-                    name="Visits"
-                    fill={CHART.primary}
-                    radius={[3, 3, 0, 0]}
-                    isAnimationActive={!reduced}
-                    animationDuration={500}
-                  />
-                </BarChart>
-              </ChartFrame>
+              <VisitsChart monthly={monthly} />
             </div>
           </Card>
           <Card className="gap-0 py-0 shadow-xs">

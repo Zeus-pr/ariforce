@@ -42,14 +42,16 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
+import { assertDcrDateWritable } from './dcr-date';
 import { companySettings, localDate } from '../field/field.util';
 import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leave.util';
-import { StorageService } from '../files/storage.service';
+import { IMAGE_URL_WINDOW_S, StorageService } from '../files/storage.service';
 import {
   SUBMITTED_STATUSES,
   draftsNewestFirst,
@@ -133,7 +135,11 @@ export class DcrFlowService {
 
   /** Active products for the DCR pickers, with the presigned image URL (memoised local signing). */
   private async productOptions(tx: Tx, p: Principal): Promise<DcrProductOption[]> {
-    const rows = await tx
+    return this.signProducts(p, await this.productRows(tx));
+  }
+
+  private productRows(tx: Tx, ids?: string[]) {
+    return tx
       .select({
         id: products.id,
         divisionId: products.divisionId,
@@ -149,8 +155,20 @@ export class DcrFlowService {
         imageFileKey: products.imageFileKey,
       })
       .from(products)
-      .where(and(isNull(products.deletedAt), eq(products.active, true)))
+      .where(
+        and(
+          isNull(products.deletedAt),
+          eq(products.active, true),
+          ids ? inArray(products.id, ids) : undefined,
+        ),
+      )
       .orderBy(asc(sql`lower(${products.name})`), asc(products.id));
+  }
+
+  private signProducts(
+    p: Principal,
+    rows: Awaited<ReturnType<DcrFlowService['productRows']>>,
+  ): Promise<DcrProductOption[]> {
     return Promise.all(
       rows.map(async (r) => ({
         ...r,
@@ -226,7 +244,30 @@ export class DcrFlowService {
     return resolveSfcCandidates(rows, userId, hqIds, band);
   }
 
-  options(p: Principal, date: string) {
+  /**
+   * GET /v1/dcrs/products. The ETag hashes the product rows plus the image-URL signing window, so
+   * a 304 never hands back expired picture URLs. `body` is null when `ifNoneMatch` matches.
+   */
+  products(p: Principal, ids: string[] | undefined, ifNoneMatch: string | undefined) {
+    return this.tenant.run(p, async (tx) => {
+      const rows = await this.productRows(tx, ids);
+      const window = Math.floor(Date.now() / (IMAGE_URL_WINDOW_S * 1000));
+      const hash = createHash('sha256')
+        .update(JSON.stringify([window, ids ?? null, rows]))
+        .digest('base64url')
+        .slice(0, 27);
+      const etag = `W/"dp-${hash}"`;
+      const match = ifNoneMatch
+        ?.split(',')
+        .map((t) => t.trim())
+        .some((t) => t === etag || t === '*');
+      if (match) return { etag, body: null };
+      const items = await this.signProducts(p, rows);
+      return { etag, body: { products: items, detailProducts: groupDetailProducts(items), etag } };
+    });
+  }
+
+  options(p: Principal, date: string, includeProducts = true) {
     return this.tenant.run(p, async (tx) => {
       const s = await companySettings(tx, p);
       const wts = await tx
@@ -272,10 +313,13 @@ export class DcrFlowService {
         unlockRequest: await this.unlockRequest(tx, p, date),
         tourPlanDrafts: await itemCards(tx, p.userId, localDate(new Date(), s.timezone)),
         autoExpenseOnDcrSubmit: await this.autoExpense.enabled(tx, p),
-        ...(await this.productOptions(tx, p).then((products) => ({
-          products,
-          detailProducts: groupDetailProducts(products),
-        }))),
+        // Deprecated in favour of GET /v1/dcrs/products; skipped with includeProducts=false.
+        ...(includeProducts
+          ? await this.productOptions(tx, p).then((products) => ({
+              products,
+              detailProducts: groupDetailProducts(products),
+            }))
+          : { products: [], detailProducts: [] }),
       };
     });
   }
@@ -483,31 +527,39 @@ export class DcrFlowService {
           keepHqs.length ? notInArray(dcrSfcRoutes.hqTerritoryId, keepHqs) : sql`true`,
         ),
       );
+    // One read of the live rows for this DCR instead of a select per HQ.
+    const live = choices?.length
+      ? await tx
+          .select({
+            id: dcrSfcRoutes.id,
+            hq: dcrSfcRoutes.hqTerritoryId,
+            sfcRouteId: dcrSfcRoutes.sfcRouteId,
+          })
+          .from(dcrSfcRoutes)
+          .where(and(eq(dcrSfcRoutes.dcrId, dcrId), isNull(dcrSfcRoutes.deletedAt)))
+      : [];
+    const byHq = new Map(live.map((r) => [r.hq, { id: r.id, sfcRouteId: r.sfcRouteId }]));
     for (const c of choices ?? []) {
-      const [old] = await tx
-        .select()
-        .from(dcrSfcRoutes)
-        .where(
-          and(
-            eq(dcrSfcRoutes.dcrId, dcrId),
-            eq(dcrSfcRoutes.hqTerritoryId, c.hqTerritoryId),
-            isNull(dcrSfcRoutes.deletedAt),
-          ),
-        );
+      const old = byHq.get(c.hqTerritoryId);
       if (old && old.sfcRouteId === c.sfcRouteId) continue;
-      if (old)
+      if (old) {
         await tx
           .update(dcrSfcRoutes)
           .set({ sfcRouteId: c.sfcRouteId, snapshot: null })
           .where(eq(dcrSfcRoutes.id, old.id));
-      else
-        await tx.insert(dcrSfcRoutes).values({
+        byHq.set(c.hqTerritoryId, { id: old.id, sfcRouteId: c.sfcRouteId });
+      } else {
+        const row = {
           id: uuidv7(),
           companyId: p.companyId,
           dcrId,
           hqTerritoryId: c.hqTerritoryId,
           sfcRouteId: c.sfcRouteId,
-        });
+        };
+        await tx.insert(dcrSfcRoutes).values(row);
+        // Same HQ twice in one payload behaves as before (second one updates the first).
+        byHq.set(c.hqTerritoryId, { id: row.id, sfcRouteId: row.sfcRouteId });
+      }
     }
   }
 
@@ -521,9 +573,6 @@ export class DcrFlowService {
           field: 'tourPlanItemId',
           reason: 'TOUR_PLAN_ITEM_MISMATCH',
         });
-      // A future day may be drafted only from its approved tour plan item; submit opens on the day.
-      if (b.date > localDate(new Date(), s.timezone) && !b.tourPlanItemId)
-        throw err(422, 'VALIDATION', 'DCR date is in the future');
       // Lock the caller's live DCRs of the date: a concurrent submit of one of them is seen here.
       const day = await tx
         .select()
@@ -546,6 +595,8 @@ export class DcrFlowService {
         throw err(409, 'DAY_LOCKED', 'This day is locked; request a correction', {
           lockAt: li.lockAt.toISOString(),
         });
+      // Then today only (IST); a past day only while unlocked (dcr-date.ts).
+      assertDcrDateWritable(b.date, { unlocked: !!li.unlockedUntil });
       const target = resolveDraftTarget(b, byId, day);
       if (target.action === 'error') {
         if (target.status === 404) throw new NotFoundException('Draft not found');
@@ -689,8 +740,8 @@ export class DcrFlowService {
         throw err(409, 'DAY_LOCKED', 'This day is locked; request a correction', {
           lockAt: li.lockAt.toISOString(),
         });
-      if (cur.date > localDate(new Date(), s.timezone))
-        throw err(422, 'VALIDATION', 'DCR date is in the future');
+      // Then today only (IST); a past day only while unlocked (dcr-date.ts).
+      assertDcrDateWritable(cur.date, { unlocked: !!li.unlockedUntil });
 
       const wt = await this.workType(tx, cur.workTypeId);
       const band = workTypeBand(wt);

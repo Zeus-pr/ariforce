@@ -1,11 +1,10 @@
 'use client';
 
-import { Bar, CartesianGrid, ComposedChart, Legend, Line, XAxis, YAxis } from 'recharts';
-import { axisProps, CHART, ChartFrame, ChartTooltip } from '@/components/charts/chart';
-import { KpiCards } from '@/components/dashboard/dashboard-view';
+import dynamic from 'next/dynamic';
+
+import { KpiCards } from '@/components/dashboard/kpi-cards';
 import { useRole } from '@/components/shell/role-context';
 import { monthLabel } from '@/lib/period';
-import { useReducedMotion } from '@/lib/use-reduced-motion';
 import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
 import {
   ChartCard,
@@ -16,36 +15,16 @@ import {
   PerfTable,
   SampleBadge,
   useMonth,
-  type PerfCol,
 } from './perf-ui';
-import { breakdownFor, pick, usePerf, val, type Row } from './use-perf';
+import { breakdownFor, pick, usePerf, val } from './use-perf';
+import { impliedTarget, salesCols, SALES_KPIS } from './sales-kpis';
 
-export const SALES_KPIS = [
-  'primary_sales_value',
-  'primary_achievement_pct',
-  'secondary_sales_value',
-  'secondary_achievement_pct',
-  'growth_vs_ly_pct',
-  'pob_value',
-] as const;
-
-/** Target value implied by sales and achievement %; the KPI contract has no target amount (CONTRACT-GAPS #13, #19). */
-export function impliedTarget(r: Row | null | undefined, kind: 'primary' | 'secondary') {
-  const v = val(r, `${kind}_sales_value`);
-  const a = val(r, `${kind}_achievement_pct`);
-  return v !== null && a ? Math.round((v * 100) / a) : null;
-}
-
-export const salesCols = (first: string): PerfCol<Row>[] => [
-  { header: first, get: (r) => r.label },
-  { header: 'Primary sales', get: (r) => val(r, 'primary_sales_value'), format: inr },
-  { header: 'Primary target', get: (r) => impliedTarget(r, 'primary'), format: inr },
-  { header: 'Primary ach.', get: (r) => val(r, 'primary_achievement_pct'), format: pct },
-  { header: 'Secondary sales', get: (r) => val(r, 'secondary_sales_value'), format: inr },
-  { header: 'Secondary target', get: (r) => impliedTarget(r, 'secondary'), format: inr },
-  { header: 'Secondary ach.', get: (r) => val(r, 'secondary_achievement_pct'), format: pct },
-  { header: 'Growth vs LY', get: (r) => val(r, 'growth_vs_ly_pct'), format: pct },
-];
+const SalesTrendChart = dynamic(() => import('./sales-charts').then((m) => m.SalesTrendChart), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[240px] animate-pulse rounded-md bg-muted/40" aria-busy="true" />
+  ),
+});
 
 /** Brand-wise sales vs target. Sample only: no product grain for sales in the contract (CONTRACT-GAPS #19). */
 export function brandSample(month: string, total: number | null) {
@@ -64,7 +43,6 @@ export function SalesView() {
   const { role } = useRole();
   const month = useMonth();
   const perf = usePerf(role, month, SALES_KPIS);
-  const reduced = useReducedMotion();
   const by = breakdownFor(role);
   if (!month) return <div className="h-96" aria-busy="true" />;
   const first = by === 'byTerritory' ? 'Zone' : by === 'byUser' ? 'Team member' : 'You';
@@ -75,7 +53,6 @@ export function SalesView() {
     target: impliedTarget(t.row, 'primary'),
   }));
   const brands = brandSample(month, val(perf?.head, 'secondary_sales_value'));
-  const lakh = (v: number) => `₹${(v / 1e5).toFixed(1)}L`;
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -92,41 +69,7 @@ export function SalesView() {
         loading={!perf}
       />
       <ChartCard title="Sales against target, six months">
-        <ChartFrame height={240} label="Sales against target, six months">
-          <ComposedChart
-            data={trend}
-            margin={{ top: 12, right: 12, left: 0, bottom: 0 }}
-            barGap={2}
-          >
-            <CartesianGrid vertical={false} stroke={CHART.grid} />
-            <XAxis dataKey="name" {...axisProps} />
-            <YAxis tickFormatter={lakh} {...axisProps} width={56} />
-            <ChartTooltip format={inr} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar
-              dataKey="primary"
-              name="Primary"
-              fill={CHART.series[0]}
-              radius={[3, 3, 0, 0]}
-              isAnimationActive={!reduced}
-            />
-            <Bar
-              dataKey="secondary"
-              name="Secondary"
-              fill={CHART.series[1]}
-              radius={[3, 3, 0, 0]}
-              isAnimationActive={!reduced}
-            />
-            <Line
-              dataKey="target"
-              name="Primary target"
-              stroke={CHART.muted}
-              strokeDasharray="4 3"
-              dot={false}
-              isAnimationActive={!reduced}
-            />
-          </ComposedChart>
-        </ChartFrame>
+        <SalesTrendChart trend={trend} />
       </ChartCard>
       {perf && (
         <PerfTable

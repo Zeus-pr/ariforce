@@ -131,6 +131,8 @@ const batchIds = z
     description:
       'Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page.',
   });
+/** Shared `ids=` batch param (1..100 comma-separated UUIDs). */
+export const BatchIds = batchIds;
 export const DoctorListQuery = listQuery(['name', 'city', 'updatedAt', 'createdAt'] as const, {
   territoryId: territoryFilter,
   localTerritoryId: localTerritoryFilter,

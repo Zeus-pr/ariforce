@@ -37,6 +37,32 @@ export class JobsService {
       .onConflictDoNothing();
   }
 
+  /** Several jobs of one type in a single multi-row insert (duplicates skipped, as enqueue). */
+  async enqueueMany(
+    tx: Tx,
+    companyId: string,
+    type: string,
+    items: { payload: Record<string, unknown>; dedupeKey?: string }[],
+    o: Omit<EnqueueOptions, 'dedupeKey'> = {},
+  ) {
+    if (!items.length) return;
+    const runAt = o.runAt ?? new Date();
+    await tx
+      .insert(jobs)
+      .values(
+        items.map((it) => ({
+          id: uuidv7(),
+          companyId,
+          type,
+          payload: it.payload,
+          runAt,
+          maxAttempts: o.maxAttempts ?? 5,
+          dedupeKey: it.dedupeKey ?? null,
+        })),
+      )
+      .onConflictDoNothing();
+  }
+
   /** System job (company_id null), deduped on (type, dedupeKey). */
   async enqueueSystem(type: string, payload: Record<string, unknown>, dedupeKey: string) {
     await this.db.execute(

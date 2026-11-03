@@ -1,4 +1,5 @@
 import { MailService } from '../mail/mail.service';
+import { authContextWrite } from '../auth/auth-context-cache';
 import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
 import { revokeUserSessions } from '../auth/revoke';
 import {
@@ -348,7 +349,10 @@ export class TeamService {
     fn: (tx: Tx, outbox: PendingInvite[]) => Promise<T>,
   ): Promise<T> {
     const outbox: PendingInvite[] = [];
-    const out = await this.tenant.run(p, (tx) => fn(tx, outbox));
+    const out = await authContextWrite(
+      p.companyId,
+      this.tenant.run(p, (tx) => fn(tx, outbox)),
+    );
     for (const m of outbox) {
       try {
         this.mailer.send(m);
@@ -769,23 +773,26 @@ export class TeamService {
   }
 
   assignManager(p: Principal, id: string, managerId: string) {
-    return this.tenant.run(p, async (tx) => {
-      const all = await this.people(tx);
-      const t = await this.assertManageable(tx, p, all, id);
-      if (this.subtree(all, id).has(managerId)) throw err(409, 'CONFLICT', 'Reporting cycle');
-      this.assertManager(p, all, managerId, t.rank);
-      await tx.update(users).set({ managerId, updatedAt: new Date() }).where(eq(users.id, id));
-      await this.repointApprovals(tx, p, t, managerId, t.rank, t.status);
-      await this.audit.record(tx, p, 'employee.manager_assigned', {
-        entityType: 'user',
-        entityId: id,
-        before: { managerId: t.managerId },
-        after: { managerId },
-      });
-      const all2 = await this.people(tx);
-      const [n] = await this.nodes(tx, all2, [[all2.get(id)!, 1]]);
-      return n!;
-    });
+    return authContextWrite(
+      p.companyId,
+      this.tenant.run(p, async (tx) => {
+        const all = await this.people(tx);
+        const t = await this.assertManageable(tx, p, all, id);
+        if (this.subtree(all, id).has(managerId)) throw err(409, 'CONFLICT', 'Reporting cycle');
+        this.assertManager(p, all, managerId, t.rank);
+        await tx.update(users).set({ managerId, updatedAt: new Date() }).where(eq(users.id, id));
+        await this.repointApprovals(tx, p, t, managerId, t.rank, t.status);
+        await this.audit.record(tx, p, 'employee.manager_assigned', {
+          entityType: 'user',
+          entityId: id,
+          before: { managerId: t.managerId },
+          after: { managerId },
+        });
+        const all2 = await this.people(tx);
+        const [n] = await this.nodes(tx, all2, [[all2.get(id)!, 1]]);
+        return n!;
+      }),
+    );
   }
 
   reinvite(p: Principal, id: string) {
@@ -831,60 +838,63 @@ export class TeamService {
     const m = r.rows[0];
     if (!m) throw await this.inviteFailure(sha256(token));
     const hash = await hashPassword(password);
-    return withTenant(this.db, { companyId: m.company_id, userId: m.user_id }, async (tx) => {
-      const claimed = await tx
-        .update(userInvites)
-        .set({ usedAt: new Date() })
-        .where(and(eq(userInvites.id, m.invite_id), isNull(userInvites.usedAt)))
-        .returning({ id: userInvites.id });
-      if (!claimed.length) throw err(409, 'INVITE_USED', 'This invite has already been used');
-      const [u] = await tx.select().from(users).where(eq(users.id, m.user_id));
-      if (!u || u.authUserId) throw err(409, 'INVITE_USED', 'This invite has already been used');
-      const held = await tx
-        .select({ key: roles.key })
-        .from(userRoles)
-        .innerJoin(roles, eq(roles.id, userRoles.roleId))
-        .where(eq(userRoles.userId, u.id));
-      if (held.length && held.every((x) => isRetiredRole(x.key)))
-        throw err(
-          422,
-          'ROLE_RETIRED',
-          'Your role is no longer in use; ask your administrator to update your account',
+    return authContextWrite(
+      m.company_id,
+      withTenant(this.db, { companyId: m.company_id, userId: m.user_id }, async (tx) => {
+        const claimed = await tx
+          .update(userInvites)
+          .set({ usedAt: new Date() })
+          .where(and(eq(userInvites.id, m.invite_id), isNull(userInvites.usedAt)))
+          .returning({ id: userInvites.id });
+        if (!claimed.length) throw err(409, 'INVITE_USED', 'This invite has already been used');
+        const [u] = await tx.select().from(users).where(eq(users.id, m.user_id));
+        if (!u || u.authUserId) throw err(409, 'INVITE_USED', 'This invite has already been used');
+        const held = await tx
+          .select({ key: roles.key })
+          .from(userRoles)
+          .innerJoin(roles, eq(roles.id, userRoles.roleId))
+          .where(eq(userRoles.userId, u.id));
+        if (held.length && held.every((x) => isRetiredRole(x.key)))
+          throw err(
+            422,
+            'ROLE_RETIRED',
+            'Your role is no longer in use; ask your administrator to update your account',
+          );
+        const taken = await tx
+          .select({ id: authUser.id })
+          .from(authUser)
+          .where(eq(authUser.email, u.email.toLowerCase()));
+        if (taken.length) throw err(409, 'CONFLICT', 'Account already exists');
+        const authId = randomUUID();
+        await tx
+          .insert(authUser)
+          .values({ id: authId, name: u.name, email: u.email.toLowerCase(), emailVerified: true });
+        await tx.insert(authAccount).values({
+          id: randomUUID(),
+          accountId: authId,
+          providerId: 'credential',
+          userId: authId,
+          password: hash,
+        });
+        await tx
+          .update(users)
+          .set({ authUserId: authId, status: 'active', updatedAt: new Date() })
+          .where(eq(users.id, u.id));
+        await this.audit.record(
+          tx,
+          {
+            companyId: m.company_id,
+            userId: u.id,
+            requestId: randomUUID(),
+            ip: null,
+            userAgent: null,
+          } as Principal,
+          'employee.invite_accepted',
+          { entityType: 'user', entityId: u.id, after: { inviteId: m.invite_id } },
         );
-      const taken = await tx
-        .select({ id: authUser.id })
-        .from(authUser)
-        .where(eq(authUser.email, u.email.toLowerCase()));
-      if (taken.length) throw err(409, 'CONFLICT', 'Account already exists');
-      const authId = randomUUID();
-      await tx
-        .insert(authUser)
-        .values({ id: authId, name: u.name, email: u.email.toLowerCase(), emailVerified: true });
-      await tx.insert(authAccount).values({
-        id: randomUUID(),
-        accountId: authId,
-        providerId: 'credential',
-        userId: authId,
-        password: hash,
-      });
-      await tx
-        .update(users)
-        .set({ authUserId: authId, status: 'active', updatedAt: new Date() })
-        .where(eq(users.id, u.id));
-      await this.audit.record(
-        tx,
-        {
-          companyId: m.company_id,
-          userId: u.id,
-          requestId: randomUUID(),
-          ip: null,
-          userAgent: null,
-        } as Principal,
-        'employee.invite_accepted',
-        { entityType: 'user', entityId: u.id, after: { inviteId: m.invite_id } },
-      );
-      return { userId: u.id, email: u.email };
-    });
+        return { userId: u.id, email: u.email };
+      }),
+    );
   }
 
   // ---- Sign-up requests (docs/RBAC.md "Sign-up requests") ----
@@ -980,95 +990,106 @@ export class TeamService {
   }
 
   approveSignup(p: Principal, id: string, b: z.infer<typeof SignupApprove>) {
-    return this.tenant.run(p, async (tx) => {
-      const { r, u, all } = await this.pendingSignup(tx, p, id);
-      const admin = isAdmin(p);
-      const role = b.role;
-      if (isRetiredRole(role))
-        throw err(
-          422,
-          'ROLE_RETIRED',
-          `The ${role} role is retired and can no longer be assigned`,
-          {
-            role,
-          },
-        );
-      const hierarchy = isHierarchyRole(role);
-      if (!hierarchy && !admin)
-        throw err(403, 'FORBIDDEN', 'Only a system admin can grant this role');
-      if (hierarchy) this.assertRole(p, role);
-      const tids = b.territoryIds ?? (r.requestedTerritoryId ? [r.requestedTerritoryId] : []);
-      if (hierarchy && !tids.length)
-        throw err(422, 'VALIDATION', 'At least one territory is required for this role');
-      if (tids.length) await this.assertTerritories(tx, p, tids);
-      await this.assertTerritoryLevels(tx, [role], tids);
-      let mgrId: string | null;
-      if (!hierarchy || role === 'director') {
-        if (b.managerId) throw err(422, 'VALIDATION', 'This role has no manager');
-        mgrId = null;
-      } else {
-        mgrId =
-          b.managerId !== undefined
-            ? b.managerId
-            : (r.requestedManagerId ?? (admin ? null : p.userId));
-        if (!mgrId && !admin) mgrId = p.userId;
-        if (mgrId) {
-          if (mgrId === u.id) throw err(422, 'VALIDATION', 'Reporting cycle');
-          this.assertManager(p, all, mgrId, ROLE_RANK[role]);
+    return authContextWrite(
+      p.companyId,
+      this.tenant.run(p, async (tx) => {
+        const { r, u, all } = await this.pendingSignup(tx, p, id);
+        const admin = isAdmin(p);
+        const role = b.role;
+        if (isRetiredRole(role))
+          throw err(
+            422,
+            'ROLE_RETIRED',
+            `The ${role} role is retired and can no longer be assigned`,
+            {
+              role,
+            },
+          );
+        const hierarchy = isHierarchyRole(role);
+        if (!hierarchy && !admin)
+          throw err(403, 'FORBIDDEN', 'Only a system admin can grant this role');
+        if (hierarchy) this.assertRole(p, role);
+        const tids = b.territoryIds ?? (r.requestedTerritoryId ? [r.requestedTerritoryId] : []);
+        if (hierarchy && !tids.length)
+          throw err(422, 'VALIDATION', 'At least one territory is required for this role');
+        if (tids.length) await this.assertTerritories(tx, p, tids);
+        await this.assertTerritoryLevels(tx, [role], tids);
+        let mgrId: string | null;
+        if (!hierarchy || role === 'director') {
+          if (b.managerId) throw err(422, 'VALIDATION', 'This role has no manager');
+          mgrId = null;
+        } else {
+          mgrId =
+            b.managerId !== undefined
+              ? b.managerId
+              : (r.requestedManagerId ?? (admin ? null : p.userId));
+          if (!mgrId && !admin) mgrId = p.userId;
+          if (mgrId) {
+            if (mgrId === u.id) throw err(422, 'VALIDATION', 'Reporting cycle');
+            this.assertManager(p, all, mgrId, ROLE_RANK[role]);
+          }
         }
-      }
-      await tx
-        .update(users)
-        .set({ status: 'active', managerId: mgrId, updatedAt: new Date() })
-        .where(eq(users.id, u.id));
-      await tx.delete(userRoles).where(eq(userRoles.userId, u.id));
-      await tx
-        .insert(userRoles)
-        .values({ companyId: p.companyId, userId: u.id, roleId: await this.roleId(tx, role) });
-      await tx.delete(userTerritories).where(eq(userTerritories.userId, u.id));
-      if (tids.length)
-        await tx.insert(userTerritories).values(
-          tids.map((territoryId, i) => ({
-            companyId: p.companyId,
-            userId: u.id,
-            territoryId,
-            isPrimary: i === 0,
-          })),
-        );
-      const [done] = await tx
-        .update(signupRequests)
-        .set({ status: 'approved', approvedRole: role, decidedBy: p.userId, decidedAt: new Date() })
-        .where(eq(signupRequests.id, r.id))
-        .returning();
-      await this.audit.record(tx, p, 'signup.approved', {
-        entityType: 'signup_request',
-        entityId: r.id,
-        before: { requestedRole: r.requestedRole },
-        after: { userId: u.id, role, territoryIds: tids, managerId: mgrId },
-      });
-      return this.signupView(done!, { ...u, status: 'active' });
-    });
+        await tx
+          .update(users)
+          .set({ status: 'active', managerId: mgrId, updatedAt: new Date() })
+          .where(eq(users.id, u.id));
+        await tx.delete(userRoles).where(eq(userRoles.userId, u.id));
+        await tx
+          .insert(userRoles)
+          .values({ companyId: p.companyId, userId: u.id, roleId: await this.roleId(tx, role) });
+        await tx.delete(userTerritories).where(eq(userTerritories.userId, u.id));
+        if (tids.length)
+          await tx.insert(userTerritories).values(
+            tids.map((territoryId, i) => ({
+              companyId: p.companyId,
+              userId: u.id,
+              territoryId,
+              isPrimary: i === 0,
+            })),
+          );
+        const [done] = await tx
+          .update(signupRequests)
+          .set({
+            status: 'approved',
+            approvedRole: role,
+            decidedBy: p.userId,
+            decidedAt: new Date(),
+          })
+          .where(eq(signupRequests.id, r.id))
+          .returning();
+        await this.audit.record(tx, p, 'signup.approved', {
+          entityType: 'signup_request',
+          entityId: r.id,
+          before: { requestedRole: r.requestedRole },
+          after: { userId: u.id, role, territoryIds: tids, managerId: mgrId },
+        });
+        return this.signupView(done!, { ...u, status: 'active' });
+      }),
+    );
   }
 
   rejectSignup(p: Principal, id: string, why: string | null) {
     const reason = rejectionReason('reject', why);
-    return this.tenant.run(p, async (tx) => {
-      const { r, u } = await this.pendingSignup(tx, p, id);
-      await tx
-        .update(users)
-        .set({ status: 'rejected', updatedAt: new Date() })
-        .where(eq(users.id, u.id));
-      const [done] = await tx
-        .update(signupRequests)
-        .set({ status: 'rejected', reason, decidedBy: p.userId, decidedAt: new Date() })
-        .where(eq(signupRequests.id, r.id))
-        .returning();
-      await this.audit.record(tx, p, 'signup.rejected', {
-        entityType: 'signup_request',
-        entityId: r.id,
-        after: { userId: u.id, reason },
-      });
-      return this.signupView(done!, u);
-    });
+    return authContextWrite(
+      p.companyId,
+      this.tenant.run(p, async (tx) => {
+        const { r, u } = await this.pendingSignup(tx, p, id);
+        await tx
+          .update(users)
+          .set({ status: 'rejected', updatedAt: new Date() })
+          .where(eq(users.id, u.id));
+        const [done] = await tx
+          .update(signupRequests)
+          .set({ status: 'rejected', reason, decidedBy: p.userId, decidedAt: new Date() })
+          .where(eq(signupRequests.id, r.id))
+          .returning();
+        await this.audit.record(tx, p, 'signup.rejected', {
+          entityType: 'signup_request',
+          entityId: r.id,
+          after: { userId: u.id, reason },
+        });
+        return this.signupView(done!, u);
+      }),
+    );
   }
 }

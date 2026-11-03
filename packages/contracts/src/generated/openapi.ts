@@ -1084,6 +1084,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/dcrs/products': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Active products for the DCR pickers (replaces options.products/detailProducts)
+     * @description Same items as the deprecated GET /v1/dcrs/options products/detailProducts. Response carries ETag (weak) and Cache-Control: private, max-age=60. Send If-None-Match to get 304 with no body while products and the image-URL signing window (30 min) are unchanged. ids= narrows to those active products.
+     */
+    get: operations['listDcrProducts'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/dcrs/territories': {
     parameters: {
       query?: never;
@@ -5662,12 +5682,14 @@ export interface components {
        */
       tourPlanDrafts: components['schemas']['DcrTourPlanDraft'][];
       /**
-       * @description Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed
+       * @deprecated
+       * @description Deprecated: use GET /v1/dcrs/products. [] when includeProducts=false. Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed
        * @default []
        */
       detailProducts: components['schemas']['DcrDetailProduct'][];
       /**
-       * @description Active products for the call pickers, by name (imageUrl presigned, >= 30 min)
+       * @deprecated
+       * @description Deprecated: use GET /v1/dcrs/products. [] when includeProducts=false. Active products for the call pickers, by name (imageUrl presigned, >= 30 min)
        * @default []
        */
       products: components['schemas']['DcrProductOption'][];
@@ -5818,6 +5840,14 @@ export interface components {
        * @default null
        */
       imageUrl: string | null;
+    };
+    DcrProducts: {
+      /** @description Active products for the call pickers, A-Z by name (imageUrl presigned, >= 30 min) */
+      products: components['schemas']['DcrProductOption'][];
+      /** @description Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed */
+      detailProducts: components['schemas']['DcrDetailProduct'][];
+      /** @description Same value as the ETag header. Send it back as If-None-Match to get 304 while products and image URLs are unchanged */
+      etag: string;
     };
     DcrHqOptionList: {
       items: components['schemas']['DcrHqOption'][];
@@ -6755,7 +6785,48 @@ export interface components {
        */
       dcrRejectedDates: string[];
       version: number;
+      /**
+       * @description Per-level history of the current approval request, level 1..totalLevels (empty while draft/never submitted)
+       * @default []
+       */
+      approvalTrail: components['schemas']['ExpenseApprovalLevel'][];
+      /** @description Configured approval levels (EXPENSE_APPROVAL_LEVELS) */
+      totalLevels: number;
+      /** @description Approver of the level awaiting a decision; null unless submitted (or shared queue) */
+      currentApprover: components['schemas']['ExpenseApprover'] | null;
+      /** @description The caller may approve/reject now (same rules as POST /decision; DCR gate not pre-checked) */
+      canDecide: boolean;
+      /** @description The caller may mark it paid now (POST /pay) */
+      canPay: boolean;
+      /** @description Who marked it paid; null unless paid */
+      paidBy: components['schemas']['UserRef'] | null;
       lineCount: number;
+    };
+    ExpenseApprovalLevel: {
+      level: number;
+      /** @description Assigned approver of this level (projected up the manager chain for levels not reached yet); null when skipped, shared queue or auto-approved */
+      approver: components['schemas']['ExpenseApprover'] | null;
+      /** @description Who actually decided (may be above the assigned approver); null if undecided or system */
+      decidedBy: components['schemas']['ExpenseApprover'] | null;
+      /** @enum {string} */
+      status: 'pending' | 'approved' | 'rejected' | 'skipped';
+      /** @description True for the level awaiting a decision now */
+      current: boolean;
+      decidedAt: string | null;
+      comment: string | null;
+      /** @description comment when status is rejected */
+      rejectionReason: string | null;
+    };
+    /** @description User ref with their most senior role key */
+    ExpenseApprover: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      role: string | null;
     };
     ExpenseClaim: {
       /**
@@ -6802,6 +6873,21 @@ export interface components {
        */
       dcrRejectedDates: string[];
       version: number;
+      /**
+       * @description Per-level history of the current approval request, level 1..totalLevels (empty while draft/never submitted)
+       * @default []
+       */
+      approvalTrail: components['schemas']['ExpenseApprovalLevel'][];
+      /** @description Configured approval levels (EXPENSE_APPROVAL_LEVELS) */
+      totalLevels: number;
+      /** @description Approver of the level awaiting a decision; null unless submitted (or shared queue) */
+      currentApprover: components['schemas']['ExpenseApprover'] | null;
+      /** @description The caller may approve/reject now (same rules as POST /decision; DCR gate not pre-checked) */
+      canDecide: boolean;
+      /** @description The caller may mark it paid now (POST /pay) */
+      canPay: boolean;
+      /** @description Who marked it paid; null unless paid */
+      paidBy: components['schemas']['UserRef'] | null;
     };
     ExpenseLine: {
       /**
@@ -12435,7 +12521,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown or inactive products, a check-in that is not your visit to that outlet, RCPA on a non-chemist call (details.rcpaOutletCallIds), duplicate POB products or RCPA brands in a call (details.duplicatePob / duplicateRcpa), or an out-of-scope stockistId / RCPA doctorId */
+      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today). Validation failed: DEVIATION_REASON_REQUIRED, calls on a non-field day, unknown or inactive products, a check-in that is not your visit to that outlet, RCPA on a non-chemist call (details.rcpaOutletCallIds), duplicate POB products or RCPA brands in a call (details.duplicatePob / duplicateRcpa), or an out-of-scope stockistId / RCPA doctorId */
       422: {
         headers: {
           [name: string]: unknown;
@@ -12552,6 +12638,8 @@ export interface operations {
       query: {
         /** @description Calendar date (YYYY-MM-DD, IST) */
         date: string;
+        /** @description Default `true` (unchanged). Pass `false` to skip the deprecated products/detailProducts (returned as []); load them from GET /v1/dcrs/products instead */
+        includeProducts?: 'true' | 'false';
       };
       header?: never;
       path?: never;
@@ -12567,6 +12655,66 @@ export interface operations {
         content: {
           'application/json': components['schemas']['DcrOptions'];
         };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listDcrProducts: {
+    parameters: {
+      query?: {
+        /** @description Batch fetch: comma-separated product ids (max 100). Only active products are returned; others are absent. detailProducts groups only the returned SKUs */
+        ids?: string;
+      };
+      header?: {
+        /** @description ETag from an earlier response; 304 (empty body) when unchanged */
+        'if-none-match'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK (ETag, Cache-Control headers) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DcrProducts'];
+        };
+      };
+      /** @description Not modified (If-None-Match matched); empty body */
+      304: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Not signed in */
       401: {
@@ -12807,7 +12955,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds) */
+      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today), VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds) */
       422: {
         headers: {
           [name: string]: unknown;
@@ -12882,7 +13030,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND */
+      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND */
       422: {
         headers: {
           [name: string]: unknown;
