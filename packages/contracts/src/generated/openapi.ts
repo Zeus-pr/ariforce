@@ -3151,8 +3151,8 @@ export interface components {
        * @enum {string}
        */
       kind: 'meeting';
-      /** @description Meeting / training type or name */
-      title: string;
+      /** @description Legacy free-text meeting name. Optional on input; the server sets it to the meetingType label when omitted, so responses always carry it */
+      title?: string;
       /** @enum {string} */
       mode: 'in_person' | 'online';
       /** @description Free text; required when mode = in_person (link or text when online) */
@@ -3162,12 +3162,25 @@ export interface components {
        * @example 10:30
        */
       startTime: string;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
+      /** @description Local end time HH:mm (IST), same day, must be after startTime (else 422 END_TIME_NOT_AFTER_START). The server derives durationMin from startTime/endTime */
+      endTime?: string | null;
+      /** @description Minutes. Derived by the server from startTime/endTime and always present in responses. Deprecated on input: ignored when endTime is sent; accepted only from older clients that send no endTime */
+      durationMin?: number;
       /** @description Free text */
       attendees?: string | null;
       remarks?: string | null;
+      /** @description Required on new writes (DCR and TP); null only on legacy rows not mapped by the data fix (display the legacy title) */
+      meetingType?: components['schemas']['MeetingType'] | null;
+      /** @description Free text place, optional */
+      fromPlace?: string | null;
+      /** @description Free text place, optional */
+      toPlace?: string | null;
     };
+    /**
+     * @description cycle_meeting = "Cycle Meeting", review_meeting = "Review Meeting". Any other value on write: 422 MEETING_TYPE_INVALID
+     * @enum {string}
+     */
+    MeetingType: 'cycle_meeting' | 'review_meeting';
     DcrTrainingDetails: {
       /**
        * @description discriminator enum property added by openapi-typescript
@@ -3185,8 +3198,10 @@ export interface components {
        * @example 10:30
        */
       startTime: string;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
+      /** @description Local end time HH:mm (IST), same day, must be after startTime (else 422 END_TIME_NOT_AFTER_START). The server derives durationMin from startTime/endTime */
+      endTime?: string | null;
+      /** @description Minutes. Derived by the server from startTime/endTime and always present in responses. Deprecated on input: ignored when endTime is sent; accepted only from older clients that send no endTime */
+      durationMin?: number;
       /** @description Free text */
       attendees?: string | null;
       remarks?: string | null;
@@ -3203,8 +3218,14 @@ export interface components {
       taskType: string;
       description: string;
       startTime?: string | null;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
+      /** @description Local end time HH:mm (IST); only with startTime, after it (422 END_TIME_NOT_AFTER_START). Derives durationMin */
+      endTime?: string | null;
+      /** @description Minutes. Derived from startTime/endTime when both are sent (input ignored); otherwise still required as before. Always present in responses */
+      durationMin?: number;
+      /** @description Free text place, optional */
+      fromPlace?: string | null;
+      /** @description Free text place, optional */
+      toPlace?: string | null;
       remarks?: string | null;
     };
     DcrLeaveDetails: {
@@ -3435,11 +3456,30 @@ export interface components {
       /** @description The approved TourPlanItem this day is filed from. The date must lie in its from..to and it must be yours and approved, else 422 VALIDATION (details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date in the range may be drafted (submit still opens on the day). Omitted: the server links the approved item covering the date, if any. No deviation reason is ever required */
       tourPlanItemId?: string | null;
       calls?: components['schemas']['DcrCallInput'][];
+      /** @description Day expenses (any work type), replaces the saved list. Omit to keep it. Categories travel/hotel/food/other (else 422 DCR_EXPENSE_CATEGORY_INVALID); item ids unique (422 VALIDATION) */
+      expenses?: components['schemas']['DcrExpenseItem'][];
       /** @description Row version from the last read */
       version?: number;
     };
     /** @enum {string} */
     DcrBand: 'hq' | 'ex_hq' | 'outstation';
+    DcrExpenseItem: {
+      /**
+       * Format: uuid
+       * @description Client-generated uuid, stable across resubmits; the claim line is matched on it (idempotent link)
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /** @description One of travel, hotel, food, other. allowance and mileage stay with TA/DA: 422 DCR_EXPENSE_CATEGORY_INVALID */
+      category: components['schemas']['ExpenseCategory'];
+      /** @description Rupees */
+      amount: number;
+      note?: string | null;
+      /** @description Free-text bill / receipt number. Receipt files are attached to the linked claim line (expense attachments) */
+      receiptRef?: string | null;
+    };
+    /** @enum {string} */
+    ExpenseCategory: 'travel' | 'hotel' | 'food' | 'mileage' | 'allowance' | 'other';
     DcrSubmit: {
       version: number;
     };
@@ -3645,8 +3685,6 @@ export interface components {
        */
       tourPlanId: string | null;
     };
-    /** @enum {string} */
-    ExpenseCategory: 'travel' | 'hotel' | 'food' | 'mileage' | 'allowance' | 'other';
     ExpenseLineUpdate: {
       line: components['schemas']['ExpenseLineInput'];
       version: number;
@@ -5512,6 +5550,8 @@ export interface components {
       sfcRoutes: components['schemas']['DcrSfcRoute'][];
       /** @default null */
       submittedBy: string | null;
+      /** @description Expenses reported for the day (any work type). Linked into the month claim at submit (origin dcr); read-only after submit. Absent (older API) = none */
+      expenses?: components['schemas']['DcrExpenseItemOutput'][];
       /** @description Live calls on this DCR (GET /v1/dcrs list only) */
       callCount?: number;
     };
@@ -6075,6 +6115,8 @@ export interface components {
       sfcRoutes: components['schemas']['DcrSfcRoute'][];
       /** @default null */
       submittedBy: string | null;
+      /** @description Expenses reported for the day (any work type). Linked into the month claim at submit (origin dcr); read-only after submit. Absent (older API) = none */
+      expenses?: components['schemas']['DcrExpenseItemOutput'][];
       /** @description Live calls on this DCR (GET /v1/dcrs list only) */
       callCount?: number;
       /**
@@ -6082,6 +6124,8 @@ export interface components {
        * @default null
        */
       expenseDraft: components['schemas']['ExpenseAutoDraft'] | null;
+      /** @description Linking of the DCR's expenses into the month claim (always attempted, independent of autoExpenseOnDcrSubmit). null on a same-key retry; absent from older APIs */
+      dcrExpenses?: components['schemas']['DcrExpenseLink'] | null;
     };
     ExpenseAutoDraft: {
       /**
@@ -6118,6 +6162,22 @@ export interface components {
         code: string;
         message: string;
       } | null;
+    };
+    DcrExpenseLink: {
+      /**
+       * @description linked = the DCR's lines were written (replacing earlier DCR-sourced lines of this DCR); skipped = nothing written (reason); error = linking failed, the submit still succeeded
+       * @enum {string}
+       */
+      status: 'linked' | 'skipped' | 'error';
+      /** @description claim_locked = the month claim is submitted/approved/paid (or deleted): items stay on the DCR, not copied; no_expenses = the DCR has none (earlier DCR lines on an editable claim are removed) */
+      reason: ('claim_locked' | 'no_expenses') | null;
+      claimId: string | null;
+      claimStatus: ('draft' | 'submitted' | 'approved' | 'rejected' | 'paid') | null;
+      claimCreated: boolean;
+      /** @description DCR-sourced lines now on the claim for this DCR */
+      lines: number;
+      /** @description Sum of those lines, rupees */
+      total: number;
     };
     ApprovalPage: {
       items: components['schemas']['Approval'][];
@@ -6964,6 +7024,13 @@ export interface components {
        * @enum {string}
        */
       source: 'manual' | 'auto';
+      /**
+       * @description Where the line came from: manual, ta_da (TA/DA auto-draft), dcr (an expense item on the day's DCR; show 'from DCR', dcrId is that DCR). Absent from older APIs: derive from source. dcr lines have source auto and are never touched by a TA/DA re-run
+       * @enum {string}
+       */
+      origin?: 'manual' | 'ta_da' | 'dcr';
+      /** @description DcrExpenseItem.id this line was copied from (origin dcr), else null */
+      dcrExpenseItemId?: string | null;
       /** @description Fare-chart place used for TA (#39) */
       allowancePlaceId: string | null;
       /**
@@ -8068,8 +8135,8 @@ export interface components {
        * @enum {string}
        */
       kind: 'meeting';
-      /** @description Meeting / training type or name */
-      title: string;
+      /** @description Legacy free-text meeting name. Optional on input; the server sets it to the meetingType label when omitted, so responses always carry it */
+      title?: string;
       /** @enum {string} */
       mode: 'in_person' | 'online';
       /** @description Free text; required when mode = in_person (link or text when online) */
@@ -8079,11 +8146,19 @@ export interface components {
        * @example 10:30
        */
       startTime: string;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
+      /** @description Local end time HH:mm (IST), same day, must be after startTime (else 422 END_TIME_NOT_AFTER_START). The server derives durationMin from startTime/endTime */
+      endTime?: string | null;
+      /** @description Minutes. Derived by the server from startTime/endTime and always present in responses. Deprecated on input: ignored when endTime is sent; accepted only from older clients that send no endTime */
+      durationMin?: number;
       /** @description Free text */
       attendees?: string | null;
       remarks?: string | null;
+      /** @description Required on new writes (DCR and TP); null only on legacy rows not mapped by the data fix (display the legacy title) */
+      meetingType?: components['schemas']['MeetingType'] | null;
+      /** @description Free text place, optional */
+      fromPlace?: string | null;
+      /** @description Free text place, optional */
+      toPlace?: string | null;
     };
     DcrTrainingDetailsOutput: {
       /**
@@ -8102,8 +8177,10 @@ export interface components {
        * @example 10:30
        */
       startTime: string;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
+      /** @description Local end time HH:mm (IST), same day, must be after startTime (else 422 END_TIME_NOT_AFTER_START). The server derives durationMin from startTime/endTime */
+      endTime?: string | null;
+      /** @description Minutes. Derived by the server from startTime/endTime and always present in responses. Deprecated on input: ignored when endTime is sent; accepted only from older clients that send no endTime */
+      durationMin?: number;
       /** @description Free text */
       attendees?: string | null;
       remarks?: string | null;
@@ -8120,8 +8197,14 @@ export interface components {
       taskType: string;
       description: string;
       startTime?: string | null;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
+      /** @description Local end time HH:mm (IST); only with startTime, after it (422 END_TIME_NOT_AFTER_START). Derives durationMin */
+      endTime?: string | null;
+      /** @description Minutes. Derived from startTime/endTime when both are sent (input ignored); otherwise still required as before. Always present in responses */
+      durationMin?: number;
+      /** @description Free text place, optional */
+      fromPlace?: string | null;
+      /** @description Free text place, optional */
+      toPlace?: string | null;
       remarks?: string | null;
     };
     DcrLeaveDetailsOutput: {
@@ -8192,6 +8275,21 @@ export interface components {
       prescriptions?: number | null;
       /** @description Prescribing doctor, in your scope */
       doctorId?: string | null;
+    };
+    DcrExpenseItemOutput: {
+      /**
+       * Format: uuid
+       * @description Client-generated uuid, stable across resubmits; the claim line is matched on it (idempotent link)
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /** @description One of travel, hotel, food, other. allowance and mileage stay with TA/DA: 422 DCR_EXPENSE_CATEGORY_INVALID */
+      category: components['schemas']['ExpenseCategory'];
+      /** @description Rupees */
+      amount: number;
+      note?: string | null;
+      /** @description Free-text bill / receipt number. Receipt files are attached to the linked claim line (expense attachments) */
+      receiptRef?: string | null;
     };
     SfcSettingsOutput: {
       /** @description TA per km (INR) used to compute SFC amounts on write */
@@ -11874,7 +11972,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description VALIDATION: to < from, more than 31 days, unknown/inactive or leave/holiday work type, details.kind mismatch, unknown or out-of-scope territories/users/SFC routes */
+      /** @description VALIDATION: to < from, more than 31 days, unknown/inactive or leave/holiday work type, details.kind mismatch, unknown or out-of-scope territories/users/SFC routes; MEETING_TYPE_INVALID (meeting details.meetingType missing or not cycle_meeting/review_meeting; details.allowed), END_TIME_NOT_AFTER_START (details.startTime/endTime) */
       422: {
         headers: {
           [name: string]: unknown;
@@ -13067,7 +13165,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today), VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds) */
+      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today), VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds), MEETING_TYPE_INVALID (meeting details.meetingType missing or not cycle_meeting/review_meeting; details.allowed), END_TIME_NOT_AFTER_START (details.startTime/endTime), DCR_EXPENSE_CATEGORY_INVALID (details.index, details.allowed) */
       422: {
         headers: {
           [name: string]: unknown;
@@ -13097,7 +13195,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Audited as expense.auto_drafted. Director (no manager): the report is approved at submit by the system (status approved, approvedBy null, autoApproved true; audit dcr.auto_approved) before the expense auto-draft, and the day never locks (no DAY_LOCKED, no unlock request). */
+      /** @description Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Independently, the DCR's expenses[] are linked into the month claim (created if missing) as origin dcr lines keyed by DcrExpenseItem.id, replacing that DCR's earlier dcr lines (idempotent); a submitted/approved/paid claim is not touched (dcrExpenses.status skipped, reason claim_locked) and the submit still succeeds. Audited as expense.auto_drafted. Director (no manager): the report is approved at submit by the system (status approved, approvedBy null, autoApproved true; audit dcr.auto_approved) before the expense auto-draft, and the day never locks (no DAY_LOCKED, no unlock request). */
       200: {
         headers: {
           [name: string]: unknown;
@@ -13142,7 +13240,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND */
+      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND, MEETING_TYPE_INVALID (meeting details.meetingType missing or not cycle_meeting/review_meeting; details.allowed), END_TIME_NOT_AFTER_START (details.startTime/endTime) */
       422: {
         headers: {
           [name: string]: unknown;

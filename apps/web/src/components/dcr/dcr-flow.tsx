@@ -334,11 +334,11 @@ function Flow({
         const det = d.details;
         if (det?.kind === 'meeting' || det?.kind === 'training')
           next.meeting = {
-            title: det.title,
+            title: det.title ?? '',
             mode: det.mode,
             location: det.location ?? '',
             startTime: det.startTime,
-            durationMin: String(det.durationMin),
+            durationMin: String(det.durationMin ?? ''),
             attendees: det.kind === 'meeting' ? (det.attendees ?? '') : '',
             remarks: det.remarks ?? '',
             trainer: det.kind === 'training' ? (det.trainer ?? '') : '',
@@ -348,7 +348,7 @@ function Flow({
             taskType: det.taskType,
             description: det.description,
             startTime: det.startTime ?? '',
-            durationMin: String(det.durationMin),
+            durationMin: String(det.durationMin ?? ''),
             remarks: det.remarks ?? '',
           };
         if (det?.kind === 'leave') next.leaveRequestId = det.leaveRequestId;

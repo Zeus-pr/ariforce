@@ -407,6 +407,7 @@ function crud<
  * unless `x-mock-user: none` (behaves as signed out -> 401).
  */
 import { doctorHandlers } from './doctors';
+import { checkDcrDetailsRaw, checkDcrExpensesRaw, normaliseDcrDetails } from './dcr-details';
 
 export function mockPrincipal(request: Request): Me | undefined {
   const h = request.headers.get('x-mock-user');
@@ -799,7 +800,10 @@ function fieldHandlers(baseUrl: string) {
       );
     }),
     http.put(`${baseUrl}/v1/dcrs/draft`, async ({ request }) => {
-      const b = DcrDraftPut.safeParse(await request.json());
+      const raw = (await request.json()) as { details?: unknown; expenses?: unknown };
+      const pre = checkDcrDetailsRaw(raw?.details) ?? checkDcrExpensesRaw(raw?.expenses);
+      if (pre) return pre;
+      const b = DcrDraftPut.safeParse(raw);
       if (!b.success) return validation('Invalid DCR', z.treeifyError(b.error));
       const tpItem = tpItems.find(
         (it) =>
@@ -870,6 +874,7 @@ function fieldHandlers(baseUrl: string) {
           details: null,
           workWithUserIds: [],
           sfcRoutes: [],
+          expenses: [],
           submittedBy: null,
           reviewStatus: null,
           approvedAt: null,
@@ -885,8 +890,9 @@ function fieldHandlers(baseUrl: string) {
         territoryIds: b.data.territoryIds,
         deviationReason: b.data.deviationReason ?? null,
         band,
-        details: b.data.details ?? null,
+        details: normaliseDcrDetails(b.data.details ?? null),
         workWithUserIds: b.data.workWithUserIds,
+        ...(b.data.expenses ? { expenses: b.data.expenses } : {}),
         calls: b.data.calls.map(({ clientId, ...c }) => ({
           ...c,
           id: clientId,
@@ -908,7 +914,11 @@ function fieldHandlers(baseUrl: string) {
       if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
       // Same-key retry, also for a director's report (approved at submit).
       if ((d.status === 'submitted' || d.status === 'approved') && submitKeys.get(d.id) === key)
-        return HttpResponse.json({ ...Dcr.parse(withLock(d)), expenseDraft: null });
+        return HttpResponse.json({
+          ...Dcr.parse(withLock(d)),
+          expenseDraft: null,
+          dcrExpenses: null,
+        });
       if (d.status === 'submitted') return dcrError(409, 'ALREADY_SUBMITTED', 'Already submitted');
       if (d.status !== 'draft')
         return dcrError(409, 'ALREADY_SUBMITTED', 'Reviewed DCRs are read-only', {
@@ -973,7 +983,21 @@ function fieldHandlers(baseUrl: string) {
         version: d.version + 1,
         updatedAt: frozenAt,
       });
-      return HttpResponse.json({ ...Dcr.parse(withLock(d)), expenseDraft: null });
+      const exp = d.expenses ?? [];
+      return HttpResponse.json({
+        ...Dcr.parse(withLock(d)),
+        expenseDraft: null,
+        // The mock has no claim store here: report what the server would link.
+        dcrExpenses: {
+          status: exp.length ? ('linked' as const) : ('skipped' as const),
+          reason: exp.length ? null : ('no_expenses' as const),
+          claimId: null,
+          claimStatus: null,
+          claimCreated: false,
+          lines: exp.length,
+          total: Math.round(exp.reduce((t, e) => t + e.amount, 0) * 100) / 100,
+        },
+      });
     }),
     http.delete(`${baseUrl}/v1/dcrs/:id`, ({ params }) => {
       const d = dcrs.find((x) => x.id === params.id && x.userId === fx.me.id);
@@ -1318,7 +1342,10 @@ function fieldHandlers(baseUrl: string) {
       );
     }),
     http.put(`${baseUrl}/v1/tour-plans/items`, async ({ request }) => {
-      const b = TourPlanItemUpsert.safeParse(await request.json());
+      const raw = (await request.json()) as { plan?: { details?: unknown } };
+      const pre = checkDcrDetailsRaw(raw?.plan?.details);
+      if (pre) return pre;
+      const b = TourPlanItemUpsert.safeParse(raw);
       if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
       const wt = fx.workTypes.find((w) => w.id === b.data.plan.workTypeId && w.active);
       if (!wt)
@@ -1351,7 +1378,7 @@ function fieldHandlers(baseUrl: string) {
           to: b.data.to,
           status: 'draft',
           rejectionReason: null,
-          plan: b.data.plan,
+          plan: { ...b.data.plan, details: normaliseDcrDetails(b.data.plan.details) },
           filedDates: [],
           version: 1,
           createdAt: ts,
@@ -1378,7 +1405,7 @@ function fieldHandlers(baseUrl: string) {
       Object.assign(it, {
         from: b.data.from,
         to: b.data.to,
-        plan: b.data.plan,
+        plan: { ...b.data.plan, details: normaliseDcrDetails(b.data.plan.details) },
         status: 'draft',
         rejectionReason: null,
         submittedAt: null,
@@ -1759,6 +1786,7 @@ function fieldHandlers(baseUrl: string) {
           details: null,
           workWithUserIds: [],
           sfcRoutes: [],
+          expenses: [],
           submittedBy: null,
           reviewStatus: null,
           approvedAt: null,

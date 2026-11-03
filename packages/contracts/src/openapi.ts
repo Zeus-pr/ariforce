@@ -849,7 +849,7 @@ function buildDocument(): OpenApiDocument {
             '404': err('No such item'),
             '409': err('TP_LOCKED (pending/approved) or VERSION_CONFLICT'),
             '422': err(
-              'VALIDATION: to < from, more than 31 days, unknown/inactive or leave/holiday work type, details.kind mismatch, unknown or out-of-scope territories/users/SFC routes',
+              'VALIDATION: to < from, more than 31 days, unknown/inactive or leave/holiday work type, details.kind mismatch, unknown or out-of-scope territories/users/SFC routes; MEETING_TYPE_INVALID (meeting details.meetingType missing or not cycle_meeting/review_meeting; details.allowed), END_TIME_NOT_AFTER_START (details.startTime/endTime)',
             ),
           },
         }),
@@ -1148,7 +1148,7 @@ function buildDocument(): OpenApiDocument {
               'ALREADY_SUBMITTED (this DCR is not a draft), DAY_ALREADY_SUBMITTED (the date has a submitted report; details.existingId), DAY_LOCKED, VERSION_CONFLICT',
             ),
             '422': err(
-              'DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today), VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds)',
+              'DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today), VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds), MEETING_TYPE_INVALID (meeting details.meetingType missing or not cycle_meeting/review_meeting; details.allowed), END_TIME_NOT_AFTER_START (details.startTime/endTime), DCR_EXPENSE_CATEGORY_INVALID (details.index, details.allowed)',
             ),
           },
         }),
@@ -1164,7 +1164,7 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '200': {
               description:
-                "Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Audited as expense.auto_drafted. Director (no manager): the report is approved at submit by the system (status approved, approvedBy null, autoApproved true; audit dcr.auto_approved) before the expense auto-draft, and the day never locks (no DAY_LOCKED, no unlock request).",
+                "Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Independently, the DCR's expenses[] are linked into the month claim (created if missing) as origin dcr lines keyed by DcrExpenseItem.id, replacing that DCR's earlier dcr lines (idempotent); a submitted/approved/paid claim is not touched (dcrExpenses.status skipped, reason claim_locked) and the submit still succeeds. Audited as expense.auto_drafted. Director (no manager): the report is approved at submit by the system (status approved, approvedBy null, autoApproved true; audit dcr.auto_approved) before the expense auto-draft, and the day never locks (no DAY_LOCKED, no unlock request).",
               ...json(DcrSubmitResult),
             },
             '404': err('Not found (not your DCR)'),
@@ -1172,7 +1172,7 @@ function buildDocument(): OpenApiDocument {
               'ALREADY_SUBMITTED (other key), DAY_ALREADY_SUBMITTED (another report of the date is submitted; details.existingId), IDEMPOTENCY_CONFLICT (key used on another DCR), VERSION_CONFLICT, DAY_LOCKED',
             ),
             '422': err(
-              'DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND',
+              'DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND, MEETING_TYPE_INVALID (meeting details.meetingType missing or not cycle_meeting/review_meeting; details.allowed), END_TIME_NOT_AFTER_START (details.startTime/endTime)',
             ),
           },
         }),
