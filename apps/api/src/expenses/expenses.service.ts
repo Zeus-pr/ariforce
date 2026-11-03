@@ -426,6 +426,7 @@ export class ExpensesService implements OnModuleInit {
       dcrId: l.dcrId,
       tourPlanId: l.tourPlanId,
       source: l.source,
+      origin: l.origin,
       allowancePlaceId: l.allowancePlaceId,
       autoTrigger: l.source === 'auto' ? (l.autoTrigger ?? null) : null,
       dcrRejectedAt: iso(l.dcrRejectedAt),
@@ -670,16 +671,31 @@ export class ExpensesService implements OnModuleInit {
     return l;
   }
 
+  /** Lines copied from a DCR are edited on the DCR (resubmit replaces them), never here. */
+  private notDcrLine(l: LineRow) {
+    if (l.origin === 'dcr')
+      throw err(
+        409,
+        'EXPENSE_NOT_EDITABLE',
+        'This line comes from your DCR; change the DCR expenses',
+        {
+          reason: 'DCR_LINE',
+          dcrId: l.dcrId,
+        },
+      );
+  }
+
   updateLine(p: Principal, id: string, lineId: string, l: ExpenseLineInput, version: number) {
     return this.tenant.run(p, async (tx) => {
       const c = await this.ownEditable(tx, p, id);
       const cur = await this.lineRow(tx, c.id, lineId);
+      this.notDcrLine(cur);
       if (cur.version !== version)
         throw err(409, 'VERSION_CONFLICT', 'Stale version', this.lineDto(cur, []));
       await this.checkLine(tx, p, c, l);
       await tx
         .update(expenseLines)
-        .set({ ...this.lineValues(l), source: 'manual', autoTrigger: null })
+        .set({ ...this.lineValues(l), source: 'manual', autoTrigger: null, origin: 'manual' })
         .where(eq(expenseLines.id, lineId));
       await this.recomputeTotal(tx, c.id);
       await this.audit.record(tx, p, 'expense.line_updated', {
@@ -695,7 +711,7 @@ export class ExpensesService implements OnModuleInit {
   deleteLine(p: Principal, id: string, lineId: string) {
     return this.tenant.run(p, async (tx) => {
       const c = await this.ownEditable(tx, p, id);
-      await this.lineRow(tx, c.id, lineId);
+      this.notDcrLine(await this.lineRow(tx, c.id, lineId));
       const now = new Date();
       await tx.update(expenseLines).set({ deletedAt: now }).where(eq(expenseLines.id, lineId));
       await tx
@@ -727,6 +743,7 @@ export class ExpensesService implements OnModuleInit {
           and(
             eq(expenseLines.claimId, c.id),
             eq(expenseLines.source, 'auto'),
+            ne(expenseLines.origin, 'dcr'),
             isNull(expenseLines.deletedAt),
           ),
         );
@@ -744,6 +761,7 @@ export class ExpensesService implements OnModuleInit {
             dcrId: l.dcrId,
             source: 'auto' as const,
             autoTrigger: 'allowances_run' as const,
+            origin: 'ta_da' as const,
             calc: l.calc,
             allowancePlaceId: l.placeId,
           })),
@@ -933,8 +951,14 @@ export class ExpensesService implements OnModuleInit {
       // A receipt on a drafted TA/DA line makes it the rep's own (kept on re-run).
       await tx
         .update(expenseLines)
-        .set({ source: 'manual', autoTrigger: null })
-        .where(and(eq(expenseLines.id, lineId), eq(expenseLines.source, 'auto')));
+        .set({ source: 'manual', autoTrigger: null, origin: 'manual' })
+        .where(
+          and(
+            eq(expenseLines.id, lineId),
+            eq(expenseLines.source, 'auto'),
+            ne(expenseLines.origin, 'dcr'),
+          ),
+        );
       await this.audit.record(tx, p, 'expense.attachment_requested', {
         entityType: 'expense_attachment',
         entityId: a!.id,

@@ -14,6 +14,7 @@ import {
   dcrCalls,
   dcrs,
   dcrSfcRoutes,
+  expenseLines,
   doctors,
   geoCaptures,
   products,
@@ -268,8 +269,30 @@ export class DcrService {
       .from(dcrSfcRoutes)
       .where(and(inArray(dcrSfcRoutes.dcrId, ids), isNull(dcrSfcRoutes.deletedAt)))
       .orderBy(asc(dcrSfcRoutes.createdAt), asc(dcrSfcRoutes.id));
+    // Expense link read fields: one grouped query over the live origin-dcr lines (no N+1).
+    const exp = new Map(
+      (
+        await tx
+          .select({
+            dcrId: expenseLines.dcrId,
+            claimId: sql<string>`(array_agg(${expenseLines.claimId}))[1]`,
+            total: sql<string>`coalesce(sum(${expenseLines.amount}), 0)`,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(expenseLines)
+          .where(
+            and(
+              inArray(expenseLines.dcrId, ids),
+              eq(expenseLines.origin, 'dcr'),
+              isNull(expenseLines.deletedAt),
+            ),
+          )
+          .groupBy(expenseLines.dcrId)
+      ).map((x) => [x.dcrId, x]),
+    );
     const out: Dcr[] = [];
     for (const r of rows) {
+      const e = exp.get(r.id);
       const li = lockInfo.get(`${r.userId}:${r.date}`)!;
       out.push({
         id: r.id,
@@ -311,6 +334,10 @@ export class DcrService {
         unlockedUntil: li.unlockedUntil?.toISOString() ?? null,
         band: r.band,
         details: (r.details as Dcr['details']) ?? null,
+        expenses: (r.expenses as Dcr['expenses']) ?? [],
+        expenseClaimId: e?.claimId ?? null,
+        expenseTotal: e ? Number(e.total) : 0,
+        expenseCount: e?.count ?? 0,
         workWithUserIds: r.workWithUserIds,
         sfcRoutes: routes
           .filter((x) => x.dcrId === r.id)

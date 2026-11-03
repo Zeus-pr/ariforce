@@ -179,6 +179,11 @@ export const dcrs = pgTable(
     band: text('band', { enum: ['hq', 'ex_hq', 'outstation'] }),
     /** Non-field details (0043), shape per work type (contracts DcrDetails). */
     details: jsonb('details'),
+    /** DCR expense items [{category, amount, note?}] (0055); linked into the claim at submit. */
+    expenses: jsonb('expenses')
+      .$type<{ category: string; amount: number; note?: string | null }[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     /** Day-level Work With (0043): anyone in the company. */
     workWithUserIds: uuid('work_with_user_ids')
       .array()
@@ -205,6 +210,7 @@ export const dcrs = pgTable(
       .on(t.companyId, t.userId, t.submitIdempotencyKey)
       .where(sql`submit_idempotency_key IS NOT NULL`),
     check('dcrs_band_ck', sql`band IS NULL OR band IN ('hq', 'ex_hq', 'outstation')`),
+    check('dcrs_expenses_ck', sql`jsonb_typeof(expenses) = 'array'`),
     check('dcrs_details_ck', sql`details IS NULL OR jsonb_typeof(details) = 'object'`),
     check(
       'dcrs_submit_key_ck',

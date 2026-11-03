@@ -50,6 +50,8 @@ import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { assertDcrDateWritable } from './dcr-date';
 import { normaliseDetails } from './details-rules';
+import { checkDcrExpenses } from './expense-rules';
+import type { DcrExpenseItem } from '@ariforce/contracts';
 import { companySettings, localDate } from '../field/field.util';
 import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leave.util';
 import { IMAGE_URL_WINDOW_S, StorageService } from '../files/storage.service';
@@ -631,6 +633,8 @@ export class DcrFlowService {
         throw err(422, 'VALIDATION', 'Calls need a field work type', { field: 'calls' });
       this.checkDetailsKind(wt, b.details);
       const details = normaliseDetails(b.details);
+      // Omitted: the saved list is kept; sent (even []): replaces it.
+      const expenses = b.expenses ? checkDcrExpenses(b.expenses) : undefined;
       const hqs = await this.resolveHqs(tx, p, b.territoryIds);
       await this.checkWorkWith(tx, b.workWithUserIds);
       await this.checkChoices(tx, p, b.sfcRoutes ?? [], hqs, band);
@@ -648,6 +652,7 @@ export class DcrFlowService {
         details: details ?? null,
         workWithUserIds: b.workWithUserIds,
         status: 'draft' as const,
+        ...(expenses ? { expenses } : {}),
       };
       const [row] = cur
         ? await tx.update(dcrs).set(vals).where(eq(dcrs.id, cur.id)).returning()
@@ -680,7 +685,7 @@ export class DcrFlowService {
     });
   }
 
-  submit(p: Principal, id: string, version: number, key: string) {
+  submit(p: Principal, id: string, version: number, key: string, bodyExpenses?: DcrExpenseItem[]) {
     return this.tenant.run(p, async (tx) => {
       const s = await companySettings(tx, p);
       const [cur] = await tx
@@ -697,7 +702,11 @@ export class DcrFlowService {
         (cur.status === 'submitted' || cur.status === 'approved') &&
         cur.submitIdempotencyKey === key
       )
-        return { ...(await this.dcr.toDto(tx, s, [cur]))[0]!, expenseDraft: null };
+        return {
+          ...(await this.dcr.toDto(tx, s, [cur]))[0]!,
+          expenseDraft: null,
+          dcrExpenses: null,
+        };
       if (cur.status === 'submitted')
         throw err(409, 'ALREADY_SUBMITTED', 'Already submitted; request a correction', { id });
       // Reviewed reports are read-only: approved stays, rejected is history (file a new draft).
@@ -737,6 +746,8 @@ export class DcrFlowService {
           'Stale version',
           (await this.dcr.toDto(tx, s, [cur]))[0],
         );
+      // Body expenses replace the saved list; omitted: the draft's saved list is used.
+      const items = checkDcrExpenses(bodyExpenses ?? ((cur.expenses ?? []) as DcrExpenseItem[]));
       const li = await this.dcr.lockInfo(tx, s, p.userId, cur.date);
       if (li.locked)
         throw err(409, 'DAY_LOCKED', 'This day is locked; request a correction', {
@@ -856,6 +867,7 @@ export class DcrFlowService {
               submittedAt: new Date(),
               submittedBy: p.userId,
               submitIdempotencyKey: key,
+              expenses: items,
               band,
               tourPlanId: plan.tourPlanId,
               tourPlanItemId: (await approvedItemOn(tx, p.userId, cur.date))?.id ?? null,
@@ -892,11 +904,20 @@ export class DcrFlowService {
         userId: p.userId,
         date: cur.date,
       });
+      // DCR expenses -> month claim lines (origin dcr), idempotent; regardless of the TA/DA
+      // setting; claim_locked skips without changes. Never fails the submit.
+      const dcrExpenses = await this.autoExpense.linkDcrExpenses(
+        tx,
+        p,
+        { id: cur.id, userId: p.userId, date: cur.date },
+        items,
+      );
       const [fresh] = await tx.select().from(dcrs).where(eq(dcrs.id, cur.id));
       await this.dcr.notifySubmit(tx, p, fresh!);
       return {
         ...((await this.dcr.toDto(tx, s, [fresh!]))[0]! satisfies Dcr),
         expenseDraft,
+        dcrExpenses,
       } satisfies DcrSubmitResult;
     });
   }

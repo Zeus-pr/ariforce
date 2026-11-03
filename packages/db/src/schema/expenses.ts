@@ -4,6 +4,7 @@ import {
   check,
   date,
   index,
+  integer,
   jsonb,
   numeric,
   pgTable,
@@ -78,6 +79,12 @@ export const expenseLines = pgTable(
     autoTrigger: text('auto_trigger', { enum: ['allowances_run', 'dcr_submit'] }),
     /** Set when the day's DCR was rejected after the line was added (0052 flag). */
     dcrRejectedAt: timestamp('dcr_rejected_at', { withTimezone: true }),
+    /** Where the line came from (0056): manual, ta_da (TA/DA auto-draft), dcr (DCR expenses). */
+    origin: text('origin', { enum: ['manual', 'ta_da', 'dcr'] })
+      .notNull()
+      .default('manual'),
+    /** origin = 'dcr': index of the item in dcrs.expenses (0056). */
+    dcrItemIndex: integer('dcr_item_index'),
     ...syncCols(),
   },
   (t) => [
@@ -88,7 +95,15 @@ export const expenseLines = pgTable(
     // One live auto line per claim, day and category (0052; duplicate pre-check in the migration).
     uniqueIndex('expense_lines_auto_uq')
       .on(t.companyId, t.claimId, t.date, t.category)
-      .where(sql`source = 'auto' AND deleted_at IS NULL`),
+      .where(sql`source = 'auto' AND origin <> 'dcr' AND deleted_at IS NULL`),
+    // One live DCR line per (DCR, item): a resubmit can never duplicate (0056).
+    uniqueIndex('expense_lines_dcr_item_uq')
+      .on(t.companyId, t.dcrId, t.dcrItemIndex)
+      .where(sql`origin = 'dcr' AND deleted_at IS NULL`),
+    check(
+      'expense_lines_origin_ck',
+      sql`${t.origin} in ('manual','ta_da','dcr') AND (${t.origin} = 'dcr') = (${t.dcrItemIndex} IS NOT NULL) AND (${t.origin} <> 'dcr' OR ${t.dcrId} IS NOT NULL)`,
+    ),
     check('expense_lines_source_ck', sql`${t.source} in ('manual','auto')`),
     check(
       'expense_lines_auto_trigger_ck',
