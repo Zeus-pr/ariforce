@@ -52,7 +52,10 @@ export function withV2(details: DcrDetails, p: Places & { endTime: string }): Dc
       ...(/^\d\d:\d\d$/.test(p.endTime) && details.startTime ? { endTime: p.endTime } : {}),
       ...(placed ? { fromPlace: from || null, toPlace: to || null } : {}),
     };
-    return { ...details, remarks: clean, ...extra } as DcrDetails;
+    // Server derives durationMin from start/end: don't send it alongside endTime.
+    const { durationMin: _d, ...rest } = details as typeof details & { durationMin?: number };
+    const base = extra.endTime ? rest : details;
+    return { ...base, remarks: clean, ...extra } as DcrDetails;
   }
   if (!from && !to) return { ...details, remarks: clean };
   const rest = clean ?? '';
@@ -127,7 +130,7 @@ export type ExpenseOutcome =
   | { kind: 'error' }
   | null;
 
-/** Outcome from the submit response only (server links the lines; never the app). */
+/** Outcome from the submit response or a Dcr read (#121 839e56a) (server links the lines; never the app). */
 export function expenseOutcome(res: object | null | undefined): ExpenseOutcome {
   if (!DCR_V2_FIELDS || !res) return null;
   const r = res as {
@@ -141,7 +144,7 @@ export function expenseOutcome(res: object | null | undefined): ExpenseOutcome {
   if (link?.status === 'skipped') return link.reason === 'claim_locked' ? { kind: 'locked' } : null;
   const claimId = r.expenseClaimId ?? link?.claimId ?? null;
   const count = Number(r.expenseCount ?? link?.lines ?? 0);
-  if (!claimId || !count) return null;
+  if (!claimId || !(count > 0)) return null;
   return { kind: 'linked', claimId, total: Number(r.expenseTotal ?? link?.total ?? 0), count };
 }
 

@@ -159,9 +159,19 @@ const MESSAGES: Record<string, string> = {
   DCR_NOT_APPROVED:
     'Can’t approve yet: the DCR for one of these days isn’t approved. Approve the DCR first, or send the claim back.',
 };
+/** Lines the server linked from a DCR (contract #121): read-only on the claim. */
+export const isDcrLine = (l: object) => (l as { origin?: string }).origin === 'dcr';
+const DCR_LINE_MESSAGE =
+  'This item came from your DCR. Change it on that day’s report, not on the claim.';
+
 export const expenseMessage = (e: unknown) =>
   e instanceof ApiError
-    ? (e.code && MESSAGES[e.code]) || e.message || 'Something went wrong.'
+    ? (e.code === 'EXPENSE_NOT_EDITABLE' &&
+        (e.details as { reason?: string } | undefined)?.reason === 'DCR_LINE' &&
+        DCR_LINE_MESSAGE) ||
+      (e.code && MESSAGES[e.code]) ||
+      e.message ||
+      'Something went wrong.'
     : (e as Error)?.message || 'Something went wrong.';
 
 const key = ['expenses'] as const;
