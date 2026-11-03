@@ -119,6 +119,8 @@ export type FlowProps = {
   onSaved?: (dcr: Dcr, submitted: boolean) => void;
   /** The draft (or submitted report) to open; omit for a new draft. */
   reportId?: string | null;
+  /** Someone else's report opened by a manager: read-only, without the filer's own status, lock and unlock panels. */
+  viewOnly?: boolean;
   /** Ask to delete the open draft (the workspace confirms and calls DELETE). */
   onDelete?: (dcr: Dcr) => void;
   /** Open another report of yours, e.g. the day's submitted one. */
@@ -188,6 +190,7 @@ function Flow({
   initialDate,
   dateLocked = false,
   reportId,
+  viewOnly = false,
   onSaved,
   onDelete,
   onOpenReport,
@@ -250,7 +253,7 @@ function Flow({
     (dcr?.status === 'submitted' || dcr?.status === 'locked' || dayLocked) && !unlockedOpen;
   /** Today only (IST); a past day only while unlocked. Other days are view-only. */
   const dateClosed = !dcrDateOpen(s.date, today, unlockedUntil);
-  const readOnly = lockedView || dateClosed || blocked || gone;
+  const readOnly = viewOnly || lockedView || dateClosed || blocked || gone;
   const savedWorkWithIds = readOnly ? (dcr?.workWithUserIds ?? []).join(',') : '';
   const dayHqIds = useMemo(() => hqIdsOf(rows, s.territoryIds), [rows, s.territoryIds]);
   // Per HQ of the day: the picked level-'territory' rows under it, or none when the HQ itself was picked (whole HQ).
@@ -750,119 +753,123 @@ function Flow({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-0.5">
-          <p className="text-sm text-muted-foreground" data-testid="dcr-date-label">
-            {dateLabel(s.date)}
-          </p>
-          <p className="text-sm" data-testid="dcr-status">
-            <span
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium',
-                status === 'Submitted'
-                  ? 'bg-success-soft text-success'
-                  : status === 'Draft'
-                    ? 'bg-info-soft text-info'
-                    : 'bg-muted text-muted-foreground',
-              )}
-            >
-              {status}
-            </span>
-            {dcr?.status === 'draft' && (
-              <span className="ml-2 text-xs text-muted-foreground">
-                saved {timeLabel(dcr.updatedAt)}
+      {!viewOnly && (
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-col gap-0.5">
+            <p className="text-sm text-muted-foreground" data-testid="dcr-date-label">
+              {dateLabel(s.date)}
+            </p>
+            <p className="text-sm" data-testid="dcr-status">
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium',
+                  status === 'Submitted'
+                    ? 'bg-success-soft text-success'
+                    : status === 'Draft'
+                      ? 'bg-info-soft text-info'
+                      : 'bg-muted text-muted-foreground',
+                )}
+              >
+                {status}
               </span>
-            )}
-          </p>
-        </div>
-      </div>
-
-      {(dcr?.status === 'submitted' || dcr?.status === 'locked' || dayLocked) && !unlockedOpen && (
-        <div
-          className="af-enter flex flex-col gap-3 rounded-xl border border-success/40 bg-success-soft p-4"
-          role="status"
-          data-testid="dcr-success"
-        >
-          <div className="flex items-start gap-3">
-            <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden />
-            <div className="flex flex-col gap-0.5 text-sm">
-              <p className="font-medium">
-                {dcr?.submittedAt
-                  ? `Report submitted ${dcr.status === 'locked' || dayLocked ? `on ${dateLabel(istDay(dcr.submittedAt))}, ` : ''}at ${timeLabel(dcr.submittedAt)}`
-                  : 'This day is locked'}
-              </p>
-              <p className="text-muted-foreground">
-                {dayLocked || dcr?.status === 'locked'
-                  ? 'The day is locked, so it is read-only. Request an unlock if something needs correcting.'
-                  : 'It is read-only now. Ask your manager if something needs correcting.'}
-              </p>
-              {expenseOutcome && <p data-testid="dcr-expense-outcome">{expenseOutcome}</p>}
-            </div>
-          </div>
-          {(dayLocked || dcr?.status === 'locked') && (
-            <div
-              className="flex flex-col gap-2 border-t border-success/30 pt-3"
-              data-testid="dcr-unlock"
-            >
-              {unlockPending ? (
-                <p className="text-sm text-muted-foreground">
-                  Unlock request sent — waiting for a Director to approve.
-                </p>
-              ) : (
-                <>
-                  <Label htmlFor="dcr-unlock-reason">Why should this day be reopened?</Label>
-                  <textarea
-                    id="dcr-unlock-reason"
-                    value={unlockReason}
-                    maxLength={500}
-                    rows={2}
-                    onChange={(e) => setUnlockReason(e.target.value)}
-                    placeholder="e.g. Wrong chemist recorded, need to correct POB"
-                    className="w-full rounded-md border bg-card px-3 py-2 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm"
-                    data-testid="dcr-unlock-reason"
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="self-start"
-                    disabled={unlockBusy || unlockReason.trim().length < 3}
-                    data-testid="dcr-unlock-submit"
-                    onClick={() => {
-                      void (async () => {
-                        setUnlockBusy(true);
-                        try {
-                          const r = await api.POST('/v1/dcrs/correction-requests', {
-                            body: { date: s.date, reason: unlockReason.trim() },
-                          });
-                          if (r.error) {
-                            const e = toApiError(r);
-                            if (/already unlocked|not locked/i.test(e.message)) {
-                              toast.success('This day is open again. Reload to edit.');
-                              setReload((n) => n + 1);
-                            } else
-                              toast.error(e.message || 'Could not request unlock.', {
-                                duration: 10000,
-                              });
-                            return;
-                          }
-                          setUnlockPending(true);
-                          toast.success('Unlock request sent to your Director.');
-                        } catch (e) {
-                          toast.error(thrownMessage(e), { duration: 10000 });
-                        } finally {
-                          setUnlockBusy(false);
-                        }
-                      })();
-                    }}
-                  >
-                    {unlockBusy ? 'Sending…' : 'Request unlock'}
-                  </Button>
-                </>
+              {dcr?.status === 'draft' && (
+                <span className="ml-2 text-xs text-muted-foreground">
+                  saved {timeLabel(dcr.updatedAt)}
+                </span>
               )}
-            </div>
-          )}
+            </p>
+          </div>
         </div>
       )}
+
+      {!viewOnly &&
+        (dcr?.status === 'submitted' || dcr?.status === 'locked' || dayLocked) &&
+        !unlockedOpen && (
+          <div
+            className="af-enter flex flex-col gap-3 rounded-xl border border-success/40 bg-success-soft p-4"
+            role="status"
+            data-testid="dcr-success"
+          >
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden />
+              <div className="flex flex-col gap-0.5 text-sm">
+                <p className="font-medium">
+                  {dcr?.submittedAt
+                    ? `Report submitted ${dcr.status === 'locked' || dayLocked ? `on ${dateLabel(istDay(dcr.submittedAt))}, ` : ''}at ${timeLabel(dcr.submittedAt)}`
+                    : 'This day is locked'}
+                </p>
+                <p className="text-muted-foreground">
+                  {dayLocked || dcr?.status === 'locked'
+                    ? 'The day is locked, so it is read-only. Request an unlock if something needs correcting.'
+                    : 'It is read-only now. Ask your manager if something needs correcting.'}
+                </p>
+                {expenseOutcome && <p data-testid="dcr-expense-outcome">{expenseOutcome}</p>}
+              </div>
+            </div>
+            {(dayLocked || dcr?.status === 'locked') && (
+              <div
+                className="flex flex-col gap-2 border-t border-success/30 pt-3"
+                data-testid="dcr-unlock"
+              >
+                {unlockPending ? (
+                  <p className="text-sm text-muted-foreground">
+                    Unlock request sent — waiting for a Director to approve.
+                  </p>
+                ) : (
+                  <>
+                    <Label htmlFor="dcr-unlock-reason">Why should this day be reopened?</Label>
+                    <textarea
+                      id="dcr-unlock-reason"
+                      value={unlockReason}
+                      maxLength={500}
+                      rows={2}
+                      onChange={(e) => setUnlockReason(e.target.value)}
+                      placeholder="e.g. Wrong chemist recorded, need to correct POB"
+                      className="w-full rounded-md border bg-card px-3 py-2 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm"
+                      data-testid="dcr-unlock-reason"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="self-start"
+                      disabled={unlockBusy || unlockReason.trim().length < 3}
+                      data-testid="dcr-unlock-submit"
+                      onClick={() => {
+                        void (async () => {
+                          setUnlockBusy(true);
+                          try {
+                            const r = await api.POST('/v1/dcrs/correction-requests', {
+                              body: { date: s.date, reason: unlockReason.trim() },
+                            });
+                            if (r.error) {
+                              const e = toApiError(r);
+                              if (/already unlocked|not locked/i.test(e.message)) {
+                                toast.success('This day is open again. Reload to edit.');
+                                setReload((n) => n + 1);
+                              } else
+                                toast.error(e.message || 'Could not request unlock.', {
+                                  duration: 10000,
+                                });
+                              return;
+                            }
+                            setUnlockPending(true);
+                            toast.success('Unlock request sent to your Director.');
+                          } catch (e) {
+                            toast.error(thrownMessage(e), { duration: 10000 });
+                          } finally {
+                            setUnlockBusy(false);
+                          }
+                        })();
+                      }}
+                    >
+                      {unlockBusy ? 'Sending…' : 'Request unlock'}
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       {unlockedOpen && (
         <div
           className="af-enter rounded-xl border border-warning/40 bg-warning-soft p-4 text-sm"
@@ -909,7 +916,7 @@ function Flow({
         )
       )}
 
-      {daySubmitted && dcr?.status !== 'submitted' && (
+      {!viewOnly && daySubmitted && dcr?.status !== 'submitted' && (
         <div
           className="af-fade flex flex-col gap-3 rounded-xl border border-warning/40 bg-warning-soft p-4 text-sm"
           role="status"
@@ -964,7 +971,7 @@ function Flow({
         </div>
       )}
 
-      {dateClosed && !lockedView && !blocked && !gone && (
+      {!viewOnly && dateClosed && !lockedView && !blocked && !gone && (
         <div
           className="rounded-xl border bg-muted/40 p-4 text-sm"
           role="status"
