@@ -127,7 +127,7 @@ export function ExpenseItems({
 export function DcrExpenseChip({ dcr }: { dcr: object }) {
   const router = useRouter();
   const out = expenseOutcome(dcr);
-  if (!out || !out.count) return null;
+  if (out?.kind !== 'linked') return null;
   const { claimId: id, total, count } = out;
   return (
     <Pressable

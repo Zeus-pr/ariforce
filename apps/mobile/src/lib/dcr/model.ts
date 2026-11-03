@@ -4,7 +4,7 @@
  * Admin work and Leave (by detailsKind), plus any other work type as-is (e.g. Holiday).
  */
 import type { Dcr, DcrBand, DcrDetails, DcrDraftPut, DcrSfcMatch } from '@ariforce/contracts';
-import { withPlaces, type DcrExpenseItem } from './v2-adapter';
+import { expenseBodyExtras, withV2, type DcrExpenseItem } from './v2-adapter';
 import { bandOf, categoryFitsBand, sfcCategoryOf } from './bands';
 import type { ApiError } from '../api';
 import { tpCaps } from '../tp/caps';
@@ -304,7 +304,7 @@ export function detailsOf(s: FlowState): DcrDetails | null {
       attendees: t(m.attendees),
       remarks: t(m.remarks),
     };
-    return withPlaces(
+    return withV2(
       b === 'meeting'
         ? { kind: 'meeting', ...base }
         : { kind: 'training', ...base, trainer: t(m.trainer) },
@@ -314,7 +314,7 @@ export function detailsOf(s: FlowState): DcrDetails | null {
   if (b === 'office') {
     const o = s.office;
     if (!o.taskType.trim() || !o.description.trim() || !minutes(o.durationMin)) return null;
-    return withPlaces(
+    return withV2(
       {
         kind: 'office',
         taskType: o.taskType.trim(),
@@ -474,6 +474,7 @@ export function draftBody(
           ...(sendsCalledAt() ? { calledAt: isoOf(s.date, c.time) } : {}),
         }))
       : [],
+    ...expenseBodyExtras(s.expenses),
     ...(saved ? { id: saved.id, version: saved.version } : {}),
   };
 }
@@ -528,6 +529,14 @@ export function dcrErrorMessage(e: ApiError): string {
       return 'You already submitted a report for this day. This draft can’t be saved or submitted; you can delete it.';
     case 'NOT_FOUND':
       return 'This draft no longer exists. It may have been deleted on another device.';
+    case 'MEETING_TYPE_INVALID':
+      return 'Choose Cycle Meeting or Review Meeting.';
+    case 'END_TIME_NOT_AFTER_START':
+      return 'Check the times: the end time must be after the start time.';
+    case 'DURATION_TOO_LONG':
+      return 'A session can be at most 12 hours. Check the start and end times.';
+    case 'DCR_EXPENSE_CATEGORY_INVALID':
+      return 'Pick Travel, Hotel, Food or Other for each expense.';
     case 'DEVIATION_REASON_REQUIRED':
       return 'Say why the day differs from your approved tour plan.';
     default:

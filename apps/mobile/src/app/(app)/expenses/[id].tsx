@@ -199,6 +199,11 @@ export default function ClaimScreen() {
                 >
                   <View style={styles.flex}>
                     <AppText variant="body">{CATEGORY_LABEL[l.category]}</AppText>
+                    {(l as { origin?: string }).origin === 'dcr' ? (
+                      <AppText variant="small" style={styles.muted}>
+                        From DCR
+                      </AppText>
+                    ) : null}
                     {l.attachments.length ? (
                       <View style={styles.row}>
                         {l.attachments.map((a, i) => (
@@ -328,6 +333,7 @@ function Bar({ bottom, children }: { bottom: number; children: React.ReactNode }
 }
 
 const styles = StyleSheet.create({
+  muted: { color: colors.muted },
   flex: { flex: 1 },
   content: { padding: layout.gutter, gap: spacing.md },
   pad: { padding: spacing.lg, gap: spacing.sm },

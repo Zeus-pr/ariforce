@@ -1,6 +1,7 @@
 /**
  * Live DCR API hooks (web dcr-workspace + dcr-flow). Same endpoints and query shapes.
  */
+import type { DcrExpenseLink } from './v2-adapter';
 import type { Dcr } from '@ariforce/contracts';
 import {
   keepPreviousData,
@@ -159,9 +160,17 @@ export function useSubmitDcr() {
       version: number;
       key: string;
       /** v2-adapter extras (only when EXPO_PUBLIC_DCR_V2_FIELDS=1). */
-      expenses?: unknown[];
+      expenses?: { category: string; amount: number; note: string | null }[];
     }) =>
-      apiFetch<Dcr & { expenseDraft?: ExpenseAutoDraft | null }>(`/v1/dcrs/${id}/submit`, {
+      apiFetch<
+        Dcr & {
+          expenseDraft?: ExpenseAutoDraft | null;
+          expenseClaimId?: string | null;
+          expenseTotal?: number | null;
+          expenseCount?: number | null;
+          dcrExpenses?: DcrExpenseLink | null;
+        }
+      >(`/v1/dcrs/${id}/submit`, {
         method: 'POST',
         headers: { 'idempotency-key': key },
         body: { version, ...extras },
