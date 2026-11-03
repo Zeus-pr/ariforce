@@ -1,6 +1,6 @@
 import * as z from 'zod';
 import { DateOnly, Id, Timestamp } from './common';
-import { DcrBand, DcrDetails, DcrSfcRouteChoice, DcrSfcSource } from './dcr-parts';
+import { DcrBand, DcrDetails, DcrExpenses, DcrSfcRouteChoice, DcrSfcSource } from './dcr-parts';
 import { Dcr, DcrCallInput } from './field';
 import { TourPlanItem } from './tp-items';
 import { Product } from './products';
@@ -307,12 +307,24 @@ export const DcrDraftPut = z
         'The approved TourPlanItem this day is filed from. The date must lie in its from..to and it must be yours and approved, else 422 VALIDATION (details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date in the range may be drafted (submit still opens on the day). Omitted: the server links the approved item covering the date, if any. No deviation reason is ever required',
     }),
     calls: z.array(DcrCallInput).max(60).default([]),
+    expenses: DcrExpenses.optional().meta({
+      description:
+        'Day expenses (any work type), replaces the saved list. Omit to keep it. Categories travel/hotel/food/other (else 422 DCR_EXPENSE_CATEGORY_INVALID). Receipt files go on the linked claim line',
+    }),
     version: z.int().min(1).optional().meta({ description: 'Row version from the last read' }),
   })
   .meta({ id: 'DcrDraftPut' });
 export type DcrDraftPut = z.infer<typeof DcrDraftPut>;
 
-export const DcrSubmit = z.object({ version: z.int().min(1) }).meta({ id: 'DcrSubmit' });
+export const DcrSubmit = z
+  .object({
+    version: z.int().min(1),
+    expenses: DcrExpenses.optional().meta({
+      description:
+        'Day expenses; when sent they replace the saved draft list before submit. Omit to submit the saved list. The server links them into the month claim (clients never create the lines)',
+    }),
+  })
+  .meta({ id: 'DcrSubmit' });
 export const DcrSubmitHeaders = z.object({
   'idempotency-key': z
     .string()

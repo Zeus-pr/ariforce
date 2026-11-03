@@ -92,6 +92,10 @@ export const ExpenseLine = z
       description:
         'auto = drafted by TA/DA (#39) and replaced on re-run; editing or attaching a receipt makes it manual',
     }),
+    origin: z.enum(['manual', 'ta_da', 'dcr']).optional().meta({
+      description:
+        "Where the line came from: manual, ta_da (TA/DA auto-draft), dcr (an expense item on the day's DCR; show 'from DCR', dcrId is that DCR). Absent from older APIs: derive from source. dcr lines have source auto and are never touched by a TA/DA re-run",
+    }),
     allowancePlaceId: Id.nullable().meta({ description: 'Fare-chart place used for TA (#39)' }),
     autoTrigger: z.enum(['allowances_run', 'dcr_submit']).nullable().default(null).meta({
       description:

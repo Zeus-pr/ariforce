@@ -123,3 +123,27 @@ snapshot, so TA/DA always come from the same route):
 `packages/db/scripts/data-fixes/2026-10-28-sfc-category-normalise.sql`: dry run by default, `-v apply=1`
 to write. `EX`, `EX HQ` -> `ex`; `HQ` -> `hq`; `OS`, `OUT EX HQ` -> `os`. `EX / OS` and `MEETING` are
 kept as is and listed. Re-runnable.
+
+## Meeting sub-types, DCR expenses, end time and places (contract 2026-11-03, server pending)
+
+- Meeting sub-type = `details.title`, one of "Cycle Meeting" / "Review Meeting" on write (DCR
+  and TP); anything else is 422 MEETING_TYPE_INVALID. Before this, title was free text. Old rows
+  are never rewritten destructively: the data fix
+  `packages/db/scripts/data-fixes/<date>-meeting-title-normalise.sql` (dry-run default) only
+  rewrites titles that clearly say "cycle" or "review" to the exact label (old text kept in the
+  audit/notes); everything else displays its legacy title. Reads tolerate legacy values.
+- Meeting, training and admin work (office) get `endTime`; the server derives `durationMin`
+  (end - start, same day, 1-720). end <= start -> 422 END_TIME_NOT_AFTER_START, more than 12 h -> 422 DURATION_TOO_LONG.
+  Admin work: startTime becomes required whenever endTime is sent. Older clients
+  that send only `durationMin` keep working until endTime becomes required.
+- Meeting and admin work get optional `fromPlace` / `toPlace` (no TA/DA rule reads them yet, so
+  nothing justifies making them mandatory). Training: no places.
+- Any work type can carry `expenses[]` (travel, hotel, food, other). At submit they are copied
+  into the month claim as `origin: dcr` lines (`dcrId`), replacing all of that DCR's
+  earlier dcr lines, so a resubmit never duplicates. Same rules as the TA/DA auto-draft: only a
+  draft/rejected claim is written (created if missing); a submitted/approved/paid claim is left
+  alone (`dcrExpenses.status skipped, reason claim_locked`), the DCR keeps the items and the user
+  adds them after the claim reopens. Claims are one per user per month, so a second draft claim
+  is not possible without a schema change. A DCR rejection removes its dcr lines from an
+  editable claim and flags them (dcr_rejected_at) on a decided one, as for TA/DA.
+- New fields live in `dcrs.details` (jsonb) and need no migration; expenses need a table.

@@ -10,6 +10,43 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## feat/dcr-tp-contract (2026-11-03): meeting sub-types, DCR expenses, end time and places
+
+Contract only (phase 1); server lands in phase 2. Additive: every new field is optional on input
+and in responses, so current clients and the current API keep working.
+
+- Meeting sub-type stays in `details.title` (DCR `details` and TP `plan.details`): on write it
+  must be "Cycle Meeting" or "Review Meeting" (`MEETING_TYPES`), else 422
+  `MEETING_TYPE_INVALID` (details.allowed). Legacy rows keep other free text and read unchanged.
+- `endTime` (HH:mm IST, nullable) on meeting, training and office (Admin Work) details;
+  `durationMin` (existing name) is derived from startTime/endTime and is now optional on input
+  (deprecated; ignored when endTime is sent). endTime <= startTime, or endTime without a start
+  time -> 422 `END_TIME_NOT_AFTER_START`; end - start > 720 min -> 422 `DURATION_TOO_LONG`
+  (same limit as the existing durationMin max). Admin work: startTime required with endTime.
+  Field work: unchanged.
+- `fromPlace` / `toPlace` (free text, max 120, optional) on meeting and office details only.
+  Training: endTime only.
+- `DcrExpenseItem` {category (travel|hotel|food|other), amount, note?}; `Dcr.expenses` (optional, max 20) and `DcrDraftPut.expenses` (omit = keep).
+  allowance/mileage -> 422 `DCR_EXPENSE_CATEGORY_INVALID` (details.index, details.allowed).
+- `DcrSubmit.expenses` (optional; replaces the saved list before submit) and submit response
+  `expenseClaimId`, `expenseTotal`, `expenseCount` (optional). Clients never create claim lines.
+- `Dcr` read shapes (detail, list items, submit response) gain `expenseClaimId` (uuid|null),
+  `expenseTotal`, `expenseCount` (optional; from the claim's live origin-dcr lines of that DCR;
+  null/0/0 when none), so a reopened report can show "Added to expenses" with a claim link.
+- `durationMin` may still be sent next to `endTime`; it is ignored and derived.
+- Category mapping: DCR categories are a subset of the existing `ExpenseCategory` enum, mapped
+  1:1 by value (travel, hotel, food, other); no mapping table.
+- Training details have no places; extra keys (fromPlace/toPlace) are stripped (accepted and
+  ignored), as zod does for any unknown key.
+- `ExpenseLine.origin` (`manual` | `ta_da` | `dcr`, optional);
+  `origin: dcr` = show "from DCR", `dcrId` = that DCR. `source` enum unchanged (dcr lines are
+  `auto`, never touched by a TA/DA re-run).
+- `DcrSubmitResult.dcrExpenses` (`DcrExpenseLink`: status linked|skipped|error, reason
+  claim_locked|no_expenses, claimId, claimStatus, claimCreated, lines, total). Month claim
+  submitted/approved/paid -> skipped/claim_locked, the submit still succeeds.
+- Error codes documented on PUT /v1/dcrs/draft, POST /v1/dcrs/{id}/submit and PUT
+  /v1/tour-plans/items. Helpers: `MEETING_TYPES`, `isMeetingType`, `deriveDurationMinutes`.
+
 ## perf/territories-compact (2026-11-03): compact territory list
 
 Additive, no migration. New GET /v1/territories/compact (permission: same as GET /v1/territories).

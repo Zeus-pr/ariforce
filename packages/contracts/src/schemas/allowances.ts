@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { DateOnly, Id, Timestamp } from './common';
 import { ExpenseClaim, ExpenseStatus } from './expenses';
 import { Dcr } from './field';
+import { DcrExpenseLink } from './dcr-parts';
 import { RoleKey } from './roles';
 
 /** TA/DA auto-calculation (#39). See docs/TADA.md. */
@@ -173,6 +174,10 @@ export const DcrSubmitResult = Dcr.extend({
   expenseDraft: ExpenseAutoDraft.nullable().default(null).meta({
     description:
       'Server TA/DA auto-draft outcome; null when the company setting autoExpenseOnDcrSubmit is off or on an idempotent retry. Clients: non-null means the server drafted (do not draft client-side)',
+  }),
+  dcrExpenses: DcrExpenseLink.nullable().optional().meta({
+    description:
+      "Linking of the DCR's expenses into the month claim (always attempted, independent of autoExpenseOnDcrSubmit). null on a same-key retry; absent from older APIs",
   }),
 }).meta({ id: 'DcrSubmitResult' });
 export type DcrSubmitResult = z.infer<typeof DcrSubmitResult>;

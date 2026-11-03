@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { DcrBand, DcrDetails, DcrSfcRoute } from './dcr-parts';
+import { DcrBand, DcrDetails, DcrSfcRoute, DcrExpenses } from './dcr-parts';
 import { UserRef, DateOnly, GeoPoint, Id, Month, Syncable, Timestamp, listQuery } from './common';
 import { RoleKey } from './roles';
 
@@ -497,6 +497,23 @@ export const Dcr = Syncable.extend({
     .default([])
     .meta({ description: 'One chosen SFC route per HQ of the day; snapshots set at submit' }),
   submittedBy: Id.nullable().default(null),
+  expenses: DcrExpenses.optional().meta({
+    description:
+      'Expenses reported for the day (any work type). Linked into the month claim at submit (origin dcr); read-only after submit. Absent (older API) = none',
+  }),
+  expenseClaimId: Id.nullable().optional().meta({
+    description:
+      "Month claim holding this DCR's expense lines (origin dcr); null when it has none. Absent from older APIs",
+  }),
+  expenseTotal: z
+    .number()
+    .optional()
+    .meta({ description: "Sum of this DCR's live origin-dcr claim lines, rupees (0 when none)" }),
+  expenseCount: z
+    .int()
+    .min(0)
+    .optional()
+    .meta({ description: "Number of this DCR's live origin-dcr claim lines (0 when none)" }),
   callCount: z
     .int()
     .min(0)
