@@ -149,11 +149,22 @@ export function useSaveDraft() {
 export function useSubmitDcr() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, version, key }: { id: string; version: number; key: string }) =>
+    mutationFn: async ({
+      id,
+      version,
+      key,
+      ...extras
+    }: {
+      id: string;
+      version: number;
+      key: string;
+      /** v2-adapter extras (only when EXPO_PUBLIC_DCR_V2_FIELDS=1). */
+      expenses?: unknown[];
+    }) =>
       apiFetch<Dcr & { expenseDraft?: ExpenseAutoDraft | null }>(`/v1/dcrs/${id}/submit`, {
         method: 'POST',
         headers: { 'idempotency-key': key },
-        body: { version },
+        body: { version, ...extras },
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: dcrKey });

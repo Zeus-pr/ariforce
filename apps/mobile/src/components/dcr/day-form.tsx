@@ -17,6 +17,8 @@ import { TpSfcReview } from '@/components/approvals/sfc-review';
 import { SfcSection } from '@/components/dcr/sfc-section';
 import { useBottomSpace } from '@/components/floating-tab-bar';
 import { Icon } from '@/components/icon';
+import { DcrExpenseChip, ExpenseItems } from './expense-items';
+import { expenseBodyExtras, flowExpenses, readPlaces } from '@/lib/dcr/v2-adapter';
 import { SelectSheet } from '@/components/masters/select-sheet';
 import { KeyboardAwareScrollView } from '@/components/scroll';
 import { TextField } from '@/components/text-field';
@@ -330,8 +332,8 @@ export function DcrForm({
           endTime: plusMinutes(det.startTime, det.durationMin),
           durationMin: String(det.durationMin),
           attendees: det.kind === 'meeting' ? (det.attendees ?? '') : '',
-          remarks: det.remarks ?? '',
           trainer: det.kind === 'training' ? (det.trainer ?? '') : '',
+          ...readPlaces(det),
         };
       if (det?.kind === 'office')
         next.office = {
@@ -340,7 +342,7 @@ export function DcrForm({
           startTime: det.startTime ?? '',
           endTime: det.startTime ? plusMinutes(det.startTime, det.durationMin) : '',
           durationMin: String(det.durationMin),
-          remarks: det.remarks ?? '',
+          ...readPlaces(det),
         };
       if (det?.kind === 'leave') next.leaveRequestId = det.leaveRequestId;
       next.deviationReason = src.deviationReason ?? '';
@@ -558,8 +560,12 @@ export function DcrForm({
           id: saved.id,
           version: saved.version,
           key: submitKey.current,
+          ...expenseBodyExtras(s.expenses ?? []),
         });
         setDcr(submitted);
+        // Optional DCR expenses -> that month's claim (see lib/dcr/v2-adapter.ts).
+        const added = await flowExpenses(s.date, submitted, s.expenses ?? []).catch(() => null);
+        if (added) void qc.invalidateQueries({ queryKey: ['expenses'] });
         // Day's expense draft with TA/DA: the server's (expenseDraft) when it drafts, else ours.
         const note = autoDraftNote(submitted.expenseDraft);
         if (!submitted.expenseDraft)
@@ -568,7 +574,11 @@ export function DcrForm({
           );
         Alert.alert(
           'Submitted',
-          `Report for ${dateLabel(s.date)} submitted.${note ? `\n\n${note}` : ''}`,
+          `Report for ${dateLabel(s.date)} submitted.${note ? `\n\n${note}` : ''}${
+            added
+              ? `\n\nAdded to expenses: ₹${added.total.toLocaleString('en-IN')} (${added.count} item${added.count === 1 ? '' : 's'})`
+              : ''
+          }`,
         );
         router.back();
       } catch (e) {
@@ -1135,6 +1145,20 @@ export function DcrForm({
             }}
             onChange={(office) => update({ office })}
           />
+        ) : null}
+
+        {!isTp && s.workOn ? (
+          readOnly ? (
+            dcr && dcr.status !== 'draft' ? (
+              <DcrExpenseChip dcrId={dcr.id} date={s.date} userId={user?.id} />
+            ) : null
+          ) : (
+            <ExpenseItems
+              value={s.expenses ?? []}
+              readOnly={readOnly}
+              onChange={(expenses) => update({ expenses })}
+            />
+          )
         ) : null}
 
         {s.workOn?.branch === 'leave' ? (
