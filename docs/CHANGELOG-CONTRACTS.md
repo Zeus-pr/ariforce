@@ -10,6 +10,14 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## perf/territories-compact (2026-11-03): compact territory list
+
+Additive, no migration. New GET /v1/territories/compact (permission: same as GET /v1/territories).
+Query: level?, parentId?, ancestorId?, limit? (1..2000, default 2000), cursor?. Response
+TerritoryCompactList {items: {id, name, level, parentId}[], nextCursor}. Same company and caller
+subtree scope as the full list, non-deleted only, name order. Weak ETag + Cache-Control: private,
+max-age=60; If-None-Match -> 304.
+
 ## perf/batch-ids-doctor360 (2026-11-03): Doctor 360 filters on DCR and check-in lists
 
 Additive, no migration.

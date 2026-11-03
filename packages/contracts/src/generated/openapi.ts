@@ -117,6 +117,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/territories/compact': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Compact territory list (id, name, level, parentId) for pickers and trees
+     * @description Same company and caller-subtree scope as GET /v1/territories, non-deleted only, ordered by name. Default and max page 2000; follow nextCursor beyond that. Weak ETag + Cache-Control: private, max-age=60; If-None-Match -> 304 with empty body.
+     *
+     *     Requires: territories:read. Results are territory-subtree scoped.
+     */
+    get: operations['listTerritoriesCompact'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/territories/{id}': {
     parameters: {
       query?: never;
@@ -4084,6 +4106,21 @@ export interface components {
         lat: number;
         lng: number;
       } | null;
+    };
+    TerritoryCompactList: {
+      items: components['schemas']['TerritoryCompact'][];
+      nextCursor: string | null;
+    };
+    TerritoryCompact: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      level: components['schemas']['TerritoryLevel'];
+      parentId: string | null;
     };
     SpecialtyPage: {
       items: components['schemas']['Specialty'][];
@@ -8432,6 +8469,72 @@ export interface operations {
       };
       /** @description Signed in but not allowed (role, hierarchy or tenant) */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listTerritoriesCompact: {
+    parameters: {
+      query?: {
+        level?: components['schemas']['TerritoryLevel'];
+        parentId?: string;
+        /** @description Only descendants of this territory */
+        ancestorId?: string;
+        /** @description Page size, default and max 2000 (the full list caps at 200) */
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+      };
+      header?: {
+        /** @description ETag from a previous response; 304 with empty body if unchanged */
+        'if-none-match'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK (ETag, Cache-Control headers) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TerritoryCompactList'];
+        };
+      };
+      /** @description Not modified (If-None-Match matched); empty body */
+      304: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
         headers: {
           [name: string]: unknown;
         };
