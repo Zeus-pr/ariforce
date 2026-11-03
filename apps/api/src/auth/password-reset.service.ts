@@ -1,3 +1,4 @@
+import { ipRateKey } from '../common/client-ip';
 import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { APIError } from 'better-auth/api';
@@ -66,7 +67,7 @@ export class PasswordResetService {
     const email = b.email.trim().toLowerCase();
     const emailKey = createHash('sha256').update(email).digest('hex').slice(0, 32);
     await enforce([
-      { key: `pwreset-forgot:ip:${ip ?? '?'}`, ...LIMITS.passwordForgotIp() },
+      { key: `pwreset-forgot:ip:${ipRateKey(ip)}`, ...LIMITS.passwordForgotIp() },
       { key: `pwreset-forgot:email:${emailKey}`, ...LIMITS.passwordForgotEmail() },
     ]);
     const id = await this.eligible(email);
@@ -86,7 +87,7 @@ export class PasswordResetService {
   }
 
   async reset(b: PasswordReset, ip: string | null): Promise<PasswordResetDone> {
-    await enforce([{ key: `pwreset-reset:ip:${ip ?? '?'}`, ...LIMITS.passwordResetIp() }]);
+    await enforce([{ key: `pwreset-reset:ip:${ipRateKey(ip)}`, ...LIMITS.passwordResetIp() }]);
     const email = b.email.trim().toLowerCase();
     const id = await this.eligible(email);
     if (!id) throw fail(400, CODES.invalid, 'The code is not valid');

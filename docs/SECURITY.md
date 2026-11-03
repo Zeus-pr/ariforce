@@ -60,13 +60,28 @@ Hardening from the Cutly audit. One section per issue.
 
 - Over the limit: **429** `{ error: { code: "RATE_LIMITED", message, details: { retryAfterSeconds } } }`
   plus a `Retry-After` header (seconds). better-auth's own built-in limiter stays on as well.
-- Tests: `apps/api/test/client-ip-ratelimit.test.ts` (XFF spoofing, CF mode, 429 shape).
+- Rate-limit keys use `ipRateKey(ip)`: IPv4 as is, IPv6 by its /64 (a client holding a /64 cannot
+  rotate addresses past the limit). Audit rows and sessions keep the full address.
+- Tests: `apps/api/test/client-ip-ratelimit.test.ts` (XFF spoofing, CF mode, IPv6 /64, 429 shape).
 
 Railway mode is safe only when public traffic passes through Railway's HTTP edge, no raw TCP
 proxy exposes the API, and all services able to reach it over private networking are trusted.
 The edge overwrites `X-Real-IP` and uses Cloudflare's client IP for requests from its trusted
 Cloudflare IPv4 ranges. Private-network requests bypass this sanitization. See
 [Railway's proxy trust guidance](https://station.railway.com/questions/secure-express-proxy-trust-forwarded-he-aa788da4).
+
+Railway checklist for `CLIENT_IP_MODE=railway` (API service; names only, no values needed):
+
+- Variables: `CLIENT_IP_MODE` = `railway`; `TRUST_PROXY` unset or `loopback` (not used for the client
+  IP; never `true`); `BETTER_AUTH_URL` = the public https API URL; `WEB_ORIGIN` = the web origin(s).
+- Settings > Networking > Public Networking: only HTTP domains (`*.up.railway.app` and/or custom).
+  No **TCP Proxy** on the API service (a TCP proxy bypasses the edge and its header overwrite).
+- Private networking: list every other service in the same project + environment (they can reach
+  `api.railway.internal` directly and send any `X-Real-IP`). Only our own services (web, workers)
+  may share the environment; nothing that runs untrusted code.
+- Replicas: the rate-limit store is in-memory, so with more than one replica each counts alone.
+- If Cloudflare proxies the custom domain later, keep `railway` mode (the edge fills `X-Real-IP` from
+  Cloudflare) or switch to `cloudflare` only if the origin is reachable through Cloudflare alone.
 
 ### Cloudflare rules to add at deploy (lead)
 
@@ -88,3 +103,19 @@ Cloudflare IPv4 ranges. Private-network requests bypass this sanitization. See
 - The spec is generated from `packages/contracts` (`pnpm -F @ariforce/contracts openapi` / `openapi:check`), which never needs the HTTP route.
 - CORS is unchanged and strict: only origins listed in `WEB_ORIGIN` are reflected, with credentials; other origins get no `Access-Control-Allow-Origin`.
 - CORS exposes `Retry-After` (so the web app can back off on 429) and `Content-Disposition` (export file names) via `Access-Control-Expose-Headers`; other origins still get no `Access-Control-Allow-Origin`, so they can read nothing.
+
+## Security review 2026-11-03 (main `f29dedb`, migrations 0044-0053)
+
+| Object                                                                                  | company_id / policy                                | RLS + FORCE                    | Grants                                      | Finding                                                                                                                                                                                                  |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------ | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth_two_factor` (0053)                                                                | none; `api_only` `USING (true)` for `ariforce_app` | yes                            | app: SIUD; anon/authenticated revoked       | OK: same model as `auth_user/session/account/verification` (0005, global identity tables, API-only). Rows are only reached by better-auth by user id; no tenant route reads it. Not applied on prod yet. |
+| `tour_plan_items` (0050)                                                                | yes; `tenant_isolation`                            | yes                            | app: SIU; anon/authenticated revoked        | OK                                                                                                                                                                                                       |
+| `dcr_sfc_routes` (0043)                                                                 | yes; `tenant_isolation`                            | yes                            | app: SIU; anon revoked                      | OK                                                                                                                                                                                                       |
+| views `dcr_day_calls`, `kpi_*` (0045/0046)                                              | via base tables                                    | n/a, `security_invoker = true` | `dcr_day_calls`: PUBLIC revoked, app SELECT | OK (prod: no anon/authenticated grants)                                                                                                                                                                  |
+| columns 0047/0048/0052 on `products`, `dcrs`, `dcr_calls`, `companies`, `expense_lines` | existing tables                                    | existing                       | existing                                    | OK                                                                                                                                                                                                       |
+| permissions 0044/0049/0051                                                              | role arrays only                                   |                                |                                             | OK (generated, idempotent)                                                                                                                                                                               |
+| functions                                                                               | none new in 0044-0053                              |                                |                                             | OK                                                                                                                                                                                                       |
+
+No 0054 needed. Code: product image URL cache keys are full R2 keys (`<companyId>/...`) and the
+company prefix is checked before the cache (test in `storage.test.ts`). Only Supabase `service_role`
+(bypasses RLS by design) has grants besides the app: keep its key out of every service.
