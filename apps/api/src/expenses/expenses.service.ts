@@ -26,6 +26,10 @@ import {
   expenseLines,
   tourPlans,
   users,
+  userRoles,
+  roles,
+  approvalRequests,
+  approvalSteps,
   workTypes,
   type Tx,
 } from '@ariforce/db';
@@ -64,6 +68,12 @@ const nextMonth = (m: string) => {
 const num = (v: string | number | null) => (v === null ? null : Number(v));
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 import { dcrApprovalGap, type DcrGap } from './dcr-gate';
+import { buildTrail, primaryRole, type TrailUser } from './approval-trail';
+
+type ExpenseTrailFields = Pick<
+  ExpenseClaim,
+  'approvalTrail' | 'totalLevels' | 'currentApprover' | 'canDecide' | 'canPay' | 'paidBy'
+>;
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 export const approvalLevels = () => Math.max(1, Number(process.env.EXPENSE_APPROVAL_LEVELS ?? 2));
@@ -172,7 +182,7 @@ export class ExpensesService implements OnModuleInit {
   private async approvalDetail(tx: Tx, p: Principal, id: string): Promise<ApprovalSubject | null> {
     const [c] = await tx.select().from(expenseClaims).where(eq(expenseClaims.id, id));
     if (!c) return null;
-    const claim = await this.toDto(tx, c);
+    const claim = await this.toDto(tx, c, p);
     const placeIds = [
       ...new Set(claim.lines.map((l) => l.allowancePlaceId).filter((x): x is string => !!x)),
     ];
@@ -264,7 +274,7 @@ export class ExpensesService implements OnModuleInit {
 
   // ---- DTOs ----
 
-  private async toDto(tx: Tx, c: ClaimRow): Promise<ExpenseClaim> {
+  private async toDto(tx: Tx, c: ClaimRow, p: Principal): Promise<ExpenseClaim> {
     const lines = await tx
       .select()
       .from(expenseLines)
@@ -296,12 +306,88 @@ export class ExpensesService implements OnModuleInit {
     const [dto] = await nameRejecters(tx, [
       {
         ...this.summary(c, u?.name ?? ''),
+        ...(await this.trails(tx, p, [c])).get(c.id)!,
         approvalStep: c.status === 'submitted' ? step : null,
         dcrRejectedDates: rejectedDates(lines),
         lines: lines.map((l) => this.lineDto(l, atts)),
       },
     ]);
     return dto!;
+  }
+
+  /**
+   * approvalTrail / totalLevels / currentApprover / canDecide / canPay / paidBy for claims, batched:
+   * one query each for requests, steps, users (+ one per projected manager level) and roles.
+   */
+  private async trails(tx: Tx, p: Principal, cs: ClaimRow[]) {
+    const totalLevels = approvalLevels();
+    const reqIds = [
+      ...new Set(cs.flatMap((c) => (c.approvalRequestId ? [c.approvalRequestId] : []))),
+    ];
+    const reqs = reqIds.length
+      ? await tx.select().from(approvalRequests).where(inArray(approvalRequests.id, reqIds))
+      : [];
+    const steps = reqIds.length
+      ? await tx
+          .select()
+          .from(approvalSteps)
+          .where(inArray(approvalSteps.requestId, reqIds))
+          .orderBy(asc(approvalSteps.stepNo))
+      : [];
+    const um = new Map<string, TrailUser>();
+    const load = async (ids: (string | null)[]) => {
+      const want = [...new Set(ids.filter((x): x is string => !!x && !um.has(x)))];
+      if (!want.length) return;
+      const rows = await tx
+        .select({ id: users.id, name: users.name, managerId: users.managerId })
+        .from(users)
+        .where(inArray(users.id, want));
+      for (const r of rows) um.set(r.id, { name: r.name, managerId: r.managerId, role: null });
+    };
+    await load([
+      ...steps.flatMap((s) => [s.approverUserId, s.decidedBy]),
+      ...cs.map((c) => c.paidBy),
+    ]);
+    // Project pending requests up the manager chain (one users query per missing level).
+    let frontier = reqs
+      .filter((r) => r.state === 'pending')
+      .map((r) => steps.filter((s) => s.requestId === r.id).at(-1)?.approverUserId ?? null);
+    for (let i = 0; i < totalLevels && frontier.some(Boolean); i++) {
+      const next = frontier.map((id) => (id ? (um.get(id)?.managerId ?? null) : null));
+      await load(next);
+      frontier = next;
+    }
+    if (um.size) {
+      const rr = await tx
+        .select({ userId: userRoles.userId, key: roles.key })
+        .from(userRoles)
+        .innerJoin(roles, eq(roles.id, userRoles.roleId))
+        .where(inArray(userRoles.userId, [...um.keys()]));
+      for (const [id, u] of um)
+        u.role = primaryRole(rr.filter((r) => r.userId === id).map((r) => r.key));
+    }
+    const out = new Map<string, ExpenseTrailFields>();
+    for (const c of cs) {
+      const req = reqs.find((r) => r.id === c.approvalRequestId) ?? null;
+      const st = req ? steps.filter((s) => s.requestId === req.id) : [];
+      const t = buildTrail(totalLevels, req, st, um);
+      out.set(c.id, {
+        ...t,
+        totalLevels,
+        canDecide:
+          c.status === 'submitted' &&
+          !!req &&
+          p.permissions.includes('expenses:approve') &&
+          this.approvals.canDecide(p, req, st),
+        // Mirrors pay(): expenses:pay (route guard), approved, not your own claim.
+        canPay:
+          c.status === 'approved' &&
+          c.userId !== p.userId &&
+          p.permissions.includes('expenses:pay'),
+        paidBy: c.paidBy ? { id: c.paidBy, name: um.get(c.paidBy)?.name ?? '' } : null,
+      });
+    }
+    return out;
   }
 
   private summary(c: ClaimRow, userName: string) {
@@ -417,11 +503,17 @@ export class ExpensesService implements OnModuleInit {
               ),
             )
         : [];
+      const trails = await this.trails(
+        tx,
+        p,
+        rows.map((r) => r.c),
+      );
       return {
         items: await nameRejecters(
           tx,
           rows.map((r) => ({
             ...this.summary(r.c, r.name),
+            ...trails.get(r.c.id)!,
             dcrRejectedDates: rejectedDates(flagged.filter((x) => x.claimId === r.c.id)),
             lineCount: counts.find((x) => x.id === r.c.id)?.n ?? 0,
           })),
@@ -431,7 +523,7 @@ export class ExpensesService implements OnModuleInit {
   }
 
   get(p: Principal, id: string) {
-    return this.tenant.run(p, async (tx) => this.toDto(tx, await this.claimRow(tx, p, id)));
+    return this.tenant.run(p, async (tx) => this.toDto(tx, await this.claimRow(tx, p, id), p));
   }
 
   /** Creates your claim for the month, or returns the existing one (created = false). */
@@ -443,7 +535,7 @@ export class ExpensesService implements OnModuleInit {
         .select()
         .from(expenseClaims)
         .where(and(eq(expenseClaims.userId, p.userId), eq(expenseClaims.month, monthStart(month))));
-      if (cur) return { created: false, claim: await this.toDto(tx, cur) };
+      if (cur) return { created: false, claim: await this.toDto(tx, cur, p) };
       const [c] = await tx
         .insert(expenseClaims)
         .values({
@@ -458,7 +550,7 @@ export class ExpensesService implements OnModuleInit {
         entityId: c!.id,
         after: { month },
       });
-      return { created: true, claim: await this.toDto(tx, c!) };
+      return { created: true, claim: await this.toDto(tx, c!, p) };
     });
   }
 
@@ -522,7 +614,7 @@ export class ExpensesService implements OnModuleInit {
         entityId: c.id,
         after: { lineId, category: l.category, amount: l.amount, date: l.date },
       });
-      return this.toDto(tx, (await this.claimRow(tx, p, c.id))!);
+      return this.toDto(tx, (await this.claimRow(tx, p, c.id))!, p);
     });
   }
 
@@ -560,7 +652,7 @@ export class ExpensesService implements OnModuleInit {
         before: { lineId, amount: Number(cur.amount), category: cur.category, date: cur.date },
         after: { lineId, amount: l.amount, category: l.category, date: l.date },
       });
-      return this.toDto(tx, await this.claimRow(tx, p, c.id));
+      return this.toDto(tx, await this.claimRow(tx, p, c.id), p);
     });
   }
 
@@ -580,7 +672,7 @@ export class ExpensesService implements OnModuleInit {
         entityId: c.id,
         after: { lineId },
       });
-      return this.toDto(tx, await this.claimRow(tx, p, c.id));
+      return this.toDto(tx, await this.claimRow(tx, p, c.id), p);
     });
   }
 
@@ -630,7 +722,7 @@ export class ExpensesService implements OnModuleInit {
         dryRun: false,
         days: r.days,
         totals: r.totals,
-        claim: await this.toDto(tx, await this.claimRow(tx, p, c.id)),
+        claim: await this.toDto(tx, await this.claimRow(tx, p, c.id), p),
       };
     });
   }
@@ -689,7 +781,7 @@ export class ExpensesService implements OnModuleInit {
   private submitTx(p: Principal, id: string) {
     return this.tenant.run(p, async (tx) => {
       const c = await this.ownEditable(tx, p, id);
-      const dto = await this.toDto(tx, c);
+      const dto = await this.toDto(tx, c, p);
       if (!dto.lines.length) throw err(422, 'EXPENSE_EMPTY', 'Add at least one line first');
       const noReceipt = dto.lines.filter(
         (l) => l.category === 'hotel' && !l.attachments.some((a) => a.status === 'confirmed'),
@@ -730,7 +822,7 @@ export class ExpensesService implements OnModuleInit {
         dedupeKey: `expense.submitted:${reqId}:1`,
         data: { month: dto.month, total: dto.total, step: 1 },
       });
-      return this.toDto(tx, await this.claimRow(tx, p, c.id));
+      return this.toDto(tx, await this.claimRow(tx, p, c.id), p);
     });
   }
 
@@ -767,7 +859,7 @@ export class ExpensesService implements OnModuleInit {
         dedupeKey: `expense.paid:${c.id}`,
         data: { month: String(c.month).slice(0, 7), total: Number(c.total), paymentRef },
       });
-      return this.toDto(tx, await this.claimRow(tx, p, c.id));
+      return this.toDto(tx, await this.claimRow(tx, p, c.id), p);
     });
   }
 

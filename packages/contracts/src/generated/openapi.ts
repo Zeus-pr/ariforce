@@ -6755,7 +6755,48 @@ export interface components {
        */
       dcrRejectedDates: string[];
       version: number;
+      /**
+       * @description Per-level history of the current approval request, level 1..totalLevels (empty while draft/never submitted)
+       * @default []
+       */
+      approvalTrail: components['schemas']['ExpenseApprovalLevel'][];
+      /** @description Configured approval levels (EXPENSE_APPROVAL_LEVELS) */
+      totalLevels: number;
+      /** @description Approver of the level awaiting a decision; null unless submitted (or shared queue) */
+      currentApprover: components['schemas']['ExpenseApprover'] | null;
+      /** @description The caller may approve/reject now (same rules as POST /decision; DCR gate not pre-checked) */
+      canDecide: boolean;
+      /** @description The caller may mark it paid now (POST /pay) */
+      canPay: boolean;
+      /** @description Who marked it paid; null unless paid */
+      paidBy: components['schemas']['UserRef'] | null;
       lineCount: number;
+    };
+    ExpenseApprovalLevel: {
+      level: number;
+      /** @description Assigned approver of this level (projected up the manager chain for levels not reached yet); null when skipped, shared queue or auto-approved */
+      approver: components['schemas']['ExpenseApprover'] | null;
+      /** @description Who actually decided (may be above the assigned approver); null if undecided or system */
+      decidedBy: components['schemas']['ExpenseApprover'] | null;
+      /** @enum {string} */
+      status: 'pending' | 'approved' | 'rejected' | 'skipped';
+      /** @description True for the level awaiting a decision now */
+      current: boolean;
+      decidedAt: string | null;
+      comment: string | null;
+      /** @description comment when status is rejected */
+      rejectionReason: string | null;
+    };
+    /** @description User ref with their most senior role key */
+    ExpenseApprover: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      role: string | null;
     };
     ExpenseClaim: {
       /**
@@ -6802,6 +6843,21 @@ export interface components {
        */
       dcrRejectedDates: string[];
       version: number;
+      /**
+       * @description Per-level history of the current approval request, level 1..totalLevels (empty while draft/never submitted)
+       * @default []
+       */
+      approvalTrail: components['schemas']['ExpenseApprovalLevel'][];
+      /** @description Configured approval levels (EXPENSE_APPROVAL_LEVELS) */
+      totalLevels: number;
+      /** @description Approver of the level awaiting a decision; null unless submitted (or shared queue) */
+      currentApprover: components['schemas']['ExpenseApprover'] | null;
+      /** @description The caller may approve/reject now (same rules as POST /decision; DCR gate not pre-checked) */
+      canDecide: boolean;
+      /** @description The caller may mark it paid now (POST /pay) */
+      canPay: boolean;
+      /** @description Who marked it paid; null unless paid */
+      paidBy: components['schemas']['UserRef'] | null;
     };
     ExpenseLine: {
       /**
