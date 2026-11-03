@@ -44,6 +44,7 @@ import {
   type PobDraft,
   type RcpaDraft,
 } from './pob-rcpa';
+import { ProductImg } from '@/components/media/product-img';
 import { cachedGet } from '@/lib/query';
 
 /** What the call form needs from a product. */
@@ -587,12 +588,13 @@ function CallDialog({
                     )}
                   >
                     {p.imageUrl && (
-                      <img
+                      <ProductImg
                         src={p.imageUrl}
                         alt=""
+                        width={24}
+                        height={24}
+                        sizes="24px"
                         className="size-6 shrink-0 rounded-full bg-muted object-cover"
-                        loading="lazy"
-                        decoding="async"
                         data-testid="call-product-image"
                       />
                     )}

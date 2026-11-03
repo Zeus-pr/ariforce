@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { CalendarPlus, Lock, MapPin, RotateCw, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
@@ -26,8 +27,12 @@ import { PobEditor, type Opt } from './pob-rcpa';
 import { SearchSelect, type SelectOption } from './search-select';
 import { failureMessage, thrownMessage } from '@/lib/dcr/errors';
 import { bandOf, sfcCategoryOf } from '@/lib/dcr/bands';
-import { ProductPresentation } from './product-presentation';
 import { cachedGet } from '@/lib/query';
+
+const ProductPresentation = dynamic(
+  () => import('./product-presentation').then((m) => m.ProductPresentation),
+  { ssr: false },
+);
 
 const inr = new Intl.NumberFormat('en-IN', {
   style: 'currency',
