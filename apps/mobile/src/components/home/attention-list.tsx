@@ -30,10 +30,7 @@ export function AttentionList({ items, pending }: { items: Attention[]; pending:
       ) : (
         <Card style={styles.card}>
           {items.map((item, i) => (
-            <View
-              key={item.id}
-              style={[styles.row, i < items.length - 1 && styles.divider]}
-            >
+            <View key={item.id} style={[styles.row, i < items.length - 1 && styles.divider]}>
               <View style={styles.copy}>
                 <AppText variant="chip" style={styles.eyebrow} numberOfLines={1}>
                   {item.title}

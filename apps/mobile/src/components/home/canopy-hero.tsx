@@ -59,7 +59,12 @@ export function CanopyHero({
           <AppText variant="small" style={styles.onCanopyMuted}>
             {onDuty && since ? `Since ${formatTime(since)}` : 'Checked out'}
           </AppText>
-          <AppText variant="name" style={styles.onCanopy} numberOfLines={1} accessibilityRole="header">
+          <AppText
+            variant="name"
+            style={styles.onCanopy}
+            numberOfLines={1}
+            accessibilityRole="header"
+          >
             {name}
           </AppText>
           <AppText variant="small" style={styles.onCanopyMuted} numberOfLines={1}>

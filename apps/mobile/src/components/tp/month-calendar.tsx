@@ -109,11 +109,7 @@ export function MonthCalendar({
 
       <View style={styles.weekRow}>
         {WEEKDAYS.map((d, i) => (
-          <AppText
-            key={d}
-            variant="chip"
-            style={[styles.weekday, i === 1 && styles.weekdayAccent]}
-          >
+          <AppText key={d} variant="chip" style={[styles.weekday, i === 1 && styles.weekdayAccent]}>
             {d}
           </AppText>
         ))}

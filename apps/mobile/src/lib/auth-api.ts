@@ -181,10 +181,7 @@ export async function sendLoginOtp(challenge: OtpChallenge): Promise<void> {
 }
 
 /** POST /v1/auth/sign-in/email. Returns the bearer token, or an OTP challenge when a code is required. */
-export async function signInEmail(
-  email: string,
-  password: string,
-): Promise<string | OtpChallenge> {
+export async function signInEmail(email: string, password: string): Promise<string | OtpChallenge> {
   const res = await request(`${AUTH_URL}/sign-in/email`, {
     method: 'POST',
     body: JSON.stringify({ email, password, rememberMe: true }),
@@ -193,8 +190,7 @@ export async function signInEmail(
   if (!res.ok) throw toError(res, body);
   if (body?.twoFactorRedirect) {
     const cookie = challengeCookie(res);
-    if (!cookie)
-      throw new AuthError('server', 'Could not start the email code step. Try again.');
+    if (!cookie) throw new AuthError('server', 'Could not start the email code step. Try again.');
     const challenge = { cookie, email };
     await sendLoginOtp(challenge);
     return challenge;

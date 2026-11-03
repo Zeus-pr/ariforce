@@ -6,9 +6,7 @@ import type { TpDraftCard } from '../tp/adapter';
 export type { DayPill };
 
 /** Map a DCR review into a calendar / section bucket. */
-export function dcrBucket(
-  review: Review,
-): 'draft' | 'pending' | 'approved' | 'rejected' | null {
+export function dcrBucket(review: Review): 'draft' | 'pending' | 'approved' | 'rejected' | null {
   switch (review.status) {
     case 'draft':
       return 'draft';
@@ -42,14 +40,11 @@ export function dcrOutletLabels(
   },
 ): string[] {
   const outlets =
-    d.calls
-      ?.map((c) => names.outlet?.get(c.outletId)?.trim())
-      .filter((n): n is string => !!n) ?? [];
+    d.calls?.map((c) => names.outlet?.get(c.outletId)?.trim()).filter((n): n is string => !!n) ??
+    [];
   if (outlets.length) return outlets;
 
-  const terr = d.territoryIds
-    .map((id) => names.territory.get(id))
-    .filter((n): n is string => !!n);
+  const terr = d.territoryIds.map((id) => names.territory.get(id)).filter((n): n is string => !!n);
   if (terr.length) return terr;
 
   const wt = names.workType.get(d.workTypeId);
@@ -78,9 +73,7 @@ export function dcrListLabel(
   },
 ): string {
   const wt = names.workType.get(d.workTypeId);
-  const terr = d.territoryIds
-    .map((id) => names.territory.get(id))
-    .filter((n): n is string => !!n);
+  const terr = d.territoryIds.map((id) => names.territory.get(id)).filter((n): n is string => !!n);
   const n = d.callCount ?? d.calls?.length ?? 0;
   const calls = n ? `${n} call${n === 1 ? '' : 's'}` : null;
   return [wt, terr.slice(0, 2).join(' · ') || null, calls].filter(Boolean).join(' · ');

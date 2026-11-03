@@ -13,14 +13,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import {
-  AccessibilityInfo,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -181,7 +174,10 @@ export function FloatingTabBar({
   const reduced = useReducedMotion();
   const [rowW, setRowW] = useState(0);
   const slot = routes.length > 0 ? rowW / routes.length : 0;
-  const activeIdx = Math.max(0, routes.findIndex((r) => r.key === active?.key));
+  const activeIdx = Math.max(
+    0,
+    routes.findIndex((r) => r.key === active?.key),
+  );
   const x = useSharedValue(0);
   const from = useSharedValue(0);
   const dest = useSharedValue(0);
@@ -213,7 +209,8 @@ export function FloatingTabBar({
   const pillStyle = useAnimatedStyle(() => {
     const span = dest.value - from.value;
     const t = span === 0 ? 0 : Math.min(1, Math.max(0, (x.value - from.value) / span));
-    const stretch = 1 + PILL_STRETCH * Math.sin(Math.PI * t) * Math.min(1, Math.abs(span) / slot / 2);
+    const stretch =
+      1 + PILL_STRETCH * Math.sin(Math.PI * t) * Math.min(1, Math.abs(span) / slot / 2);
     return { transform: [{ translateX: x.value }, { scaleX: stretch }] };
   });
 
@@ -227,10 +224,7 @@ export function FloatingTabBar({
           onLayout={(e) => setRowW(e.nativeEvent.layout.width)}
         >
           {slot > 0 ? (
-            <Animated.View
-              pointerEvents="none"
-              style={[styles.pill, { width: slot }, pillStyle]}
-            />
+            <Animated.View pointerEvents="none" style={[styles.pill, { width: slot }, pillStyle]} />
           ) : null}
           {routes.map((route) => {
             const m = meta[route.name];
@@ -272,11 +266,7 @@ export function FloatingTabBar({
                 style={styles.hit}
               >
                 <View style={styles.tab}>
-                  <Icon
-                    name={focused ? m.iconActive : m.icon}
-                    size={iconSize.md}
-                    color={tint}
-                  />
+                  <Icon name={focused ? m.iconActive : m.icon} size={iconSize.md} color={tint} />
                   <Text
                     style={[styles.label, { color: tint }, focused && styles.labelOn]}
                     numberOfLines={1}

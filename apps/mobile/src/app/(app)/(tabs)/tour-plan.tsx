@@ -24,12 +24,7 @@ import {
   useMyTps,
   type TpItem,
 } from '@/lib/tp/adapter';
-import {
-  groupByStatus,
-  pillsByDate,
-  tpListLabel,
-  tpPillLabel,
-} from '@/lib/tp/calendar';
+import { groupByStatus, pillsByDate, tpListLabel, tpPillLabel } from '@/lib/tp/calendar';
 import { layout, spacing } from '@/theme';
 
 /** Tour plans: Stitch month calendar + status lists, New TP FAB. */
@@ -67,10 +62,7 @@ function TourPlans({ myId }: { myId?: string }) {
   }, [terrQ.data]);
 
   const items = q.data ?? [];
-  const names = useMemo(
-    () => ({ territory: terrName, workType: wtName }),
-    [terrName, wtName],
-  );
+  const names = useMemo(() => ({ territory: terrName, workType: wtName }), [terrName, wtName]);
   const pillLabelOf = useMemo(() => (t: TpItem) => tpPillLabel(t, names), [names]);
   const listLabelOf = useMemo(() => (t: TpItem) => tpListLabel(t, names), [names]);
 

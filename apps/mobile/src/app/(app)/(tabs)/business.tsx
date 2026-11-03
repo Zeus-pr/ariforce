@@ -7,7 +7,12 @@ import { FEATURES, featureHref, type FeatureKey } from '@/lib/features';
 import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
 import { colors, layout, spacing } from '@/theme';
 
-const LISTS = ['doctors', 'chemists', 'stockists', 'products'] as const satisfies readonly FeatureKey[];
+const LISTS = [
+  'doctors',
+  'chemists',
+  'stockists',
+  'products',
+] as const satisfies readonly FeatureKey[];
 
 /** Customer and product lists a rep uses in the field. */
 export default function BusinessTab() {

@@ -18,16 +18,14 @@ export default function TourPlanFormScreen() {
   if (!isSalesRole(user?.roles ?? [])) return <Redirect href="/" />;
   const tpId = typeof id === 'string' && id ? id : undefined;
   const openFrom = tpDefaultFromDate();
-  const requested =
-    typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
-  const start =
-    tpId
-      ? requested && !tpFutureMonthCutoffError(requested)
-        ? requested
-        : openFrom
-      : requested && !tpFutureMonthCutoffError(requested)
-        ? requested
-        : openFrom;
+  const requested = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  const start = tpId
+    ? requested && !tpFutureMonthCutoffError(requested)
+      ? requested
+      : openFrom
+    : requested && !tpFutureMonthCutoffError(requested)
+      ? requested
+      : openFrom;
 
   if (!tpId && !start) {
     return (
