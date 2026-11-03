@@ -6,7 +6,7 @@ import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEMO_COMPANY_ID as A, T, U } from '@ariforce/db';
-import { Dcr, DcrOptions, DcrSfcMatch } from '@ariforce/contracts';
+import { Dcr, DcrOptions, DcrProducts, DcrSfcMatch } from '@ariforce/contracts';
 import { insertStaff, otherHq } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
@@ -106,6 +106,44 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
       detailsKind: 'meeting',
       usesSfc: false,
     });
+  });
+
+  it('products: own endpoint with ETag/304, ids filter; options can skip them', async () => {
+    const div = randomUUID();
+    await owner.query(
+      `insert into divisions (id, company_id, code, name) values ($1, $2, $3, 'DCR products div')`,
+      [div, A, `DP${RUN}`],
+    );
+    await owner.query(
+      `insert into products (id, company_id, division_id, code, name, ptr) values ($1, $2, $3, $4, $5, 5)`,
+      [randomUUID(), A, div, `DP${RUN}`, `DCR product ${RUN}`],
+    );
+    const full = DcrOptions.parse((await http().get(`/v1/dcrs/options?date=${today}`).set(as())).body);
+    const r = await http().get('/v1/dcrs/products').set(as());
+    expect(r.status).toBe(200);
+    expect(r.headers['cache-control']).toBe('private, max-age=60');
+    const b = DcrProducts.parse(r.body);
+    expect(r.headers.etag).toBe(b.etag);
+    expect(b.products).toEqual(full.products);
+    expect(b.detailProducts).toEqual(full.detailProducts);
+    const again = await http().get('/v1/dcrs/products').set({ ...as(), 'if-none-match': b.etag });
+    expect(again.status).toBe(304);
+    expect(again.text ?? '').toBe('');
+    const first = b.products[0]!;
+    {
+      const one = DcrProducts.parse(
+        (await http().get(`/v1/dcrs/products?ids=${first.id},${randomUUID()}`).set(as())).body,
+      );
+      expect(one.products.map((x) => x.id)).toEqual([first.id]);
+      expect(one.etag).not.toBe(b.etag);
+    }
+    expect((await http().get('/v1/dcrs/products?ids=nope').set(as())).status).toBe(422);
+    const lean = DcrOptions.parse(
+      (await http().get(`/v1/dcrs/options?date=${today}&includeProducts=false`).set(as())).body,
+    );
+    expect(lean.products).toEqual([]);
+    expect(lean.detailProducts).toEqual([]);
+    expect(lean.workTypes).toEqual(full.workTypes);
   });
 
   it('sfc-match returns one entry per HQ, band-filtered', async () => {

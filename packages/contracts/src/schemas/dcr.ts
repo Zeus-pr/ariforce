@@ -5,12 +5,21 @@ import { Dcr, DcrCallInput } from './field';
 import { TourPlanItem } from './tp-items';
 import { Product } from './products';
 import { SfcCategory, SfcTravelMode } from './sfc';
+import { BatchIds } from './masters';
 
 export * from './dcr-parts';
 
 /** DCR redesign endpoints under /v1/dcrs (docs/DCR-REDESIGN-DESIGN.md). */
 
-export const DcrOptionsQuery = z.object({ date: DateOnly }).meta({ id: 'DcrOptionsQuery' });
+export const DcrOptionsQuery = z
+  .object({
+    date: DateOnly,
+    includeProducts: z.enum(['true', 'false']).optional().meta({
+      description:
+        'Default `true` (unchanged). Pass `false` to skip the deprecated products/detailProducts (returned as []); load them from GET /v1/dcrs/products instead',
+    }),
+  })
+  .meta({ id: 'DcrOptionsQuery' });
 export const DcrWorkTypeOption = z
   .object({
     id: Id,
@@ -94,6 +103,39 @@ export function groupDetailProducts(items: DcrProductOption[]): DcrDetailProduct
   });
 }
 
+/** GET /v1/dcrs/products: the DCR product pickers on their own (cacheable, ETag). */
+export const DcrProductsQuery = z
+  .object({
+    ids: BatchIds.meta({
+      description:
+        'Batch fetch: comma-separated product ids (max 100). Only active products are returned; others are absent. detailProducts groups only the returned SKUs',
+    }),
+  })
+  .meta({ id: 'DcrProductsQuery' });
+export const DcrProducts = z
+  .object({
+    products: z.array(DcrProductOption).meta({
+      description: 'Active products for the call pickers, A-Z by name (imageUrl presigned, >= 30 min)',
+    }),
+    detailProducts: z.array(DcrDetailProduct).meta({
+      description:
+        'Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed',
+    }),
+    etag: z.string().meta({
+      description:
+        'Same value as the ETag header. Send it back as If-None-Match to get 304 while products and image URLs are unchanged',
+    }),
+  })
+  .meta({ id: 'DcrProducts' });
+export type DcrProducts = z.infer<typeof DcrProducts>;
+export const DcrProductsHeaders = z.object({
+  'if-none-match': z
+    .string()
+    .max(512)
+    .optional()
+    .meta({ description: 'ETag from an earlier response; 304 (empty body) when unchanged' }),
+});
+
 export const DcrOptions = z
   .object({
     date: DateOnly,
@@ -130,11 +172,14 @@ export const DcrOptions = z
         'Approved tour plan cards (independent of the query date), by from. Shown until no pending day is today or later (i.e. hidden once the last pending day locks at 00:00 IST)',
     }),
     detailProducts: z.array(DcrDetailProduct).default([]).meta({
+      deprecated: true,
       description:
-        'Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed',
+        'Deprecated: use GET /v1/dcrs/products. [] when includeProducts=false. Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed',
     }),
     products: z.array(DcrProductOption).default([]).meta({
-      description: 'Active products for the call pickers, by name (imageUrl presigned, >= 30 min)',
+      deprecated: true,
+      description:
+        'Deprecated: use GET /v1/dcrs/products. [] when includeProducts=false. Active products for the call pickers, by name (imageUrl presigned, >= 30 min)',
     }),
     autoExpenseOnDcrSubmit: z.boolean().default(false).meta({
       description:
