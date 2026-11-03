@@ -30,5 +30,13 @@ export const Watermark = memo(function Watermark({ opacity = 0.07 }: { opacity?:
 });
 
 const styles = StyleSheet.create({
-  fill: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  fill: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
