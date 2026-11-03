@@ -23,6 +23,7 @@ import {
 import { api, apiReady, toApiError } from '@/lib/api';
 import { isFieldRole } from '@/lib/roles';
 import { useRole } from '@/components/shell/role-context';
+import { EVERYONE, PersonPicker } from '@/components/team/person-picker';
 import { CheckInMap, MapLegend } from './check-in-map';
 import { dateLabel, kindLabel, timeIST, todayIST } from './format';
 import { cachedGet } from '@/lib/query';
@@ -73,9 +74,12 @@ export function AttendanceView() {
 }
 
 function AttendanceDayView({ today }: { today: string }) {
-  const { role } = useRole();
+  const { role, user } = useRole();
   const field = role ? isFieldRole(role) : false;
   const [date, setDate] = useState(today);
+  /** null = me (the default); EVERYONE = everyone I can see. */
+  const [picked, setPicked] = useState<string | null>(null);
+  const person = picked ?? user?.id ?? EVERYONE;
   const [checkIns, setCheckIns] = useState<CheckIn[] | null>(null);
   const [days, setDays] = useState<AttendanceDay[] | null>(null);
   const [consent, setConsent] = useState<ConsentState | null>(null);
@@ -86,7 +90,7 @@ function AttendanceDayView({ today }: { today: string }) {
 
   const load = useCallback(async () => {
     await apiReady();
-    const q = { from: date, to: date, limit: 200 };
+    const q = { from: date, to: date, limit: 200, ...(person ? { userId: person } : {}) };
     // Page through: a big team can have more than 200 check-ins in a day.
     const [c, a] = await Promise.all([
       allPages((cursor) =>
@@ -100,7 +104,7 @@ function AttendanceDayView({ today }: { today: string }) {
     setError(null);
     setCheckIns(c.data?.items ?? []);
     setDays(a.data?.items ?? []);
-  }, [date]);
+  }, [date, person]);
 
   useEffect(() => {
     void load();
@@ -184,17 +188,24 @@ function AttendanceDayView({ today }: { today: string }) {
               GPS is captured only at punch in, each visit and punch out. No tracking in between.
             </p>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="att-date">Date</Label>
-            <Input
-              id="att-date"
-              type="date"
-              value={date}
-              max={today}
-              onChange={(e) => e.target.value && setDate(e.target.value)}
-              className="w-44"
-              data-testid="att-date"
-            />
+          <div className="flex w-full flex-wrap items-end gap-3 sm:w-auto">
+            {!field && (
+              <div className="w-full sm:w-64">
+                <PersonPicker value={person} onChange={setPicked} testId="att-person" />
+              </div>
+            )}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="att-date">Date</Label>
+              <Input
+                id="att-date"
+                type="date"
+                value={date}
+                max={today}
+                onChange={(e) => e.target.value && setDate(e.target.value)}
+                className="w-44"
+                data-testid="att-date"
+              />
+            </div>
           </div>
         </div>
 
