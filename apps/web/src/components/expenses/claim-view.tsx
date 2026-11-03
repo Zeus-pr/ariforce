@@ -41,12 +41,12 @@ import {
 } from '@/lib/expenses/model';
 import { useRole } from '@/components/shell/role-context';
 import { AllowanceDialog } from './allowance-dialog';
-import { ApprovalTrail, type TrailClaim } from './approval-trail';
+import { ApprovalTrail } from './approval-trail';
 import { ExpenseFlow } from './expense-flow';
 import { Receipts } from './receipts';
 import { StatusBadge } from './status-badge';
 
-type Claim = ExpenseClaim & Pick<TrailClaim, 'approvalTrail' | 'totalLevels'>;
+type Claim = ExpenseClaim;
 type Line = Claim['lines'][number];
 type Recon = Omit<ExpenseReconciliation, 'byCategory'> & {
   byCategory?: Partial<Record<ExpenseCategory, number>>;
@@ -88,9 +88,12 @@ export function ClaimView({ id }: { id: string }) {
 
   const mine = !!claim && claim.userId === me;
   const editable = !!claim && mine && isEditable(claim.status) && can(role, 'expenses:write');
+  // Server flags (PR #93) when present; role checks for older responses.
   const mayDecide =
-    !!claim && !mine && claim.status === 'submitted' && can(role, 'expenses:approve');
-  const mayPay = !!claim && !mine && claim.status === 'approved' && canPayExpenses(role);
+    !!claim &&
+    (claim.canDecide ?? (!mine && claim.status === 'submitted' && can(role, 'expenses:approve')));
+  const mayPay =
+    !!claim && (claim.canPay ?? (!mine && claim.status === 'approved' && canPayExpenses(role)));
   const seeRecon =
     !!claim &&
     claim.status !== 'draft' &&
@@ -225,6 +228,11 @@ export function ClaimView({ id }: { id: string }) {
               {monthLabel(c.month)}
             </h1>
             {!mine && <p className="text-sm text-muted-foreground">{c.userName}</p>}
+            {c.status === 'submitted' && c.currentApprover && (
+              <p className="text-sm text-teal-700" data-testid="exp-current-approver">
+                Waiting for {c.currentApprover.name}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <span className="text-2xl font-semibold tabular-nums" data-testid="exp-total">

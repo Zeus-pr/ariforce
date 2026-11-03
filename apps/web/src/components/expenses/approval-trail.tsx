@@ -1,21 +1,12 @@
 'use client';
 
 import { Check, Clock, X } from 'lucide-react';
-import type { ExpenseStatus } from '@ariforce/contracts';
+import type { ExpenseApprovalLevel, ExpenseStatus } from '@ariforce/contracts';
 import { cn } from '@ariforce/ui/lib/utils';
 
-/**
- * Optional per-level trail. Not in the API contract yet (needs an additive field from Architect);
- * when the API starts returning it we use it, otherwise the trail is derived from the claim fields.
- */
+/** Trail levels come from the API (approvalTrail, PR #93); older API responses without it fall back
+ * to a trail derived from approvalStep and the rejection fields. */
 export type TrailStatus = 'pending' | 'approved' | 'rejected' | 'skipped' | 'waiting';
-export type ApprovalTrailItem = {
-  level: number;
-  approver?: { id: string; name: string; role?: string | null } | null;
-  status: Exclude<TrailStatus, 'waiting'>;
-  decidedAt?: string | null;
-  comment?: string | null;
-};
 export type TrailClaim = {
   status: ExpenseStatus;
   approvalStep?: number | null;
@@ -27,7 +18,8 @@ export type TrailClaim = {
   rejectedAt?: string | null;
   paidAt?: string | null;
   paymentRef?: string | null;
-  approvalTrail?: ApprovalTrailItem[] | null;
+  paidBy?: { id: string; name: string } | null;
+  approvalTrail?: ExpenseApprovalLevel[] | null;
   totalLevels?: number | null;
 };
 
@@ -68,16 +60,25 @@ export function trailSteps(c: TrailClaim): Step[] {
   for (let i = 1; i <= levels; i++) {
     const t = trail?.find((x) => x.level === i);
     let status: TrailStatus;
-    let who = t?.approver?.name ?? (i === 1 ? 'Manager' : `Level ${i} approver`);
-    let at = t?.decidedAt ?? null;
-    let note = t?.comment ?? null;
-    if (t) status = t.status;
-    else if (c.status === 'approved' || c.status === 'paid') status = 'approved';
+    let who = i === 1 ? 'Manager' : `Level ${i} approver`;
+    let at: string | null = null;
+    let note: string | null = null;
+    let role: string | null | undefined;
+    if (t) {
+      // Predicted later levels are pending with current=false: show them as waiting.
+      status = t.status === 'pending' && !t.current ? 'waiting' : t.status;
+      const person = t.decidedBy ?? t.approver;
+      if (person) {
+        who = person.name;
+        role = person.role;
+      } else if (t.status === 'approved') who = 'Auto-approved';
+      at = t.decidedAt;
+      note = t.rejectionReason ?? t.comment;
+    } else if (c.status === 'approved' || c.status === 'paid') status = 'approved';
     else if (c.status === 'submitted') {
       const cur = c.approvalStep ?? 1;
       status = i < cur ? 'approved' : i === cur ? 'pending' : 'waiting';
     } else if (c.status === 'rejected') {
-      // The API names the rejector but not the level; show it on the first level unless the trail says otherwise.
       status = i === 1 ? 'rejected' : 'waiting';
       if (i === 1) {
         who = c.rejectedBy?.name ?? who;
@@ -87,7 +88,6 @@ export function trailSteps(c: TrailClaim): Step[] {
     } else status = 'waiting';
     if (i === levels && !t && (c.status === 'approved' || c.status === 'paid'))
       at = at ?? c.decidedAt ?? null;
-    const role = t?.approver?.role;
     steps.push({
       key: `l${i}`,
       label: `Level ${i}`,
@@ -101,7 +101,9 @@ export function trailSteps(c: TrailClaim): Step[] {
     key: 'paid',
     label: 'Paid',
     at: c.paidAt,
-    who: c.paymentRef ? `Ref ${c.paymentRef}` : undefined,
+    who:
+      [c.paidBy?.name, c.paymentRef && `Ref ${c.paymentRef}`].filter(Boolean).join(' · ') ||
+      undefined,
     status: c.status === 'paid' ? 'approved' : c.status === 'approved' ? 'pending' : 'waiting',
   });
   return steps;
