@@ -54,6 +54,8 @@ import {
   DcrDraftPut,
   DcrOptions,
   DcrOptionsQuery,
+  DcrProducts,
+  DcrProductsQuery,
   DcrDecision,
   DcrSfcMatch,
   DcrSfcMatchQuery,
@@ -708,11 +710,34 @@ function fieldHandlers(baseUrl: string) {
               );
               return c ? [{ ...itemOut(it), ...c }] : [];
             }),
-          products: productOptions(),
-          detailProducts: groupDetailProducts(DcrOptions.shape.products.parse(productOptions())),
+          ...(q.data.includeProducts === 'false'
+            ? { products: [], detailProducts: [] }
+            : {
+                products: productOptions(),
+                detailProducts: groupDetailProducts(
+                  DcrOptions.shape.products.parse(productOptions()),
+                ),
+              }),
           // Mock keeps client-side TA/DA drafting (the server setting is off here).
           autoExpenseOnDcrSubmit: false,
         }),
+      );
+    }),
+    http.get(`${baseUrl}/v1/dcrs/products`, ({ request }) => {
+      const q = DcrProductsQuery.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+      if (!q.success) return validation('Invalid query', z.treeifyError(q.error));
+      const ids = q.data.ids?.split(',');
+      const products = DcrOptions.shape.products
+        .parse(productOptions())
+        .filter((p) => !ids || ids.includes(p.id));
+      let h = 0;
+      for (const ch of JSON.stringify(products)) h = (h * 31 + ch.charCodeAt(0)) | 0;
+      const etag = `W/"dp-mock-${(h >>> 0).toString(36)}"`;
+      if (request.headers.get('if-none-match') === etag)
+        return new HttpResponse(null, { status: 304, headers: { ETag: etag } });
+      return HttpResponse.json(
+        DcrProducts.parse({ products, detailProducts: groupDetailProducts(products), etag }),
+        { headers: { ETag: etag, 'Cache-Control': 'private, max-age=60' } },
       );
     }),
     http.get(`${baseUrl}/v1/dcrs/territories`, () =>

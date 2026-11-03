@@ -22,6 +22,11 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Product pictures are presigned R2 GETs (see components/media/product-img.tsx).
+  images: {
+    remotePatterns: [{ protocol: 'https', hostname: '**.r2.cloudflarestorage.com' }],
+    formats: ['image/avif', 'image/webp'],
+  },
   transpilePackages: ['@ariforce/ui', '@ariforce/contracts'],
 };
 

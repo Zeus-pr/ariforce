@@ -16,6 +16,16 @@ Additive, no migration. GET /v1/dcrs: new optional `doctorId` (uuid); only DCRs 
 non-deleted call at that doctor. User scope unchanged (own DCRs; reporting line for dcr:review);
 `limit` (default 50, max 200) and `cursor` as before.
 
+## perf/dcr-products-endpoint (2026-11-03): DCR products on their own endpoint (additive)
+
+- New: `GET /v1/dcrs/products` (`field:read`) -> `DcrProducts { products: DcrProductOption[], detailProducts: DcrDetailProduct[], etag }`.
+  Same items as `options.products` / `options.detailProducts`. Optional `ids=` (1..100 comma-separated UUIDs, only active products returned).
+  Headers: `ETag` (weak, also in the body), `Cache-Control: private, max-age=60`. `If-None-Match` with the etag -> `304`, empty body.
+  The etag changes when any product row changes or the 30-min image-URL signing window rolls, so a 304 never keeps expired picture URLs.
+- `GET /v1/dcrs/options`: new optional `includeProducts=false` returns `products: []`, `detailProducts: []` (skips the product load). Default unchanged.
+  `products` / `detailProducts` are marked **deprecated** (still filled by default).
+- No `updatedSince`: removals (deactivated/deleted products) would need tombstones; revalidate with the ETag instead.
+
 ## feat/dcr-pob-review (2026-10-29): expense approval needs approved DCRs; unlock decisions director-only
 
 Migration 0051 (roles.permissions: dcr_unlock:decide for director).

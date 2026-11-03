@@ -44,6 +44,7 @@ describe('notification templates', () => {
 
 describe('notify()', () => {
   const enqueued: { payload: Record<string, unknown>; key?: string }[] = [];
+  let batches = 0;
   const jobs = {
     enqueue: (
       _tx: unknown,
@@ -53,6 +54,16 @@ describe('notify()', () => {
       o?: { dedupeKey?: string },
     ) => {
       enqueued.push({ payload, key: o?.dedupeKey });
+      return Promise.resolve();
+    },
+    enqueueMany: (
+      _tx: unknown,
+      _c: string,
+      _t: string,
+      items: { payload: Record<string, unknown>; dedupeKey?: string }[],
+    ) => {
+      batches++;
+      for (const it of items) enqueued.push({ payload: it.payload, key: it.dedupeKey });
       return Promise.resolve();
     },
   };
@@ -90,8 +101,11 @@ describe('notify()', () => {
 
   it('fans out once per recipient', async () => {
     enqueued.length = 0;
+    batches = 0;
     await svc.notifyMany(tx, p, ev, ['a', 'b', 'a', null, 'u1']);
     expect(enqueued.map((e) => e.key)).toEqual(['a:k', 'b:k']);
+    expect(batches).toBe(1); // one multi-row insert per event
+    expect(enqueued[0]!.payload).toMatchObject({ recipientId: 'a', actorId: 'u1' });
   });
 
   it('never throws when the enqueue fails', async () => {

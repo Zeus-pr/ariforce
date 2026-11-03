@@ -7591,6 +7591,19 @@
             },
             "required": true,
             "description": "Calendar date (YYYY-MM-DD, IST)"
+          },
+          {
+            "in": "query",
+            "name": "includeProducts",
+            "schema": {
+              "description": "Default `true` (unchanged). Pass `false` to skip the deprecated products/detailProducts (returned as []); load them from GET /v1/dcrs/products instead",
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "Default `true` (unchanged). Pass `false` to skip the deprecated products/detailProducts (returned as []); load them from GET /v1/dcrs/products instead"
           }
         ],
         "responses": {
@@ -7603,6 +7616,88 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/dcrs/products": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "DCR"
+        ],
+        "operationId": "listDcrProducts",
+        "summary": "Active products for the DCR pickers (replaces options.products/detailProducts)",
+        "description": "Same items as the deprecated GET /v1/dcrs/options products/detailProducts. Response carries ETag (weak) and Cache-Control: private, max-age=60. Send If-None-Match to get 304 with no body while products and the image-URL signing window (30 min) are unchanged. ids= narrows to those active products.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "schema": {
+              "description": "Batch fetch: comma-separated product ids (max 100). Only active products are returned; others are absent. detailProducts groups only the returned SKUs",
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$"
+            },
+            "description": "Batch fetch: comma-separated product ids (max 100). Only active products are returned; others are absent. detailProducts groups only the returned SKUs"
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "schema": {
+              "description": "ETag from an earlier response; 304 (empty body) when unchanged",
+              "type": "string",
+              "maxLength": 512
+            },
+            "description": "ETag from an earlier response; 304 (empty body) when unchanged"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (ETag, Cache-Control headers)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DcrProducts"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched); empty body"
           },
           "401": {
             "description": "Not signed in",
@@ -26020,7 +26115,8 @@
           },
           "detailProducts": {
             "default": [],
-            "description": "Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed",
+            "deprecated": true,
+            "description": "Deprecated: use GET /v1/dcrs/products. [] when includeProducts=false. Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DcrDetailProduct"
@@ -26028,7 +26124,8 @@
           },
           "products": {
             "default": [],
-            "description": "Active products for the call pickers, by name (imageUrl presigned, >= 30 min)",
+            "deprecated": true,
+            "description": "Deprecated: use GET /v1/dcrs/products. [] when includeProducts=false. Active products for the call pickers, by name (imageUrl presigned, >= 30 min)",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DcrProductOption"
@@ -26539,6 +26636,35 @@
           "isSample",
           "imageFileKey",
           "imageUrl"
+        ],
+        "additionalProperties": false
+      },
+      "DcrProducts": {
+        "type": "object",
+        "properties": {
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrProductOption"
+            },
+            "description": "Active products for the call pickers, A-Z by name (imageUrl presigned, >= 30 min)"
+          },
+          "detailProducts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrDetailProduct"
+            },
+            "description": "Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed"
+          },
+          "etag": {
+            "type": "string",
+            "description": "Same value as the ETag header. Send it back as If-None-Match to get 304 while products and image URLs are unchanged"
+          }
+        },
+        "required": [
+          "products",
+          "detailProducts",
+          "etag"
         ],
         "additionalProperties": false
       },

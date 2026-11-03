@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { KpiReport } from '@ariforce/contracts';
-import { rollupFor } from '@/components/dashboard/dashboard-view';
+import { rollupFor } from '@/components/dashboard/rollup';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { addMonths } from '@/lib/period';
 import { isApprover, type Role } from '@/lib/roles';

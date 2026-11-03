@@ -7,7 +7,7 @@ import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { ZodPipe } from '../common/zod.pipe';
-import { companySettings } from './field.util';
+import { companySettings, invalidateCompanySettings } from './field.util';
 
 const toDto = (s: Awaited<ReturnType<typeof companySettings>>): GeofenceSettings => ({
   radiusM: s.radiusM,
@@ -28,14 +28,17 @@ export class SettingsController {
   @Get()
   @RequirePermissions('me:read')
   get(@CurrentPrincipal() p: Principal) {
-    return this.tenant.run(p, async (tx) => toDto(await companySettings(tx, p)));
+    return this.tenant.run(p, async (tx) => toDto(await companySettings(tx, p, { fresh: true })));
   }
 
   @Put()
   @RequirePermissions('settings:write')
-  put(@CurrentPrincipal() p: Principal, @Body(new ZodPipe(GeofenceSettings)) b: GeofenceSettings) {
-    return this.tenant.run(p, async (tx) => {
-      const before = toDto(await companySettings(tx, p));
+  async put(
+    @CurrentPrincipal() p: Principal,
+    @Body(new ZodPipe(GeofenceSettings)) b: GeofenceSettings,
+  ) {
+    const res = await this.tenant.run(p, async (tx) => {
+      const before = toDto(await companySettings(tx, p, { fresh: true }));
       const [row] = await tx
         .update(companies)
         .set({
@@ -46,13 +49,14 @@ export class SettingsController {
         })
         .where(and(eq(companies.id, p.companyId), eq(companies.version, b.version)))
         .returning({ id: companies.id });
+      invalidateCompanySettings(p.companyId);
       if (!row)
         throw new ConflictException({
           code: 'VERSION_CONFLICT',
           message: 'Stale version',
           details: before,
         });
-      const after = toDto(await companySettings(tx, p));
+      const after = toDto(await companySettings(tx, p, { fresh: true }));
       await this.audit.record(tx, p, 'settings.geofence', {
         entityType: 'company',
         entityId: p.companyId,
@@ -61,5 +65,8 @@ export class SettingsController {
       });
       return after;
     });
+    // Again after commit: a concurrent request may have cached the pre-commit row meanwhile.
+    invalidateCompanySettings(p.companyId);
+    return res;
   }
 }

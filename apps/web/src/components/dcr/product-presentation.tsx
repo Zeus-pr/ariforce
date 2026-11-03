@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Button } from '@ariforce/ui/components/button';
 import { Dialog, DialogContent, DialogTitle } from '@ariforce/ui/components/dialog';
 import type { SelectOption } from './search-select';
+import { ProductImg } from '@/components/media/product-img';
 
 export function ProductPresentation({
   products,
@@ -66,9 +67,13 @@ export function ProductPresentation({
           {current && (
             <div className="flex h-full w-full items-center justify-center">
               {current.imageUrl && (
-                <img
+                <ProductImg
                   src={current.imageUrl}
                   alt={current.label}
+                  width={1600}
+                  height={1200}
+                  sizes="100vw"
+                  priority
                   className="h-full max-h-[calc(100dvh-8rem)] w-full object-contain"
                   data-testid="dcr-presentation-image"
                 />
