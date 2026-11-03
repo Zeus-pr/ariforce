@@ -208,7 +208,7 @@ function Form({
         </div>
       )}
       {edit && REAL && (
-        <Button asChild size="sm" className="w-fit">
+        <Button asChild size="sm" className="mx-4 w-fit">
           <Link href={`/team/members/${edit.id}`} data-testid="sheet-profile">
             View full profile
           </Link>
