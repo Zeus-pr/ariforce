@@ -92,9 +92,9 @@ export async function evaluateExceptions(
   const rules = new Map((await effectiveRules(tx)).map((r) => [r.code, r]));
   const on = (c: ExceptionRuleCode) => rules.get(c)!.enabled;
   const thr = (c: ExceptionRuleCode) => rules.get(c)!.threshold ?? 0;
-  const [co] = await rows<{ tz: string; radius: number; lock_h: number; off: number[] | null }>(
+  const [co] = await rows<{ tz: string; radius: number; off: number[] | null }>(
     tx,
-    sql`select c.timezone as tz, c.default_geofence_m as radius, c.dcr_lock_after_hours as lock_h,
+    sql`select c.timezone as tz, c.default_geofence_m as radius,
                (select weekly_off_days from leave_settings ls where ls.company_id = c.id and ls.deleted_at is null limit 1) as off
         from companies c where c.id = ${companyId}`,
   );
@@ -104,7 +104,7 @@ export async function evaluateExceptions(
   const lockRows = await rows<{ d: string; passed: boolean }>(
     tx,
     sql`select to_char(t::date, 'YYYY-MM-DD') as d,
-               ((t::date + 1)::timestamp at time zone ${co.tz}) + make_interval(hours => ${co.lock_h}) < ${now.toISOString()}::timestamptz as passed
+               ((t::date + 1)::timestamp at time zone 'Asia/Kolkata') < ${now.toISOString()}::timestamptz as passed
         from generate_series(${from}::date, ${to}::date, interval '1 day') g(t)`,
   );
   const lockPassed = new Map(lockRows.map((r) => [r.d, r.passed]));

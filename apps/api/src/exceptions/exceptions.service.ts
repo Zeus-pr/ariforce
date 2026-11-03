@@ -111,13 +111,15 @@ export class ExceptionsService {
     });
   }
 
-  list(p: Principal, q: ExceptionListQuery) {
+  /** self: only the caller's own rows (GET /v1/me/exceptions); userId and assignedToMe are ignored. */
+  list(p: Principal, q: ExceptionListQuery, o: { self?: boolean } = {}) {
+    if (o.self) q = { ...q, userId: undefined, assignedToMe: undefined };
     return this.tenant.run(p, async (tx) => {
       const limit = q.limit ?? 50;
       const offset = decodeCursor(q.cursor);
       const where = and(
         sql`${exceptions.deletedAt} is null`,
-        this.scope(p),
+        o.self ? eq(exceptions.userId, p.userId) : this.scope(p),
         q.status?.length ? inArray(exceptions.status, q.status) : undefined,
         q.severity?.length ? inArray(exceptions.severity, q.severity) : undefined,
         q.ruleCode?.length ? inArray(exceptions.ruleCode, q.ruleCode) : undefined,

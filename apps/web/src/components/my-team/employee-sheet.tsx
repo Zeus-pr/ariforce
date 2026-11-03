@@ -24,7 +24,7 @@ import {
 import { toast } from '@ariforce/ui/components/sonner';
 import { ROLE_LABEL, ROLE_SHORT, roleLevel, type Role, type SalesRole } from '@/lib/roles';
 import { InviteOne } from '@/components/invites/invite-links';
-import { teamAdapter } from '@/lib/team-adapter/adapter';
+import { apiTeamAdapter } from '@/lib/team-adapter/adapter';
 import { AdapterError, type Employee, type EmployeeInput, type Hq } from '@/lib/team-adapter/types';
 
 export type SheetState = { mode: 'add' } | { mode: 'edit'; employee: Employee } | null;
@@ -60,7 +60,7 @@ function Form({
 }: Props & { state: NonNullable<SheetState> }) {
   const edit = state.mode === 'edit' ? state.employee : null;
   const self = edit?.id === rootId;
-  const roles = teamAdapter.creatableRoles(role);
+  const roles = apiTeamAdapter.creatableRoles(role);
   const [v, setV] = useState<EmployeeInput>({
     name: edit?.name ?? '',
     phone: edit?.phone ?? '',
@@ -83,10 +83,10 @@ function Form({
     setErr(null);
     try {
       if (edit) {
-        await teamAdapter.update(role, edit.id, v);
+        await apiTeamAdapter.update(role, edit.id, v);
         onDone(`${v.name} updated.`);
       } else {
-        await teamAdapter.create(role, v);
+        await apiTeamAdapter.create(role, v);
         onDone(`${v.name} added to your team.`);
       }
     } catch (e) {
@@ -101,7 +101,7 @@ function Form({
   };
   const setActive = async (active: boolean) => {
     try {
-      await teamAdapter.update(role, edit!.id, { active });
+      await apiTeamAdapter.update(role, edit!.id, { active });
       onDone(`${edit!.name} ${active ? 'reactivated' : 'deactivated'}.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not save.');

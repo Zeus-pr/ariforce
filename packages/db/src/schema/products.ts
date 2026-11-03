@@ -58,6 +58,8 @@ export const products = pgTable(
     pts: numeric('pts', { precision: 12, scale: 2 }),
     isSample: boolean('is_sample').notNull().default(false),
     active: boolean('active').notNull().default(true),
+    /** Product picture: R2 key (purpose product_image), never a name or URL. */
+    imageFileKey: text('image_file_key'),
     ...syncCols(),
   },
   (t) => [

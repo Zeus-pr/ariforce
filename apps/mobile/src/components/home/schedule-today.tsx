@@ -66,10 +66,7 @@ export function ScheduleToday({
                   size={16}
                   color={visited ? colors.canopy : colors.subtle}
                 />
-                <AppText
-                  variant="small"
-                  style={visited ? styles.statusOn : styles.statusOff}
-                >
+                <AppText variant="small" style={visited ? styles.statusOn : styles.statusOff}>
                   {visited ? 'Visited' : 'Scheduled'}
                 </AppText>
               </View>

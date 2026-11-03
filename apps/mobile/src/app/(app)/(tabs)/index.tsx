@@ -64,13 +64,7 @@ export default function HomeScreen() {
           style={styles.flex}
           contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
         >
-          <CanopyHero
-            name={name}
-            role={role}
-            now={now}
-            data={data}
-            sample={HOME_IS_PLACEHOLDER}
-          />
+          <CanopyHero name={name} role={role} now={now} data={data} sample={HOME_IS_PLACEHOLDER} />
 
           <View style={styles.sheet}>
             <QuickActions onOpen={open} roles={user?.roles ?? []} hints={data.quickHints} />
@@ -90,10 +84,7 @@ export default function HomeScreen() {
             ) : null}
 
             <View style={styles.section}>
-              <ScheduleToday
-                items={data.doctorsToday}
-                onFullRoute={() => open('tour-plan')}
-              />
+              <ScheduleToday items={data.doctorsToday} onFullRoute={() => open('tour-plan')} />
             </View>
 
             <View style={styles.section}>

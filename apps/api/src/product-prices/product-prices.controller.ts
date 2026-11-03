@@ -1,17 +1,20 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   NotFoundException,
   Param,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import {
   AdminProductQuery,
   Id,
+  ProductImageSet,
   ProductPricesBulkRequest,
   ProductPricesUpdate,
 } from '@ariforce/contracts';
@@ -64,5 +67,30 @@ export class ProductPricesController {
   @RequirePermissions('products:prices')
   history(@CurrentPrincipal() p: Principal, @Param('id') i: string) {
     return this.svc.history(p, id(i, 'Product'));
+  }
+}
+
+/**
+ * Product picture (ProductPricesView upload box). Same permission as the price edit
+ * (`products:prices`); returns the AdminProduct row with a fresh imageUrl and the new version.
+ */
+@Controller({ path: 'products', version: '1' })
+export class ProductImageController {
+  constructor(private readonly svc: ProductPricesService) {}
+
+  @Put(':id/image')
+  @RequirePermissions('products:prices')
+  setImage(
+    @CurrentPrincipal() p: Principal,
+    @Param('id') i: string,
+    @Body(new ZodPipe(ProductImageSet)) b: z.infer<typeof ProductImageSet>,
+  ) {
+    return this.svc.setImage(p, id(i, 'Product'), b);
+  }
+
+  @Delete(':id/image')
+  @RequirePermissions('products:prices')
+  clearImage(@CurrentPrincipal() p: Principal, @Param('id') i: string) {
+    return this.svc.clearImage(p, id(i, 'Product'));
   }
 }

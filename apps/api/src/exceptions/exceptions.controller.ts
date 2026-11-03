@@ -28,6 +28,15 @@ export class ExceptionsController {
     return this.svc.list(p, q);
   }
 
+  /** Own exceptions (missing DCR, TP not submitted, ...): any signed-in user, no field:read. */
+  @Get('me/exceptions')
+  mine(
+    @CurrentPrincipal() p: Principal,
+    @Query(new ZodPipe(ExceptionListQuery)) q: z.output<typeof ExceptionListQuery>,
+  ) {
+    return this.svc.list(p, q, { self: true });
+  }
+
   @Get('exceptions/summary')
   @RequirePermissions('field:read')
   summary(

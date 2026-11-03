@@ -22,7 +22,9 @@ export default function SignInPage() {
             className="block h-10 w-[45px]"
           />
           <div className="af-page">
-            <h1 className="text-xl font-semibold tracking-tight text-primary">Sign in to AriForce</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-primary">
+              Sign in to AriForce
+            </h1>
             <p className="mt-1 text-sm text-muted-foreground">Arighna Pharmaceutical field force</p>
           </div>
         </div>

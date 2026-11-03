@@ -14,6 +14,7 @@ import {
   chemists,
   doctorCategories,
   doctors,
+  expenseLines,
   specialties,
   territories,
   tourPlanSubmissions,
@@ -22,15 +23,36 @@ import {
   workTypes,
   type Tx,
 } from '@ariforce/db';
-import { and, asc, desc, eq, inArray, ne, or, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  ne,
+  notInArray,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ExceptionRecheck } from '../jobs/exception-recheck';
 import { rejectionReason } from '../common/rejection';
 import { plansOut, syncStatus } from './tp-submissions';
+import { routeToHolders } from './approval-routing';
+import {
+  AUTO_APPROVE_REASON,
+  autoApproveAudit,
+  deciderId,
+  isDirector,
+  systemPrincipal,
+} from './auto-approve';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 
 type EntityType = (typeof approvalRequests.$inferInsert)['entityType'];
@@ -73,9 +95,31 @@ export type StepHook = (
 export interface EntityOptions {
   /** Approval levels up the reporting line (1 = reporting manager only); a function reads company settings. */
   levels?: number | ((tx: Tx, p: Principal) => Promise<number>);
-  /** Extra permission the decider needs for this entity type. */
+  /** Extra permission the decider needs for this entity type (decide and the to_decide list). */
   permission?: Permission;
+  /**
+   * 'permission_holders': route to every active user of the company holding `permission` (not the
+   * requester's manager). Any one of them decides; all of them see it (to_decide, GET, decide), even
+   * outside their team. One holder: step 1 names them; several: step 1 approver is null (shared queue)
+   * and payload.approverIds lists them. None: request() throws 422 NO_APPROVER.
+   */
+  route?: 'manager' | 'permission_holders';
   onStep?: StepHook;
+  /** Runs before any approve (every step, every route); throw to block (e.g. DCR_NOT_APPROVED). */
+  beforeApprove?: (
+    tx: Tx,
+    p: Principal,
+    req: typeof approvalRequests.$inferSelect,
+  ) => Promise<void>;
+  /**
+   * After beforeApprove threw and the decide transaction rolled back: own transaction, best effort
+   * (e.g. expense.blocked to the DCR reviewers). Never changes the error the caller gets.
+   */
+  onBlocked?: (
+    p: Principal,
+    req: typeof approvalRequests.$inferSelect,
+    e: unknown,
+  ) => Promise<void>;
 }
 
 /** Full subject details for GET /v1/approvals/{id} (access is checked by the caller). */
@@ -91,21 +135,31 @@ export interface DetailOptions {
 }
 
 /** Final-approval notification for subjects without their own decision notification. */
+type NoticeEntity = 'tour_plan' | 'tour_plan_item' | 'doctor' | 'approval_request';
 const APPROVE_NOTICE: Partial<
-  Record<EntityType, { type: NotificationType; entityType: 'tour_plan' | 'doctor' }>
+  Record<EntityType, { type: NotificationType; entityType: NoticeEntity }>
 > = {
   tour_plan: { type: 'tour_plan.approved', entityType: 'tour_plan' },
+  tour_plan_item: { type: 'tour_plan.approved', entityType: 'tour_plan_item' },
   doctor: { type: 'doctor.approved', entityType: 'doctor' },
+  dcr_correction: { type: 'dcr_unlock.approved', entityType: 'approval_request' },
+};
+
+/** 'Waiting for you' at request time, for subjects without their own submit notification. */
+const SUBMIT_NOTICE: Partial<
+  Record<EntityType, { type: NotificationType; entityType: NoticeEntity }>
+> = {
+  tour_plan: { type: 'tour_plan.submitted', entityType: 'tour_plan' },
+  tour_plan_item: { type: 'tour_plan.submitted', entityType: 'tour_plan_item' },
+  dcr_correction: { type: 'dcr_unlock.submitted', entityType: 'approval_request' },
 };
 
 /** Rejection notification for subjects without their own decision notification. */
 const REJECT_NOTICE: Partial<
-  Record<
-    EntityType,
-    { type: NotificationType; entityType: 'tour_plan' | 'doctor' | 'approval_request' }
-  >
+  Record<EntityType, { type: NotificationType; entityType: NoticeEntity }>
 > = {
   tour_plan: { type: 'tour_plan.rejected', entityType: 'tour_plan' },
+  tour_plan_item: { type: 'tour_plan.rejected', entityType: 'tour_plan_item' },
   doctor: { type: 'doctor.rejected', entityType: 'doctor' },
   dcr_correction: { type: 'dcr_unlock.rejected', entityType: 'approval_request' },
 };
@@ -136,7 +190,14 @@ export class ApprovalsService {
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
+    private readonly recheck: ExceptionRecheck,
   ) {
+    // DCR unlock/correction requests: director only (dcr_unlock:decide), Sharanya 2026-10-29.
+    // Routed to the company's directors (dcr_unlock:decide holders), not the rep's manager (Phase B).
+    this.options.set('dcr_correction', {
+      permission: 'dcr_unlock:decide',
+      route: 'permission_holders',
+    });
     this.registerDetail('tour_plan', (tx, _p, req) => this.tourPlanDetail(tx, req.entityId));
     this.registerDetail('doctor', (tx, _p, req) => this.doctorDetail(tx, req), {
       readPermissions: ['masters:read'],
@@ -152,7 +213,7 @@ export class ApprovalsService {
       const decided = {
         status: approved ? ('approved' as const) : ('rejected' as const),
         decidedAt: now,
-        decidedBy: p.userId,
+        decidedBy: deciderId(p),
         decisionComment: comment,
       };
       const [sub] = await tx
@@ -172,7 +233,44 @@ export class ApprovalsService {
 
   register(entity: EntityType, hook: DecisionHook, options: EntityOptions = {}) {
     this.hooks.set(entity, hook);
-    this.options.set(entity, options);
+    this.options.set(entity, { ...this.options.get(entity), ...options });
+  }
+
+  /** Entity types whose extra decide permission the caller lacks (never actionable for them). */
+  private undecidable(p: Principal): EntityType[] {
+    return [...this.options.entries()]
+      .filter(([, o]) => o.permission && !p.permissions.includes(o.permission))
+      .map(([k]) => k as EntityType);
+  }
+
+  /**
+   * Whether `p` may decide request `r` now (steps = all its steps, any order). Same rules decideTx
+   * enforces (pending, not own, approvals:decide + the entity permission, current approver or above,
+   * not a decider of an earlier step); the beforeApprove gate (e.g. DCR_NOT_APPROVED) is not run.
+   */
+  canDecide(
+    p: Principal,
+    r: Pick<
+      typeof approvalRequests.$inferSelect,
+      'state' | 'requestedBy' | 'entityType' | 'currentStep'
+    >,
+    steps: Pick<typeof approvalSteps.$inferSelect, 'stepNo' | 'approverUserId' | 'decidedBy'>[],
+  ) {
+    const opt = this.options.get(r.entityType);
+    const cur =
+      steps.find((s) => s.stepNo === r.currentStep) ??
+      [...steps].sort((a, b) => a.stepNo - b.stepNo).at(-1);
+    return (
+      r.state === 'pending' &&
+      r.requestedBy !== p.userId &&
+      p.permissions.includes('approvals:decide') &&
+      (!opt?.permission || p.permissions.includes(opt.permission)) &&
+      (opt?.route === 'permission_holders' ||
+        !cur?.approverUserId ||
+        !p.teamUserIds ||
+        p.teamUserIds.includes(cur.approverUserId)) &&
+      !steps.some((s) => s.stepNo < r.currentStep && s.decidedBy === p.userId)
+    );
   }
 
   registerDetail(entity: EntityType, load: DetailLoader, opt: DetailOptions = {}) {
@@ -263,7 +361,9 @@ export class ApprovalsService {
         .from(approvalSteps)
         .where(eq(approvalSteps.requestId, id));
       const own = req.requestedBy === p.userId;
-      const assigned = steps.some((s) => s.a === p.userId || s.d === p.userId);
+      const assigned =
+        steps.some((s) => s.a === p.userId || s.d === p.userId) ||
+        this.routedToMe(p).includes(req.entityType);
       const inLine = !p.teamUserIds || p.teamUserIds.includes(req.requestedBy);
       if (!own && !assigned && !inLine) throw new NotFoundException('Approval not found');
       const det = this.details.get(req.entityType);
@@ -273,7 +373,7 @@ export class ApprovalsService {
         (det?.opt.readPermissions ?? []).length === 0 ||
         (det?.opt.readPermissions ?? []).some((x) => p.permissions.includes(x));
       const subject = det && may ? await det.load(tx, p, req) : null;
-      return { ...(await this.toDto(tx, [req]))[0]!, subject };
+      return { ...(await this.toDto(tx, [req], p))[0]!, subject };
     });
   }
 
@@ -462,10 +562,32 @@ export class ApprovalsService {
           eq(approvalRequests.state, 'pending'),
         ),
       );
-    const [me] = await tx
-      .select({ managerId: users.managerId })
-      .from(users)
-      .where(eq(users.id, p.userId));
+    const opt = this.options.get(entityType) ?? {};
+    let approverUserId: string | null;
+    let extra: Record<string, unknown> = {};
+    if (opt.route === 'permission_holders' && opt.permission) {
+      const route = routeToHolders(
+        await this.permissionHolders(tx, opt.permission, p.userId),
+        p.userId,
+      );
+      if (!route)
+        throw err(
+          422,
+          'NO_APPROVER',
+          `Nobody in your company can decide this (${opt.permission})`,
+          {
+            permission: opt.permission,
+          },
+        );
+      approverUserId = route.approverUserId;
+      extra = route.payload;
+    } else {
+      const [me] = await tx
+        .select({ managerId: users.managerId })
+        .from(users)
+        .where(eq(users.id, p.userId));
+      approverUserId = me?.managerId ?? null;
+    }
     const id = uuidv7();
     await tx.insert(approvalRequests).values({
       id,
@@ -474,16 +596,132 @@ export class ApprovalsService {
       entityId,
       requestedBy: p.userId,
       reason,
-      payload: payload ?? null,
+      payload: payload || Object.keys(extra).length ? { ...(payload ?? {}), ...extra } : null,
     });
     await tx.insert(approvalSteps).values({
       id: uuidv7(),
       companyId: p.companyId,
       requestId: id,
       stepNo: 1,
-      approverUserId: me?.managerId ?? null,
+      approverUserId,
     });
+    // tp_not_submitted resolves within a minute of the plan being sent (not the next daily run).
+    if (entityType === 'tour_plan' || entityType === 'tour_plan_item')
+      await this.recheck.queue(tx, p);
+    const notice = SUBMIT_NOTICE[entityType];
+    if (notice) {
+      const ids = Array.isArray(extra.approverIds) ? (extra.approverIds as string[]) : [];
+      await this.notifications.notifyMany(
+        tx,
+        p,
+        {
+          type: notice.type,
+          entityType: notice.entityType,
+          entityId: this.noticeEntityId(notice.entityType, {
+            id,
+            entityId,
+            payload: payload ?? null,
+          }),
+          dedupeKey: `${notice.type}:${id}`,
+          data: { ...(payload ?? {}), approvalId: id, ...(reason ? { reason } : {}) },
+        },
+        [approverUserId, ...ids],
+      );
+    }
     return id;
+  }
+
+  private noticeEntityId(
+    t: NoticeEntity,
+    req: { id: string; entityId: string; payload: Record<string, unknown> | null },
+  ) {
+    if (t === 'approval_request') return req.id;
+    if (t === 'tour_plan' && typeof req.payload?.planId === 'string') return req.payload.planId;
+    return req.entityId;
+  }
+
+  /** Decision notification to the requester (approvals: only once the last step approved). */
+  private async decisionNotice(
+    tx: Tx,
+    p: Principal,
+    req: typeof approvalRequests.$inferSelect,
+    approved: boolean,
+    finalState: string | undefined,
+    comment: string | null,
+  ) {
+    const notice = approved
+      ? finalState === 'approved'
+        ? APPROVE_NOTICE[req.entityType]
+        : undefined
+      : REJECT_NOTICE[req.entityType];
+    if (!notice) return;
+    await this.notifications.notify(tx, p, {
+      type: notice.type,
+      recipientId: req.requestedBy,
+      entityType: notice.entityType,
+      entityId: this.noticeEntityId(notice.entityType, req),
+      dedupeKey: `${notice.type}:${req.id}`,
+      data: {
+        ...(req.payload ?? {}),
+        approvalId: req.id,
+        comment,
+        ...(approved ? {} : { reason: comment }),
+      },
+    });
+  }
+
+  /**
+   * Directors have no manager: approve the director's own pending request now, in the submit
+   * transaction, through the engine (beforeApprove gates, step + request state, the decision hook).
+   * decidedBy null (system), comment AUTO_APPROVE_REASON, audit approval.auto_approved. Call it after
+   * the subject is in its submitted/pending state. Returns false (no-op) for everyone else. A gate
+   * that throws (e.g. 409 DCR_NOT_APPROVED) fails the whole submit.
+   */
+  async autoApprove(tx: Tx, p: Principal, requestId: string): Promise<boolean> {
+    if (!isDirector(p)) return false;
+    const [req] = await tx
+      .select()
+      .from(approvalRequests)
+      .where(eq(approvalRequests.id, requestId))
+      .for('update');
+    if (!req || req.state !== 'pending' || req.requestedBy !== p.userId) return false;
+    const opt = this.options.get(req.entityType) ?? {};
+    const sys = systemPrincipal(p);
+    await opt.beforeApprove?.(tx, sys, req);
+    const at = new Date();
+    await tx
+      .update(approvalSteps)
+      .set({ decision: 'approved', decidedBy: null, decidedAt: at, comment: AUTO_APPROVE_REASON })
+      .where(and(eq(approvalSteps.requestId, req.id), eq(approvalSteps.stepNo, req.currentStep)));
+    await tx
+      .update(approvalRequests)
+      .set({ state: 'approved' })
+      .where(eq(approvalRequests.id, req.id));
+    await this.hooks.get(req.entityType)?.(tx, sys, req, true, AUTO_APPROVE_REASON);
+    // Tells the director (system principal: self allowed, data.autoApproved).
+    await this.decisionNotice(tx, sys, req, true, 'approved', AUTO_APPROVE_REASON);
+    await this.audit.record(tx, p, 'approval.auto_approved', {
+      entityType: req.entityType,
+      entityId: req.entityId,
+      after: autoApproveAudit({
+        subjectType: SUBJECT[req.entityType] ?? req.entityType,
+        subjectId: req.entityId,
+        requestId: req.id,
+        requestedBy: req.requestedBy,
+        at,
+      }),
+    });
+    return true;
+  }
+
+  /** Active users of the tenant (RLS) holding `perm` through any role; never `exceptUserId`. */
+  async permissionHolders(tx: Tx, perm: Permission, exceptUserId: string): Promise<string[]> {
+    const rows = await tx.execute<{ id: string }>(sql`select distinct u.id, u.created_at
+      from users u join user_roles ur on ur.user_id = u.id join roles r on r.id = ur.role_id
+      where u.deleted_at is null and u.status = 'active' and r.deleted_at is null
+        and ${perm} = any(r.permissions) and u.id <> ${exceptUserId}
+      order by u.created_at, u.id`);
+    return rows.rows.map((r) => r.id);
   }
 
   async byId(tx: Tx, id: string): Promise<Approval> {
@@ -491,11 +729,28 @@ export class ApprovalsService {
     return (await this.toDto(tx, [r!]))[0]!;
   }
 
-  private visible(p: Principal): SQL | undefined {
-    return p.teamUserIds ? inArray(approvalRequests.requestedBy, p.teamUserIds) : undefined;
+  /** Entity types routed to permission holders that the caller holds (visible company-wide). */
+  private routedToMe(p: Principal): EntityType[] {
+    return [...this.options.entries()]
+      .filter(
+        ([, o]) =>
+          o.route === 'permission_holders' && o.permission && p.permissions.includes(o.permission),
+      )
+      .map(([k]) => k as EntityType);
   }
 
-  private async toDto(tx: Tx, rows: (typeof approvalRequests.$inferSelect)[]): Promise<Approval[]> {
+  private visible(p: Principal): SQL | undefined {
+    if (!p.teamUserIds) return undefined;
+    const team = inArray(approvalRequests.requestedBy, p.teamUserIds);
+    const routed = this.routedToMe(p);
+    return routed.length ? or(team, inArray(approvalRequests.entityType, routed)) : team;
+  }
+
+  private async toDto(
+    tx: Tx,
+    rows: (typeof approvalRequests.$inferSelect)[],
+    p?: Principal,
+  ): Promise<Approval[]> {
     if (!rows.length) return [];
     const ids = rows.map((r) => r.id);
     const steps = await tx
@@ -507,9 +762,30 @@ export class ApprovalsService {
       .select({ id: users.id, name: users.name })
       .from(users)
       .where(inArray(users.id, [...new Set(rows.map((r) => r.requestedBy))]));
+    // Approver warning: expense claims with lines on days whose DCR was rejected (0052 flag).
+    const claimIds = rows.filter((r) => r.entityType === 'expense').map((r) => r.entityId);
+    const flaggedClaims = new Set(
+      claimIds.length
+        ? (
+            await tx
+              .selectDistinct({ id: expenseLines.claimId })
+              .from(expenseLines)
+              .where(
+                and(
+                  inArray(expenseLines.claimId, claimIds),
+                  isNull(expenseLines.deletedAt),
+                  sql`${expenseLines.dcrRejectedAt} is not null`,
+                ),
+              )
+          ).map((x) => x.id)
+        : [],
+    );
     return rows.map((r) => {
-      const st = steps.filter((s) => s.requestId === r.id).at(-1);
+      const all = steps.filter((s) => s.requestId === r.id);
+      const st = all.at(-1);
+      const canDecide = !!p && this.canDecide(p, r, all);
       return {
+        canDecide,
         id: r.id,
         companyId: r.companyId,
         subjectType: SUBJECT[r.entityType] ?? 'leave',
@@ -533,6 +809,16 @@ export class ApprovalsService {
         decidedAt: st?.decidedAt?.toISOString() ?? null,
         decidedBy: st?.decidedBy ?? null,
         rejectionReason: STATUS(r.state) === 'rejected' ? (st?.comment ?? null) : null,
+        autoApproved:
+          r.state === 'approved' &&
+          !!st?.decidedAt &&
+          !st.decidedBy &&
+          st.comment === AUTO_APPROVE_REASON,
+        ...(r.entityType === 'expense'
+          ? {
+              flags: flaggedClaims.has(r.entityId) ? (['dcr_rejected_lines'] as const).slice() : [],
+            }
+          : {}),
       };
     });
   }
@@ -544,6 +830,8 @@ export class ApprovalsService {
         q.status === 'pending' ? ['pending', 'draft'] : q.status ? [q.status] : undefined;
       const where = [
         this.visible(p),
+        // Tour plan items have their own queue (GET /v1/tour-plans/items); not an Approval subject.
+        ne(approvalRequests.entityType, 'tour_plan_item'),
         state ? inArray(approvalRequests.state, state as never[]) : undefined,
         q.subjectType
           ? eq(approvalRequests.entityType, ENTITY[q.subjectType] ?? ('none' as never))
@@ -551,7 +839,13 @@ export class ApprovalsService {
         q.mine === 'requested' ? eq(approvalRequests.requestedBy, p.userId) : undefined,
         q.mine === 'to_decide'
           ? canDecide
-            ? and(eq(approvalRequests.state, 'pending'), ne(approvalRequests.requestedBy, p.userId))
+            ? and(
+                eq(approvalRequests.state, 'pending'),
+                ne(approvalRequests.requestedBy, p.userId),
+                this.undecidable(p).length
+                  ? notInArray(approvalRequests.entityType, this.undecidable(p))
+                  : undefined,
+              )
             : sql`false`
           : undefined,
       ].filter(Boolean) as SQL[];
@@ -569,7 +863,7 @@ export class ApprovalsService {
         .limit(limit + 1)
         .offset(offset);
       const out: Record<string, unknown> = {
-        items: await this.toDto(tx, rows.slice(0, limit)),
+        items: await this.toDto(tx, rows.slice(0, limit), p),
         nextCursor: rows.length > limit ? encodeCursor(offset + limit) : null,
         serverTime: new Date().toISOString(),
       };
@@ -584,7 +878,26 @@ export class ApprovalsService {
     });
   }
 
-  decide(p: Principal, id: string, b: z.infer<typeof ApprovalDecision>) {
+  async decide(p: Principal, id: string, b: z.infer<typeof ApprovalDecision>) {
+    let blocked: { req: typeof approvalRequests.$inferSelect; e: unknown } | null = null;
+    try {
+      return await this.decideTx(p, id, b, (req, e) => (blocked = { req, e }));
+    } catch (e) {
+      const bl = blocked as { req: typeof approvalRequests.$inferSelect; e: unknown } | null;
+      if (bl && bl.e === e) {
+        const on = this.options.get(bl.req.entityType)?.onBlocked;
+        if (on) await on(p, bl.req, e).catch(() => undefined);
+      }
+      throw e;
+    }
+  }
+
+  private decideTx(
+    p: Principal,
+    id: string,
+    b: z.infer<typeof ApprovalDecision>,
+    onGateError: (req: typeof approvalRequests.$inferSelect, e: unknown) => void,
+  ) {
     const comment = rejectionReason(b.decision, b.comment);
     return this.tenant.run(p, async (tx) => {
       const [req] = await tx
@@ -598,7 +911,9 @@ export class ApprovalsService {
       if (req.state !== 'pending') throw err(409, 'CONFLICT', 'Already decided');
       const opt = this.options.get(req.entityType) ?? {};
       if (opt.permission && !p.permissions.includes(opt.permission))
-        throw new ForbiddenException(`Missing permission: ${opt.permission}`);
+        throw err(403, 'APPROVAL_PERMISSION_REQUIRED', `Missing permission: ${opt.permission}`, {
+          permission: opt.permission,
+        });
       const steps = await tx
         .select()
         .from(approvalSteps)
@@ -606,11 +921,23 @@ export class ApprovalsService {
         .orderBy(asc(approvalSteps.stepNo));
       const cur = steps.find((s) => s.stepNo === req.currentStep);
       // The current step's approver or anyone above them; never someone who decided an earlier step.
-      if (cur?.approverUserId && p.teamUserIds && !p.teamUserIds.includes(cur.approverUserId))
+      if (
+        opt.route !== 'permission_holders' &&
+        cur?.approverUserId &&
+        p.teamUserIds &&
+        !p.teamUserIds.includes(cur.approverUserId)
+      )
         throw err(403, 'APPROVAL_NOT_YOUR_STEP', 'Waiting for a higher approver');
       if (steps.some((s) => s.stepNo < req.currentStep && s.decidedBy === p.userId))
         throw err(403, 'APPROVAL_ALREADY_DECIDED_BY_YOU', 'You approved an earlier step');
       const approved = b.decision === 'approve';
+      if (approved)
+        try {
+          await opt.beforeApprove?.(tx, p, req);
+        } catch (e) {
+          onGateError(req, e);
+          throw e;
+        }
       const levels = typeof opt.levels === 'function' ? await opt.levels(tx, p) : (opt.levels ?? 1);
       if (approved && req.currentStep < levels && cur?.approverUserId) {
         const [up] = await tx
@@ -673,30 +1000,7 @@ export class ApprovalsService {
         .from(approvalRequests)
         .where(eq(approvalRequests.id, id));
       // Rejections notify at once; approvals only when the last step approves.
-      const notice = approved
-        ? after?.state === 'approved'
-          ? APPROVE_NOTICE[req.entityType]
-          : undefined
-        : REJECT_NOTICE[req.entityType];
-      if (notice)
-        await this.notifications.notify(tx, p, {
-          type: notice.type,
-          recipientId: req.requestedBy,
-          entityType: notice.entityType,
-          entityId:
-            notice.entityType === 'approval_request'
-              ? req.id
-              : typeof req.payload?.planId === 'string'
-                ? req.payload.planId
-                : req.entityId,
-          dedupeKey: `${notice.type}:${req.id}`,
-          data: {
-            ...(req.payload ?? {}),
-            approvalId: req.id,
-            comment,
-            ...(approved ? {} : { reason: comment }),
-          },
-        });
+      await this.decisionNotice(tx, p, req, approved, after?.state, comment);
       await this.audit.record(tx, p, `approval.${b.decision}`, {
         entityType: req.entityType,
         entityId: req.entityId,

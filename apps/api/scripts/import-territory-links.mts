@@ -10,11 +10,17 @@
  * (local_territory_id). Unknown HQ / no match / ambiguous rows are reported, never guessed.
  * --replace overwrites an existing different link (default keeps it). --json <file> writes the full
  * result. Connects with DATABASE_URL (app role, RLS applies). Exit 2 when any row is unmatched/error.
+ * --read-only: dry run inside ONE transaction that starts with SET TRANSACTION READ ONLY, checks
+ * transaction_read_only = on (aborts otherwise) and always rolls back. Use it against a shared or
+ * production DB: unlike PGOPTIONS, it also holds through the Supabase transaction pooler. Cannot be
+ * combined with --apply or --replace.
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
-import { auditLog, createDb, createPool, withTenant } from '@ariforce/db';
+import type { TerritoryLinkImportResult } from '@ariforce/contracts';
+import { auditLog, createDb, createPool, type Tx } from '@ariforce/db';
+import { sql } from 'drizzle-orm';
 import { runTerritoryLinks } from '../src/masters/territory-links';
 
 const { values: a } = parseArgs({
@@ -23,6 +29,7 @@ const { values: a } = parseArgs({
     file: { type: 'string' },
     apply: { type: 'boolean', default: false },
     replace: { type: 'boolean', default: false },
+    'read-only': { type: 'boolean', default: false },
     json: { type: 'string' },
   },
 });
@@ -33,6 +40,9 @@ const fail = (m: string): never => {
 if (!a.company) fail('--company <slug> is required');
 if (!a.file || !existsSync(a.file)) fail('--file <rows.csv> is required and must exist');
 if (!process.env.DATABASE_URL) fail('DATABASE_URL is not set');
+const readOnly = a['read-only'] === true;
+if (readOnly && (a.apply || a.replace))
+  fail('--read-only cannot be combined with --apply or --replace');
 
 /** Minimal RFC 4180 CSV (quotes, "" escapes, CRLF). First row = header. */
 function parseCsv(text: string): Record<string, string>[] {
@@ -78,23 +88,31 @@ if (rows.length > 5000) fail('More than 5,000 rows: split the file');
 const pool = createPool(process.env.DATABASE_URL!, { max: 1 });
 const db = createDb(pool);
 let exit = 0;
+const ROLLBACK = new Error('read-only rollback');
 try {
-  const cid = (
-    await pool.query<{ id: string | null }>('select company_id_by_slug($1) as id', [a.company])
-  ).rows[0]?.id;
-  if (!cid) fail(`company '${a.company}' not found`);
   const requestId = `import-territory-links-${randomUUID()}`;
-  const res = await withTenant(db, { companyId: cid!, requestId }, async (tx) => {
-    const r = await runTerritoryLinks(
+  const work = async (tx: Tx) => {
+    const cid = (
+      (await tx.execute(sql`select company_id_by_slug(${a.company}) as id`)).rows[0] as
+        { id: string | null } | undefined
+    )?.id;
+    if (!cid) fail(`company '${a.company}' not found`);
+    await tx.execute(
+      sql`select set_config('app.current_company_id', ${cid!}, true),
+                 set_config('app.current_user_id', '', true),
+                 set_config('app.request_id', ${requestId}, true)`,
+    );
+    return runTerritoryLinks(
       tx,
       {
-        dryRun: !a.apply,
+        dryRun: readOnly || !a.apply,
         onLinked: a.replace ? 'replace' : 'keep',
         rows,
         fileName: a.file!.split('/').at(-1) ?? null,
       },
       cid!,
       async (action, e) => {
+        if (readOnly) throw new Error(`write attempted in --read-only mode (${action})`);
         await tx.insert(auditLog).values({
           companyId: cid!,
           actorUserId: null,
@@ -107,11 +125,27 @@ try {
         });
       },
     );
-    return r;
-  });
+  };
+  let res!: TerritoryLinkImportResult;
+  if (readOnly) {
+    try {
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`set transaction read only`);
+        const ro = (await tx.execute(sql`show transaction_read_only`)).rows[0] as
+          { transaction_read_only?: string } | undefined;
+        if (ro?.transaction_read_only !== 'on')
+          throw new Error('ABORT: transaction_read_only is not on');
+        console.log('read-only guard: transaction_read_only = on (will roll back)');
+        res = await work(tx);
+        throw ROLLBACK;
+      });
+    } catch (e) {
+      if (e !== ROLLBACK) throw e;
+    }
+  } else res = await db.transaction((tx) => work(tx));
   const t = res.totals;
   console.log(
-    `${a.apply ? 'APPLIED' : 'DRY RUN (nothing written; use --apply)'}: ${t.rows} row(s)`,
+    `${readOnly ? 'READ-ONLY DRY RUN (rolled back)' : a.apply ? 'APPLIED' : 'DRY RUN (nothing written; use --apply)'}: ${t.rows} row(s)`,
   );
   console.log(
     `  territories created: ${t.territoriesCreated}; linked: ${t.linked} (doctors ${t.doctorsLinked}, chemists ${t.chemistsLinked}); already linked: ${t.alreadyLinked}`,

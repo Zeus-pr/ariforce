@@ -231,7 +231,14 @@ function Doctor360({ id }: { id: string }) {
       >
         <ArrowLeft className="size-4" /> Doctors
       </Link>
-      {rejection && <RejectionNote reason={rejection.comment} byName={rejection.by} at={rejection.at} testId="doctor-rejection" />}
+      {rejection && (
+        <RejectionNote
+          reason={rejection.comment}
+          byName={rejection.by}
+          at={rejection.at}
+          testId="doctor-rejection"
+        />
+      )}
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-xl font-semibold tracking-tight" data-testid="doctor-name">

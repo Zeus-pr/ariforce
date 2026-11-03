@@ -74,11 +74,26 @@ export const expenseLines = pgTable(
     /** TA/DA snapshot: band, rate id, place id, km, per-km rate. */
     calc: jsonb('calc'),
     allowancePlaceId: uuid('allowance_place_id').references(() => allowancePlaces.id),
+    /** What wrote an auto line (0052): POST .../allowances or the DCR-submit auto-draft. */
+    autoTrigger: text('auto_trigger', { enum: ['allowances_run', 'dcr_submit'] }),
+    /** Set when the day's DCR was rejected after the line was added (0052 flag). */
+    dcrRejectedAt: timestamp('dcr_rejected_at', { withTimezone: true }),
     ...syncCols(),
   },
   (t) => [
     index('expense_lines_claim_idx').on(t.claimId),
+    index('expense_lines_dcr_idx')
+      .on(t.companyId, t.dcrId)
+      .where(sql`deleted_at IS NULL`),
+    // One live auto line per claim, day and category (0052; duplicate pre-check in the migration).
+    uniqueIndex('expense_lines_auto_uq')
+      .on(t.companyId, t.claimId, t.date, t.category)
+      .where(sql`source = 'auto' AND deleted_at IS NULL`),
     check('expense_lines_source_ck', sql`${t.source} in ('manual','auto')`),
+    check(
+      'expense_lines_auto_trigger_ck',
+      sql`${t.autoTrigger} IS NULL OR ${t.autoTrigger} in ('allowances_run','dcr_submit')`,
+    ),
   ],
 );
 

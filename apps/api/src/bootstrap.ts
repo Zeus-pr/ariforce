@@ -25,9 +25,17 @@ const BLOCKED_AUTH_PREFIXES = [
   '/sign-in/email-otp',
   '/verify-email',
   '/send-verification-email',
+  // Sign-in OTP is email only: no authenticator or backup-code enrolment or verification.
+  '/two-factor/enable',
+  '/two-factor/disable',
+  '/two-factor/get-totp-uri',
+  '/two-factor/verify-totp',
+  '/two-factor/generate-backup-codes',
+  '/two-factor/verify-backup-code',
+  '/two-factor/view-backup-codes',
 ].map((p) => `${AUTH_BASE_PATH}${p}`);
 import { AuthService } from './auth/auth.service';
-import { CLIENT_IP_HEADER, clientIp } from './common/client-ip';
+import { CLIENT_IP_HEADER, clientIp, ipRateKey } from './common/client-ip';
 import { LIMITS, rateLimitStore } from './common/rate-limit';
 
 /** Production hides /docs and /openapi.json and enables HSTS. */
@@ -86,7 +94,7 @@ export function configureApp(app: INestApplication) {
     }
     // Shared per-IP limits in front of better-auth: stricter on sign-in.
     if (req.method === 'POST') {
-      const ip = clientIp(req) ?? '?';
+      const ip = ipRateKey(clientIp(req));
       const signIn = req.path.startsWith(`${AUTH_BASE_PATH}/sign-in`);
       const rule = signIn ? LIMITS.signIn() : LIMITS.authOther();
       const r = await rateLimitStore().hit(

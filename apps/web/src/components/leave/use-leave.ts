@@ -40,7 +40,9 @@ export function useLeave(year: number, who: string): LeaveData {
       if (ac.signal.aborted || !t) return;
       const bad = [t, s, b, r].find((x) => x.error);
       setError(bad ? leaveMessage(toApiError(bad)) : null);
-      setTypes((t.data?.items ?? []).filter((x) => x.active).sort((a, z) => a.sortOrder - z.sortOrder));
+      setTypes(
+        (t.data?.items ?? []).filter((x) => x.active).sort((a, z) => a.sortOrder - z.sortOrder),
+      );
       setSettings(s.data ?? null);
       setBalances(b.data?.items ?? []);
       setMine([...(r.data?.items ?? [])].sort((a, z) => z.fromDate.localeCompare(a.fromDate)));

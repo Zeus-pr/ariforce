@@ -15,7 +15,7 @@ import {
 import { toast } from '@ariforce/ui/components/sonner';
 import { api, apiReady } from '@/lib/api';
 import { territoryQueryFor } from '@/lib/assign-errors';
-import { useSession } from '@/lib/mock-auth';
+import { useSession } from '@/lib/auth';
 import { ROLE_LABEL, roleLevel, type Role } from '@/lib/roles';
 import {
   SignupError,
@@ -26,7 +26,7 @@ import {
   type SignupRequest,
   type SignupStatus,
 } from '@/lib/signup/adapter';
-import { teamAdapter } from '@/lib/team-adapter/adapter';
+import { apiTeamAdapter } from '@/lib/team-adapter/adapter';
 import type { Employee } from '@/lib/team-adapter/types';
 
 const SELECT =
@@ -271,11 +271,18 @@ function ApproveDialog({
     void apiReady()
       .then(() =>
         api.GET('/v1/territories', {
-          params: { query: { limit: 200, ...territoryQueryFor(bmOnly ? 'business_manager' : null) } as never },
+          params: {
+            query: {
+              limit: 200,
+              ...territoryQueryFor(bmOnly ? 'business_manager' : null),
+            } as never,
+          },
         }),
       )
       .then((r) => {
-        const items = (r.data?.items ?? []).filter((t) => t.level !== 'territory' && (!bmOnly || t.level === 'headquarter'));
+        const items = (r.data?.items ?? []).filter(
+          (t) => t.level !== 'territory' && (!bmOnly || t.level === 'headquarter'),
+        );
         if (live) setTerritories(items.map((t) => ({ id: t.id, name: t.name })));
       })
       .catch(() => live && setTerritories([]));
@@ -286,7 +293,7 @@ function ApproveDialog({
 
   useEffect(() => {
     let live = true;
-    void teamAdapter
+    void apiTeamAdapter
       .tree(viewer)
       .then((t) => live && setPeople(t.nodes))
       .catch(() => {});
@@ -440,7 +447,8 @@ function RejectDialog({
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (reason.trim()) void run(() => signupAdapter.reject(req.id, reason.trim()), 'rejected');
+            if (reason.trim())
+              void run(() => signupAdapter.reject(req.id, reason.trim()), 'rejected');
           }}
         >
           <div className="grid gap-1.5">

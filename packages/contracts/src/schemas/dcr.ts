@@ -2,6 +2,8 @@ import * as z from 'zod';
 import { DateOnly, Id, Timestamp } from './common';
 import { DcrBand, DcrDetails, DcrSfcRouteChoice, DcrSfcSource } from './dcr-parts';
 import { Dcr, DcrCallInput } from './field';
+import { TourPlanItem } from './tp-items';
+import { Product } from './products';
 import { SfcCategory, SfcTravelMode } from './sfc';
 
 export * from './dcr-parts';
@@ -23,6 +25,75 @@ export const DcrWorkTypeOption = z
       .meta({ description: 'Required details.kind on submit; null = no details' }),
   })
   .meta({ id: 'DcrWorkTypeOption' });
+/** Product for the DCR pickers (detailing, samples, POB). POB is priced at pts. */
+export const DcrProductOption = Product.pick({
+  id: true,
+  divisionId: true,
+  code: true,
+  name: true,
+  displayName: true,
+  brand: true,
+  composition: true,
+  packSize: true,
+  form: true,
+  mrp: true,
+  pts: true,
+  isSample: true,
+  imageFileKey: true,
+  imageUrl: true,
+}).meta({ id: 'DcrProductOption' });
+export type DcrProductOption = z.infer<typeof DcrProductOption>;
+
+/** An approved tour plan item as a DCR draft card (one card per item, one DCR per day). */
+export const DcrTourPlanDraft = TourPlanItem.extend({
+  pendingDates: z.array(DateOnly).meta({
+    description:
+      'Unfiled days from today (IST) on; the card is listed only while this is non-empty',
+  }),
+  draftDates: z.array(DateOnly).meta({ description: 'pendingDates that already have a DCR draft' }),
+  fileableDates: z.array(DateOnly).meta({
+    description:
+      'Days that can be submitted now (today only). Future pendingDates accept drafts (with tourPlanItemId) but not submit',
+  }),
+}).meta({ id: 'DcrTourPlanDraft' });
+export type DcrTourPlanDraft = z.infer<typeof DcrTourPlanDraft>;
+
+/** Doctor detailing picker entry: one per displayName (all strengths of a product together). */
+export const DcrDetailProduct = z
+  .object({
+    displayName: z.string().meta({ example: 'ARIPIX' }),
+    productId: Id.meta({
+      description:
+        'SKU to store in productsDetailed for this entry: the first SKU (A-Z by name) that has a picture, else the first SKU',
+    }),
+    productIds: z
+      .array(Id)
+      .min(1)
+      .meta({ description: 'All active SKUs (strengths) of this displayName, A-Z by name' }),
+    composition: z.string().nullable().meta({ description: "productId's composition" }),
+    imageFileKey: z.string().nullable(),
+    imageUrl: z.url().nullable().meta({ description: "productId's picture (presigned), or null" }),
+  })
+  .meta({ id: 'DcrDetailProduct' });
+export type DcrDetailProduct = z.infer<typeof DcrDetailProduct>;
+
+/** Groups product options (already A-Z) into doctor-detailing entries, keeping the input order. */
+export function groupDetailProducts(items: DcrProductOption[]): DcrDetailProduct[] {
+  const groups = new Map<string, DcrProductOption[]>();
+  for (const p of items) groups.set(p.displayName, [...(groups.get(p.displayName) ?? []), p]);
+  return [...groups].map(([displayName, skus]) => {
+    const primary = skus.find((s) => s.imageFileKey) ?? skus[0]!;
+    return {
+      displayName,
+      productId: primary.id,
+      productIds: skus.map((s) => s.id),
+      composition: primary.composition,
+      imageFileKey: primary.imageFileKey,
+      imageUrl: primary.imageUrl,
+    };
+  });
+}
+
 export const DcrOptions = z
   .object({
     date: DateOnly,
@@ -38,7 +109,38 @@ export const DcrOptions = z
       .array(Dcr)
       .default([])
       .meta({ description: 'Your drafts for the date, newest first (several allowed per day)' }),
-    /** Day lock clock (00:00 IST next day + company hours). Always present, even with no DCR. */
+    rejected: z.array(Dcr).default([]).meta({
+      description:
+        'Your manager-rejected reports for the date, newest first (history; rejectionReason set)',
+    }),
+    unlockRequest: z
+      .object({
+        id: Id,
+        status: z.enum(['pending', 'approved', 'rejected', 'cancelled']),
+        requestedAt: Timestamp,
+      })
+      .nullable()
+      .default(null)
+      .meta({
+        description:
+          "Your latest dcr_unlock (correction) request for this date, or null; drives the 'Unlock requested' state",
+      }),
+    tourPlanDrafts: z.array(DcrTourPlanDraft).default([]).meta({
+      description:
+        'Approved tour plan cards (independent of the query date), by from. Shown until no pending day is today or later (i.e. hidden once the last pending day locks at 00:00 IST)',
+    }),
+    detailProducts: z.array(DcrDetailProduct).default([]).meta({
+      description:
+        'Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed',
+    }),
+    products: z.array(DcrProductOption).default([]).meta({
+      description: 'Active products for the call pickers, by name (imageUrl presigned, >= 30 min)',
+    }),
+    autoExpenseOnDcrSubmit: z.boolean().default(false).meta({
+      description:
+        'Company setting: the server drafts TA/DA expense lines on DCR submit (submit response expenseDraft). Clients switch off client-side drafting when true; absent (older API) = false',
+    }),
+    /** Day lock clock. Always present, even with no DCR. */
     lockAt: Timestamp.optional(),
     /** End of an approved unlock window; null when locked or never unlocked. */
     unlockedUntil: Timestamp.nullable().optional(),
@@ -65,10 +167,25 @@ export const DcrHqOptionList = z
   .object({ items: z.array(DcrHqOption) })
   .meta({ id: 'DcrHqOptionList' });
 
+const IdList = z
+  .string()
+  .transform((s) =>
+    s
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean),
+  )
+  .pipe(z.array(Id).min(1).max(20))
+  .meta({ description: 'Comma-separated territory ids (HQ and/or territory level)' });
+const WorkWithIds = IdList.meta({
+  description: 'Comma-separated user ids to resolve saved Work With selections',
+});
+
 export const DcrWorkWithQuery = z
   .object({
     q: z.string().trim().max(100).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
+    ids: WorkWithIds.optional(),
   })
   .meta({ id: 'DcrWorkWithQuery' });
 export const DcrWorkWithUser = z
@@ -83,16 +200,6 @@ export const DcrWorkWithList = z
   .object({ items: z.array(DcrWorkWithUser) })
   .meta({ id: 'DcrWorkWithList' });
 
-const IdList = z
-  .string()
-  .transform((s) =>
-    s
-      .split(',')
-      .map((x) => x.trim())
-      .filter(Boolean),
-  )
-  .pipe(z.array(Id).min(1).max(20))
-  .meta({ description: 'Comma-separated territory ids (HQ and/or territory level)' });
 export const DcrSfcMatchQuery = z
   .object({ date: DateOnly, workTypeId: Id, territoryIds: IdList })
   .meta({ id: 'DcrSfcMatchQuery' });
@@ -149,6 +256,10 @@ export const DcrDraftPut = z
       .meta({ description: 'One per HQ of the day (field only). Omit to keep the saved choices' }),
     details: DcrDetails.nullable().optional(),
     deviationReason: z.string().max(500).nullable().optional(),
+    tourPlanItemId: Id.nullable().optional().meta({
+      description:
+        'The approved TourPlanItem this day is filed from. The date must lie in its from..to and it must be yours and approved, else 422 VALIDATION (details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date in the range may be drafted (submit still opens on the day). Omitted: the server links the approved item covering the date, if any. No deviation reason is ever required',
+    }),
     calls: z.array(DcrCallInput).max(60).default([]),
     version: z.int().min(1).optional().meta({ description: 'Row version from the last read' }),
   })

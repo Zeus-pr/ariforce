@@ -1,6 +1,11 @@
 import * as Haptics from 'expo-haptics';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { AppText } from './app-text';
 import { Icon } from './icon';
 import { colors, radius, spacing } from '@/theme';
@@ -12,13 +17,7 @@ const FACE_H = 56;
  * Chunky 3D "pushable" button: a darker edge sits under the face; pressing sinks the face onto
  * the edge. Emerald = Punch In, vibrant red = Punch Out.
  */
-export function PunchButton({
-  punchedIn,
-  onPress,
-}: {
-  punchedIn: boolean;
-  onPress: () => void;
-}) {
+export function PunchButton({ punchedIn, onPress }: { punchedIn: boolean; onPress: () => void }) {
   const reduced = useReducedMotion();
   const sink = useSharedValue(0);
   const tone = punchedIn
@@ -47,7 +46,11 @@ export function PunchButton({
         <View style={[styles.edge, { backgroundColor: tone.edge }]} />
         <Animated.View style={[styles.face, { backgroundColor: tone.face }, faceStyle]}>
           <View style={styles.shine} />
-          <Icon name={punchedIn ? 'logout-variant' : 'login-variant'} size={24} color={colors.onNavy} />
+          <Icon
+            name={punchedIn ? 'logout-variant' : 'login-variant'}
+            size={24}
+            color={colors.onNavy}
+          />
           <AppText variant="button" style={styles.label}>
             {label}
           </AppText>

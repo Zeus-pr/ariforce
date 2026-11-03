@@ -136,11 +136,7 @@ export function ProductCatalogScreen() {
                 <AppText variant="bodyMuted" style={styles.emptyText}>
                   {productsQuery.error.message || 'Could not load products.'}
                 </AppText>
-                <Button
-                  label="Try again"
-                  compact
-                  onPress={() => void productsQuery.refetch()}
-                />
+                <Button label="Try again" compact onPress={() => void productsQuery.refetch()} />
               </View>
             ) : productsQuery.fetchStatus === 'paused' && !productsQuery.data ? (
               <View style={styles.empty}>

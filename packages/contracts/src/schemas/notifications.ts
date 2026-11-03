@@ -12,14 +12,32 @@ export const NOTIFICATION_TYPES = [
   'expense.rejected',
   'expense.paid',
   'exceptions.digest',
+  'expense.blocked',
+  'tour_plan.submitted',
   'tour_plan.approved',
   'tour_plan.rejected',
   'doctor.approved',
   'doctor.rejected',
+  'dcr.submitted',
+  'dcr.approved',
+  'dcr.rejected',
+  'dcr_unlock.submitted',
+  'dcr_unlock.approved',
   'dcr_unlock.rejected',
 ] as const;
 export const NotificationType = z.enum(NOTIFICATION_TYPES).meta({ id: 'NotificationType' });
 export type NotificationType = z.infer<typeof NotificationType>;
+
+/** Deep-link target types (entityType + entityId open the subject). */
+export const NOTIFICATION_ENTITY_TYPES = [
+  'leave_request',
+  'expense_claim',
+  'tour_plan',
+  'tour_plan_item',
+  'doctor',
+  'dcr',
+  'approval_request',
+] as const;
 
 export const Notification = z
   .object({
@@ -27,12 +45,15 @@ export const Notification = z
     type: NotificationType,
     title: z.string(),
     body: z.string(),
-    entityType: z
-      .enum(['leave_request', 'expense_claim', 'tour_plan', 'doctor', 'approval_request'])
-      .nullable()
-      .meta({ description: 'Deep link target type' }),
+    entityType: z.enum(NOTIFICATION_ENTITY_TYPES).nullable().meta({
+      description:
+        'Deep link target type. dcr: entityId = DCR id; tour_plan_item: entityId = item id; tour_plan: plan id; approval_request (dcr_unlock.*): the request id, data.date = the day',
+    }),
     entityId: Id.nullable().meta({ description: 'Deep link target id' }),
-    data: z.record(z.string(), z.unknown()).nullable(),
+    data: z.record(z.string(), z.unknown()).nullable().meta({
+      description:
+        'Event data. Always: actorId (null = system), actorName. Auto-approvals: autoApproved true, reason. dcr.*: date. dcr_unlock.*: date, approvalId. tour_plan.* (item): from, to, approvalId. expense.blocked: claimId, dates, dcrIds, dcrStatus, ownerId',
+    }),
     readAt: Timestamp.nullable(),
     createdAt: Timestamp,
   })

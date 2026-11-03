@@ -2,11 +2,11 @@
 
 One helper drives everything: `canWriteMasters(role)` in `apps/web/src/lib/permissions.ts`.
 
-| Roles | Masters (doctors, chemists, stockists) |
-|---|---|
-| Regional Business Manager, Zonal Business Manager, Sales Manager, General Manager, Vice President, Director, System Admin | Read and write: add, edit, import, remove |
-| Area Business Manager, Business Manager | Read only |
-| Distribution Head, Accountant | Retired from the web: not offered anywhere, no portal access; an API user with only these roles is signed out with "Your role does not have access to this portal." Elsewhere they show as "Other role". |
+| Roles                                                                                                                     | Masters (doctors, chemists, stockists)                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Regional Business Manager, Zonal Business Manager, Sales Manager, General Manager, Vice President, Director, System Admin | Read and write: add, edit, import, remove                                                                                                                                                                |
+| Area Business Manager, Business Manager                                                                                   | Read only                                                                                                                                                                                                |
+| Distribution Head, Accountant                                                                                             | Retired from the web: not offered anywhere, no portal access; an API user with only these roles is signed out with "Your role does not have access to this portal." Elsewhere they show as "Other role". |
 
 Rule: `isSystemAdmin(role) || roleLevel(role) >= roleLevel('regional_business_manager')`. This matches the API rule the Architect is shipping (403 for ABM/BM on masters writes).
 

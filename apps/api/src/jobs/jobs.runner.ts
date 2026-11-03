@@ -31,6 +31,12 @@ type Claimed = {
   job_lock_token: string;
 };
 
+/** 15-minute slot key for the exceptions.daily fan-out (e.g. 2026-10-29T18:30). */
+export const exceptionsDailySlot = (at: Date) => {
+  const m = Math.floor(at.getTime() / 900_000) * 900_000;
+  return new Date(m).toISOString().slice(0, 16);
+};
+
 const num = (name: string, def: number) => {
   const v = Number(process.env[name]);
   return Number.isFinite(v) && v > 0 ? v : def;
@@ -60,6 +66,7 @@ export class JobsRunner implements OnApplicationBootstrap, BeforeApplicationShut
   private inFlight: Promise<unknown> | null = null;
   private stopping = false;
   private lastCleanupDay = '';
+  private lastExceptionsSlot = '';
 
   constructor(
     @Inject(DB) private readonly db: Db,
@@ -100,12 +107,20 @@ export class JobsRunner implements OnApplicationBootstrap, BeforeApplicationShut
   }
 
   private async tick() {
-    const day = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const day = now.toISOString().slice(0, 10);
     if (day !== this.lastCleanupDay) {
       await this.jobs.enqueueSystem('maintenance.cleanup', {}, day);
-      // #56: fan out one exceptions.evaluate job per company (exceptions_enqueue_daily, 0031).
-      await this.jobs.enqueueSystem('exceptions.daily', {}, day);
       this.lastCleanupDay = day;
+    }
+    // #56: fan out one exceptions.evaluate job per company (exceptions_enqueue_daily, 0031). Every
+    // 15 minutes, not once per UTC day: the function dedupes per company and *company-local* day, so
+    // each company is evaluated once, within 15 minutes after its local midnight (= the DCR lock,
+    // 00:00 IST) instead of at 00:00 UTC (05:30 IST).
+    const slot = exceptionsDailySlot(now);
+    if (slot !== this.lastExceptionsSlot) {
+      await this.jobs.enqueueSystem('exceptions.daily', {}, slot);
+      this.lastExceptionsSlot = slot;
     }
     await this.runOnce();
   }

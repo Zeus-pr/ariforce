@@ -120,30 +120,33 @@ const localTerritoryFilter = z
     description:
       'Only rows linked to this territory (level `territory`, exact match), or `none` for rows not linked to any territory',
   });
+const batchIds = z
+  .string()
+  .regex(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
+    'ids: 1..100 comma-separated UUIDs',
+  )
+  .optional()
+  .meta({
+    description:
+      'Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page.',
+  });
 export const DoctorListQuery = listQuery(['name', 'city', 'updatedAt', 'createdAt'] as const, {
   territoryId: territoryFilter,
   localTerritoryId: localTerritoryFilter,
   specialtyId: Id.optional(),
   categoryId: Id.optional(),
   approvalStatus: DoctorApprovalStatus.optional(),
-  ids: z
-    .string()
-    .regex(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
-      'ids: 1..100 comma-separated UUIDs',
-    )
-    .optional()
-    .meta({
-      description:
-        'Batch fetch: comma-separated doctor ids (max 100). Only doctors you can read are returned; others are silently absent. Pass limit=100 to get all in one page.',
-    }),
+  ids: batchIds,
 });
 export const OutletListQuery = listQuery(['name', 'city', 'updatedAt', 'createdAt'] as const, {
   territoryId: territoryFilter,
+  ids: batchIds,
 });
 export const ChemistListQuery = listQuery(['name', 'city', 'updatedAt', 'createdAt'] as const, {
   territoryId: territoryFilter,
   localTerritoryId: localTerritoryFilter,
+  ids: batchIds,
 });
 export const CodeNameListQuery = listQuery(['code', 'name', 'updatedAt'] as const, {});
 

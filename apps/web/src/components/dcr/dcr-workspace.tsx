@@ -1,8 +1,16 @@
 'use client';
 
-import { ChevronDown, ChevronUp, FileText, Plus, RotateCw, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import type { Dcr } from '@ariforce/contracts';
+import { ChevronUp, FilePen, History, Plus, RotateCw } from 'lucide-react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import type { Dcr, TourPlan } from '@ariforce/contracts';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,33 +23,59 @@ import {
 } from '@ariforce/ui/components/alert-dialog';
 import { Button } from '@ariforce/ui/components/button';
 import { Skeleton } from '@ariforce/ui/components/skeleton';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@ariforce/ui/components/tooltip';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ariforce/ui/components/tabs';
 import { toast } from '@ariforce/ui/components/sonner';
-import { cn } from '@ariforce/ui/lib/utils';
 import { dateLabel, todayIST } from '@/components/attendance/format';
+import { thisMonthIST } from '@/components/tour-plans/month';
 import { api, apiReady, toApiError } from '@/lib/api';
-import { useSession } from '@/lib/mock-auth';
-import { useReducedMotion } from '@/lib/use-reduced-motion';
-import { BANDS, normaliseWorkTypes, type HqOption, type WorkTypeOption } from '@/lib/dcr/model';
+import { useSession } from '@/lib/auth';
+import {
+  cursorFromYmd,
+  dcrPillsByDate,
+  groupDcrs,
+  monthRange,
+  type DayPill,
+  type TpDraftCard,
+} from '@/lib/dcr/calendar';
 import { failureMessage, thrownMessage } from '@/lib/dcr/errors';
+import { normaliseWorkTypes, type HqOption, type WorkTypeOption } from '@/lib/dcr/model';
 import { DcrFlow, type FlowController } from './dcr-flow';
+import { DcrHistory } from './dcr-history';
+import { DcrMonthCalendar } from './month-calendar';
+import { DcrStatusSections } from './status-sections';
+import { Reveal } from './dcr-card-parts';
 
 /**
- * The DCR page: saved drafts as compact cards, at most one report open at a time.
- * Save draft collapses the open report into its card; a card (click, Enter or Space) expands back into the
- * report exactly as saved. Several drafts per day are allowed; one report per day can be submitted
- * (API 0045). Drafts come from GET /v1/dcrs?mine=true&status=draft&sort=-updatedAt (callCount per item).
+ * DCR page: Calendar (month grid + status lists + in-place report) | History.
+ * Deep links: /dcr?draft=<id>, /dcr?new=1, /dcr?date=YYYY-MM-DD, /dcr?tab=history, /dcr?view=<id>.
  */
 
 const noop = () => () => {};
-const MOTION_MS = 240;
-const savedLabel = (iso: string) =>
-  `${new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(iso))} IST`;
-const calls = (n: number) => `${n} call${n === 1 ? '' : 's'}`;
-const newestFirst = (a: Dcr, b: Dcr) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0);
 const DISCARD = 'This report has unsaved changes that can’t be saved as a draft yet. Discard them?';
+const LOOKUP_BATCH_SIZE = 20;
 
-type Open = { key: string; date: string; draftId: string | null; isNew: boolean; submitted?: boolean };
+async function runBatched<T>(items: T[], task: (item: T) => Promise<void>) {
+  for (let i = 0; i < items.length; i += LOOKUP_BATCH_SIZE) {
+    await Promise.all(items.slice(i, i + LOOKUP_BATCH_SIZE).map(task));
+  }
+}
+
+type Open = {
+  key: string;
+  date: string;
+  draftId: string | null;
+  isNew: boolean;
+  submitted?: boolean;
+};
+
+type ApprovedTpDraft = {
+  id: string;
+  from: string;
+  to: string;
+  pendingDates: string[];
+  draftDates: string[];
+  plan: { workTypeId: string; territoryIds: string[] };
+};
 
 export function DcrWorkspace() {
   const today = useSyncExternalStore(noop, todayIST, () => null);
@@ -50,77 +84,19 @@ export function DcrWorkspace() {
   return <Workspace today={today} />;
 }
 
+type Tab = 'calendar' | 'history';
+
 function Workspace({ today }: { today: string }) {
-  const [drafts, setDrafts] = useState<Dcr[] | null>(null);
-  const [listError, setListError] = useState<string | null>(null);
-  const [reload, setReload] = useState(0);
   const [workTypes, setWorkTypes] = useState<WorkTypeOption[]>([]);
   const [hqs, setHqs] = useState<HqOption[]>([]);
-  /** Dates that already have a submitted report (drafts of those days can only be deleted). */
-  const [submittedDays, setSubmittedDays] = useState<Map<string, string | null>>(new Map());
-  // Everything starts collapsed: a draft opens only on click / Enter / Space (or a ?draft= / ?new=1 link).
-  const [open, setOpen] = useState<Open | null>(null);
-  const [closing, setClosing] = useState(false);
-  const [removing, setRemoving] = useState<Set<string>>(new Set());
-  const [confirm, setConfirm] = useState<Dcr | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [announce, setAnnounce] = useState('');
-  const ctrl = useRef<FlowController>(null);
-  const seq = useRef(0);
-  const focusTarget = useRef<string | null>(null);
-  const afterDeleteFocus = useRef<string | null>(null);
-  const deleteOnClose = useRef<string | null>(null);
-  const headerRef = useRef<HTMLButtonElement>(null);
-  const newBtn = useRef<HTMLButtonElement>(null);
-  const busy = useRef(false);
-  /** Saving the open report only to open another one: the switch replaces it, no collapse. */
-  const switching = useRef(false);
+  const [approvedTpDrafts, setApprovedTpDrafts] = useState<ApprovedTpDraft[]>([]);
+  const [link] = useState(() => new URLSearchParams(window.location.search));
+  const viewId = link.get('view');
+  const [tab, setTab] = useState<Tab>(
+    link.get('tab') === 'history' || viewId ? 'history' : 'calendar',
+  );
+  const [justSubmitted, setJustSubmitted] = useState<Dcr | null>(null);
 
-  useEffect(() => {
-    let live = true;
-    setListError(null);
-    void (async () => {
-      try {
-        await apiReady();
-        const r = await api.GET('/v1/dcrs', { params: { query: { mine: 'true', status: 'draft', sort: '-updatedAt', limit: 50 } } });
-        if (!live) return;
-        if (!r.data) return setListError(failureMessage(r, 'Could not load your saved drafts.'));
-        const items = r.data.items.filter((d) => d.status === 'draft');
-        setDrafts(items);
-        // Which of those days already have a submitted report (one call over the drafts' date range).
-        const dates = items.map((d) => d.date).sort();
-        if (!dates.length) return;
-        const s = await api.GET('/v1/dcrs', {
-          params: { query: { mine: 'true', status: 'submitted', from: dates[0], to: dates[dates.length - 1], limit: 100 } },
-        });
-        if (live && s.data) setSubmittedDays(new Map(s.data.items.filter((d) => d.status === 'submitted').map((d) => [d.date, d.id])));
-      } catch (e) {
-        if (live) setListError(thrownMessage(e));
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, [reload]);
-
-  // Deep links: /dcr?draft=<id> opens that draft once the list is in; /dcr?new=1 opens a new report.
-  const linked = useRef(false);
-  useEffect(() => {
-    if (linked.current || drafts === null) return;
-    linked.current = true;
-    const q = new URLSearchParams(window.location.search);
-    const id = q.get('draft');
-    const d = id ? drafts.find((x) => x.id === id) : undefined;
-    if (d) {
-      setOpen({ key: d.id, date: d.date, draftId: d.id, isNew: false });
-      focusTarget.current = 'header';
-    } else if (q.get('new') === '1') {
-      setOpen({ key: 'new-link', date: today, draftId: null, isNew: true });
-      focusTarget.current = 'header';
-    }
-  }, [drafts, today]);
-
-  // Names for the cards: work types (one options call) and territories. Cards fall back to plain words.
   useEffect(() => {
     void apiReady()
       .then(() =>
@@ -131,6 +107,12 @@ function Workspace({ today }: { today: string }) {
       )
       .then(([o, t]) => {
         if (o.data) setWorkTypes(normaliseWorkTypes(o.data.workTypes as WorkTypeOption[]));
+        if (o.data) {
+          const extended = o.data as typeof o.data & {
+            tourPlanDrafts?: ApprovedTpDraft[];
+          };
+          setApprovedTpDrafts(extended.tourPlanDrafts ?? []);
+        }
         if (t.data) setHqs(t.data.items);
       })
       .catch(() => {});
@@ -144,15 +126,259 @@ function Workspace({ today }: { today: string }) {
     }
     return m;
   }, [hqs]);
+  const wtName = useCallback((id: string) => workTypes.find((w) => w.id === id)?.name, [workTypes]);
 
-  const live = useMemo(() => (drafts ?? []).filter((d) => d.status === 'draft' && !removing.has(d.id)), [drafts, removing]);
-  // A report that was just submitted keeps its place while it stays open.
-  const sorted = useMemo(
-    () => (drafts ?? []).filter((d) => d.status === 'draft' || d.id === open?.draftId).sort(newestFirst),
-    [drafts, open?.draftId],
+  const changeTab = (t: Tab) => {
+    setTab(t);
+    const u = new URL(window.location.href);
+    for (const k of ['tab', 'view', 'draft', 'new', 'date']) u.searchParams.delete(k);
+    if (t === 'history') u.searchParams.set('tab', 'history');
+    window.history.replaceState(window.history.state, '', u);
+  };
+  const onSubmitted = (d: Dcr) => {
+    setJustSubmitted(d);
+    changeTab('history');
+  };
+
+  return (
+    <Tabs value={tab} onValueChange={(v) => changeTab(v as Tab)} className="gap-4">
+      <TabsList className="w-full sm:w-fit" data-testid="dcr-tabs">
+        <TabsTrigger value="calendar" className="px-3" data-testid="dcr-tab-calendar">
+          <FilePen aria-hidden /> Calendar
+        </TabsTrigger>
+        <TabsTrigger value="history" className="px-3" data-testid="dcr-tab-history">
+          <History aria-hidden /> History
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="calendar" forceMount className="data-[state=inactive]:hidden">
+        <CalendarPanel
+          today={today}
+          wtName={wtName}
+          placeName={placeName}
+          approvedTpDrafts={approvedTpDrafts}
+          onSubmitted={onSubmitted}
+        />
+      </TabsContent>
+      <TabsContent value="history" forceMount className="data-[state=inactive]:hidden">
+        <DcrHistory
+          today={today}
+          active={tab === 'history'}
+          wtName={wtName}
+          placeName={placeName}
+          submitted={justSubmitted}
+          viewId={viewId}
+        />
+      </TabsContent>
+    </Tabs>
   );
+}
 
-  /** Settle the open report before another opens: autosave when it can, otherwise ask. */
+function CalendarPanel({
+  today,
+  wtName,
+  placeName,
+  approvedTpDrafts,
+  onSubmitted,
+}: {
+  today: string;
+  wtName: (id: string) => string | undefined;
+  placeName: Map<string, string>;
+  approvedTpDrafts: ApprovedTpDraft[];
+  onSubmitted: (d: Dcr) => void;
+}) {
+  const [link] = useState(() => new URLSearchParams(window.location.search));
+  const initialDate =
+    link.get('date') && /^\d{4}-\d{2}-\d{2}$/.test(link.get('date')!) ? link.get('date')! : today;
+  const [month, setMonth] = useState(() => initialDate.slice(0, 7) || thisMonthIST());
+  const [selected, setSelected] = useState<string | null>(initialDate);
+  const [items, setItems] = useState<Dcr[] | null>(null);
+  const [outletName, setOutletName] = useState<Map<string, string>>(() => new Map());
+  const [plan, setPlan] = useState<TourPlan | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+  const [open, setOpen] = useState<Open | null>(null);
+  const [closing, setClosing] = useState(false);
+  const [confirm, setConfirm] = useState<Dcr | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [announce, setAnnounce] = useState('');
+  const ctrl = useRef<FlowController>(null);
+  const seq = useRef(0);
+  const focusTarget = useRef<string | null>(null);
+  const headerRef = useRef<HTMLButtonElement>(null);
+  const newBtn = useRef<HTMLButtonElement>(null);
+  const busy = useRef(false);
+  const switching = useRef(false);
+  const deleteOnClose = useRef<string | null>(null);
+  const monthLoad = useRef<{ key: string; promise: Promise<void> } | null>(null);
+
+  const cursor = useMemo(() => cursorFromYmd(`${month}-01`), [month]);
+  const range = useMemo(() => monthRange(cursor.year, cursor.monthIndex), [cursor]);
+
+  const loadMonth = useCallback(async () => {
+    setListError(null);
+    try {
+      await apiReady();
+      const [firstPage, plan] = await Promise.all([
+        api.GET('/v1/dcrs', {
+          params: {
+            query: {
+              mine: 'true',
+              from: range.from,
+              to: range.to,
+              sort: '-date',
+              limit: 100,
+            },
+          },
+        }),
+        api.GET('/v1/tour-plans/{month}', { params: { path: { month } } }),
+      ]);
+      if (!firstPage.data) {
+        setListError(failureMessage(firstPage, 'Could not load your DCRs for this month.'));
+        return;
+      }
+      const merged = new Map(firstPage.data.items.map((d) => [d.id, d]));
+      let nextCursor = firstPage.data.nextCursor;
+      while (nextCursor) {
+        const page = await api.GET('/v1/dcrs', {
+          params: {
+            query: {
+              mine: 'true',
+              from: range.from,
+              to: range.to,
+              sort: '-date',
+              limit: 100,
+              cursor: nextCursor,
+            },
+          },
+        });
+        if (!page.data) {
+          setListError(failureMessage(page, 'Could not load all DCRs for this month.'));
+          return;
+        }
+        for (const d of page.data.items) merged.set(d.id, d);
+        nextCursor = page.data.nextCursor;
+      }
+      // List rows sometimes omit call bodies — hydrate enough to label calendar cells.
+      const thin = [...merged.values()].filter((d) => (d.callCount ?? 0) > 0 && !d.calls?.length);
+      await runBatched(thin, async (d) => {
+        const r = await api.GET('/v1/dcrs/{id}', { params: { path: { id: d.id } } });
+        if (r.data) merged.set(d.id, r.data);
+      });
+      const all = [...merged.values()];
+      setItems(all);
+      setPlan(plan.data ?? null);
+    } catch (e) {
+      setListError(thrownMessage(e));
+    }
+  }, [month, range.from, range.to]);
+
+  const monthLoadKey = `${month}:${reload}`;
+  useEffect(() => {
+    if (monthLoad.current?.key === monthLoadKey) return;
+    setItems(null);
+    setPlan(null);
+    setOutletName(new Map());
+    const promise = loadMonth();
+    monthLoad.current = { key: monthLoadKey, promise };
+    void promise.then(() => {
+      if (monthLoad.current?.promise === promise) monthLoad.current = null;
+    });
+  }, [loadMonth, monthLoadKey]);
+
+  const tpCards = useMemo(() => {
+    if (items === null) return [];
+    const filed = new Set(items.filter((d) => d.status !== 'draft').map((d) => d.date));
+    const drafted = new Set(items.filter((d) => d.status === 'draft').map((d) => d.date));
+    const liveTpCards = tpCardsFromApprovedItems(approvedTpDrafts, placeName, wtName, month);
+    return liveTpCards.length ? liveTpCards : tpCardsFromPlan(plan, filed, drafted, today, month);
+  }, [approvedTpDrafts, items, month, plan, placeName, today, wtName]);
+
+  // Resolve doctor / chemist / stockist names for calendar day cells.
+  useEffect(() => {
+    if (!items?.length) return;
+    const refs = new Map<string, 'doctor' | 'chemist' | 'stockist'>();
+    for (const d of items) {
+      for (const c of d.calls ?? []) {
+        if (c.outletId && !refs.has(c.outletId)) refs.set(c.outletId, c.outletKind);
+      }
+    }
+    if (!refs.size) return;
+    let live = true;
+    void (async () => {
+      await apiReady();
+      const found = new Map<string, string>();
+      const doctors = [...refs.entries()].filter(([, k]) => k === 'doctor').map(([id]) => id);
+      const others = {
+        chemist: [...refs.entries()].filter(([, k]) => k === 'chemist').map(([id]) => id),
+        stockist: [...refs.entries()].filter(([, k]) => k === 'stockist').map(([id]) => id),
+      };
+      const jobs: (() => Promise<void>)[] = [];
+      for (let i = 0; i < doctors.length; i += 100) {
+        const batch = doctors.slice(i, i + 100);
+        jobs.push(() =>
+          api
+            .GET('/v1/doctors', { params: { query: { ids: batch.join(','), limit: 100 } } })
+            .then((r) => {
+              r.data?.items.forEach((d) => found.set(d.id, d.name));
+            }),
+        );
+      }
+      for (const kind of ['chemist', 'stockist'] as const) {
+        for (let i = 0; i < others[kind].length; i += 100) {
+          const batch = others[kind].slice(i, i + 100);
+          jobs.push(async () => {
+            const params = { query: { ids: batch.join(','), limit: 100 } };
+            const r =
+              kind === 'chemist'
+                ? await api.GET('/v1/chemists', { params })
+                : await api.GET('/v1/stockists', { params });
+            r.data?.items.forEach((item) => found.set(item.id, item.name));
+          });
+        }
+      }
+      await runBatched(jobs, (job) => job());
+      if (live && found.size) setOutletName((prev) => new Map([...prev, ...found]));
+    })().catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [items]);
+
+  // Deep links once the month list is in.
+  const linked = useRef(false);
+  useEffect(() => {
+    if (linked.current || items === null) return;
+    linked.current = true;
+    const q = new URLSearchParams(window.location.search);
+    const id = q.get('draft');
+    const d = id ? items.find((x) => x.id === id) : undefined;
+    if (d) {
+      setSelected(d.date);
+      setOpen({
+        key: d.id,
+        date: d.date,
+        draftId: d.id,
+        isNew: false,
+        submitted: d.status !== 'draft',
+      });
+      focusTarget.current = 'header';
+    } else if (q.get('new') === '1') {
+      const date =
+        q.get('date') && /^\d{4}-\d{2}-\d{2}$/.test(q.get('date')!) ? q.get('date')! : today;
+      setSelected(date);
+      setOpen({ key: 'new-link', date, draftId: null, isNew: true });
+      focusTarget.current = 'header';
+    } else if (q.get('date') && /^\d{4}-\d{2}-\d{2}$/.test(q.get('date')!)) {
+      setSelected(q.get('date'));
+    }
+  }, [items, today]);
+
+  const pills = useMemo(
+    () => dcrPillsByDate(items ?? [], tpCards, wtName, placeName, outletName),
+    [items, tpCards, wtName, placeName, outletName],
+  );
+  const groups = useMemo(() => groupDcrs(items ?? []), [items]);
+
   const settleOpen = useCallback(async (): Promise<boolean> => {
     const c = ctrl.current;
     if (!open || closing || !c || !c.isDirty()) return true;
@@ -170,8 +396,15 @@ function Workspace({ today }: { today: string }) {
         switching.current = false;
         if (!ok) return;
         setClosing(false);
+        setSelected(next.date);
         setOpen(next);
         focusTarget.current = 'header';
+        const u = new URL(window.location.href);
+        for (const k of ['draft', 'new', 'view', 'tab']) u.searchParams.delete(k);
+        u.searchParams.set('date', next.date);
+        if (next.draftId) u.searchParams.set('draft', next.draftId);
+        else if (next.isNew) u.searchParams.set('new', '1');
+        window.history.replaceState(window.history.state, '', u);
       } finally {
         switching.current = false;
         busy.current = false;
@@ -180,17 +413,43 @@ function Workspace({ today }: { today: string }) {
     [settleOpen],
   );
 
-  const openDraft = (d: Dcr) => {
+  const openDcr = (d: Dcr) => {
     if (open?.draftId === d.id && !closing) return;
-    void switchTo({ key: d.id, date: d.date, draftId: d.id, isNew: false });
+    void switchTo({
+      key: d.id,
+      date: d.date,
+      draftId: d.id,
+      isNew: false,
+      submitted: d.status !== 'draft',
+    });
   };
 
-  const openReport = (id: string, date: string) =>
-    void switchTo({ key: `report-${id}`, date, draftId: id, isNew: false, submitted: true });
-
-  const newDcr = () => {
+  const openNew = (date: string) => {
     seq.current += 1;
-    void switchTo({ key: `new-${seq.current}`, date: today, draftId: null, isNew: true });
+    void switchTo({ key: `new-${seq.current}`, date, draftId: null, isNew: true });
+  };
+
+  const onSelectDay = (date: string, dayPills: DayPill[]) => {
+    setSelected(date);
+    const uniqueIds = [
+      ...new Set(
+        dayPills
+          .filter((p) => !p.itemId.startsWith('tp:'))
+          .map((p) => p.itemId.replace(/:\d+$/, '')),
+      ),
+    ];
+    if (uniqueIds.length === 1) {
+      const d = (items ?? []).find((x) => x.id === uniqueIds[0]);
+      if (d) {
+        openDcr(d);
+        return;
+      }
+    }
+    if (dayPills.length === 1 && dayPills[0]!.itemId.startsWith('tp:')) {
+      openNew(date);
+      return;
+    }
+    if (!dayPills.length) openNew(date);
   };
 
   const collapse = async () => {
@@ -198,7 +457,6 @@ function Workspace({ today }: { today: string }) {
     const c = ctrl.current;
     if (c?.isDirty()) {
       if (c.canSave()) {
-        // onSaved collapses it.
         busy.current = true;
         try {
           await c.saveDraft();
@@ -209,53 +467,39 @@ function Workspace({ today }: { today: string }) {
       }
       if (!window.confirm(DISCARD)) return;
     }
-    focusTarget.current = open.draftId && !open.submitted ? `card:${open.draftId}` : 'new';
+    focusTarget.current = 'new';
     setClosing(true);
   };
 
   const onSaved = (d: Dcr, submitted: boolean) => {
-    // A submitted report stays in state (its card is hidden) so the open report keeps its place.
-    setDrafts((xs) => [d, ...(xs ?? []).filter((x) => x.id !== d.id)]);
-    setOpen((o) => (o ? { ...o, draftId: d.id, date: d.date } : o));
+    setItems((xs) => {
+      const next = (xs ?? []).filter((x) => x.id !== d.id);
+      if (!submitted || d.status !== 'draft') next.push(d);
+      return next;
+    });
+    setOpen((o) => (o ? { ...o, draftId: d.id, date: d.date, isNew: false, submitted } : o));
     if (submitted) {
-      setSubmittedDays((m) => new Map(m).set(d.date, d.id));
+      focusTarget.current = null;
+      setOpen(null);
+      setClosing(false);
+      onSubmitted(d);
+      void loadMonth();
       return;
     }
     if (switching.current) return;
-    setAnnounce(`Draft for ${dateLabel(d.date)} saved and collapsed. Use New DCR to start another report.`);
-    focusTarget.current = `card:${d.id}`;
+    setAnnounce(`Draft for ${dateLabel(d.date)} saved and collapsed.`);
+    focusTarget.current = 'new';
     setClosing(true);
+    void loadMonth();
   };
-
-  const onDaySubmitted = useCallback((date: string, id: string | null) => {
-    setSubmittedDays((m) => (m.has(date) && m.get(date) === id ? m : new Map(m).set(date, id)));
-  }, []);
 
   const onClosed = useCallback(() => {
     const gone = deleteOnClose.current;
     deleteOnClose.current = null;
-    if (gone) setDrafts((xs) => (xs ?? []).filter((x) => x.id !== gone));
+    if (gone) setItems((xs) => (xs ?? []).filter((x) => x.id !== gone));
     setOpen(null);
     setClosing(false);
   }, []);
-
-  const dropCard = useCallback((id: string) => {
-    setDrafts((xs) => (xs ?? []).filter((x) => x.id !== id));
-    setRemoving((s) => {
-      const n = new Set(s);
-      n.delete(id);
-      return n;
-    });
-  }, []);
-
-  /** Where focus goes after a draft is deleted: the next card, else the previous one, else New DCR. */
-  const focusAfterDelete = (id: string) => {
-    const cards = sorted.filter((d) => d.status === 'draft' && !removing.has(d.id) && d.id !== open?.draftId);
-    const i = cards.findIndex((d) => d.id === id);
-    const rest = cards.filter((d) => d.id !== id);
-    const next = i < 0 ? rest[0] : (cards[i + 1] ?? cards[i - 1]);
-    return next ? `card:${next.id}` : 'new';
-  };
 
   const doDelete = async () => {
     const d = confirm;
@@ -267,20 +511,32 @@ function Workspace({ today }: { today: string }) {
       if (r.error !== undefined && status !== 404) {
         const e = toApiError(r);
         if (e.code === 'ALREADY_SUBMITTED') {
-          toast.error('This report is already submitted, so it can’t be deleted.', { duration: 10000 });
+          toast.error('This report is already submitted, so it can’t be deleted.', {
+            duration: 10000,
+          });
           setReload((n) => n + 1);
-        } else if (e.code === 'DAY_LOCKED') toast.error('This day is locked, so the draft can’t be deleted. Ask your manager to reopen it.', { duration: 10000 });
-        else toast.error(failureMessage(r, 'Could not delete the draft. Try again.'), { duration: 10000 });
+        } else if (e.code === 'DAY_LOCKED') {
+          toast.error(
+            'This day is locked, so the draft can’t be deleted. Ask your manager to reopen it.',
+            { duration: 10000 },
+          );
+        } else
+          toast.error(failureMessage(r, 'Could not delete the draft. Try again.'), {
+            duration: 10000,
+          });
         setConfirm(null);
         return;
       }
-      toast.success(status === 404 ? 'That draft was already deleted.' : `Draft for ${dateLabel(d.date)} deleted.`);
+      toast.success(
+        status === 404
+          ? 'That draft was already deleted.'
+          : `Draft for ${dateLabel(d.date)} deleted.`,
+      );
       setAnnounce(`Draft for ${dateLabel(d.date)} deleted.`);
-      afterDeleteFocus.current = focusAfterDelete(d.id);
       if (open?.draftId === d.id) {
         deleteOnClose.current = d.id;
         setClosing(true);
-      } else setRemoving((s) => new Set(s).add(d.id));
+      } else setItems((xs) => (xs ?? []).filter((x) => x.id !== d.id));
       setConfirm(null);
     } catch (e) {
       toast.error(`${thrownMessage(e)} The draft was not deleted.`, { duration: 10000 });
@@ -290,7 +546,6 @@ function Workspace({ today }: { today: string }) {
     }
   };
 
-  // Focus follows the expand/collapse: into the report's header when it opens, back to its card when it closes.
   useLayoutEffect(() => {
     const t = focusTarget.current;
     if (!t) return;
@@ -298,29 +553,25 @@ function Workspace({ today }: { today: string }) {
       focusTarget.current = null;
       headerRef.current?.focus({ preventScroll: true });
       headerRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    } else if (!open && t !== 'header') {
+    } else if (!open && t === 'new') {
       focusTarget.current = null;
-      focusCard(t);
+      newBtn.current?.focus({ preventScroll: true });
     }
   });
 
-  const focusCard = (t: string) => {
-    const el = t.startsWith('card:') ? document.querySelector<HTMLElement>(`[data-draft-card="${t.slice(5)}"]`) : null;
-    (el ?? newBtn.current)?.focus({ preventScroll: true });
-  };
-
   const editorId = 'dcr-open-report';
-  const wtName = (id: string) => workTypes.find((w) => w.id === id)?.name;
-  const openDcr = open?.draftId ? drafts?.find((x) => x.id === open.draftId) : undefined;
   const openTitle = !open
     ? ''
     : open.isNew && !open.draftId
-      ? 'New report'
-      : `${open.submitted || openDcr?.status === 'submitted' ? 'Submitted' : 'Draft'} · ${dateLabel(open.date)}`;
+      ? `New report · ${dateLabel(open.date)}`
+      : `${open.submitted ? 'Report' : 'Draft'} · ${dateLabel(open.date)}`;
 
   const editor = open && (
     <Reveal key={open.key} closing={closing} onClosed={onClosed}>
-      <div className="flex flex-col gap-4 rounded-2xl border bg-card p-4 shadow-sm sm:p-6" data-testid="dcr-open">
+      <div
+        className="flex flex-col gap-4 rounded-2xl border bg-card p-4 shadow-sm sm:p-6"
+        data-testid="dcr-open"
+      >
         <div className="-mx-2 -mt-2 flex items-center justify-between gap-3">
           <button
             ref={headerRef}
@@ -341,12 +592,19 @@ function Workspace({ today }: { today: string }) {
           <DcrFlow
             key={open.key}
             initialDate={open.date}
-            dateLocked={!open.isNew}
+            dateLocked
             reportId={open.draftId}
             onSaved={onSaved}
             onDelete={setConfirm}
-            onOpenReport={openReport}
-            onDaySubmitted={onDaySubmitted}
+            onOpenReport={(id, date) =>
+              void switchTo({
+                key: `report-${id}`,
+                date,
+                draftId: id,
+                isNew: false,
+                submitted: true,
+              })
+            }
             controller={ctrl}
           />
         </div>
@@ -354,81 +612,101 @@ function Workspace({ today }: { today: string }) {
     </Reveal>
   );
 
+  const empty = items !== null && !items.length && !tpCards.length;
+
   return (
-    <div className="flex flex-col gap-4">
-      <p className="sr-only" aria-live="polite">{announce}</p>
+    <div className="flex flex-col gap-6">
+      <p className="sr-only" aria-live="polite">
+        {announce}
+      </p>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-medium text-muted-foreground" id="dcr-drafts-h">
-          {drafts === null ? 'Saved drafts' : live.length ? `Saved drafts (${live.length})` : 'No saved drafts'}
-        </h2>
-        <Button ref={newBtn} type="button" className="min-h-11" onClick={newDcr} data-testid="dcr-new">
+        <p className="text-sm text-muted-foreground">
+          Pick a day on the calendar to file or open a report.
+        </p>
+        <Button
+          ref={newBtn}
+          type="button"
+          className="min-h-11"
+          onClick={() => openNew(today)}
+          data-testid="dcr-new"
+        >
           <Plus aria-hidden /> New DCR
         </Button>
       </div>
 
-      {open?.isNew && editor}
-
       {listError ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-danger-soft p-4 text-sm" role="alert" data-testid="dcr-drafts-error">
+        <div
+          className="flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-danger-soft p-4 text-sm"
+          role="alert"
+          data-testid="dcr-calendar-error"
+        >
           {listError}
-          <Button type="button" size="sm" variant="outline" onClick={() => setReload((n) => n + 1)}><RotateCw aria-hidden /> Retry</Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => setReload((n) => n + 1)}>
+            <RotateCw aria-hidden /> Retry
+          </Button>
         </div>
-      ) : drafts === null ? (
-        <div className="flex flex-col gap-2" aria-busy="true"><Skeleton className="h-20 w-full rounded-xl" /></div>
+      ) : items === null ? (
+        <div className="flex flex-col gap-2" aria-busy="true">
+          <Skeleton className="h-[320px] w-full rounded-xl" />
+        </div>
       ) : (
         <>
-        {!live.length && !open && (
-          <div className="af-fade flex flex-col items-start gap-1 rounded-xl border border-dashed p-5 text-sm" data-testid="dcr-drafts-empty">
-            <p className="font-medium">No saved drafts</p>
-            <p className="text-muted-foreground">Start today’s report with New DCR. Save it as a draft to come back to it later.</p>
-          </div>
-        )}
-        <ul className="flex flex-col" aria-labelledby="dcr-drafts-h" data-testid="dcr-drafts">
-          {sorted.map((d, i) =>
-            open?.draftId === d.id ? (
-              open.isNew ? null : <li key={d.id} className="pb-3">{editor}</li>
-            ) : d.status !== 'draft' ? null : (
-              <li key={d.id} className="af-enter" style={{ ['--i' as string]: i }}>
-                <Reveal appear={false} closing={removing.has(d.id)} onClosed={() => dropCard(d.id)}>
-                  <div className="pb-3">
-                    <DraftCard
-                      d={d}
-                      workType={wtName(d.workTypeId)}
-                      placeName={placeName}
-                      controls={editorId}
-                      daySubmitted={submittedDays.has(d.date)}
-                      onOpen={() => openDraft(d)}
-                      onDelete={() => setConfirm(d)}
-                    />
-                  </div>
-                </Reveal>
-              </li>
-            ),
+          <DcrMonthCalendar
+            month={month}
+            today={today}
+            selected={selected}
+            pills={pills}
+            onMonthChange={setMonth}
+            onSelectDay={onSelectDay}
+          />
+
+          {open && editor}
+
+          {empty && !open ? (
+            <div
+              className="af-fade flex flex-col items-start gap-1 rounded-xl border border-dashed p-5 text-sm"
+              data-testid="dcr-calendar-empty"
+            >
+              <p className="font-medium">No DCRs this month</p>
+              <p className="text-muted-foreground">
+                Start today’s report with New DCR. Approved tour-plan days show on the calendar
+                until you file them.
+              </p>
+            </div>
+          ) : (
+            <DcrStatusSections
+              drafts={groups.drafts}
+              pending={groups.pending}
+              locked={groups.locked}
+              approved={groups.approved}
+              rejected={groups.rejected}
+              tpCards={tpCards}
+              wtName={wtName}
+              placeName={placeName}
+              onOpenDcr={openDcr}
+              onOpenTp={(t) => {
+                const date = t.draftDates?.[0] ?? t.pendingDates[0] ?? today;
+                const existing = (items ?? []).find((d) => d.date === date && d.status === 'draft');
+                if (existing) openDcr(existing);
+                else openNew(date);
+              }}
+              onDeleteDraft={setConfirm}
+            />
           )}
-          {open && !open.isNew && !sorted.some((d) => d.id === open.draftId) && <li className="pb-3">{editor}</li>}
-        </ul>
         </>
       )}
 
       <AlertDialog open={!!confirm} onOpenChange={(o) => !o && !deleting && setConfirm(null)}>
-        <AlertDialogContent
-          data-testid="dcr-delete-dialog"
-          onCloseAutoFocus={(e) => {
-            const t = afterDeleteFocus.current;
-            if (!t) return;
-            afterDeleteFocus.current = null;
-            e.preventDefault();
-            if (deleteOnClose.current) focusTarget.current = t;
-            else focusCard(t);
-          }}
-        >
+        <AlertDialogContent data-testid="dcr-delete-dialog">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this draft?</AlertDialogTitle>
             <AlertDialogDescription>
               {confirm && (
                 <>
                   The draft for {dateLabel(confirm.date)}
-                  {wtName(confirm.workTypeId) ? ` (${wtName(confirm.workTypeId)})` : ''} and its calls will be deleted. This can’t be undone.
+                  {wtName(confirm.workTypeId) ? ` (${wtName(confirm.workTypeId)})` : ''} and its
+                  calls will be deleted. This can’t be undone.
                 </>
               )}
             </AlertDialogDescription>
@@ -453,145 +731,70 @@ function Workspace({ today }: { today: string }) {
   );
 }
 
-function DraftCard({
-  d,
-  workType,
-  placeName,
-  controls,
-  daySubmitted,
-  onOpen,
-  onDelete,
-}: {
-  d: Dcr;
-  workType: string | undefined;
-  placeName: Map<string, string>;
-  controls: string;
-  daySubmitted: boolean;
-  onOpen: () => void;
-  onDelete: () => void;
-}) {
-  const band = BANDS.find((b) => b.band === d.band);
-  const places = d.territoryIds.map((id) => placeName.get(id)).filter(Boolean) as string[];
-  const territory = places.length
-    ? places.join(', ')
-    : d.territoryIds.length
-      ? `${d.territoryIds.length} ${d.territoryIds.length === 1 ? 'territory' : 'territories'}`
-      : null;
-  const what = workType ?? (band ? 'Field work' : d.details?.kind ? d.details.kind[0]!.toUpperCase() + d.details.kind.slice(1) : 'Report');
-  const n = d.callCount ?? d.calls.length;
-  const day = dateLabel(d.date);
-  // One row: the report itself expands (chevron is part of that target); delete sits apart, past a divider.
-  return (
-    <div
-      className={cn(
-        'group/card flex items-stretch gap-2 rounded-xl border bg-card p-1.5 shadow-xs',
-        'transition-[border-color,box-shadow] duration-(--duration-fast) ease-(--ease-out) hover:border-foreground/20',
-      )}
-    >
-      <button
-        type="button"
-        aria-expanded={false}
-        aria-controls={controls}
-        onClick={onOpen}
-        data-draft-card={d.id}
-        data-testid="dcr-draft-card"
-        className={cn(
-          'group flex min-w-0 flex-1 items-start gap-3 rounded-lg py-2.5 pr-1.5 pl-2.5 text-left outline-none',
-          'transition-[background-color,transform] duration-(--duration-fast) ease-(--ease-out)',
-          'hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/50 active:scale-[0.99] motion-reduce:active:scale-100',
-        )}
-      >
-        <FileText className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold tracking-tight">{day}</span>
-            <span className="rounded-md bg-info-soft px-2 py-0.5 text-xs font-medium text-info">Draft</span>
-            {daySubmitted && (
-              <span className="rounded-md bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning" data-testid="dcr-card-day-submitted">
-                Day already submitted
-              </span>
-            )}
-          </span>
-          <span className="text-sm text-muted-foreground">
-            {[what, band ? band.label : null, territory, band || n ? calls(n) : null].filter(Boolean).join(' · ')}
-          </span>
-          <span className="text-xs text-muted-foreground tabular-nums">
-            Saved {savedLabel(d.updatedAt)}
-            {daySubmitted ? ' · Can’t be submitted; delete it if you no longer need it' : ''}
-          </span>
-        </span>
-        <span
-          className="flex size-10 shrink-0 items-center justify-center self-center rounded-md text-muted-foreground transition-colors duration-(--duration-fast) group-hover:bg-muted group-hover:text-foreground"
-          aria-hidden
-        >
-          <ChevronDown className="size-4" />
-        </span>
-      </button>
-      <span className="my-3 w-px shrink-0 bg-border" aria-hidden />
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-10 shrink-0 self-center text-muted-foreground hover:bg-danger-soft hover:text-destructive focus-visible:text-destructive"
-            onClick={onDelete}
-            aria-label={`Delete draft for ${day}`}
-            data-testid="dcr-card-delete"
-          >
-            <Trash2 aria-hidden />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Delete draft</TooltipContent>
-      </Tooltip>
-    </div>
-  );
+function tpCardsFromApprovedItems(
+  items: ApprovedTpDraft[],
+  placeName: Map<string, string>,
+  wtName: (id: string) => string | undefined,
+  month: string,
+): TpDraftCard[] {
+  return items
+    .flatMap((item) => {
+      const pendingDates = item.pendingDates.filter((date) => date.startsWith(month));
+      if (!pendingDates.length) return [];
+      const territories = item.plan.territoryIds
+        .map((id) => placeName.get(id))
+        .filter((name): name is string => !!name);
+      return [
+        {
+          id: item.id,
+          from: item.from,
+          to: item.to,
+          pendingDates,
+          draftDates: item.draftDates.filter((date) => pendingDates.includes(date)),
+          label:
+            territories.slice(0, 2).join(' · ') ||
+            wtName(item.plan.workTypeId) ||
+            'Approved tour plan · file as DCR',
+        },
+      ];
+    })
+    .sort((a, b) => a.from.localeCompare(b.from));
 }
 
-/**
- * Height + opacity reveal (grid rows 0fr → 1fr), ease-out; instant when the OS asks for reduced motion.
- * `appear` animates the first render; `closing` collapses it, then `onClosed` runs.
- */
-function Reveal({
-  closing,
-  onClosed,
-  appear = true,
-  children,
-}: {
-  closing: boolean;
-  onClosed: () => void;
-  appear?: boolean;
-  children: ReactNode;
-}) {
-  const reduced = useReducedMotion();
-  const [on, setOn] = useState(!appear);
-  const [settled, setSettled] = useState(!appear);
-  const closedRef = useRef(onClosed);
-  useEffect(() => {
-    closedRef.current = onClosed;
-  });
-  useEffect(() => {
-    if (on) return;
-    const r = requestAnimationFrame(() => setOn(true));
-    return () => cancelAnimationFrame(r);
-  }, [on]);
-  useEffect(() => {
-    if (!closing) return;
-    setSettled(false);
-    const t = window.setTimeout(() => closedRef.current(), reduced ? 0 : MOTION_MS);
-    return () => window.clearTimeout(t);
-  }, [closing, reduced]);
-  const expanded = on && !closing;
-  return (
-    <div
-      className="af-reveal"
-      data-open={expanded}
-      data-settled={(expanded && (settled || reduced)) || undefined}
-      onTransitionEnd={(e) => {
-        if (e.target === e.currentTarget && e.propertyName === 'grid-template-rows' && expanded) setSettled(true);
-      }}
-    >
-      <div>{children}</div>
-    </div>
-  );
+/** Approved TP days in this month that are not yet filed (and not already a draft). */
+function tpCardsFromPlan(
+  plan: TourPlan | null,
+  filed: Set<string>,
+  drafted: Set<string>,
+  today: string,
+  month: string,
+): TpDraftCard[] {
+  if (!plan) return [];
+  const pending = plan.days
+    .filter((d) => d.status === 'approved' && d.entries.length > 0)
+    .map((d) => d.date)
+    .filter(
+      (date) =>
+        date.startsWith(month) &&
+        !filed.has(date) &&
+        !drafted.has(date) &&
+        date >= today.slice(0, 7) + '-01',
+    );
+  // Show future approved days as TP pills too (draft until the day); keep past unfiled as well.
+  const allPending = plan.days
+    .filter((d) => d.status === 'approved' && d.entries.length > 0)
+    .map((d) => d.date)
+    .filter((date) => date.startsWith(month) && !filed.has(date) && !drafted.has(date));
+  const dates = allPending.length ? allPending : pending;
+  if (!dates.length) return [];
+  const sorted = [...dates].sort();
+  return [
+    {
+      id: plan.id,
+      from: sorted[0]!,
+      to: sorted[sorted.length - 1]!,
+      pendingDates: sorted,
+      label: 'Approved tour plan · file as DCR',
+    },
+  ];
 }

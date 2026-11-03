@@ -36,15 +36,41 @@ import { LookupsProvider, useLookups } from '@/components/masters/lookups';
 import { useRole } from '@/components/shell/role-context';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { approvalDecisionMessage, saveMessage } from '@/lib/leave/model';
+import { thrownMessage } from '@/lib/dcr/errors';
 import { isApprover } from '@/lib/roles';
 import { ApprovalReview } from '@/components/approvals/approval-review';
 import { RejectDialog } from '@/components/approvals/reject-dialog';
 import { RejectionNote } from '@/components/approvals/rejection-note';
+import { TourPlanItemEditor } from './tour-plan-item-editor';
+import { TourPlanItemApprovals } from './tour-plan-item-approvals';
 import { datesOf, dayLabel, monthLabel, shiftMonth, thisMonthIST, weekdayMon } from './month';
 import { territoryLabel, workTerritories } from '@/lib/territories';
+import {
+  monthNameOf,
+  nextYmOf,
+  tpFutureMonthCutoffError,
+  tpMonthNotPlannable,
+  tpOpenMonth,
+} from '@/lib/tour-plans/cutoff';
+import { fetchMyTourPlanItems, type TpItem } from '@/lib/tour-plans/items';
 
 type Day = TourPlan['days'][number];
 type Entry = Day['entries'][number];
+
+function datesInRange(from: string, to: string): string[] {
+  const dates: string[] = [];
+  const cursor = new Date(`${from}T00:00:00Z`);
+  const end = new Date(`${to}T00:00:00Z`);
+  while (cursor <= end) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+function tpStatusOf(status: TpItem['status']): DayStatus {
+  return status === 'pending' ? 'submitted' : status;
+}
 
 const STATUS: Record<TourPlan['status'], { label: string; tone: string }> = {
   draft: { label: 'Draft', tone: 'bg-muted text-foreground' },
@@ -63,7 +89,11 @@ const DAY_STATUS: Record<DayStatus, { label: string; tone: string }> = {
 };
 const LOCKED: DayStatus[] = ['submitted', 'approved'];
 const shortDate = (d: string) =>
-  new Date(`${d}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  new Date(`${d}T00:00:00Z`).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  });
 // 409 DAY_LOCKED lists the dates that are already submitted or approved.
 function lockedMessage(e: { code: string; message: string; details?: unknown }) {
   if (e.code === 'EMPTY_PLAN')
@@ -79,17 +109,20 @@ const noop = () => () => {};
 const UNPLANNED = 'unplanned';
 
 export function TourPlansView() {
-  const month = useSyncExternalStore(noop, thisMonthIST, () => null);
-  if (!month) return <div className="h-[640px]" aria-busy="true" />;
+  const current = useSyncExternalStore(noop, thisMonthIST, () => null);
+  if (!current) return <div className="h-[640px]" aria-busy="true" />;
+  // Default to the open next-month window; if closed, still land on next month (read-only).
+  const initial = tpOpenMonth() ?? nextYmOf(current);
   return (
     <LookupsProvider>
-      <Planner initialMonth={month} />
+      <Planner initialMonth={initial} />
     </LookupsProvider>
   );
 }
 
 function Planner({ initialMonth }: { initialMonth: string }) {
   const { role } = useRole();
+  const { byId } = useLookups();
   const [month, setMonth] = useState(initialMonth);
   // Deep link from a notification: /tour-plans?plan=<id> opens that plan's month.
   useEffect(() => {
@@ -102,10 +135,17 @@ function Planner({ initialMonth }: { initialMonth: string }) {
     })().catch(() => {});
   }, []);
   const [plan, setPlan] = useState<TourPlan | null | undefined>(undefined);
+  const [tpItems, setTpItems] = useState<TpItem[]>([]);
+  const [tpItemsError, setTpItemsError] = useState<string | null>(null);
+  const [selectedTp, setSelectedTp] = useState<TpItem | null>(null);
+  const [selectedTpDate, setSelectedTpDate] = useState<string | null>(null);
+  const [outletNames, setOutletNames] = useState<Map<string, string>>(new Map());
+  const [outletNamesError, setOutletNamesError] = useState<string | null>(null);
   const [workTypes, setWorkTypes] = useState<WorkType[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [approvalsKey, setApprovalsKey] = useState(0);
+  const [tpItemsReload, setTpItemsReload] = useState(0);
 
   const load = useCallback(async () => {
     setPlan(undefined);
@@ -140,9 +180,81 @@ function Planner({ initialMonth }: { initialMonth: string }) {
       if (r.data) setWorkTypes(r.data.items.filter((w) => w.active));
     })().catch(() => {});
   }, []);
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const all = await fetchMyTourPlanItems();
+      if (live) {
+        setTpItems(all);
+        setTpItemsError(null);
+      }
+    })().catch((error: unknown) => {
+      if (live) setTpItemsError(thrownMessage(error));
+    });
+    return () => {
+      live = false;
+    };
+  }, [tpItemsReload]);
 
   const dates = useMemo(() => datesOf(month), [month]);
   const byDate = useMemo(() => new Map((plan?.days ?? []).map((d) => [d.date, d])), [plan]);
+  const { doctorIds, chemistIds } = useMemo(() => {
+    const doctors = new Set<string>();
+    const chemists = new Set<string>();
+    for (const day of plan?.days ?? []) {
+      for (const entry of day.entries) {
+        entry.plannedDoctorIds?.forEach((id) => doctors.add(id));
+        entry.plannedChemistIds?.forEach((id) => chemists.add(id));
+      }
+    }
+    return { doctorIds: [...doctors], chemistIds: [...chemists] };
+  }, [plan]);
+  useEffect(() => {
+    let live = true;
+    setOutletNames(new Map());
+    setOutletNamesError(null);
+    if (!doctorIds.length && !chemistIds.length) return;
+    void (async () => {
+      await apiReady();
+      const found = new Map<string, string>();
+      const chunks = (ids: string[]) =>
+        Array.from({ length: Math.ceil(ids.length / 100) }, (_, i) =>
+          ids.slice(i * 100, (i + 1) * 100),
+        );
+      const [doctors, chemists] = await Promise.all([
+        Promise.all(
+          chunks(doctorIds).map((ids) =>
+            api.GET('/v1/doctors', { params: { query: { ids: ids.join(','), limit: 100 } } }),
+          ),
+        ),
+        Promise.all(
+          chunks(chemistIds).map((ids) =>
+            api.GET('/v1/chemists', { params: { query: { ids: ids.join(','), limit: 100 } } }),
+          ),
+        ),
+      ]);
+      for (const result of [...doctors, ...chemists]) {
+        if (!result.data) throw new Error(toApiError(result).message);
+        result.data.items.forEach((item) => found.set(item.id, item.name));
+      }
+      if (live) setOutletNames(found);
+    })().catch((error: unknown) => {
+      if (live) setOutletNamesError(thrownMessage(error));
+    });
+    return () => {
+      live = false;
+    };
+  }, [doctorIds, chemistIds]);
+  const tpByDate = useMemo(() => {
+    const map = new Map<string, TpItem[]>();
+    for (const item of tpItems) {
+      for (const date of datesInRange(item.from, item.to)) {
+        if (!date.startsWith(month)) continue;
+        map.set(date, [...(map.get(date) ?? []), item]);
+      }
+    }
+    return map;
+  }, [tpItems, month]);
   // Required dates come from the server (GET /v1/tour-plans/{month}/calendar): today (IST) onward and
   // not a weekly off. If that endpoint is unavailable, apply the same rule on the client.
   const fallback = { todayIST: istDate(), weeklyOffDays: DEFAULT_WEEKLY_OFF_DAYS };
@@ -155,6 +267,9 @@ function Planner({ initialMonth }: { initialMonth: string }) {
         };
   const today = c.todayIST;
   const required = useMemo(() => new Set(c.requiredDates), [c.requiredDates]);
+  const monthBlocked = tpMonthNotPlannable(month);
+  const monthBlockReason = tpFutureMonthCutoffError(month);
+  const openMonth = tpOpenMonth();
   // Fill helper targets: unplanned working days (weekly offs and, this month, past days skipped).
   const missing = dates.filter((d) => required.has(d) && !byDate.get(d)?.entries.length);
   // Submit needs at least one planned day; full coverage is not required.
@@ -168,14 +283,13 @@ function Planner({ initialMonth }: { initialMonth: string }) {
   useEffect(() => setPicked(null), [month, plan?.version, plan?.status]);
   const selected = picked ?? new Set(submittable);
   const chosen = submittable.filter((d) => selected.has(d));
-  const canSubmit = !!plan && hasPlannedDay(plan.days) && chosen.length > 0;
-  const subById = useMemo(
-    () => new Map((plan?.submissions ?? []).map((x) => [x.id, x])),
-    [plan],
-  );
+  const canSubmit = !!plan && !monthBlocked && hasPlannedDay(plan.days) && chosen.length > 0;
+  const subById = useMemo(() => new Map((plan?.submissions ?? []).map((x) => [x.id, x])), [plan]);
   const rejectionOf = (d: string) => {
     const day = byDate.get(d);
-    return day?.status === 'rejected' && day.submissionId ? subById.get(day.submissionId) : undefined;
+    return day?.status === 'rejected' && day.submissionId
+      ? subById.get(day.submissionId)
+      : undefined;
   };
   const notRequired = (d: string) =>
     required.has(d)
@@ -185,10 +299,14 @@ function Planner({ initialMonth }: { initialMonth: string }) {
         : d < today
           ? 'Past'
           : 'Not required';
-  // #86: days lock one by one (submitted/approved); the rest of the month stays editable.
-  const editable = !!plan;
+  // Next-month window only: outside that month the calendar is view-only (empty days greyed).
+  const editable = !!plan && !monthBlocked;
 
   async function start(fromMonth?: string) {
+    if (monthBlocked) {
+      toast.error(monthBlockReason ?? 'This month is not open for planning.', { duration: 10000 });
+      return;
+    }
     setBusy(true);
     const r = await api.POST('/v1/tour-plans/{month}/copy', {
       params: { path: { month } },
@@ -215,6 +333,10 @@ function Planner({ initialMonth }: { initialMonth: string }) {
 
   async function saveDays(targets: string[], entries: Entry[]) {
     if (!plan) return;
+    if (monthBlocked) {
+      toast.error(monthBlockReason ?? 'This month is not open for planning.', { duration: 10000 });
+      return false;
+    }
     const days = [...byDate.values()].filter((d) => !targets.includes(d.date));
     if (entries.length) for (const date of targets) days.push({ date, entries });
     days.sort((a, b) => a.date.localeCompare(b.date));
@@ -233,6 +355,10 @@ function Planner({ initialMonth }: { initialMonth: string }) {
   }
 
   async function submit() {
+    if (monthBlocked) {
+      toast.error(monthBlockReason ?? 'This month is not open for planning.', { duration: 10000 });
+      return;
+    }
     setBusy(true);
     const all = chosen.length === submittable.length;
     const body: { submitterNote?: string; dates?: string[] } = {};
@@ -258,12 +384,16 @@ function Planner({ initialMonth }: { initialMonth: string }) {
     );
   }
 
-  const wtName = useMemo(() => new Map(workTypes.map((w) => [w.id, w])), [workTypes]);
   const lead = weekdayMon(`${month}-01`);
 
   return (
     <div className="flex flex-col gap-6">
-      {role && isApprover(role) && <ApprovalsPanel key={approvalsKey} onDecided={load} />}
+      {role && isApprover(role) && (
+        <>
+          <TourPlanItemApprovals />
+          <ApprovalsPanel key={approvalsKey} onDecided={load} />
+        </>
+      )}
 
       <section className="flex flex-col gap-4" aria-labelledby="tp-month">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -334,113 +464,246 @@ function Planner({ initialMonth }: { initialMonth: string }) {
           />
         )}
 
-        {plan === undefined ? (
-          <div className="h-[480px] animate-pulse rounded-lg bg-muted/50" aria-busy="true" />
-        ) : plan === null ? (
+        {monthBlocked && (
           <div
-            className="af-enter flex flex-col items-start gap-3 rounded-lg border p-6"
-            data-testid="tp-empty"
+            className="rounded-xl border border-warning/40 bg-warning-soft p-4 text-sm"
+            role="status"
+            data-testid="tp-month-blocked"
           >
-            <p className="font-medium">No plan for {monthLabel(month)} yet.</p>
-            <p className="text-sm text-muted-foreground">
-              Start from your standard tour plan, or copy last month and adjust.
+            <p className="font-medium">
+              {openMonth
+                ? `${monthNameOf(month)} isn’t open for planning`
+                : `Tour plans for ${monthNameOf(nextYmOf(thisMonthIST()))} are closed`}
             </p>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => start()} disabled={busy} data-testid="tp-start">
-                Start from standard plan
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => start(shiftMonth(month, -1))}
-                disabled={busy}
-              >
-                Copy {monthLabel(shiftMonth(month, -1))}
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="af-fade" data-testid="tp-calendar">
-            <div
-              className="hidden grid-cols-7 gap-px pb-1 text-xs font-medium text-muted-foreground sm:grid"
-              aria-hidden
-            >
-              {WEEKDAYS.map((w) => (
-                <div key={w} className="px-2">
-                  {w}
-                </div>
-              ))}
-            </div>
-            <ol className="grid grid-cols-1 gap-2 sm:grid-cols-7 sm:gap-1.5">
-              {Array.from({ length: lead }, (_, i) => (
-                <li key={`pad${i}`} aria-hidden className="hidden sm:block" />
-              ))}
-              {dates.map((date) => {
-                const e = byDate.get(date)?.entries ?? [];
-                const wt = e[0] ? wtName.get(e[0].workTypeId) : undefined;
-                const empty = e.length === 0;
-                const nr = notRequired(date);
-                const ds = dayStatus(date);
-                const locked = !empty && isLocked(date);
-                return (
-                  <li key={date}>
-                    <button
-                      type="button"
-                      data-testid="tp-day"
-                      data-date={date}
-                      data-empty={empty}
-                      data-optional={nr ? nr.toLowerCase().replaceAll(' ', '-') : undefined}
-                      data-status={empty ? undefined : ds}
-                      disabled={!editable || locked}
-                      title={locked ? `Locked: ${ds}` : undefined}
-                      onClick={() => setEditing(date)}
-                      aria-label={`${dayLabel(date)}: ${empty ? (nr ? `${nr.toLowerCase()}, not required` : 'not planned') : (wt?.name ?? 'planned')}`}
-                      className={cn(
-                        'flex min-h-14 w-full flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left text-sm transition-[transform,background-color] duration-150 active:scale-[0.98] disabled:cursor-default sm:min-h-20',
-                        empty ? 'border-dashed' : 'bg-card',
-                        empty && nr && 'border-transparent bg-muted/40',
-                        editable && 'hover:bg-muted/60',
-                      )}
-                    >
-                      <span className="text-xs tabular-nums text-muted-foreground">
-                        <span className="sm:hidden">{dayLabel(date)}</span>
-                        <span className="hidden sm:inline">{Number(date.slice(8))}</span>
-                      </span>
-                      {empty ? (
-                        nr ? (
-                          <span className="text-xs text-muted-foreground" data-testid="tp-optional">
-                            {nr}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">
-                            {editable ? 'Plan this day' : 'Not planned'}
-                          </span>
-                        )
-                      ) : (
-                        <>
-                          <span className="font-medium leading-tight">{wt?.name ?? 'Planned'}</span>
-                          <TerritoryNames ids={e[0]?.territoryIds ?? []} />
-                          <span
-                            className={cn('mt-0.5 rounded px-1.5 text-[11px] font-medium', DAY_STATUS[ds].tone)}
-                            data-testid="tp-day-status"
-                          >
-                            {DAY_STATUS[ds].label}
-                          </span>
-                          {locked && (
-                            <span className="text-[11px] text-muted-foreground" data-testid="tp-locked">
-                              Locked: {ds}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ol>
+            <p className="text-muted-foreground">
+              {monthBlockReason}
+              {openMonth ? (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    className="font-medium text-foreground underline underline-offset-2"
+                    onClick={() => setMonth(openMonth)}
+                    data-testid="tp-go-open-month"
+                  >
+                    Go to {monthNameOf(openMonth)}
+                  </button>
+                </>
+              ) : null}
+            </p>
           </div>
         )}
 
-        {plan && (
+        {tpItemsError && (
+          <div
+            className="rounded-xl border border-destructive/40 bg-danger-soft p-4 text-sm"
+            role="alert"
+            data-testid="tp-items-error"
+          >
+            Tour-plan history could not be loaded: {tpItemsError}
+          </div>
+        )}
+        {outletNamesError && (
+          <div
+            className="rounded-xl border border-destructive/40 bg-danger-soft p-4 text-sm"
+            role="alert"
+            data-testid="tp-outlet-names-error"
+          >
+            Doctor and chemist names could not be loaded: {outletNamesError}
+          </div>
+        )}
+
+        {plan === undefined ? (
+          <div className="h-[480px] animate-pulse rounded-lg bg-muted/50" aria-busy="true" />
+        ) : (
+          <>
+            {plan === null && (
+              <div
+                className="af-enter flex flex-col items-start gap-3 rounded-lg border p-6"
+                data-testid="tp-empty"
+              >
+                <p className="font-medium">No plan for {monthLabel(month)} yet.</p>
+                <p className="text-sm text-muted-foreground">
+                  {monthBlocked
+                    ? 'You can browse other months, but only the next calendar month can be planned (until the 22nd at 12:00 AM IST).'
+                    : 'Start from your standard tour plan, or copy last month and adjust.'}
+                </p>
+                {!monthBlocked && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => start()} disabled={busy} data-testid="tp-start">
+                      Start from standard plan
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => start(shiftMonth(month, -1))}
+                      disabled={busy}
+                    >
+                      Copy {monthLabel(shiftMonth(month, -1))}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="af-fade" data-testid="tp-calendar">
+              <div
+                className="hidden grid-cols-7 gap-px pb-1 text-xs font-medium text-muted-foreground sm:grid"
+                aria-hidden
+              >
+                {WEEKDAYS.map((w) => (
+                  <div key={w} className="px-2">
+                    {w}
+                  </div>
+                ))}
+              </div>
+              <ol className="grid grid-cols-1 gap-2 sm:grid-cols-7 sm:gap-1.5">
+                {Array.from({ length: lead }, (_, i) => (
+                  <li key={`pad${i}`} aria-hidden className="hidden sm:block" />
+                ))}
+                {dates.map((date) => {
+                  const e = byDate.get(date)?.entries ?? [];
+                  const tpItems = tpByDate.get(date) ?? [];
+                  const itemStatus = tpItems[0]?.status;
+                  const territoryIds = tpItems.length
+                    ? [...new Set(tpItems.flatMap((item) => item.plan.territoryIds))]
+                    : [...new Set(e.flatMap((entry) => entry.territoryIds))];
+                  const plannedOutletIds = e.flatMap((entry) => [
+                    ...(entry.plannedDoctorIds ?? []),
+                    ...(entry.plannedChemistIds ?? []),
+                  ]);
+                  const placeLabels = [
+                    ...territoryIds.map((id) => byId.get(id)),
+                    ...plannedOutletIds.map((id) => outletNames.get(id)),
+                  ].filter((label): label is string => !!label);
+                  const empty = e.length === 0 && tpItems.length === 0;
+                  const nr = notRequired(date);
+                  const ds: DayStatus = itemStatus ? tpStatusOf(itemStatus) : dayStatus(date);
+                  const locked = !empty && isLocked(date);
+                  // Grey empty days outside the open planning window (planned days stay viewable).
+                  const greyed = empty && monthBlocked;
+                  const dayDisabled = greyed || (!editable && empty);
+                  return (
+                    <li key={date}>
+                      <button
+                        type="button"
+                        data-testid="tp-day"
+                        data-date={date}
+                        data-empty={empty}
+                        data-optional={nr ? nr.toLowerCase().replaceAll(' ', '-') : undefined}
+                        data-status={empty ? undefined : ds}
+                        disabled={dayDisabled}
+                        title={
+                          greyed
+                            ? (monthBlockReason ?? 'Not open for planning')
+                            : locked
+                              ? `Locked: ${ds}`
+                              : undefined
+                        }
+                        onClick={() => {
+                          if (monthBlocked && empty) return;
+                          if (!editable && empty) return;
+                          if (tpItems.length > 0 && e.length === 0) {
+                            setSelectedTp(tpItems[0]!);
+                            setSelectedTpDate(date);
+                            return;
+                          }
+                          setSelectedTp(null);
+                          setSelectedTpDate(date);
+                        }}
+                        aria-label={`${dayLabel(date)}: ${empty ? (nr ? `${nr.toLowerCase()}, not required` : 'not planned') : placeLabels.join(', ') || 'planned'}${greyed ? ', not available to plan' : ''}`}
+                        className={cn(
+                          'flex h-24 w-full flex-col items-start gap-0.5 overflow-hidden rounded-md border px-2 py-1.5 text-left text-sm transition-[transform,background-color] duration-150 active:scale-[0.98] disabled:cursor-default sm:h-24',
+                          empty ? 'border-dashed' : 'bg-card',
+                          empty && nr && 'border-transparent bg-muted/40',
+                          greyed &&
+                            'border-transparent bg-muted/50 text-muted-foreground opacity-60',
+                          editable && !greyed && 'hover:bg-muted/60',
+                        )}
+                      >
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          <span className="sm:hidden">{dayLabel(date)}</span>
+                          <span className="hidden sm:inline">{Number(date.slice(8))}</span>
+                        </span>
+                        {empty ? (
+                          nr ? (
+                            <span
+                              className="text-xs text-muted-foreground"
+                              data-testid="tp-optional"
+                            >
+                              {nr}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              {greyed ? 'Not open' : editable ? 'Plan this day' : 'Not planned'}
+                            </span>
+                          )
+                        ) : tpItems.length > 0 ? (
+                          tpItems.map((item) => (
+                            <span
+                              key={item.id}
+                              className="flex min-h-0 w-full flex-1 flex-col items-start gap-0.5"
+                            >
+                              <span className="line-clamp-2 min-h-0 text-xs font-medium leading-tight">
+                                {placeLabels.length ? placeLabels.join(' · ') : 'Tour plan'}
+                              </span>
+                              <span
+                                className={cn(
+                                  'mt-auto rounded px-1.5 text-[10px] font-medium leading-4',
+                                  DAY_STATUS[tpStatusOf(item.status)].tone,
+                                )}
+                              >
+                                {item.status === 'pending'
+                                  ? 'Pending'
+                                  : item.status === 'rejected'
+                                    ? 'Rejected'
+                                    : item.status === 'approved'
+                                      ? 'Approved'
+                                      : 'Draft'}
+                              </span>
+                            </span>
+                          ))
+                        ) : e.length > 0 ? (
+                          <>
+                            <span className="line-clamp-2 min-h-0 text-xs font-medium leading-tight">
+                              {placeLabels.length ? placeLabels.join(' · ') : 'Planned'}
+                            </span>
+                            <span
+                              className={cn(
+                                'mt-auto rounded px-1.5 text-[10px] font-medium leading-4',
+                                DAY_STATUS[ds].tone,
+                              )}
+                              data-testid="tp-day-status"
+                            >
+                              {ds === 'submitted' ? 'Pending' : DAY_STATUS[ds].label}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            {greyed ? 'Not open' : editable ? 'Plan this day' : 'Not planned'}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+
+            {plan !== undefined && (
+              <TourPlanDaySections
+                days={plan?.days.filter((day) => day.entries.length > 0) ?? []}
+                items={tpItems}
+                outletNames={outletNames}
+                workTypes={workTypes}
+                rejectionOf={rejectionOf}
+                onOpen={setEditing}
+                onOpenTp={setSelectedTp}
+              />
+            )}
+          </>
+        )}
+
+        {plan && editable && (
           <SubmitPanel
             days={submittable}
             selected={selected}
@@ -469,22 +732,165 @@ function Planner({ initialMonth }: { initialMonth: string }) {
         entry={editing && editing !== UNPLANNED ? byDate.get(editing)?.entries[0] : undefined}
         rejection={editing && editing !== UNPLANNED ? rejectionOf(editing) : undefined}
         workTypes={workTypes}
+        readOnly={!editable || (editing !== null && editing !== UNPLANNED && isLocked(editing))}
         onClose={() => setEditing(null)}
         onSave={async (date, entries) => {
           if (await saveDays(date === UNPLANNED ? missing : [date], entries)) setEditing(null);
         }}
       />
+      <TourPlanItemEditor
+        date={selectedTpDate ?? selectedTp?.from ?? null}
+        item={selectedTp}
+        readOnly={monthBlocked}
+        onClose={() => {
+          setSelectedTp(null);
+          setSelectedTpDate(null);
+        }}
+        onSaved={() => setTpItemsReload((key) => key + 1)}
+      />
     </div>
   );
 }
 
-function TerritoryNames({ ids }: { ids: string[] }) {
+function TourPlanDaySections({
+  days,
+  items,
+  outletNames,
+  workTypes,
+  rejectionOf,
+  onOpen,
+  onOpenTp,
+}: {
+  days: Day[];
+  items: TpItem[];
+  outletNames: Map<string, string>;
+  workTypes: WorkType[];
+  rejectionOf: (date: string) => Submission | undefined;
+  onOpen: (date: string) => void;
+  onOpenTp: (item: TpItem) => void;
+}) {
   const { byId } = useLookups();
-  if (!ids.length) return null;
+  const workTypeName = new Map(workTypes.map((workType) => [workType.id, workType.name]));
+  const groups = [
+    { status: 'approved', title: 'Approved Tour Plans' },
+    { status: 'submitted', title: 'Pending Approval' },
+    { status: 'rejected', title: 'Rejected / Needs Resubmission' },
+    { status: 'draft', title: 'Drafts' },
+  ] as const;
+
   return (
-    <span className="line-clamp-1 text-xs text-muted-foreground">
-      {ids.map((i) => byId.get(i) ?? '…').join(', ')}
-    </span>
+    <div className="flex flex-col gap-6" data-testid="tp-status-sections">
+      {groups.map(({ status, title }) => {
+        const matching = days.filter(
+          (day) =>
+            (day.status ?? 'draft') === status &&
+            !items.some((item) => item.from <= day.date && item.to >= day.date),
+        );
+        const tpStatus = status === 'submitted' ? 'pending' : status;
+        const itemsForStatus = items.filter((item) => item.status === tpStatus);
+        if (!matching.length && !itemsForStatus.length) return null;
+        const key: DayStatus = status;
+        return (
+          <section
+            key={status}
+            className="flex flex-col gap-2"
+            aria-labelledby={`tp-sec-${status}`}
+            data-testid={`tp-sec-${status}`}
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <h3 id={`tp-sec-${status}`} className="text-sm font-medium text-muted-foreground">
+                {title}
+              </h3>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {matching.length + itemsForStatus.length}{' '}
+                {matching.length + itemsForStatus.length === 1 ? 'day' : 'days'}
+              </span>
+            </div>
+            <ul className="flex flex-col gap-2">
+              {matching.map((day) => {
+                const reason = rejectionOf(day.date)?.rejectionReason;
+                const placeLabels = [
+                  ...day.entries.flatMap((entry) => entry.territoryIds.map((id) => byId.get(id))),
+                  ...day.entries.flatMap((entry) =>
+                    [...(entry.plannedDoctorIds ?? []), ...(entry.plannedChemistIds ?? [])].map(
+                      (id) => outletNames.get(id),
+                    ),
+                  ),
+                ].filter((label): label is string => !!label);
+                return (
+                  <li key={day.date}>
+                    <button
+                      type="button"
+                      onClick={() => onOpen(day.date)}
+                      className="flex w-full min-w-0 flex-col items-start gap-1 rounded-xl border bg-card p-3 text-left transition-colors hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      data-testid="tp-status-day"
+                      data-date={day.date}
+                      data-status={key}
+                    >
+                      <span className="flex w-full flex-wrap items-center gap-2">
+                        <span className="font-semibold tracking-tight">{dayLabel(day.date)}</span>
+                        <span
+                          className={cn(
+                            'rounded-md px-2 py-0.5 text-xs font-medium',
+                            DAY_STATUS[key].tone,
+                          )}
+                        >
+                          {key === 'submitted' ? 'Pending' : DAY_STATUS[key].label}
+                        </span>
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        {placeLabels.length ? placeLabels.join(' · ') : 'Planned'}
+                      </span>
+                      {reason && <span className="text-sm text-destructive">{reason}</span>}
+                    </button>
+                  </li>
+                );
+              })}
+              {itemsForStatus.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenTp(item)}
+                    className="flex w-full min-w-0 flex-col items-start gap-1 rounded-xl border bg-card p-3 text-left transition-colors hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    data-testid="tp-status-item"
+                    data-date={item.from}
+                    data-status={item.status}
+                  >
+                    <span className="flex w-full flex-wrap items-center gap-2">
+                      <span className="font-semibold tracking-tight">
+                        {shortDate(item.from)}
+                        {item.to !== item.from ? ` – ${shortDate(item.to)}` : ''}
+                      </span>
+                      <span
+                        className={cn(
+                          'rounded-md px-2 py-0.5 text-xs font-medium',
+                          DAY_STATUS[tpStatusOf(item.status)].tone,
+                        )}
+                      >
+                        {item.status === 'pending'
+                          ? 'Pending'
+                          : DAY_STATUS[tpStatusOf(item.status)].label}
+                      </span>
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      {[
+                        ...item.plan.territoryIds.map((id) => byId.get(id)),
+                        workTypeName.get(item.plan.workTypeId),
+                      ]
+                        .filter((name): name is string => !!name)
+                        .join(' · ') || 'Tour plan'}
+                    </span>
+                    {item.status === 'rejected' && item.rejectionReason && (
+                      <span className="text-sm text-destructive">{item.rejectionReason}</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+    </div>
   );
 }
 
@@ -494,6 +900,7 @@ function DayEditor({
   entry,
   rejection,
   workTypes,
+  readOnly = false,
   onClose,
   onSave,
 }: {
@@ -502,6 +909,7 @@ function DayEditor({
   entry?: Entry;
   rejection?: Submission;
   workTypes: WorkType[];
+  readOnly?: boolean;
   onClose: () => void;
   onSave: (date: string, entries: Entry[]) => Promise<void>;
 }) {
@@ -533,7 +941,9 @@ function DayEditor({
       <DialogContent className="max-h-[90dvh] overflow-y-auto" data-testid="tp-editor">
         <DialogHeader>
           <DialogTitle>{title ?? (date ? dayLabel(date) : '')}</DialogTitle>
-          <DialogDescription>What you plan to do, and where.</DialogDescription>
+          <DialogDescription>
+            {readOnly ? 'This day can’t be edited right now.' : 'What you plan to do, and where.'}
+          </DialogDescription>
         </DialogHeader>
         {rejection && (
           <RejectionNote
@@ -546,7 +956,7 @@ function DayEditor({
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="tp-wt">Work type</Label>
-            <Select value={wt} onValueChange={setWt}>
+            <Select value={wt} onValueChange={setWt} disabled={readOnly}>
               <SelectTrigger id="tp-wt" className="w-full" data-testid="tp-wt">
                 <SelectValue placeholder="Choose" />
               </SelectTrigger>
@@ -565,7 +975,7 @@ function DayEditor({
           {needsTerritory && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="tp-terr">Territory</Label>
-              <Select value={terr} onValueChange={setTerr}>
+              <Select value={terr} onValueChange={setTerr} disabled={readOnly}>
                 <SelectTrigger id="tp-terr" className="w-full" data-testid="tp-terr">
                   <SelectValue placeholder="Choose" />
                 </SelectTrigger>
@@ -587,46 +997,74 @@ function DayEditor({
           {needsTerritory && terr && (
             <>
               <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium">Doctors to visit <span className="font-normal text-muted-foreground">({docs.length} chosen)</span></span>
-                <OutletPicker kind="doctor" territoryId={terr} value={docs} onChange={(ids) => setDocs(ids)} multiple testId="tp-doctors" />
+                <span className="text-sm font-medium">
+                  Doctors to visit{' '}
+                  <span className="font-normal text-muted-foreground">({docs.length} chosen)</span>
+                </span>
+                <OutletPicker
+                  kind="doctor"
+                  territoryId={terr}
+                  value={docs}
+                  onChange={(ids) => setDocs(ids)}
+                  multiple
+                  testId="tp-doctors"
+                />
               </div>
               <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium">Chemists to visit <span className="font-normal text-muted-foreground">({chems.length} chosen)</span></span>
-                <OutletPicker kind="chemist" territoryId={terr} value={chems} onChange={(ids) => setChems(ids)} multiple testId="tp-chemists" />
+                <span className="text-sm font-medium">
+                  Chemists to visit{' '}
+                  <span className="font-normal text-muted-foreground">({chems.length} chosen)</span>
+                </span>
+                <OutletPicker
+                  kind="chemist"
+                  territoryId={terr}
+                  value={chems}
+                  onChange={(ids) => setChems(ids)}
+                  multiple
+                  testId="tp-chemists"
+                />
               </div>
             </>
           )}
         </div>
         <DialogFooter className="gap-2">
-          {entry && (
-            <Button
-              variant="ghost"
-              className="sm:mr-auto"
-              disabled={saving}
-              onClick={() => save([])}
-            >
-              Clear day
+          {readOnly ? (
+            <Button type="button" variant="outline" onClick={onClose}>
+              Close
             </Button>
+          ) : (
+            <>
+              {entry && (
+                <Button
+                  variant="ghost"
+                  className="sm:mr-auto"
+                  disabled={saving}
+                  onClick={() => save([])}
+                >
+                  Clear day
+                </Button>
+              )}
+              <Button
+                data-testid="tp-save"
+                disabled={saving || !wt || (needsTerritory && !terr)}
+                onClick={() =>
+                  save([
+                    {
+                      session: 'full',
+                      workTypeId: wt,
+                      territoryIds: needsTerritory && terr ? [terr] : [],
+                      jointWorkUserIds: entry?.jointWorkUserIds ?? [],
+                      plannedDoctorIds: needsTerritory ? docs : [],
+                      plannedChemistIds: needsTerritory ? chems : [],
+                      notes: entry?.notes ?? null,
+                    },
+                  ])
+                }
+              >
+                Save
+              </Button>
+            </>
           )}
-          <Button
-            data-testid="tp-save"
-            disabled={saving || !wt || (needsTerritory && !terr)}
-            onClick={() =>
-              save([
-                {
-                  session: 'full',
-                  workTypeId: wt,
-                  territoryIds: needsTerritory && terr ? [terr] : [],
-                  jointWorkUserIds: entry?.jointWorkUserIds ?? [],
-                  plannedDoctorIds: needsTerritory ? docs : [],
-                  plannedChemistIds: needsTerritory ? chems : [],
-                  notes: entry?.notes ?? null,
-                },
-              ])
-            }
-          >
-            Save
-          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -702,10 +1140,21 @@ function ApprovalsPanel({ onDecided }: { onDecided: () => void }) {
                 >
                   {openId === a.id ? 'Hide plan' : 'View plan'}
                 </Button>
-                <Button size="sm" variant="outline" disabled={deciding !== null} onClick={() => setRejecting(a)} data-testid="tp-reject">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={deciding !== null}
+                  onClick={() => setRejecting(a)}
+                  data-testid="tp-reject"
+                >
                   Reject
                 </Button>
-                <Button size="sm" disabled={deciding !== null} onClick={() => void decide(a, 'approve')} data-testid="tp-approve">
+                <Button
+                  size="sm"
+                  disabled={deciding !== null}
+                  onClick={() => void decide(a, 'approve')}
+                  data-testid="tp-approve"
+                >
                   {deciding === a.id ? 'Approving…' : 'Approve'}
                 </Button>
               </div>
@@ -813,9 +1262,16 @@ function SubmissionsList({ items }: { items: Submission[] }) {
       </h3>
       <ul className="divide-y rounded-lg border">
         {[...items].reverse().map((x) => (
-          <li key={x.id} className="flex flex-col gap-1 px-3 py-2.5 text-sm" data-testid="tp-submission" data-status={x.status}>
+          <li
+            key={x.id}
+            className="flex flex-col gap-1 px-3 py-2.5 text-sm"
+            data-testid="tp-submission"
+            data-status={x.status}
+          >
             <div className="flex flex-wrap items-center gap-2">
-              <span className={cn('rounded px-2 py-0.5 text-xs font-medium', DAY_STATUS[x.status].tone)}>
+              <span
+                className={cn('rounded px-2 py-0.5 text-xs font-medium', DAY_STATUS[x.status].tone)}
+              >
                 {SUB_STATUS[x.status]}
               </span>
               <span className="tabular-nums">{x.dates.map(shortDate).join(', ')}</span>

@@ -1,10 +1,5 @@
 import { datesOf, type TpItem, type TpStatus } from './adapter';
-import {
-  joinShort,
-  shortLabel,
-  type CalendarPillStatus,
-  type DayPill,
-} from '../calendar-pills';
+import { joinShort, shortLabel, type CalendarPillStatus, type DayPill } from '../calendar-pills';
 
 export type { DayPill, CalendarPillStatus };
 

@@ -1,3 +1,4 @@
+import { ipRateKey } from '../common/client-ip';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   isRetiredRole,
@@ -78,7 +79,7 @@ export class SignupService {
    * possible managers. Only id/name/code/role: no email, phone or other PII.
    */
   async options(ip: string | null): Promise<SignupOptions> {
-    await enforce([{ key: `signup-options:ip:${ip ?? '?'}`, ...LIMITS.signupOptions() }]);
+    await enforce([{ key: `signup-options:ip:${ipRateKey(ip)}`, ...LIMITS.signupOptions() }]);
     const companyId = await this.companyId();
     return withTenant(this.db, { companyId, userId: null }, async (tx) => {
       const ts = await tx
@@ -112,7 +113,7 @@ export class SignupService {
       });
     await enforce(
       [
-        { key: `signup:ip:${ip ?? '?'}`, ...LIMITS.signupSubmitIp() },
+        { key: `signup:ip:${ipRateKey(ip)}`, ...LIMITS.signupSubmitIp() },
         { key: `signup:email:${email}`, ...LIMITS.signupSubmitEmail() },
       ],
       'Too many sign-up attempts; try again later',

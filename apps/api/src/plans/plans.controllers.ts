@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   NotFoundException,
@@ -19,6 +20,9 @@ import {
   TourPlanListQuery,
   TourPlanSubmit,
   TourPlanUpsert,
+  TourPlanItemDecision,
+  TourPlanItemListQuery,
+  TourPlanItemUpsert,
 } from '@ariforce/contracts';
 import * as z from 'zod';
 import { CurrentPrincipal, RequirePermissions } from '../auth/decorators';
@@ -26,6 +30,7 @@ import type { Principal } from '../auth/principal';
 import { ZodPipe } from '../common/zod.pipe';
 import { err } from '../field/checkins.service';
 import { ApprovalsService, type ApprovalQuery } from './approvals.service';
+import { TourPlanItemsService, type TpItemQuery } from './tp-items.service';
 import { TourPlansService, type TourPlanQuery } from './tour-plans.service';
 
 const month = (m: string) => {
@@ -33,6 +38,69 @@ const month = (m: string) => {
   return m;
 };
 const UserQ = z.object({ userId: Id.optional() });
+
+const itemId = (id: string) => {
+  if (!Id.safeParse(id).success) throw new NotFoundException('Tour plan not found');
+  return id;
+};
+
+/**
+ * Tour plan items (TP feature). Registered before TourPlansController so /items is not read as a
+ * {month}. Own items need only a session; the team list and decisions are checked in the service.
+ */
+@Controller({ path: 'tour-plans/items', version: '1' })
+export class TourPlanItemsController {
+  constructor(private readonly svc: TourPlanItemsService) {}
+
+  @Get()
+  @RequirePermissions('me:read')
+  list(
+    @CurrentPrincipal() p: Principal,
+    @Query(new ZodPipe(TourPlanItemListQuery)) q: TpItemQuery,
+  ) {
+    return this.svc.list(p, q);
+  }
+
+  @Put()
+  @RequirePermissions('me:read')
+  upsert(
+    @CurrentPrincipal() p: Principal,
+    @Body(new ZodPipe(TourPlanItemUpsert)) b: z.infer<typeof TourPlanItemUpsert>,
+  ) {
+    return this.svc.upsert(p, b);
+  }
+
+  @Get(':id')
+  @RequirePermissions('me:read')
+  get(@CurrentPrincipal() p: Principal, @Param('id') id: string) {
+    return this.svc.get(p, itemId(id));
+  }
+
+  @Post(':id/submit')
+  @HttpCode(200)
+  @RequirePermissions('me:read')
+  submit(@CurrentPrincipal() p: Principal, @Param('id') id: string) {
+    return this.svc.submit(p, itemId(id));
+  }
+
+  @Post(':id/decision')
+  @HttpCode(200)
+  @RequirePermissions('approvals:decide')
+  decide(
+    @CurrentPrincipal() p: Principal,
+    @Param('id') id: string,
+    @Body(new ZodPipe(TourPlanItemDecision)) b: z.infer<typeof TourPlanItemDecision>,
+  ) {
+    return this.svc.decide(p, itemId(id), b);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @RequirePermissions('me:read')
+  async remove(@CurrentPrincipal() p: Principal, @Param('id') id: string) {
+    await this.svc.remove(p, itemId(id));
+  }
+}
 
 /** Own plans need only a session (everyone plans their month); team reads need field:read. */
 @Controller({ path: 'tour-plans', version: '1' })

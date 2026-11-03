@@ -58,10 +58,34 @@ const emps: Emp[] = fx.mockUsers.map((u) => ({
 // Two people added but not joined yet (no login), so System Admin can send them links.
 {
   const abm = fx.mockUsers.find((u) => u.roles.includes('area_business_manager'));
-  const base = { phone: null, designation: null, joinedOn: null, status: 'invited' as const, version: 1 };
+  const base = {
+    phone: null,
+    designation: null,
+    joinedOn: null,
+    status: 'invited' as const,
+    version: 1,
+  };
   emps.push(
-    { ...base, id: '0e0e0e0e-0099-4000-8000-000000000001', name: 'Nisha Pending', email: 'nisha.pending@example.test', employeeCode: 'EMP-P01', roles: ['business_manager'], managerId: abm?.id ?? null, territoryIds: [fx.hqTerritories[0]!.id] },
-    { ...base, id: '0e0e0e0e-0099-4000-8000-000000000002', name: 'Ravi Accounts', email: 'ravi.accounts@example.test', employeeCode: 'EMP-P02', roles: ['accountant'], managerId: null, territoryIds: [] },
+    {
+      ...base,
+      id: '0e0e0e0e-0099-4000-8000-000000000001',
+      name: 'Nisha Pending',
+      email: 'nisha.pending@example.test',
+      employeeCode: 'EMP-P01',
+      roles: ['business_manager'],
+      managerId: abm?.id ?? null,
+      territoryIds: [fx.hqTerritories[0]!.id],
+    },
+    {
+      ...base,
+      id: '0e0e0e0e-0099-4000-8000-000000000002',
+      name: 'Ravi Accounts',
+      email: 'ravi.accounts@example.test',
+      employeeCode: 'EMP-P02',
+      roles: ['accountant'],
+      managerId: null,
+      territoryIds: [],
+    },
   );
 }
 const invites = new Map<string, { id: string; userId: string; expiresAt: string; used: boolean }>();
@@ -87,8 +111,6 @@ export function territoryLevelInvalid(role: RoleKey, territoryIds: string[]) {
 const e = (status: number, code: string, message: string) =>
   HttpResponse.json({ error: { code, message } }, { status });
 const rank = (x: Emp) => hierarchyRank(x.roles);
-/** Like the API: system_admin with users:write manages any hierarchy employee company-wide. */
-const isAdmin = (p: Me) => p.roles.includes('system_admin') && p.permissions.includes('users:write');
 /** Directory rows for GET /v1/users (includes people added or invited in this session). */
 export const mockEmployees = () => emps;
 const wide = (p: Me) => p.roles.includes('director');
@@ -109,7 +131,7 @@ function terrSubtree(ids: string[]) {
   const out = new Set(ids);
   for (let grew = true; grew;) {
     grew = false;
-    for (const t of fx.territories)
+    for (const t of [...fx.territories, ...fx.hqTerritories])
       if (t.parentId && out.has(t.parentId) && !out.has(t.id)) {
         out.add(t.id);
         grew = true;
@@ -268,7 +290,8 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
       const u = emps.find((x) => x.id === params.id);
       if (!u) return e(404, 'NOT_FOUND', 'Employee not found');
       if (u.id === p.id) return e(403, 'FORBIDDEN', 'You cannot change your own record here');
-      if (!manageable(p, u)) return e(403, 'FORBIDDEN', 'You can only manage people below your level');
+      if (!manageable(p, u))
+        return e(403, 'FORBIDDEN', 'You can only manage people below your level');
       if (u.status !== 'invited') return e(409, 'CONFLICT', 'User has already joined');
       for (const [k, v] of invites) if (v.userId === u.id && !v.used) invites.delete(k);
       u.status = 'invited';
@@ -280,7 +303,12 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
       };
       invites.set(`mock-invite-${inv.id}`, inv);
       return HttpResponse.json(
-        { id: inv.id, userId: u.id, expiresAt: inv.expiresAt, inviteUrl: `/invite?token=mock-invite-${inv.id}` },
+        {
+          id: inv.id,
+          userId: u.id,
+          expiresAt: inv.expiresAt,
+          inviteUrl: `/invite?token=mock-invite-${inv.id}`,
+        },
         { status: 201 },
       );
     }),
@@ -369,7 +397,10 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
       if (nr > 0 && !(d.territoryIds ?? u.territoryIds).length)
         return e(422, 'VALIDATION', 'Hierarchy roles need at least one territory');
       if (d.role || d.territoryIds) {
-        const lv = territoryLevelInvalid((d.role ?? u.roles[0]) as RoleKey, d.territoryIds ?? u.territoryIds);
+        const lv = territoryLevelInvalid(
+          (d.role ?? u.roles[0]) as RoleKey,
+          d.territoryIds ?? u.territoryIds,
+        );
         if (lv) return lv;
       }
       if (d.managerId) {
@@ -387,7 +418,11 @@ export function teamHandlers(baseUrl: string, who: (r: Request) => Me | undefine
         const keep = d.managerId === undefined && !(nr === 0 || nr >= ROLE_RANK.director);
         const km = keep && u.managerId ? emps.find((x) => x.id === u.managerId) : undefined;
         if (km && rank(km) <= nr)
-          return e(422, 'MANAGER_RANK', 'Current manager does not outrank the new role; set managerId');
+          return e(
+            422,
+            'MANAGER_RANK',
+            'Current manager does not outrank the new role; set managerId',
+          );
         // ...and the person must still outrank their direct reports.
         const bad = nr < rank(u) ? emps.filter((x) => x.managerId === u.id && rank(x) >= nr) : [];
         if (bad.length)

@@ -128,7 +128,7 @@ export function exceptionHandlers(baseUrl: string, who: (r: Request) => Me | und
   const auth = (request: Request, perm: string) => {
     const p = who(request);
     if (!p) return { res: e(401, 'UNAUTHENTICATED', 'Sign in required') };
-    if (!can(p, perm)) return { res: e(403, 'FORBIDDEN', `Missing permission: ${perm}`) };
+    if (perm && !can(p, perm)) return { res: e(403, 'FORBIDDEN', `Missing permission: ${perm}`) };
     return { p };
   };
   const body = async (request: Request) => request.json().catch(() => ({}));
@@ -149,6 +149,39 @@ export function exceptionHandlers(baseUrl: string, who: (r: Request) => Me | und
     it.version += 1;
     it.updatedAt = now();
     return HttpResponse.json(ExceptionItem.parse(it));
+  };
+  /** GET /v1/exceptions (field:read, your scope) and GET /v1/me/exceptions (any user, your own rows). */
+  const listFor = (request: Request, self: boolean) => {
+    const a = auth(request, self ? '' : 'field:read');
+    if (a.res) return a.res;
+    const q = ExceptionListQuery.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+    if (!q.success) return e(422, 'VALIDATION', q.error.message);
+    const f = q.data;
+    const rows = items
+      .filter(
+        (x) =>
+          (self ? x.user.id === a.p.id : visible(a.p, x)) &&
+          (!f.status || f.status.includes(x.status)) &&
+          (!f.severity || f.severity.includes(x.severity)) &&
+          (!f.ruleCode || f.ruleCode.includes(x.ruleCode)) &&
+          (self || !f.userId || x.user.id === f.userId) &&
+          (self || f.assignedToMe !== 'true' || x.assignee?.id === a.p.id) &&
+          (!f.from || x.periodDate >= f.from) &&
+          (!f.to || x.periodDate <= f.to),
+      )
+      .sort(
+        (x, y) =>
+          SEVERITY_RANK[y.severity] - SEVERITY_RANK[x.severity] ||
+          y.periodDate.localeCompare(x.periodDate) ||
+          y.id.localeCompare(x.id),
+      );
+    const off = Number(f.cursor ?? 0) || 0;
+    const lim = f.limit ?? 50;
+    return HttpResponse.json({
+      items: rows.slice(off, off + lim),
+      nextCursor: off + lim < rows.length ? String(off + lim) : null,
+      serverTime: now(),
+    });
   };
   const close = (status: 'resolved' | 'dismissed') =>
     http.post(
@@ -210,38 +243,8 @@ export function exceptionHandlers(baseUrl: string, who: (r: Request) => Me | und
         }),
       );
     }),
-    http.get(B, ({ request }) => {
-      const a = auth(request, 'field:read');
-      if (a.res) return a.res;
-      const q = ExceptionListQuery.safeParse(Object.fromEntries(new URL(request.url).searchParams));
-      if (!q.success) return e(422, 'VALIDATION', q.error.message);
-      const f = q.data;
-      const rows = items
-        .filter(
-          (x) =>
-            visible(a.p, x) &&
-            (!f.status || f.status.includes(x.status)) &&
-            (!f.severity || f.severity.includes(x.severity)) &&
-            (!f.ruleCode || f.ruleCode.includes(x.ruleCode)) &&
-            (!f.userId || x.user.id === f.userId) &&
-            (f.assignedToMe !== 'true' || x.assignee?.id === a.p.id) &&
-            (!f.from || x.periodDate >= f.from) &&
-            (!f.to || x.periodDate <= f.to),
-        )
-        .sort(
-          (x, y) =>
-            SEVERITY_RANK[y.severity] - SEVERITY_RANK[x.severity] ||
-            y.periodDate.localeCompare(x.periodDate) ||
-            y.id.localeCompare(x.id),
-        );
-      const off = Number(f.cursor ?? 0) || 0;
-      const lim = f.limit ?? 50;
-      return HttpResponse.json({
-        items: rows.slice(off, off + lim),
-        nextCursor: off + lim < rows.length ? String(off + lim) : null,
-        serverTime: now(),
-      });
-    }),
+    http.get(`${baseUrl}/v1/me/exceptions`, ({ request }) => listFor(request, true)),
+    http.get(B, ({ request }) => listFor(request, false)),
     http.get(`${B}/:id`, ({ request, params }) => {
       const a = auth(request, 'field:read');
       if (a.res) return a.res;
