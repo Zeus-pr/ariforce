@@ -10,6 +10,15 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## feat/dcr-meeting-times (2026-11-04): server for meeting sub-types, endTime, places
+
+No contract change, no migration. Enforces #121 on PUT /v1/dcrs/draft, POST /v1/dcrs/{id}/submit,
+PUT /v1/tour-plans/items and POST /v1/tour-plans/items/{id}/submit: MEETING_TYPE_INVALID,
+END_TIME_NOT_AFTER_START, DURATION_TOO_LONG (422); durationMin derived from startTime/endTime.
+Behaviour change for the same request: a meeting with a title other than the two labels, sent by
+an older client, is now 422. Data fix (not run):
+`packages/db/scripts/data-fixes/2026-11-04-meeting-title-normalise.sql`.
+
 ## feat/dcr-tp-contract (2026-11-03): meeting sub-types, DCR expenses, end time and places
 
 Contract only (phase 1); server lands in phase 2. Additive: every new field is optional on input

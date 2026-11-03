@@ -49,6 +49,7 @@ import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { assertDcrDateWritable } from './dcr-date';
+import { normaliseDetails } from './details-rules';
 import { companySettings, localDate } from '../field/field.util';
 import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leave.util';
 import { IMAGE_URL_WINDOW_S, StorageService } from '../files/storage.service';
@@ -629,6 +630,7 @@ export class DcrFlowService {
       if (wt.kind !== 'field' && b.calls.length)
         throw err(422, 'VALIDATION', 'Calls need a field work type', { field: 'calls' });
       this.checkDetailsKind(wt, b.details);
+      const details = normaliseDetails(b.details);
       const hqs = await this.resolveHqs(tx, p, b.territoryIds);
       await this.checkWorkWith(tx, b.workWithUserIds);
       await this.checkChoices(tx, p, b.sfcRoutes ?? [], hqs, band);
@@ -643,7 +645,7 @@ export class DcrFlowService {
         tourPlanItemId: item?.id ?? null,
         deviationReason: b.deviationReason?.trim() || null,
         band,
-        details: b.details ?? null,
+        details: details ?? null,
         workWithUserIds: b.workWithUserIds,
         status: 'draft' as const,
       };
@@ -950,6 +952,8 @@ export class DcrFlowService {
         expected: want,
         issues: parsed.success ? undefined : parsed.error.issues.map((i) => i.path.join('.')),
       });
+    // Write rules also on submit, so an old draft with a free-text meeting title is caught.
+    normaliseDetails(parsed.data);
     if (parsed.data.kind === 'leave') {
       const [lr] = await tx
         .select({ id: leaveRequests.id })

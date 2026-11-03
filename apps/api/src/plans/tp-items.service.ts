@@ -20,6 +20,7 @@ import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
+import { normaliseDetails } from '../dcr/details-rules';
 import { err } from '../field/checkins.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { ApprovalsService } from './approvals.service';
@@ -111,6 +112,7 @@ export class TourPlanItemsService {
         want ? `details.kind must be '${want}'` : 'No details for this work type',
         { field: 'plan.details', expected: want },
       );
+    plan.details = normaliseDetails(plan.details, 'plan.details') ?? null;
     const bad: Record<string, string[]> = {};
     const miss = (ids: string[], found: { id: string }[]) =>
       ids.filter((i) => !found.some((f) => f.id === i));

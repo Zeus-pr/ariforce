@@ -124,12 +124,12 @@ snapshot, so TA/DA always come from the same route):
 to write. `EX`, `EX HQ` -> `ex`; `HQ` -> `hq`; `OS`, `OUT EX HQ` -> `os`. `EX / OS` and `MEETING` are
 kept as is and listed. Re-runnable.
 
-## Meeting sub-types, DCR expenses, end time and places (contract 2026-11-03, server pending)
+## Meeting sub-types, DCR expenses, end time and places (contract 2026-11-03; server: meeting/time rules done, expenses pending)
 
 - Meeting sub-type = `details.title`, one of "Cycle Meeting" / "Review Meeting" on write (DCR
   and TP); anything else is 422 MEETING_TYPE_INVALID. Before this, title was free text. Old rows
   are never rewritten destructively: the data fix
-  `packages/db/scripts/data-fixes/<date>-meeting-title-normalise.sql` (dry-run default) only
+  `packages/db/scripts/data-fixes/2026-11-04-meeting-title-normalise.sql` (dry-run default) only
   rewrites titles that clearly say "cycle" or "review" to the exact label (old text kept in the
   audit/notes); everything else displays its legacy title. Reads tolerate legacy values.
 - Meeting, training and admin work (office) get `endTime`; the server derives `durationMin`
@@ -147,3 +147,12 @@ kept as is and listed. Re-runnable.
   is not possible without a schema change. A DCR rejection removes its dcr lines from an
   editable claim and flags them (dcr_rejected_at) on a decided one, as for TA/DA.
 - New fields live in `dcrs.details` (jsonb) and need no migration; expenses need a table.
+
+### Server rules (apps/api/src/dcr/details-rules.ts)
+
+Run on every write: DCR draft PUT, DCR submit (so an old draft with a free-text meeting title is
+refused with MEETING_TYPE_INVALID), TP item upsert and TP submit. Never on reads. With endTime the
+server stores durationMin = end - start and ignores the sent value; without endTime durationMin is
+still required (older clients). Training drops fromPlace/toPlace silently (zod strip). The new keys
+live in the details jsonb, so DCR detail, DCR list (also the manager's dcr:review list) and
+GET /v1/tour-plans/items/{id} (what TP approvers read) return them unchanged.
