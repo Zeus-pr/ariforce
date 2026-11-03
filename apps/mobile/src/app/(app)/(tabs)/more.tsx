@@ -13,7 +13,7 @@ import { useAuth } from '@/lib/auth-context';
 import { FEATURES, featureHref, type FeatureKey } from '@/lib/features';
 import { isApprover, roleLabel } from '@/lib/roles';
 import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
-import { colors, layout, spacing } from '@/theme';
+import { layout, spacing } from '@/theme';
 
 /** Account, the features without a tab, and Sign out. */
 export default function MoreTab() {
@@ -99,7 +99,8 @@ export default function MoreTab() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.ground },
+  // Transparent so the tab watermark (TabScene) shows; the scene paints colors.ground.
+  flex: { flex: 1 },
   content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm },
   profile: {
     flexDirection: 'row',

@@ -102,7 +102,8 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.ground },
+  // Transparent so the tab watermark (TabScene) shows; the scene paints colors.ground.
+  flex: { flex: 1 },
   content: { paddingHorizontal: layout.gutter, paddingTop: 0 },
   sheet: {
     // Full-bleed under the canopy so rounded corners don’t leave a white gap

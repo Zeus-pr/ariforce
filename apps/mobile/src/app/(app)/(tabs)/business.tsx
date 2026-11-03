@@ -5,7 +5,7 @@ import { Card } from '@/components/card';
 import { ListRow } from '@/components/list-row';
 import { FEATURES, featureHref, type FeatureKey } from '@/lib/features';
 import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
-import { colors, layout, spacing } from '@/theme';
+import { layout, spacing } from '@/theme';
 
 const LISTS = [
   'doctors',
@@ -46,6 +46,7 @@ export default function BusinessTab() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.ground },
+  // Transparent so the tab watermark (TabScene) shows; the scene paints colors.ground.
+  flex: { flex: 1 },
   content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm, gap: layout.inner },
 });
