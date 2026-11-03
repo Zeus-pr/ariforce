@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
@@ -41,7 +42,6 @@ import { isApprover } from '@/lib/roles';
 import { ApprovalReview } from '@/components/approvals/approval-review';
 import { RejectDialog } from '@/components/approvals/reject-dialog';
 import { RejectionNote } from '@/components/approvals/rejection-note';
-import { TourPlanItemEditor } from './tour-plan-item-editor';
 import { TourPlanItemApprovals } from './tour-plan-item-approvals';
 import { datesOf, dayLabel, monthLabel, shiftMonth, thisMonthIST, weekdayMon } from './month';
 import { territoryLabel, workTerritories } from '@/lib/territories';
@@ -54,6 +54,12 @@ import {
 } from '@/lib/tour-plans/cutoff';
 import { fetchMyTourPlanItems, type TpItem } from '@/lib/tour-plans/items';
 import { cachedGet } from '@/lib/query';
+
+// 790-line editor dialog: loaded on its own chunk, after the page.
+const TourPlanItemEditor = dynamic(
+  () => import('./tour-plan-item-editor').then((m) => m.TourPlanItemEditor),
+  { ssr: false },
+);
 
 type Day = TourPlan['days'][number];
 type Entry = Day['entries'][number];

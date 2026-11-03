@@ -5,6 +5,8 @@ import { rolePermissionMatrix } from '../src/role-permissions-sql';
 import { DEFAULT_WORK_TYPES } from '../src/work-types';
 import { DEMO_COMPANY_ID as C, ROLE_DEFS, T, U, roleId, seedIds } from '../src/seed-data';
 
+// Demo data only (same guard as apps/api/scripts/seed-auth.mts). No override on purpose.
+if (process.env.NODE_ENV === 'production') throw new Error('db seed is dev/CI only');
 const url = process.env.DIRECT_URL;
 if (!url) throw new Error('DIRECT_URL (direct owner connection, migrations only) is required');
 const pool = new Pool({ connectionString: url });

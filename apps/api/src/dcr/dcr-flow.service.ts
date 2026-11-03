@@ -47,6 +47,7 @@ import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
+import { assertDcrDateWritable } from './dcr-date';
 import { companySettings, localDate } from '../field/field.util';
 import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leave.util';
 import { StorageService } from '../files/storage.service';
@@ -521,9 +522,6 @@ export class DcrFlowService {
           field: 'tourPlanItemId',
           reason: 'TOUR_PLAN_ITEM_MISMATCH',
         });
-      // A future day may be drafted only from its approved tour plan item; submit opens on the day.
-      if (b.date > localDate(new Date(), s.timezone) && !b.tourPlanItemId)
-        throw err(422, 'VALIDATION', 'DCR date is in the future');
       // Lock the caller's live DCRs of the date: a concurrent submit of one of them is seen here.
       const day = await tx
         .select()
@@ -546,6 +544,8 @@ export class DcrFlowService {
         throw err(409, 'DAY_LOCKED', 'This day is locked; request a correction', {
           lockAt: li.lockAt.toISOString(),
         });
+      // Then today only (IST); a past day only while unlocked (dcr-date.ts).
+      assertDcrDateWritable(b.date, { unlocked: !!li.unlockedUntil });
       const target = resolveDraftTarget(b, byId, day);
       if (target.action === 'error') {
         if (target.status === 404) throw new NotFoundException('Draft not found');
@@ -689,8 +689,8 @@ export class DcrFlowService {
         throw err(409, 'DAY_LOCKED', 'This day is locked; request a correction', {
           lockAt: li.lockAt.toISOString(),
         });
-      if (cur.date > localDate(new Date(), s.timezone))
-        throw err(422, 'VALIDATION', 'DCR date is in the future');
+      // Then today only (IST); a past day only while unlocked (dcr-date.ts).
+      assertDcrDateWritable(cur.date, { unlocked: !!li.unlockedUntil });
 
       const wt = await this.workType(tx, cur.workTypeId);
       const band = workTypeBand(wt);

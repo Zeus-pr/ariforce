@@ -243,6 +243,36 @@ export class ApprovalsService {
       .map(([k]) => k as EntityType);
   }
 
+  /**
+   * Whether `p` may decide request `r` now (steps = all its steps, any order). Same rules decideTx
+   * enforces (pending, not own, approvals:decide + the entity permission, current approver or above,
+   * not a decider of an earlier step); the beforeApprove gate (e.g. DCR_NOT_APPROVED) is not run.
+   */
+  canDecide(
+    p: Principal,
+    r: Pick<
+      typeof approvalRequests.$inferSelect,
+      'state' | 'requestedBy' | 'entityType' | 'currentStep'
+    >,
+    steps: Pick<typeof approvalSteps.$inferSelect, 'stepNo' | 'approverUserId' | 'decidedBy'>[],
+  ) {
+    const opt = this.options.get(r.entityType);
+    const cur =
+      steps.find((s) => s.stepNo === r.currentStep) ??
+      [...steps].sort((a, b) => a.stepNo - b.stepNo).at(-1);
+    return (
+      r.state === 'pending' &&
+      r.requestedBy !== p.userId &&
+      p.permissions.includes('approvals:decide') &&
+      (!opt?.permission || p.permissions.includes(opt.permission)) &&
+      (opt?.route === 'permission_holders' ||
+        !cur?.approverUserId ||
+        !p.teamUserIds ||
+        p.teamUserIds.includes(cur.approverUserId)) &&
+      !steps.some((s) => s.stepNo < r.currentStep && s.decidedBy === p.userId)
+    );
+  }
+
   registerDetail(entity: EntityType, load: DetailLoader, opt: DetailOptions = {}) {
     this.details.set(entity, { load, opt });
   }
@@ -753,18 +783,7 @@ export class ApprovalsService {
     return rows.map((r) => {
       const all = steps.filter((s) => s.requestId === r.id);
       const st = all.at(-1);
-      const perm = this.options.get(r.entityType)?.permission;
-      const canDecide =
-        !!p &&
-        r.state === 'pending' &&
-        r.requestedBy !== p.userId &&
-        p.permissions.includes('approvals:decide') &&
-        (!perm || p.permissions.includes(perm)) &&
-        (this.options.get(r.entityType)?.route === 'permission_holders' ||
-          !st?.approverUserId ||
-          !p.teamUserIds ||
-          p.teamUserIds.includes(st.approverUserId)) &&
-        !all.some((s) => s.stepNo < r.currentStep && s.decidedBy === p.userId);
+      const canDecide = !!p && this.canDecide(p, r, all);
       return {
         canDecide,
         id: r.id,

@@ -149,6 +149,12 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
         paymentRef: null,
         dcrRejectedDates: [],
         version: 1,
+        approvalTrail: [],
+        totalLevels: 2,
+        currentApprover: null,
+        canDecide: false,
+        canPay: false,
+        paidBy: null,
       };
       claims.push(c);
       return HttpResponse.json(out(c), { status: 201 });
@@ -415,7 +421,13 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
       if (c.status !== 'approved') return e(409, 'CONFLICT', `Claim is ${c.status}`);
       const b = ExpensePay.safeParse(await request.json().catch(() => null));
       if (!b.success) return e(422, 'VALIDATION', 'paymentRef required');
-      Object.assign(c, { status: 'paid', paidAt: now(), paymentRef: b.data.paymentRef });
+      Object.assign(c, {
+        status: 'paid',
+        paidAt: now(),
+        paymentRef: b.data.paymentRef,
+        paidBy: { id: g.p.id, name: g.p.name },
+        canPay: false,
+      });
       return HttpResponse.json(out(c));
     }),
     http.get(`${B}/expense-claims/:id/reconciliation`, ({ request, params }) => {
