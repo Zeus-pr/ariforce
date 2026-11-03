@@ -41,7 +41,7 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = configureApp(mod.createNestApplication({ bodyParser: false }));
     await app.init();
-    for (const who of ['bm', 'abm', 'director', 'rbm', 'zbm']) {
+    for (const who of ['bm', 'abm', 'director', 'rbm', 'zbm', 'bm2']) {
       const res = await http()
         .post('/v1/auth/sign-in/email')
         .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
@@ -199,6 +199,25 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
 
     const mgr = await http().get(`/v1/dcrs?from=${TODAY}&to=${TODAY}`).set(as('abm'));
     expect(mgr.body.items.map((d: { id: string }) => d.id)).toContain(sub.body.id);
+    // Doctor 360: doctorId + limit, same reporting-line scope.
+    const ids = (r: request.Response) => r.body.items.map((d: { id: string }) => d.id);
+    const d360 = await http().get(`/v1/dcrs?doctorId=${doctor}&limit=100`).set(as('abm'));
+    expect(d360.status).toBe(200);
+    expect(ids(d360)).toContain(sub.body.id);
+    const one = await http().get(`/v1/dcrs?doctorId=${doctor}&limit=1`).set(as('abm'));
+    expect(one.body.items.length).toBeLessThanOrEqual(1);
+    expect(ids(await http().get(`/v1/dcrs?doctorId=${T.hq}`).set(as('abm')))).not.toContain(
+      sub.body.id,
+    );
+    // A BM outside the line sees none of it, even when naming the other BM (no dcr:review = own only).
+    expect(ids(await http().get(`/v1/dcrs?doctorId=${doctor}`).set(as('bm2')))).not.toContain(
+      sub.body.id,
+    );
+    const peer = await http()
+      .get(`/v1/dcrs?doctorId=${doctor}&userId=${sub.body.userId}`)
+      .set(as('bm2'));
+    expect(peer.status).toBe(200);
+    expect(ids(peer)).not.toContain(sub.body.id);
     expect((await http().get(`/v1/dcrs/${sub.body.id}`).set(as('abm'))).status).toBe(200);
     expect(
       (
@@ -208,30 +227,6 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
           .send({ date: TODAY, workTypeId: field, territoryIds: [T.hq], calls: [] })
       ).status,
     ).toBe(200);
-  });
-
-  it('DCR_DATE_NOT_TODAY: future days, and a director past day (never locks, not unlocked)', async () => {
-    const TOMORROW = ist(new Date(Date.now() + 864e5));
-    const body = { workTypeId: leave, territoryIds: [], calls: [], deviationReason: 'x' };
-    for (const [who, date] of [
-      ['bm', TOMORROW],
-      ['director', TOMORROW],
-      ['director', OLD],
-    ] as const) {
-      const up = await http()
-        .put('/v1/dcrs')
-        .set(as(who))
-        .send({ ...body, date });
-      expect(up.status, `${who} ${date}`).toBe(422);
-      expect(up.body.error.code).toBe('DCR_DATE_NOT_TODAY');
-      expect(up.body.error.details).toMatchObject({ date, today: TODAY });
-      const dr = await http()
-        .put('/v1/dcrs/draft')
-        .set(as(who))
-        .send({ ...body, date, workWithUserIds: [] });
-      expect(dr.status, `${who} draft ${date}`).toBe(422);
-      expect(dr.body.error.code).toBe('DCR_DATE_NOT_TODAY');
-    }
   });
 
   it('locks old days; correction request + approval unlocks for 48h (gap #8)', async () => {

@@ -517,6 +517,10 @@ export const DcrCorrectionRequest = z
   .meta({ id: 'DcrCorrectionRequest' });
 export const DCR_UNLOCK_HOURS = 48;
 export const DcrListQuery = FieldListQuery.extend({
+  doctorId: Id.optional().meta({
+    description:
+      'Doctor 360: only DCRs with at least one (non-deleted) call at this doctor. Same user scope as without it (own, or reporting line for dcr:review); combine with limit',
+  }),
   status: z.enum(['draft', 'submitted', 'locked', 'approved', 'rejected']).optional(),
   mine: z.enum(['true', 'false']).optional().meta({
     description:
