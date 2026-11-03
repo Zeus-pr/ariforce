@@ -912,6 +912,8 @@ function fieldHandlers(baseUrl: string) {
       if (!key) return validation('Idempotency-Key header is required');
       const b = DcrSubmit.safeParse(await request.json());
       if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
+      const badExp = checkDcrExpensesRaw(b.data.expenses);
+      if (badExp) return badExp;
       // Same-key retry, also for a director's report (approved at submit).
       if ((d.status === 'submitted' || d.status === 'approved') && submitKeys.get(d.id) === key)
         return HttpResponse.json({
@@ -983,10 +985,14 @@ function fieldHandlers(baseUrl: string) {
         version: d.version + 1,
         updatedAt: frozenAt,
       });
+      if (b.data.expenses) d.expenses = b.data.expenses;
       const exp = d.expenses ?? [];
       return HttpResponse.json({
         ...Dcr.parse(withLock(d)),
         expenseDraft: null,
+        expenseClaimId: null,
+        expenseTotal: Math.round(exp.reduce((t, e) => t + e.amount, 0) * 100) / 100,
+        expenseCount: exp.length,
         // The mock has no claim store here: report what the server would link.
         dcrExpenses: {
           status: exp.length ? ('linked' as const) : ('skipped' as const),

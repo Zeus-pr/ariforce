@@ -28,6 +28,12 @@ and in responses, so current clients and the current API keep working.
   Training: endTime only.
 - `DcrExpenseItem` {category (travel|hotel|food|other), amount, note?}; `Dcr.expenses` (optional, max 20) and `DcrDraftPut.expenses` (omit = keep).
   allowance/mileage -> 422 `DCR_EXPENSE_CATEGORY_INVALID` (details.index, details.allowed).
+- `DcrSubmit.expenses` (optional; replaces the saved list before submit) and submit response
+  `expenseClaimId`, `expenseTotal`, `expenseCount` (optional). Clients never create claim lines.
+- Category mapping: DCR categories are a subset of the existing `ExpenseCategory` enum, mapped
+  1:1 by value (travel, hotel, food, other); no mapping table.
+- Training details have no places; extra keys (fromPlace/toPlace) are stripped (accepted and
+  ignored), as zod does for any unknown key.
 - `ExpenseLine.origin` (`manual` | `ta_da` | `dcr`, optional);
   `origin: dcr` = show "from DCR", `dcrId` = that DCR. `source` enum unchanged (dcr lines are
   `auto`, never touched by a TA/DA re-run).

@@ -3467,6 +3467,8 @@ export interface components {
     ExpenseCategory: 'travel' | 'hotel' | 'food' | 'mileage' | 'allowance' | 'other';
     DcrSubmit: {
       version: number;
+      /** @description Day expenses; when sent they replace the saved draft list before submit. Omit to submit the saved list. The server links them into the month claim (clients never create the lines) */
+      expenses?: components['schemas']['DcrExpenseItem'][];
     };
     DcrDecision: {
       /** @enum {string} */
@@ -6109,6 +6111,12 @@ export interface components {
        * @default null
        */
       expenseDraft: components['schemas']['ExpenseAutoDraft'] | null;
+      /** @description Month claim holding this DCR's expense lines (dcrExpenses.claimId); null if not linked */
+      expenseClaimId?: string | null;
+      /** @description Sum of the linked DCR expense lines, rupees */
+      expenseTotal?: number;
+      /** @description Number of linked DCR expense lines */
+      expenseCount?: number;
       /** @description Linking of the DCR's expenses into the month claim (always attempted, independent of autoExpenseOnDcrSubmit). null on a same-key retry; absent from older APIs */
       dcrExpenses?: components['schemas']['DcrExpenseLink'] | null;
     };
@@ -13213,7 +13221,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND, MEETING_TYPE_INVALID (meeting details.title not Cycle Meeting / Review Meeting; details.allowed), END_TIME_NOT_AFTER_START (end <= start, or endTime without startTime; details.startTime/endTime), DURATION_TOO_LONG (end - start > 720 min) */
+      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND, DCR_EXPENSE_CATEGORY_INVALID, MEETING_TYPE_INVALID (meeting details.title not Cycle Meeting / Review Meeting; details.allowed), END_TIME_NOT_AFTER_START (end <= start, or endTime without startTime; details.startTime/endTime), DURATION_TOO_LONG (end - start > 720 min) */
       422: {
         headers: {
           [name: string]: unknown;

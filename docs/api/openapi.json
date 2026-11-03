@@ -8290,7 +8290,7 @@
             }
           },
           "422": {
-            "description": "DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND, MEETING_TYPE_INVALID (meeting details.title not Cycle Meeting / Review Meeting; details.allowed), END_TIME_NOT_AFTER_START (end <= start, or endTime without startTime; details.startTime/endTime), DURATION_TOO_LONG (end - start > 720 min)",
+            "description": "DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND, DCR_EXPENSE_CATEGORY_INVALID, MEETING_TYPE_INVALID (meeting details.title not Cycle Meeting / Review Meeting; details.allowed), END_TIME_NOT_AFTER_START (end <= start, or endTime without startTime; details.startTime/endTime), DURATION_TOO_LONG (end - start > 720 min)",
             "content": {
               "application/json": {
                 "schema": {
@@ -19176,6 +19176,14 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 9007199254740991
+          },
+          "expenses": {
+            "description": "Day expenses; when sent they replace the saved draft list before submit. Omit to submit the saved list. The server links them into the month claim (clients never create the lines)",
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrExpenseItem"
+            }
           }
         },
         "required": [
@@ -27652,6 +27660,31 @@
                 "type": "null"
               }
             ]
+          },
+          "expenseClaimId": {
+            "description": "Month claim holding this DCR's expense lines (dcrExpenses.claimId); null if not linked",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expenseTotal": {
+            "description": "Sum of the linked DCR expense lines, rupees",
+            "type": "number"
+          },
+          "expenseCount": {
+            "description": "Number of linked DCR expense lines",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           },
           "dcrExpenses": {
             "description": "Linking of the DCR's expenses into the month claim (always attempted, independent of autoExpenseOnDcrSubmit). null on a same-key retry; absent from older APIs",

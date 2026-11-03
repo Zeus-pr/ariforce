@@ -175,6 +175,19 @@ export const DcrSubmitResult = Dcr.extend({
     description:
       'Server TA/DA auto-draft outcome; null when the company setting autoExpenseOnDcrSubmit is off or on an idempotent retry. Clients: non-null means the server drafted (do not draft client-side)',
   }),
+  expenseClaimId: Id.nullable().optional().meta({
+    description:
+      "Month claim holding this DCR's expense lines (dcrExpenses.claimId); null if not linked",
+  }),
+  expenseTotal: z
+    .number()
+    .optional()
+    .meta({ description: 'Sum of the linked DCR expense lines, rupees' }),
+  expenseCount: z
+    .int()
+    .min(0)
+    .optional()
+    .meta({ description: 'Number of linked DCR expense lines' }),
   dcrExpenses: DcrExpenseLink.nullable().optional().meta({
     description:
       "Linking of the DCR's expenses into the month claim (always attempted, independent of autoExpenseOnDcrSubmit). null on a same-key retry; absent from older APIs",

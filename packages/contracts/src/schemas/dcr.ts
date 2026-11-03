@@ -316,7 +316,15 @@ export const DcrDraftPut = z
   .meta({ id: 'DcrDraftPut' });
 export type DcrDraftPut = z.infer<typeof DcrDraftPut>;
 
-export const DcrSubmit = z.object({ version: z.int().min(1) }).meta({ id: 'DcrSubmit' });
+export const DcrSubmit = z
+  .object({
+    version: z.int().min(1),
+    expenses: DcrExpenses.optional().meta({
+      description:
+        'Day expenses; when sent they replace the saved draft list before submit. Omit to submit the saved list. The server links them into the month claim (clients never create the lines)',
+    }),
+  })
+  .meta({ id: 'DcrSubmit' });
 export const DcrSubmitHeaders = z.object({
   'idempotency-key': z
     .string()
