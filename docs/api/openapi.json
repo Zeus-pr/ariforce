@@ -457,6 +457,132 @@
         "description": "Requires: territories:read. Results are territory-subtree scoped."
       }
     },
+    "/v1/territories/compact": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Territories"
+        ],
+        "operationId": "listTerritoriesCompact",
+        "summary": "Compact territory list (id, name, level, parentId) for pickers and trees",
+        "description": "Same company and caller-subtree scope as GET /v1/territories, non-deleted only, ordered by name. Default and max page 2000; follow nextCursor beyond that. Weak ETag + Cache-Control: private, max-age=60; If-None-Match -> 304 with empty body.\n\nRequires: territories:read. Results are territory-subtree scoped.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "$ref": "#/components/schemas/TerritoryLevel"
+            }
+          },
+          {
+            "in": "query",
+            "name": "parentId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ancestorId",
+            "schema": {
+              "description": "Only descendants of this territory",
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "description": "Only descendants of this territory"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "Page size, default and max 2000 (the full list caps at 200)",
+              "default": 2000,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000
+            },
+            "description": "Page size, default and max 2000 (the full list caps at 200)"
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "Opaque cursor from `nextCursor`",
+              "type": "string"
+            },
+            "description": "Opaque cursor from `nextCursor`"
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "schema": {
+              "description": "ETag from a previous response; 304 with empty body if unchanged",
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "ETag from a previous response; 304 with empty body if unchanged"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (ETag, Cache-Control headers)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerritoryCompactList"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched); empty body"
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-required-permissions": [
+          "territories:read"
+        ]
+      }
+    },
     "/v1/territories/{id}": {
       "get": {
         "security": [
@@ -20846,6 +20972,67 @@
           "name",
           "path",
           "centroid"
+        ],
+        "additionalProperties": false
+      },
+      "TerritoryCompactList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TerritoryCompact"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      },
+      "TerritoryCompact": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "name": {
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/TerritoryLevel"
+          },
+          "parentId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "level",
+          "parentId"
         ],
         "additionalProperties": false
       },

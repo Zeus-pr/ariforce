@@ -148,7 +148,13 @@ import {
 import { RoleList } from './schemas/roles';
 import { Health } from './schemas/health';
 import { KpiQuery, KpiReport, ProductKpiReport } from './schemas/kpis';
-import { Territory, TerritoryListQuery } from './schemas/territories';
+import {
+  Territory,
+  TerritoryCompactHeaders,
+  TerritoryCompactList,
+  TerritoryCompactQuery,
+  TerritoryListQuery,
+} from './schemas/territories';
 import {
   Chemist,
   ChemistCreate,
@@ -480,6 +486,24 @@ function buildDocument(): OpenApiDocument {
           summary: "Territories in the caller's subtree (cursor-paginated, no 200 cap overall)",
           requestParams: { query: TerritoryListQuery },
           responses: { '200': { description: 'Page', ...json(page(Territory, 'TerritoryPage')) } },
+        }),
+      },
+      '/v1/territories/compact': {
+        get: op({
+          tags: ['Territories'],
+          operationId: 'listTerritoriesCompact',
+          summary: 'Compact territory list (id, name, level, parentId) for pickers and trees',
+          description:
+            'Same company and caller-subtree scope as GET /v1/territories, non-deleted only, ordered by name. Default and max page 2000; follow nextCursor beyond that. Weak ETag + Cache-Control: private, max-age=60; If-None-Match -> 304 with empty body.',
+          requestParams: { query: TerritoryCompactQuery, header: TerritoryCompactHeaders },
+          responses: {
+            '200': {
+              description: 'OK (ETag, Cache-Control headers)',
+              ...json(TerritoryCompactList),
+            },
+            '304': { description: 'Not modified (If-None-Match matched); empty body' },
+            '422': err('VALIDATION'),
+          },
         }),
       },
       '/v1/territories/{id}': {

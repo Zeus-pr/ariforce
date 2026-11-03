@@ -48,3 +48,29 @@ export const TerritoryListQuery = listQuery(['code', 'name', 'level', 'updatedAt
 }).meta({
   description: 'Cursor-paginated; page through with nextCursor for more than 200 territories',
 });
+
+/** GET /v1/territories/compact: id/name/level/parentId only, for pickers and tree building. */
+export const TerritoryCompactQuery = z
+  .object({
+    level: TerritoryLevel.optional(),
+    parentId: Id.optional(),
+    ancestorId: Id.optional().meta({ description: 'Only descendants of this territory' }),
+    limit: z.coerce.number().int().min(1).max(2000).default(2000).optional().meta({
+      description: 'Page size, default and max 2000 (the full list caps at 200)',
+    }),
+    cursor: z.string().optional().meta({ description: 'Opaque cursor from `nextCursor`' }),
+  })
+  .meta({ id: 'TerritoryCompactQuery' });
+export const TerritoryCompactHeaders = z.object({
+  'if-none-match': z.string().max(200).optional().meta({
+    description: 'ETag from a previous response; 304 with empty body if unchanged',
+  }),
+});
+export const TerritoryCompact = z
+  .object({ id: Id, name: z.string(), level: TerritoryLevel, parentId: Id.nullable() })
+  .meta({ id: 'TerritoryCompact' });
+export type TerritoryCompact = z.infer<typeof TerritoryCompact>;
+export const TerritoryCompactList = z
+  .object({ items: z.array(TerritoryCompact), nextCursor: z.string().nullable() })
+  .meta({ id: 'TerritoryCompactList' });
+export type TerritoryCompactList = z.infer<typeof TerritoryCompactList>;

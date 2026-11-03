@@ -7,11 +7,17 @@ import { ImportsController } from './imports.controller';
 import { ImportsService } from './imports.service';
 import { MASTER_CONTROLLERS } from './masters.controllers';
 import { MastersService } from './masters.service';
+import { TerritoriesCompactController } from './territories-compact.controller';
 import { TerritoryLinksService } from './territory-links.service';
 
 @Module({
   imports: [PlansModule, FilesModule],
-  controllers: [DoctorsController, ImportsController, ...MASTER_CONTROLLERS],
+  controllers: [
+    DoctorsController,
+    ImportsController,
+    TerritoriesCompactController,
+    ...MASTER_CONTROLLERS,
+  ],
   providers: [MastersService, ImportsService, DoctorsService, TerritoryLinksService],
   exports: [MastersService],
 })

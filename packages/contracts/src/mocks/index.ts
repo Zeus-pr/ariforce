@@ -534,6 +534,19 @@ export function createHandlers(baseUrl = '') {
         url,
       );
     }),
+    http.get(`${baseUrl}/v1/territories/compact`, ({ request }) => {
+      const url = new URL(request.url);
+      const lvl = url.searchParams.get('level');
+      const parentId = url.searchParams.get('parentId');
+      const items = fx.territories
+        .filter((t) => (!lvl || t.level === lvl) && (!parentId || t.parentId === parentId))
+        .map((t) => ({ id: t.id, name: t.name, level: t.level, parentId: t.parentId }))
+        .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+      return HttpResponse.json(
+        { items, nextCursor: null },
+        { headers: { ETag: 'W/"tc-mock"', 'Cache-Control': 'private, max-age=60' } },
+      );
+    }),
     http.get(`${baseUrl}/v1/territories/:id`, ({ params }) => {
       const t = fx.territories.find((r) => r.id === params.id);
       return t ? HttpResponse.json(Territory.parse(t)) : notFound();
