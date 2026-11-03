@@ -29,6 +29,7 @@ export * from './schemas/notifications';
 export * from './schemas/exceptions';
 export * from './schemas/home';
 export * from './schemas/approval-detail';
+export * from './schemas/sales';
 export * from './schemas/sfc';
 export * from './schemas/tp-items';
 export * from './schemas/director';
