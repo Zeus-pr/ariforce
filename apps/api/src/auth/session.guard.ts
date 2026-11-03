@@ -16,6 +16,7 @@ import { roles, territories, userRoles, userTerritories, withTenant, type Db } f
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { DB } from '../db/db.module';
 import { clientIp } from '../common/client-ip';
+import { cachedAuthContext } from './auth-context-cache';
 import { AuthService } from './auth.service';
 import { IS_PUBLIC, PERMISSIONS_KEY } from './decorators';
 import { COMPANY_WIDE_ROLES, MASTERS_WIDE_ROLES, type Principal } from './principal';
@@ -54,19 +55,21 @@ export class SessionGuard implements CanActivate {
       throw new ForbiddenException('No active AriForce user for this identity');
     }
 
-    const p = await withTenant(this.db, m, async (tx) => {
-      const rs = await tx
-        .select({ key: roles.key, permissions: roles.permissions })
-        .from(userRoles)
-        .innerJoin(roles, eq(roles.id, userRoles.roleId))
-        .where(and(eq(userRoles.userId, m.userId), isNull(roles.deletedAt)));
-      const ts = await tx
-        .select({ id: territories.id, path: territories.path })
-        .from(userTerritories)
-        .innerJoin(territories, eq(territories.id, userTerritories.territoryId))
-        .where(and(eq(userTerritories.userId, m.userId), isNull(territories.deletedAt)));
-      // Reporting line: the user and everyone below them via users.manager_id (cycle-safe).
-      const team = await tx.execute<{ user_id: string; path: string | null }>(sql`
+    // Roles/territories/team only (membership + account status above are never cached).
+    const p = await cachedAuthContext(m.companyId, m.userId, () =>
+      withTenant(this.db, m, async (tx) => {
+        const rs = await tx
+          .select({ key: roles.key, permissions: roles.permissions })
+          .from(userRoles)
+          .innerJoin(roles, eq(roles.id, userRoles.roleId))
+          .where(and(eq(userRoles.userId, m.userId), isNull(roles.deletedAt)));
+        const ts = await tx
+          .select({ id: territories.id, path: territories.path })
+          .from(userTerritories)
+          .innerJoin(territories, eq(territories.id, userTerritories.territoryId))
+          .where(and(eq(userTerritories.userId, m.userId), isNull(territories.deletedAt)));
+        // Reporting line: the user and everyone below them via users.manager_id (cycle-safe).
+        const team = await tx.execute<{ user_id: string; path: string | null }>(sql`
         with recursive team(id, trail) as (
           select u.id, array[u.id] from users u where u.id = ${m.userId}
           union all
@@ -77,8 +80,9 @@ export class SessionGuard implements CanActivate {
         from team
         left join user_territories ut on ut.user_id = team.id
         left join territories tr on tr.id = ut.territory_id and tr.deleted_at is null`);
-      return { rs, ts, team: team.rows };
-    });
+        return { rs, ts, team: team.rows };
+      }),
+    );
     const roleKeys = p.rs.map((r) => r.key as RoleKey);
     const permissions = [...new Set(p.rs.flatMap((r) => r.permissions))].filter((x) =>
       KNOWN.has(x),

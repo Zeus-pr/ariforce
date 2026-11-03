@@ -7705,6 +7705,19 @@
             },
             "required": true,
             "description": "Calendar date (YYYY-MM-DD, IST)"
+          },
+          {
+            "in": "query",
+            "name": "includeProducts",
+            "schema": {
+              "description": "Default `true` (unchanged). Pass `false` to skip the deprecated products/detailProducts (returned as []); load them from GET /v1/dcrs/products instead",
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "Default `true` (unchanged). Pass `false` to skip the deprecated products/detailProducts (returned as []); load them from GET /v1/dcrs/products instead"
           }
         ],
         "responses": {
@@ -7717,6 +7730,88 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/dcrs/products": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "DCR"
+        ],
+        "operationId": "listDcrProducts",
+        "summary": "Active products for the DCR pickers (replaces options.products/detailProducts)",
+        "description": "Same items as the deprecated GET /v1/dcrs/options products/detailProducts. Response carries ETag (weak) and Cache-Control: private, max-age=60. Send If-None-Match to get 304 with no body while products and the image-URL signing window (30 min) are unchanged. ids= narrows to those active products.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "schema": {
+              "description": "Batch fetch: comma-separated product ids (max 100). Only active products are returned; others are absent. detailProducts groups only the returned SKUs",
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$"
+            },
+            "description": "Batch fetch: comma-separated product ids (max 100). Only active products are returned; others are absent. detailProducts groups only the returned SKUs"
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "schema": {
+              "description": "ETag from an earlier response; 304 (empty body) when unchanged",
+              "type": "string",
+              "maxLength": 512
+            },
+            "description": "ETag from an earlier response; 304 (empty body) when unchanged"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (ETag, Cache-Control headers)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DcrProducts"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched); empty body"
           },
           "401": {
             "description": "Not signed in",
@@ -11089,6 +11184,7 @@
         ],
         "operationId": "listExpenseClaims",
         "summary": "Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide",
+        "description": "Without limit and cursor: all matching claims, response { items } exactly as before. With limit and/or cursor: one page (limit default 50, max 200), ordered month desc, user name, id, and the response adds limit, total and nextCursor (null on the last page). Invalid cursor: 422 VALIDATION.",
         "parameters": [
           {
             "in": "query",
@@ -11117,6 +11213,27 @@
             "schema": {
               "$ref": "#/components/schemas/ExpenseStatus"
             }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "Opt-in paging (default 50 once cursor is sent). Without limit and cursor every readable claim is returned, as before",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "Opt-in paging (default 50 once cursor is sent). Without limit and cursor every readable claim is returned, as before"
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "Opaque cursor from `nextCursor`",
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Opaque cursor from `nextCursor`"
           }
         ],
         "responses": {
@@ -11142,6 +11259,16 @@
           },
           "403": {
             "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION (bad limit or cursor)",
             "content": {
               "application/json": {
                 "schema": {
@@ -26195,7 +26322,8 @@
           },
           "detailProducts": {
             "default": [],
-            "description": "Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed",
+            "deprecated": true,
+            "description": "Deprecated: use GET /v1/dcrs/products. [] when includeProducts=false. Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DcrDetailProduct"
@@ -26203,7 +26331,8 @@
           },
           "products": {
             "default": [],
-            "description": "Active products for the call pickers, by name (imageUrl presigned, >= 30 min)",
+            "deprecated": true,
+            "description": "Deprecated: use GET /v1/dcrs/products. [] when includeProducts=false. Active products for the call pickers, by name (imageUrl presigned, >= 30 min)",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DcrProductOption"
@@ -26714,6 +26843,35 @@
           "isSample",
           "imageFileKey",
           "imageUrl"
+        ],
+        "additionalProperties": false
+      },
+      "DcrProducts": {
+        "type": "object",
+        "properties": {
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrProductOption"
+            },
+            "description": "Active products for the call pickers, A-Z by name (imageUrl presigned, >= 30 min)"
+          },
+          "detailProducts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrDetailProduct"
+            },
+            "description": "Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed"
+          },
+          "etag": {
+            "type": "string",
+            "description": "Same value as the ETag header. Send it back as If-None-Match to get 304 while products and image URLs are unchanged"
+          }
+        },
+        "required": [
+          "products",
+          "detailProducts",
+          "etag"
         ],
         "additionalProperties": false
       },
@@ -29756,6 +29914,25 @@
             "items": {
               "$ref": "#/components/schemas/ExpenseClaimSummary"
             }
+          },
+          "limit": {
+            "description": "Paged reads only (limit or cursor sent)",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "description": "Paged reads only: claims matching the filters (all pages)",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "nextCursor": {
+            "description": "Paged reads only: pass as cursor for the next page; null on the last page",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [

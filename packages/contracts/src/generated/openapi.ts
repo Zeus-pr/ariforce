@@ -1106,6 +1106,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/dcrs/products': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Active products for the DCR pickers (replaces options.products/detailProducts)
+     * @description Same items as the deprecated GET /v1/dcrs/options products/detailProducts. Response carries ETag (weak) and Cache-Control: private, max-age=60. Send If-None-Match to get 304 with no body while products and the image-URL signing window (30 min) are unchanged. ids= narrows to those active products.
+     */
+    get: operations['listDcrProducts'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/dcrs/territories': {
     parameters: {
       query?: never;
@@ -1757,7 +1777,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide */
+    /**
+     * Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide
+     * @description Without limit and cursor: all matching claims, response { items } exactly as before. With limit and/or cursor: one page (limit default 50, max 200), ordered month desc, user name, id, and the response adds limit, total and nextCursor (null on the last page). Invalid cursor: 422 VALIDATION.
+     */
     get: operations['listExpenseClaims'];
     put?: never;
     /** Create your claim for a month (one per user per month); returns the existing one with 200 */
@@ -5699,12 +5722,14 @@ export interface components {
        */
       tourPlanDrafts: components['schemas']['DcrTourPlanDraft'][];
       /**
-       * @description Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed
+       * @deprecated
+       * @description Deprecated: use GET /v1/dcrs/products. [] when includeProducts=false. Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed
        * @default []
        */
       detailProducts: components['schemas']['DcrDetailProduct'][];
       /**
-       * @description Active products for the call pickers, by name (imageUrl presigned, >= 30 min)
+       * @deprecated
+       * @description Deprecated: use GET /v1/dcrs/products. [] when includeProducts=false. Active products for the call pickers, by name (imageUrl presigned, >= 30 min)
        * @default []
        */
       products: components['schemas']['DcrProductOption'][];
@@ -5855,6 +5880,14 @@ export interface components {
        * @default null
        */
       imageUrl: string | null;
+    };
+    DcrProducts: {
+      /** @description Active products for the call pickers, A-Z by name (imageUrl presigned, >= 30 min) */
+      products: components['schemas']['DcrProductOption'][];
+      /** @description Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed */
+      detailProducts: components['schemas']['DcrDetailProduct'][];
+      /** @description Same value as the ETag header. Send it back as If-None-Match to get 304 while products and image URLs are unchanged */
+      etag: string;
     };
     DcrHqOptionList: {
       items: components['schemas']['DcrHqOption'][];
@@ -6747,6 +6780,12 @@ export interface components {
     };
     ExpenseClaimList: {
       items: components['schemas']['ExpenseClaimSummary'][];
+      /** @description Paged reads only (limit or cursor sent) */
+      limit?: number;
+      /** @description Paged reads only: claims matching the filters (all pages) */
+      total?: number;
+      /** @description Paged reads only: pass as cursor for the next page; null on the last page */
+      nextCursor?: string | null;
     };
     ExpenseClaimSummary: {
       /**
@@ -12707,6 +12746,8 @@ export interface operations {
       query: {
         /** @description Calendar date (YYYY-MM-DD, IST) */
         date: string;
+        /** @description Default `true` (unchanged). Pass `false` to skip the deprecated products/detailProducts (returned as []); load them from GET /v1/dcrs/products instead */
+        includeProducts?: 'true' | 'false';
       };
       header?: never;
       path?: never;
@@ -12722,6 +12763,66 @@ export interface operations {
         content: {
           'application/json': components['schemas']['DcrOptions'];
         };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listDcrProducts: {
+    parameters: {
+      query?: {
+        /** @description Batch fetch: comma-separated product ids (max 100). Only active products are returned; others are absent. detailProducts groups only the returned SKUs */
+        ids?: string;
+      };
+      header?: {
+        /** @description ETag from an earlier response; 304 (empty body) when unchanged */
+        'if-none-match'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK (ETag, Cache-Control headers) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DcrProducts'];
+        };
+      };
+      /** @description Not modified (If-None-Match matched); empty body */
+      304: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Not signed in */
       401: {
@@ -14985,6 +15086,10 @@ export interface operations {
         month?: string;
         userId?: string;
         status?: components['schemas']['ExpenseStatus'];
+        /** @description Opt-in paging (default 50 once cursor is sent). Without limit and cursor every readable claim is returned, as before */
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
       };
       header?: never;
       path?: never;
@@ -15012,6 +15117,15 @@ export interface operations {
       };
       /** @description Signed in but not allowed (role, hierarchy or tenant) */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (bad limit or cursor) */
+      422: {
         headers: {
           [name: string]: unknown;
         };

@@ -20,10 +20,12 @@ import { daysLabel, leaveMessage, rangeLabel, today, type LeaveReq } from '@/lib
 import { ApplyLeaveDialog } from './apply-dialog';
 import { LeaveStatusBadge } from './status-badge';
 import type { LeaveData } from './use-leave';
+import { ShowMore, useShowMore } from '@/lib/paging';
 
 const n = (x: number) => (Number.isInteger(x) ? String(x) : x.toFixed(1));
 
 export function MyLeave({ data, year }: { data: LeaveData; year: number }) {
+  const page = useShowMore(data.mine);
   const [applying, setApplying] = useState(false);
   const [cancelling, setCancelling] = useState<LeaveReq | null>(null);
   const t = today();
@@ -100,54 +102,59 @@ export function MyLeave({ data, year }: { data: LeaveData; year: number }) {
             No leave requests in {year}.
           </p>
         ) : (
-          <ul className="divide-y rounded-lg border bg-card">
-            {data.mine.map((r) => (
-              <li
-                key={r.id}
-                className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3"
-                data-testid="leave-row"
-                data-status={r.status}
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">
-                    {r.typeName}{' '}
-                    <span className="font-normal text-muted-foreground">· {daysLabel(r.days)}</span>
-                  </p>
-                  <p className="text-sm text-muted-foreground">{rangeLabel(r)}</p>
-                  {(r.rejectionReason ?? r.decisionComment) &&
-                    (r.status === 'rejected' ? (
-                      <div className="mt-1">
-                        <RejectionNote
-                          reason={(r.rejectionReason ?? r.decisionComment)!}
-                          byName={r.rejectedBy?.name}
-                          at={r.rejectedAt ?? r.decidedAt}
-                          testId="leave-rejection"
-                        />
-                      </div>
-                    ) : (
-                      <p className="mt-1 text-sm">Manager: {r.decisionComment}</p>
-                    ))}
-                  {r.status === 'pending' && r.approvalStep && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Approval step {r.approvalStep} of{' '}
-                      {data.settings?.approvalLevels ?? r.approvalStep}
+          <>
+            <ul className="divide-y rounded-lg border bg-card">
+              {page.visible.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3"
+                  data-testid="leave-row"
+                  data-status={r.status}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">
+                      {r.typeName}{' '}
+                      <span className="font-normal text-muted-foreground">
+                        · {daysLabel(r.days)}
+                      </span>
                     </p>
+                    <p className="text-sm text-muted-foreground">{rangeLabel(r)}</p>
+                    {(r.rejectionReason ?? r.decisionComment) &&
+                      (r.status === 'rejected' ? (
+                        <div className="mt-1">
+                          <RejectionNote
+                            reason={(r.rejectionReason ?? r.decisionComment)!}
+                            byName={r.rejectedBy?.name}
+                            at={r.rejectedAt ?? r.decidedAt}
+                            testId="leave-rejection"
+                          />
+                        </div>
+                      ) : (
+                        <p className="mt-1 text-sm">Manager: {r.decisionComment}</p>
+                      ))}
+                    {r.status === 'pending' && r.approvalStep && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Approval step {r.approvalStep} of{' '}
+                        {data.settings?.approvalLevels ?? r.approvalStep}
+                      </p>
+                    )}
+                  </div>
+                  <LeaveStatusBadge status={r.status} />
+                  {cancellable(r) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCancelling(r)}
+                      data-testid="leave-cancel"
+                    >
+                      Cancel
+                    </Button>
                   )}
-                </div>
-                <LeaveStatusBadge status={r.status} />
-                {cancellable(r) && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCancelling(r)}
-                    data-testid="leave-cancel"
-                  >
-                    Cancel
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+            <ShowMore more={page.more} onClick={page.showMore} />
+          </>
         )}
       </section>
 

@@ -15,11 +15,11 @@
   "dependencies": {
     "@ariforce/contracts": "workspace:*",
     "@ariforce/ui": "workspace:*",
+    "@tanstack/react-query": "^5.105.3",
     "jspdf": "4.2.1",
     "jspdf-autotable": "5.0.9",
     "lucide-react": "^1.61.0",
     "maplibre-gl": "^6.16.0",
-    "motion": "^14.6.0",
     "next": "^16.4.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

@@ -14,7 +14,45 @@ export interface CompanySettings {
   dcrLockAfterHours: number;
   version: number;
 }
-export async function companySettings(tx: Tx, p: Principal): Promise<CompanySettings> {
+/**
+ * Per-replica cache of company settings (read on almost every request). Key = company id, short
+ * TTL (COMPANY_SETTINGS_CACHE_TTL_SECONDS, default 30, 0 = off), bounded size. Writers call
+ * invalidateCompanySettings() in the transaction and again after commit; other replicas may serve
+ * the old values for at most the TTL. Optimistic-concurrency reads (GET/PUT settings) pass fresh.
+ */
+const settingsCache = new Map<string, { until: number; value: CompanySettings }>();
+const SETTINGS_CACHE_MAX = 1000;
+function settingsTtlMs(): number {
+  const raw = process.env.COMPANY_SETTINGS_CACHE_TTL_SECONDS;
+  const n = raw === undefined || raw === '' ? 30 : Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 300) * 1000 : 0;
+}
+export function invalidateCompanySettings(companyId?: string) {
+  if (companyId) settingsCache.delete(companyId);
+  else settingsCache.clear();
+}
+
+export async function companySettings(
+  tx: Tx,
+  p: Principal,
+  o: { fresh?: boolean } = {},
+): Promise<CompanySettings> {
+  const ttl = settingsTtlMs();
+  const now = Date.now();
+  if (ttl && !o.fresh) {
+    const hit = settingsCache.get(p.companyId);
+    if (hit && hit.until > now) return { ...hit.value };
+  }
+  const value = await loadCompanySettings(tx, p);
+  if (ttl) {
+    if (settingsCache.size >= SETTINGS_CACHE_MAX && !settingsCache.has(p.companyId))
+      settingsCache.delete(settingsCache.keys().next().value!);
+    settingsCache.set(p.companyId, { until: now + ttl, value });
+  }
+  return { ...value };
+}
+
+async function loadCompanySettings(tx: Tx, p: Principal): Promise<CompanySettings> {
   const [c] = await tx.select().from(companies).where(eq(companies.id, p.companyId));
   if (!c) throw new Error('company row not visible');
   return {

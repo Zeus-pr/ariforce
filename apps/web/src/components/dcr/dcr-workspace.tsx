@@ -26,6 +26,7 @@ import { Skeleton } from '@ariforce/ui/components/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ariforce/ui/components/tabs';
 import { toast } from '@ariforce/ui/components/sonner';
 import { dateLabel, todayIST } from '@/components/attendance/format';
+import { dcrDateClosedText } from '@/lib/dcr/date-rule';
 import { thisMonthIST } from '@/components/tour-plans/month';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { useSession } from '@/lib/auth';
@@ -44,6 +45,7 @@ import { DcrHistory } from './dcr-history';
 import { DcrMonthCalendar } from './month-calendar';
 import { DcrStatusSections } from './status-sections';
 import { Reveal } from './dcr-card-parts';
+import { cachedGet } from '@/lib/query';
 
 /**
  * DCR page: Calendar (month grid + status lists + in-place report) | History.
@@ -201,6 +203,8 @@ function CalendarPanel({
   const [confirm, setConfirm] = useState<Dcr | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [announce, setAnnounce] = useState('');
+  /** Why the picked day can't get a new report (today only). */
+  const [notice, setNotice] = useState<string | null>(null);
   const ctrl = useRef<FlowController>(null);
   const seq = useRef(0);
   const focusTarget = useRef<string | null>(null);
@@ -289,7 +293,7 @@ function CalendarPanel({
     if (items === null) return [];
     const filed = new Set(items.filter((d) => d.status !== 'draft').map((d) => d.date));
     const drafted = new Set(items.filter((d) => d.status === 'draft').map((d) => d.date));
-    const liveTpCards = tpCardsFromApprovedItems(approvedTpDrafts, placeName, wtName, month);
+    const liveTpCards = tpCardsFromApprovedItems(approvedTpDrafts, placeName, wtName, month, today);
     return liveTpCards.length ? liveTpCards : tpCardsFromPlan(plan, filed, drafted, today, month);
   }, [approvedTpDrafts, items, month, plan, placeName, today, wtName]);
 
@@ -316,11 +320,11 @@ function CalendarPanel({
       for (let i = 0; i < doctors.length; i += 100) {
         const batch = doctors.slice(i, i + 100);
         jobs.push(() =>
-          api
-            .GET('/v1/doctors', { params: { query: { ids: batch.join(','), limit: 100 } } })
-            .then((r) => {
-              r.data?.items.forEach((d) => found.set(d.id, d.name));
-            }),
+          cachedGet(['doctors', 'ids', batch.join(',')], () =>
+            api.GET('/v1/doctors', { params: { query: { ids: batch.join(','), limit: 100 } } }),
+          ).then((r) => {
+            r.data?.items.forEach((d) => found.set(d.id, d.name));
+          }),
         );
       }
       for (const kind of ['chemist', 'stockist'] as const) {
@@ -363,9 +367,15 @@ function CalendarPanel({
       });
       focusTarget.current = 'header';
     } else if (q.get('new') === '1') {
-      const date =
+      // New reports are for today only (IST); a dated link to another day just selects it.
+      const linkDate =
         q.get('date') && /^\d{4}-\d{2}-\d{2}$/.test(q.get('date')!) ? q.get('date')! : today;
+      const date = linkDate === today ? today : linkDate;
       setSelected(date);
+      if (date !== today) {
+        setNotice(dcrDateClosedText(date, today));
+        return;
+      }
       setOpen({ key: 'new-link', date, draftId: null, isNew: true });
       focusTarget.current = 'header';
     } else if (q.get('date') && /^\d{4}-\d{2}-\d{2}$/.test(q.get('date')!)) {
@@ -425,12 +435,19 @@ function CalendarPanel({
   };
 
   const openNew = (date: string) => {
+    if (date !== today) {
+      setSelected(date);
+      setNotice(dcrDateClosedText(date, today));
+      return;
+    }
+    setNotice(null);
     seq.current += 1;
     void switchTo({ key: `new-${seq.current}`, date, draftId: null, isNew: true });
   };
 
   const onSelectDay = (date: string, dayPills: DayPill[]) => {
     setSelected(date);
+    setNotice(null);
     const uniqueIds = [
       ...new Set(
         dayPills
@@ -654,12 +671,23 @@ function CalendarPanel({
         <>
           <DcrMonthCalendar
             month={month}
+            closedEmptyDays
             today={today}
             selected={selected}
             pills={pills}
             onMonthChange={setMonth}
             onSelectDay={onSelectDay}
           />
+
+          {notice && !open && (
+            <div
+              className="rounded-xl border bg-muted/40 p-4 text-sm"
+              role="status"
+              data-testid="dcr-date-notice"
+            >
+              {notice}
+            </div>
+          )}
 
           {open && editor}
 
@@ -686,7 +714,7 @@ function CalendarPanel({
               placeName={placeName}
               onOpenDcr={openDcr}
               onOpenTp={(t) => {
-                const date = t.draftDates?.[0] ?? t.pendingDates[0] ?? today;
+                const date = t.pendingDates.includes(today) ? today : (t.pendingDates[0] ?? today);
                 const existing = (items ?? []).find((d) => d.date === date && d.status === 'draft');
                 if (existing) openDcr(existing);
                 else openNew(date);
@@ -736,10 +764,14 @@ function tpCardsFromApprovedItems(
   placeName: Map<string, string>,
   wtName: (id: string) => string | undefined,
   month: string,
+  today: string,
 ): TpDraftCard[] {
   return items
     .flatMap((item) => {
-      const pendingDates = item.pendingDates.filter((date) => date.startsWith(month));
+      // DCRs are filed for today only, so a tour plan item offers only today (no future drafts).
+      const pendingDates = item.pendingDates.filter(
+        (date) => date.startsWith(month) && date === today,
+      );
       if (!pendingDates.length) return [];
       const territories = item.plan.territoryIds
         .map((id) => placeName.get(id))
@@ -761,7 +793,7 @@ function tpCardsFromApprovedItems(
     .sort((a, b) => a.from.localeCompare(b.from));
 }
 
-/** Approved TP days in this month that are not yet filed (and not already a draft). */
+/** Today's approved TP day if not yet filed or drafted (DCRs are for today only; no future drafts). */
 function tpCardsFromPlan(
   plan: TourPlan | null,
   filed: Set<string>,
@@ -769,31 +801,22 @@ function tpCardsFromPlan(
   today: string,
   month: string,
 ): TpDraftCard[] {
-  if (!plan) return [];
-  const pending = plan.days
-    .filter((d) => d.status === 'approved' && d.entries.length > 0)
-    .map((d) => d.date)
-    .filter(
-      (date) =>
-        date.startsWith(month) &&
-        !filed.has(date) &&
-        !drafted.has(date) &&
-        date >= today.slice(0, 7) + '-01',
-    );
-  // Show future approved days as TP pills too (draft until the day); keep past unfiled as well.
-  const allPending = plan.days
-    .filter((d) => d.status === 'approved' && d.entries.length > 0)
-    .map((d) => d.date)
-    .filter((date) => date.startsWith(month) && !filed.has(date) && !drafted.has(date));
-  const dates = allPending.length ? allPending : pending;
-  if (!dates.length) return [];
-  const sorted = [...dates].sort();
+  if (!plan || !today.startsWith(month)) return [];
+  const due = plan.days.some(
+    (d) =>
+      d.date === today &&
+      d.status === 'approved' &&
+      d.entries.length > 0 &&
+      !filed.has(today) &&
+      !drafted.has(today),
+  );
+  if (!due) return [];
   return [
     {
       id: plan.id,
-      from: sorted[0]!,
-      to: sorted[sorted.length - 1]!,
-      pendingDates: sorted,
+      from: today,
+      to: today,
+      pendingDates: [today],
       label: 'Approved tour plan · file as DCR',
     },
   ];

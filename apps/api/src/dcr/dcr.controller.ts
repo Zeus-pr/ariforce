@@ -10,13 +10,16 @@ import {
   Post,
   Put,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   CompetitorBrandQuery,
   DcrCorrectionRequest,
   DcrDraftPut,
   DcrListQuery,
   DcrOptionsQuery,
+  DcrProductsQuery,
   DcrDecision,
   DcrSfcMatchQuery,
   DcrSubmit,
@@ -61,7 +64,26 @@ export class DcrController {
     @CurrentPrincipal() p: Principal,
     @Query(new ZodPipe(DcrOptionsQuery)) q: z.infer<typeof DcrOptionsQuery>,
   ) {
-    return this.flow.options(p, q.date);
+    return this.flow.options(p, q.date, q.includeProducts !== 'false');
+  }
+
+  /** Product pickers (split out of options). ETag + If-None-Match -> 304; private, max-age 60s. */
+  @Get('products')
+  @RequirePermissions('field:read')
+  async products(
+    @CurrentPrincipal() p: Principal,
+    @Query(new ZodPipe(DcrProductsQuery)) q: z.infer<typeof DcrProductsQuery>,
+    @Headers('if-none-match') ifNoneMatch: string | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const r = await this.flow.products(p, q.ids?.split(','), ifNoneMatch);
+    res.setHeader('ETag', r.etag);
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    if (!r.body) {
+      res.status(304);
+      return;
+    }
+    return r.body;
   }
 
   @Get('territories')

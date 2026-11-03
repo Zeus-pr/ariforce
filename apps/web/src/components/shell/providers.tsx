@@ -1,8 +1,9 @@
 'use client';
 
-import { MotionConfig } from 'motion/react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '@/lib/query';
 
-/** App-wide client providers. Light theme only. reducedMotion="user": motion components drop transforms when the OS asks. */
+/** App-wide client providers: the shared React Query cache. Light theme only; motion is CSS-only. */
 export function Providers({ children }: { children: React.ReactNode }) {
-  return <MotionConfig reducedMotion="user">{children}</MotionConfig>;
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
