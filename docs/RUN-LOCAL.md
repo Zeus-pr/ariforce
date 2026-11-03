@@ -178,6 +178,8 @@ pnpm -F @ariforce/api admin:create-first --company arighna \
   a mix with `127.0.0.1`.
 - **Mobile/CLI:** the sign-in response header `set-auth-token` carries a bearer token; send it as
   `Authorization: Bearer <token>`.
+- **Session lifetime:** 18 h sliding idle window, 7 day absolute cap, same for cookie and bearer
+  (constants in `apps/api/src/auth/auth.ts`, no env vars; see `docs/SECURITY.md`).
 
 ## 6. Web app, mock or real
 

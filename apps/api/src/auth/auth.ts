@@ -26,6 +26,18 @@ import { CLIENT_IP_HEADER } from '../common/client-ip';
 import type { MailService } from '../mail/mail.service';
 
 export const AUTH_BASE_PATH = '/v1/auth';
+/**
+ * Session lifetime (cookie and mobile bearer token alike: both are the same auth_session row).
+ * Sliding idle window: a session expires 18 h after its last refresh; while in use better-auth
+ * pushes the expiry forward at most once per SESSION_UPDATE_AGE_S. Absolute cap: the session guard
+ * revokes any session older than SESSION_MAX_AGE_S since sign-in, however active.
+ */
+export const SESSION_IDLE_S = 18 * 60 * 60;
+export const SESSION_UPDATE_AGE_S = 60 * 60;
+export const SESSION_MAX_AGE_S = 7 * 24 * 60 * 60;
+/** True when a session signed in at `createdAt` is past the absolute cap. */
+export const sessionPastMaxAge = (createdAt: Date | string, now = new Date()) =>
+  now.getTime() - new Date(createdAt).getTime() > SESSION_MAX_AGE_S * 1000;
 export const LOGIN_OTP_LENGTH = 6;
 export const LOGIN_OTP_TTL_MINUTES = 5;
 export const LOGIN_OTP_MAX_ATTEMPTS = 3;
@@ -71,7 +83,8 @@ export function createAuth(db: Db, audit: AuditService, mail?: MailService) {
       // Forgot password (email OTP) signs out every device (#79).
       revokeSessionsOnPasswordReset: true,
     },
-    session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24 },
+    // No cookieCache: every request reads auth_session, so revocation is immediate.
+    session: { expiresIn: SESSION_IDLE_S, updateAge: SESSION_UPDATE_AGE_S },
     plugins: [
       bearer(),
       // Forgot password only (docs/AUTH-PASSWORD-RESET.md). The plugin's own routes are not

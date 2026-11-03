@@ -2,6 +2,25 @@
 
 Hardening from the Cutly audit. One section per issue.
 
+## Session lifetime
+
+- One `auth_session` row per sign-in; the browser cookie and the mobile bearer token
+  (`Authorization: Bearer`, better-auth `bearer()` plugin) are the same row, so the same rules apply.
+- Sliding idle window **18 h** (`SESSION_IDLE_S`): any API use refreshes the expiry, at most once an
+  hour (`SESSION_UPDATE_AGE_S`). 18 h without use -> signed out.
+- Absolute cap **7 days** from sign-in (`SESSION_MAX_AGE_S`): the session guard deletes an older
+  session and answers 401, so a stolen token cannot be kept alive forever.
+- No `cookieCache`: revocation (deactivate, password reset, role change) is immediate.
+- Cookie (better-auth defaults): `HttpOnly`, `SameSite=Lax`, `Secure` because `BETTER_AUTH_URL` is
+  https; name prefix `__Secure-` then. The web calls the API cross-origin with credentials, so web and
+  API must be on the same site (e.g. `app.x.com` + `api.x.com`); two `*.up.railway.app` hosts are
+  different sites and Lax cookies would not be sent.
+- Login OTP (`LOGIN_OTP`): the code lives 5 min, the pending two-factor cookie 10 min; the session it
+  creates then follows the rules above.
+- Changing `BETTER_AUTH_SECRET` or `BETTER_AUTH_URL` signs everyone out (cookie signature / name).
+- No session cleanup job: expired rows are rejected by better-auth; they stay in `auth_session` until
+  removed (harmless, tokens are useless).
+
 ## Session revocation (#79)
 
 - Sessions are better-auth DB rows (`auth_session`); cookies and bearer tokens both resolve to them.
