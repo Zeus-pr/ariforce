@@ -12,12 +12,19 @@ Hardening from the Cutly audit. One section per issue.
   alternative is a small `updateAge` (e.g. 1 h), which gives an 18 h _idle_ window instead, but then an
   active (or stolen) session never expires on its own.
 - Expired session -> better-auth returns no session -> `401` on `/v1/me` and every data route (tested in
-  `apps/api/test/session-lifetime.test.ts`).
+  `apps/api/test/session-lifetime.test.ts`; runs in CI against the workflow Postgres service, skipped
+  locally without `DIRECT_URL`/`DATABASE_URL`).
+- Existing sessions from before the cap: one-off `packages/db/scripts/data-fixes/2026-11-03-session-18h-cap.sql`
+  (lead, after deploy) caps them; signs out anyone signed in more than 18 h ago.
 - No `cookieCache`: revocation (deactivate, password reset, role change) is immediate.
 - Cookie: `HttpOnly`, `Path=/`, `Max-Age` = the cap, `Secure` (and the `__Secure-` name prefix) when
   `BETTER_AUTH_URL` is https.
   - `AUTH_COOKIE_SAMESITE` (`lax` default, `strict`, `none`; `none` forces `Secure`).
   - `AUTH_COOKIE_DOMAIN` (optional bare parent domain, e.g. `x.com`) shares the cookie across subdomains.
+  - Set `AUTH_COOKIE_DOMAIN` from day one. Setting it later leaves two cookies with the same name
+    (host-only and `Domain=`) in browsers until the old one expires; which one is sent is undefined.
+  - `AUTH_COOKIE_SAMESITE=strict` drops the cookie on any cross-site request, including top-level
+    navigation from links in other sites, mail or chat: the user lands signed out. Prefer `lax`.
   - Recommended: custom domains on one site (`app.x.com` + `api.x.com`), `AUTH_COOKIE_SAMESITE=lax`,
     `AUTH_COOKIE_DOMAIN=x.com`.
   - Two `*.up.railway.app` hosts are different sites (public suffix): only `AUTH_COOKIE_SAMESITE=none`

@@ -34,6 +34,8 @@ describe('session config', () => {
   });
 });
 
+// Runs in CI: .github/workflows sets DIRECT_URL/DATABASE_URL at workflow level with a postgres service,
+// migrates + seeds, then `pnpm test`. Locally it skips unless both URLs point at a test DB.
 describe.skipIf(!OWNER || !APP)('expired session (real API)', () => {
   let app: INestApplication;
   const http = () => request(app.getHttpServer());
