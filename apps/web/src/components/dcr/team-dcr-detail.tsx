@@ -51,7 +51,15 @@ export function TeamDcrDetail({ id }: { id: string }) {
 }
 
 /** The report with Approve / Reject (reason) in place; `inline` is the compact form used on the Approvals page. */
-export function DcrReportBody({ id, inline = false }: { id: string; inline?: boolean }) {
+export function DcrReportBody({
+  id,
+  inline = false,
+  readOnly = false,
+}: {
+  id: string;
+  inline?: boolean;
+  readOnly?: boolean;
+}) {
   const { role, user } = useRole();
   const people = useTeamPeople(role);
   const q = useQuery({
@@ -94,9 +102,10 @@ export function DcrReportBody({ id, inline = false }: { id: string; inline?: boo
               {dateLabel(d.date)} · {STATUS[d.status] ?? d.status}
             </p>
           </header>
-          {d.status === 'submitted' && d.userId !== user?.id && can(role, 'dcr:review') && (
-            <ReviewBar id={d.id} onDone={() => void q.refetch()} />
-          )}
+          {!readOnly &&
+            d.status === 'submitted' &&
+            d.userId !== user?.id &&
+            can(role, 'dcr:review') && <ReviewBar id={d.id} onDone={() => void q.refetch()} />}
           <ReportFacts d={d} nameOf={nameOf} />
           <WorkDone d={d} />
           <DcrExpenses

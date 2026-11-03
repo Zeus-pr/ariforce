@@ -370,7 +370,7 @@ function DayDetail({ userId, date }: { userId: string; date: string }) {
           ['Calls', d.calls],
         ]}
       />
-      {d.dcr && <DcrReportBody id={d.dcr.id} inline />}
+      {d.dcr && <DcrReportBody id={d.dcr.id} inline readOnly />}
       {points.length > 0 && (
         <CheckInMap
           points={points}
