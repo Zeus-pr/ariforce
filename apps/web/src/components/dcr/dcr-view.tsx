@@ -28,6 +28,7 @@ import { dateLabel, timeIST, todayIST } from '@/components/attendance/format';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
 import { api, apiReady, MOCKING, toApiError } from '@/lib/api';
 import { saveMessage } from '@/lib/leave/model';
+import { dcrDateClosedText, dcrDateNotTodayMessage, dcrDateOpen } from '@/lib/dcr/date-rule';
 import { productImageUrl } from '@/lib/products/product-image';
 import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
 import { OutletPicker, TerritoryFilter } from '@/components/pickers/pickers';
@@ -166,7 +167,9 @@ function DcrDay({ today }: { today: string }) {
   const field = workType?.kind === 'field';
   const deviates =
     !!planned && (planned.workTypeId !== wt || (field && (planned.territoryIds[0] ?? '') !== terr));
-  const locked = dcr?.status === 'submitted' || dcr?.status === 'locked';
+  // Today only (IST); a past day only while unlocked. Other days are view-only (history).
+  const dateClosed = !!today && !dcrDateOpen(date, today, dcr?.unlockedUntil ?? null);
+  const locked = dcr?.status === 'submitted' || dcr?.status === 'locked' || dateClosed;
   const productName = useMemo(
     () => new Map([...orderProducts, ...products].map((p) => [p.id, p.name])),
     [products, orderProducts],
@@ -213,6 +216,10 @@ function DcrDay({ today }: { today: string }) {
         ]
           .filter(Boolean)
           .join(' ') || null;
+      if (e.code === 'DCR_DATE_NOT_TODAY')
+        return toast.error(dcrDateNotTodayMessage(e.details, today ?? undefined), {
+          duration: 10000,
+        });
       return toast.error(pr ?? saveMessage(e), { duration: 10000 });
     }
     setDcr(r.data);
@@ -251,6 +258,12 @@ function DcrDay({ today }: { today: string }) {
           />
         </div>
       </div>
+
+      {dateClosed && today && dcr?.status !== 'submitted' && dcr?.status !== 'locked' && (
+        <p className="rounded-xl border bg-muted/40 p-4 text-sm" data-testid="dcr-date-closed">
+          {dcrDateClosedText(date, today)}
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="text-sm text-destructive">
