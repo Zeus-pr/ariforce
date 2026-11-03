@@ -30,6 +30,7 @@ import {
   uploadProductImage,
   type ProductImageResult,
 } from '@/lib/products/product-image';
+import { ProductImg } from '@/components/media/product-img';
 
 type ImageProduct = { id: string; name: string; code: string };
 const size = (b: number) =>
@@ -52,7 +53,14 @@ export function ProductImageCell({
 }) {
   const url = productImageUrl(product);
   const face = url ? (
-    <img src={url} alt="" className="size-full object-cover" loading="lazy" decoding="async" />
+    <ProductImg
+      src={url}
+      alt=""
+      width={40}
+      height={40}
+      sizes="40px"
+      className="size-full object-cover"
+    />
   ) : canEdit ? (
     <ImagePlus className="size-4 text-muted-foreground" aria-hidden />
   ) : (
@@ -223,8 +231,11 @@ export function ProductImageDialog({
           >
             {shown ? (
               <>
-                <img
+                <ProductImg
                   src={shown}
+                  width={480}
+                  height={360}
+                  sizes="(min-width: 640px) 480px, 100vw"
                   alt={
                     preview
                       ? `Preview of ${file?.name ?? 'the new image'}`
