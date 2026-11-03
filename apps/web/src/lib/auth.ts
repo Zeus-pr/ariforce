@@ -90,8 +90,88 @@ function primaryRole(roles: string[]): Role | null {
   return sales[0] ?? (known.includes('system_admin') ? 'system_admin' : 'business_manager');
 }
 
-/** Sign in via better-auth email (session cookie), then GET /v1/me. */
-export async function signIn(email: string, password: string): Promise<User | SignInError> {
+/** Password was right; the server emailed a 6-digit code that must be entered next. */
+export type OtpChallenge = { otp: true; email: string };
+export type OtpError = { message: string; restart?: boolean };
+
+async function sendLoginOtp(): Promise<OtpError | null> {
+  try {
+    const res = await fetch(`${API_URL}/v1/auth/two-factor/send-otp`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.status === 429)
+      return { message: rateLimitMessage({ response: res, error: await res.json().catch(() => null) }) };
+    if (res.ok) return null;
+    // The password step expired or never happened: start over.
+    return { message: 'Your sign-in expired. Enter your password again.', restart: true };
+  } catch {
+    return { message: 'Could not reach the server. Check your connection.' };
+  }
+}
+
+/** Resend the sign-in code (the password step must have happened in this browser). */
+export const resendLoginOtp = sendLoginOtp;
+
+/** After the session exists: load the profile and store the signed-in user. */
+async function finishSignIn(): Promise<User | SignInError> {
+  const { data: me } = await api.GET('/v1/me');
+  if (!me) return { field: 'password', message: 'Signed in, but your profile could not be loaded.' };
+  const role = primaryRole(me.roles);
+  if (!role) {
+    // Signed in, but no role with portal access (e.g. Distribution Head, Accountant): sign out again.
+    void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(() => {});
+    return { field: 'password', message: NO_PORTAL_MESSAGE };
+  }
+  const user: User = {
+    id: me.id,
+    name: me.name,
+    email: me.email,
+    role,
+    territory: me.companyName,
+  };
+  write({ userId: me.id, role, user });
+  return user;
+}
+
+/** Second sign-in step: the emailed code. Completes the session, then loads the profile. */
+export async function verifyLoginOtp(code: string): Promise<User | SignInError | OtpError> {
+  const c = code.replace(/\s/g, '');
+  if (!/^\d{6}$/.test(c)) return { message: 'Enter the 6-digit code from your email.' };
+  try {
+    const res = await fetch(`${API_URL}/v1/auth/two-factor/verify-otp`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: c }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.status === 429)
+      return { message: rateLimitMessage({ response: res, error: await res.json().catch(() => null) }) };
+    if (!res.ok) {
+      const b = (await res.json().catch(() => null)) as { code?: string } | null;
+      if (b?.code === 'INVALID_TWO_FACTOR_COOKIE')
+        return { message: 'Your sign-in expired. Enter your password again.', restart: true };
+      if (b?.code === 'TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE' || b?.code === 'OTP_HAS_EXPIRED')
+        return { message: 'That code is no longer valid. Ask for a new one.' };
+      if (b?.code === 'ACCOUNT_TEMPORARILY_LOCKED')
+        return { message: 'Too many wrong codes. Try again later.' };
+      return { message: 'That code is not right. Check it and try again.' };
+    }
+    return await finishSignIn();
+  } catch {
+    return { message: 'Could not reach the server. Check your connection.' };
+  }
+}
+
+/** Sign in via better-auth email (session cookie), then the emailed code when enabled, then GET /v1/me. */
+export async function signIn(
+  email: string,
+  password: string,
+): Promise<User | SignInError | OtpChallenge> {
   const e = email.trim().toLowerCase();
   if (!e) return { field: 'email', message: 'Enter your work email.' };
   if (!password) return { field: 'password', message: 'Enter your password.' };
@@ -124,28 +204,18 @@ export async function signIn(email: string, password: string): Promise<User | Si
     if (res.status === 401 || res.status === 400 || res.status === 403)
       return { field: 'password', message: 'Email or password is wrong.' };
     if (!res.ok) return { field: 'password', message: 'Could not sign in. Try again in a moment.' };
-    const { data: me } = await api.GET('/v1/me');
-    if (!me)
-      return { field: 'password', message: 'Signed in, but your profile could not be loaded.' };
-    const role = primaryRole(me.roles);
-    if (!role) {
-      // Signed in, but no role with portal access (e.g. Distribution Head, Accountant): sign out again.
-      void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(() => {});
-      return { field: 'password', message: NO_PORTAL_MESSAGE };
+    const body = (await res.json().catch(() => null)) as { twoFactorRedirect?: boolean } | null;
+    if (body?.twoFactorRedirect) {
+      const failed = await sendLoginOtp();
+      if (failed) return { field: 'password', message: failed.message };
+      return { otp: true, email: e };
     }
-    const user: User = {
-      id: me.id,
-      name: me.name,
-      email: me.email,
-      role,
-      territory: me.companyName,
-    };
-    write({ userId: me.id, role, user });
-    return user;
+    return await finishSignIn();
   } catch {
     return { field: 'password', message: 'Could not reach the server. Check your connection.' };
   }
 }
+
 
 export function signOut() {
   void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(

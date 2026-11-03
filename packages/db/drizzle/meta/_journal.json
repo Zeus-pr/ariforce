@@ -372,6 +372,13 @@
       "when": 1793340300000,
       "tag": "0052_expense_auto_draft",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1793340400000,
+      "tag": "0053_login_otp",
+      "breakpoints": true
     }
   ]
 }

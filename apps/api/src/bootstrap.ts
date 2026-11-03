@@ -25,6 +25,14 @@ const BLOCKED_AUTH_PREFIXES = [
   '/sign-in/email-otp',
   '/verify-email',
   '/send-verification-email',
+  // Sign-in OTP is email only: no authenticator or backup-code enrolment or verification.
+  '/two-factor/enable',
+  '/two-factor/disable',
+  '/two-factor/get-totp-uri',
+  '/two-factor/verify-totp',
+  '/two-factor/generate-backup-codes',
+  '/two-factor/verify-backup-code',
+  '/two-factor/view-backup-codes',
 ].map((p) => `${AUTH_BASE_PATH}${p}`);
 import { AuthService } from './auth/auth.service';
 import { CLIENT_IP_HEADER, clientIp } from './common/client-ip';

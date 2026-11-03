@@ -4,7 +4,7 @@
  * Layout adapted from shadcn/ui "login-03" block (MIT, https://ui.shadcn.com/blocks/login):
  * centred card, logo above, stacked fields. Restyled with AriForce tokens; social buttons removed.
  */
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import { Button } from '@ariforce/ui/components/button';
@@ -15,7 +15,10 @@ import { SUSPENDED_MESSAGE } from '@/lib/auth-errors';
 import {
   PENDING_MESSAGE,
   REJECTED_MESSAGE,
+  resendLoginOtp,
   signIn,
+  verifyLoginOtp,
+  type OtpChallenge,
   type SignInError,
 } from '@/lib/auth';
 import { canSee, homeFor } from '@/lib/nav';
@@ -37,9 +40,64 @@ export function SignInForm() {
           : null;
   });
   const [pending, setPending] = useState(false);
+  const [challenge, setChallenge] = useState<OtpChallenge | null>(null);
+  const [code, setCode] = useState('');
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
+  const codeRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const id = useId();
+
+  const goHome = (role: Parameters<typeof homeFor>[0]) => {
+    setError(null);
+    setPending(true);
+    const next = params.get('next');
+    const safe =
+      next &&
+      next.startsWith('/') &&
+      !next.startsWith('//') &&
+      canSee(role, next.split('?')[0] ?? next)
+        ? next
+        : null;
+    router.replace(safe ?? homeFor(role));
+  };
+
+  const restart = (message?: string) => {
+    setChallenge(null);
+    setCode('');
+    setCodeError(null);
+    setPassword('');
+    if (message) setError({ field: 'password', message });
+  };
+
+  const submitCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pending) return;
+    setPending(true);
+    const result = await verifyLoginOtp(code);
+    if ('role' in result) return goHome(result.role);
+    setPending(false);
+    if ('field' in result) return restart(result.message);
+    if (result.restart) return restart(result.message);
+    setCodeError(result.message);
+    setCode('');
+    codeRef.current?.focus();
+  };
+
+  const resend = async () => {
+    if (cooldown > 0) return;
+    setCooldown(45);
+    const failed = await resendLoginOtp();
+    if (failed?.restart) restart(failed.message);
+    else setCodeError(failed ? failed.message : null);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,21 +110,73 @@ export function SignInForm() {
       (result.field === 'email' ? emailRef : passwordRef).current?.focus();
       return;
     }
-    setError(null);
-    setPending(true);
-    const next = params.get('next');
-    const safe =
-      next &&
-      next.startsWith('/') &&
-      !next.startsWith('//') &&
-      canSee(result.role, next.split('?')[0] ?? next)
-        ? next
-        : null;
-    router.replace(safe ?? homeFor(result.role));
+    if ('otp' in result) {
+      setPending(false);
+      setChallenge(result);
+      setCooldown(45);
+      return;
+    }
+    goHome(result.role);
   };
 
   const err = (f: SignInError['field']) =>
     error?.field === f && !error.account ? error.message : null;
+
+  if (challenge)
+    return (
+      <div className="af-page rounded-lg border bg-card p-5 shadow-xs sm:p-6">
+        <form onSubmit={submitCode} noValidate className="grid gap-4">
+          <div className="grid gap-1">
+            <p className="text-base font-medium">Check your email</p>
+            <p className="text-sm text-muted-foreground">
+              We sent a 6-digit code to {challenge.email}. It expires in 5 minutes.
+            </p>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor={`${id}-code`}>Sign-in code</Label>
+            <Input
+              ref={codeRef}
+              id={`${id}-code`}
+              name="code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              maxLength={6}
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+              aria-invalid={!!codeError}
+              className="h-10 text-center text-lg tracking-[0.4em]"
+            />
+            {codeError && (
+              <p role="alert" className="af-fade text-[13px] text-destructive">
+                {codeError}
+              </p>
+            )}
+          </div>
+          <Button type="submit" className="h-10 w-full text-[15px]" disabled={pending}>
+            {pending && <LoaderCircle className="animate-spin motion-reduce:animate-none" />}
+            Verify and sign in
+          </Button>
+          <div className="flex items-center justify-between text-sm">
+            <button
+              type="button"
+              onClick={resend}
+              disabled={cooldown > 0 || pending}
+              className="font-medium text-primary underline-offset-4 hover:underline disabled:text-muted-foreground disabled:no-underline"
+            >
+              {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
+            </button>
+            <button
+              type="button"
+              onClick={() => restart()}
+              className="text-muted-foreground underline-offset-4 hover:underline"
+            >
+              Use a different account
+            </button>
+          </div>
+        </form>
+      </div>
+    );
 
   return (
     <>
