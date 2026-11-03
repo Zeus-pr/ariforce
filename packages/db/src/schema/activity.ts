@@ -276,6 +276,7 @@ export const dcrCalls = pgTable(
   (t) => [
     index('dcr_calls_user_date_idx').on(t.companyId, t.userId, t.date),
     index('dcr_calls_outlet_idx').on(t.companyId, t.outletKind, t.outletId),
+    index('dcr_calls_dcr_idx').on(t.companyId, t.dcrId),
   ],
 );
 
