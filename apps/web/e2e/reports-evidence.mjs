@@ -39,8 +39,15 @@ for (const [role, view] of [
     const t = await page.getByTestId('report-table').getByTestId('perf-row').first().textContent();
     await page.getByTestId('report-pick').nth(0).click();
     await page.waitForURL((u) => u.searchParams.get('r') === 'activity');
-    const total = page.getByTestId('report-table').getByTestId('perf-row').first().filter({ hasText: 'Team total' });
-    const ok = await total.waitFor({ timeout: 8000 }).then(() => true, () => false);
+    const total = page
+      .getByTestId('report-table')
+      .getByTestId('perf-row')
+      .first()
+      .filter({ hasText: 'Team total' });
+    const ok = await total.waitFor({ timeout: 8000 }).then(
+      () => true,
+      () => false,
+    );
     check(ok, `manager report starts with a team total (was ${t.slice(0, 20)}…)`);
   }
   await noBannedWords(page, `reports ${role}`);

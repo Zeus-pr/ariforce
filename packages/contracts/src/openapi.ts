@@ -33,7 +33,13 @@ import {
   ReadAllResult,
   UnreadCount,
 } from './schemas/notifications';
-import { MeAttention, MeKpiQuery, MeToday, PlannedDoctors, PlannedDoctorsQuery } from './schemas/home';
+import {
+  MeAttention,
+  MeKpiQuery,
+  MeToday,
+  PlannedDoctors,
+  PlannedDoctorsQuery,
+} from './schemas/home';
 import { ApprovalDetail } from './schemas/approval-detail';
 import {
   TourPlanItem,
@@ -2196,7 +2202,8 @@ function buildDocument(): OpenApiDocument {
         get: op({
           tags: ['Home'],
           operationId: 'getMyAttention',
-          summary: 'Home badges in one call: waiting approvals by type, unread, exceptions, own requests',
+          summary:
+            'Home badges in one call: waiting approvals by type, unread, exceptions, own requests',
           description:
             'Replaces the separate count calls on the home screen. Own data; team parts need a team plus dcr:review (dcrReview) or field:read (exceptions.team), else null.',
           responses: { '200': { description: 'Counts', ...json(MeAttention) } },
@@ -2214,7 +2221,8 @@ function buildDocument(): OpenApiDocument {
         get: op({
           tags: ['Home'],
           operationId: 'listMyPlannedDoctors',
-          summary: 'Doctors planned for a day: the monthly plan visits, then the TP item territories',
+          summary:
+            'Doctors planned for a day: the monthly plan visits, then the TP item territories',
           requestParams: { query: PlannedDoctorsQuery },
           responses: {
             '200': { description: 'Planned doctors', ...json(PlannedDoctors) },

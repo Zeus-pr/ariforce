@@ -38,7 +38,13 @@ export function seedNotifications(): N[] {
       body: 'Your CL leave on 2026-09-12 was rejected by Anita Rao. Comment: Month-end review that week',
       entityType: 'leave_request',
       // Same data the API stores: the request payload plus comment and actorName.
-      data: { typeCode: 'CL', fromDate: '2026-09-12', toDate: '2026-09-12', comment: 'Month-end review that week', actorName: 'Anita Rao' },
+      data: {
+        typeCode: 'CL',
+        fromDate: '2026-09-12',
+        toDate: '2026-09-12',
+        comment: 'Month-end review that week',
+        actorName: 'Anita Rao',
+      },
     },
   ].map((r, i) => ({
     data: null,

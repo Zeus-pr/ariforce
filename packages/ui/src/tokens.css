@@ -109,7 +109,6 @@
   --duration-splash: 850ms;
 }
 
-
 @media (prefers-reduced-motion: reduce) {
   :root {
     --duration-fast: 0ms;

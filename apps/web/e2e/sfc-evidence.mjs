@@ -88,7 +88,10 @@ for (const view of ['desktop', 'mobile']) {
     hqs.length === 2 && hqs.some((h) => /Bmch/.test(h)) && hqs.some((h) => /Anamoy/.test(h)),
     `${view}: both Burdwan HQs listed`,
   );
-  await page.getByTestId('sfc-hq-change').click().catch(() => {});
+  await page
+    .getByTestId('sfc-hq-change')
+    .click()
+    .catch(() => {});
   await page.getByTestId('sfc-hq-search').fill('anamoy');
   check((await page.getByTestId('sfc-hq-option').count()) === 1, `${view}: HQ search filters`);
   await page.getByTestId('sfc-hq-search').fill('');

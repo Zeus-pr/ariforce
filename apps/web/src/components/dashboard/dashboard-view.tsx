@@ -9,7 +9,14 @@ import { Button } from '@ariforce/ui/components/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@ariforce/ui/components/card';
 import { NumberTicker } from '@ariforce/ui/components/number-ticker';
 import { toast } from '@ariforce/ui/components/sonner';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@ariforce/ui/components/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@ariforce/ui/components/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ariforce/ui/components/tabs';
 import { cn } from '@ariforce/ui/lib/utils';
 import { useRole } from '@/components/shell/role-context';
@@ -37,11 +44,17 @@ const SCOPE: Record<Rollup, string> = {
   byTerritory: 'By territory',
 };
 
-const monthFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' });
+const monthFmt = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Kolkata',
+  year: 'numeric',
+  month: '2-digit',
+});
 const thisMonth = () => monthFmt.format(new Date());
 const noop = () => () => {};
 const monthLabel = (m: string) =>
-  new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${m}-01T00:00:00Z`));
+  new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+    new Date(`${m}-01T00:00:00Z`),
+  );
 
 /** The widest rollup the contract allows this role (docs/kpi-definitions.md). */
 export function rollupFor(role: Role): Rollup {
@@ -58,7 +71,11 @@ function SampleBadge() {
 }
 
 function FormulaNote() {
-  return <p className="text-xs text-muted-foreground">KPI formulas are drafts, to confirm with Arighna.</p>;
+  return (
+    <p className="text-xs text-muted-foreground">
+      KPI formulas are drafts, to confirm with Arighna.
+    </p>
+  );
 }
 
 export function DashboardView() {
@@ -95,7 +112,10 @@ function Dashboard({ role, month }: { role: Role; month: string }) {
   const field = isFieldRole(role);
   const approver = isApprover(role);
   const head = useKpis(month, rollup, HEADLINE);
-  const team = useKpis(month, approver ? 'byUser' : 'self', [...TEAM_COLUMNS, 'dcr_compliance_pct']);
+  const team = useKpis(month, approver ? 'byUser' : 'self', [
+    ...TEAM_COLUMNS,
+    'dcr_compliance_pct',
+  ]);
   const metrics = head.data?.rows[0]?.metrics ?? [];
 
   return (
@@ -105,12 +125,24 @@ function Dashboard({ role, month }: { role: Role; month: string }) {
           <p className="text-xs text-muted-foreground" data-testid="kpi-scope">
             {SCOPE[rollup]} · {monthLabel(month)}
           </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">{field ? 'Your month' : 'Needs attention'}</h1>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+            {field ? 'Your month' : 'Needs attention'}
+          </h1>
           {field && (
             <p className="mt-1 text-sm text-muted-foreground">
-              Check in from <Link className="underline underline-offset-4" href="/attendance">Attendance</Link>, file calls in{' '}
-              <Link className="underline underline-offset-4" href="/dcr">DCR</Link>, and keep this month&apos;s{' '}
-              <Link className="underline underline-offset-4" href="/tour-plans">Tour plan</Link> complete.
+              Check in from{' '}
+              <Link className="underline underline-offset-4" href="/attendance">
+                Attendance
+              </Link>
+              , file calls in{' '}
+              <Link className="underline underline-offset-4" href="/dcr">
+                DCR
+              </Link>
+              , and keep this month&apos;s{' '}
+              <Link className="underline underline-offset-4" href="/tour-plans">
+                Tour plan
+              </Link>{' '}
+              complete.
             </p>
           )}
         </div>
@@ -133,9 +165,22 @@ function Dashboard({ role, month }: { role: Role; month: string }) {
   );
 }
 
-export function KpiCards({ metrics, error, loading }: { metrics: Metric[]; error: string | null; loading: boolean }) {
+export function KpiCards({
+  metrics,
+  error,
+  loading,
+}: {
+  metrics: Metric[];
+  error: string | null;
+  loading: boolean;
+}) {
   const [open, setOpen] = useState(false);
-  if (error) return <p role="alert" className="text-sm text-destructive">{error}</p>;
+  if (error)
+    return (
+      <p role="alert" className="text-sm text-destructive">
+        {error}
+      </p>
+    );
   return (
     <section aria-label="Key metrics" className="flex flex-col gap-2">
       <ul
@@ -153,7 +198,11 @@ export function KpiCards({ metrics, error, loading }: { metrics: Metric[]; error
               data-kpi={m.kpi}
               style={{ '--i': i } as React.CSSProperties}
               className="af-enter -mb-px -mr-px min-w-0 px-4 py-3.5"
-              title={ready ? `${meta.num}${meta.den ? ` ÷ ${meta.den}` : ''} (to confirm with Arighna)` : undefined}
+              title={
+                ready
+                  ? `${meta.num}${meta.den ? ` ÷ ${meta.den}` : ''} (to confirm with Arighna)`
+                  : undefined
+              }
             >
               <p className="truncate text-xs font-medium text-muted-foreground">{meta.label}</p>
               <div className="mt-1 h-8 text-2xl font-semibold tracking-tight tabular-nums sm:text-[28px]">
@@ -183,11 +232,21 @@ export function KpiCards({ metrics, error, loading }: { metrics: Metric[]; error
                 </p>
               )}
               {ready && open && (
-                <p className="af-fade mt-2 text-xs leading-snug text-muted-foreground" data-testid="kpi-formula">
+                <p
+                  className="af-fade mt-2 text-xs leading-snug text-muted-foreground"
+                  data-testid="kpi-formula"
+                >
                   {m.denominator != null ? (
                     <>
-                      <span className="tabular-nums text-foreground">{formatKpi(m.numerator!, 'count')}</span> {meta.num}
-                      <br />÷ <span className="tabular-nums text-foreground">{formatKpi(m.denominator, 'count')}</span> {meta.den}
+                      <span className="tabular-nums text-foreground">
+                        {formatKpi(m.numerator!, 'count')}
+                      </span>{' '}
+                      {meta.num}
+                      <br />÷{' '}
+                      <span className="tabular-nums text-foreground">
+                        {formatKpi(m.denominator, 'count')}
+                      </span>{' '}
+                      {meta.den}
                     </>
                   ) : (
                     <>Count of {meta.num}</>
@@ -206,7 +265,12 @@ export function KpiCards({ metrics, error, loading }: { metrics: Metric[]; error
         onClick={() => setOpen((o) => !o)}
         data-testid="kpi-expand"
       >
-        <ChevronDown className={cn('transition-transform duration-200 motion-reduce:transition-none', open && 'rotate-180')} />
+        <ChevronDown
+          className={cn(
+            'transition-transform duration-200 motion-reduce:transition-none',
+            open && 'rotate-180',
+          )}
+        />
         {open ? 'Hide how each number is worked out' : 'Show how each number is worked out'}
       </Button>
     </section>
@@ -220,7 +284,8 @@ function metric(row: KpiReport['rows'][number], k: string) {
 function Attention({ rows, className }: { rows: KpiReport['rows']; className?: string }) {
   // Derived from GET /v1/kpis?rollup=byUser. Thresholds are placeholders, to confirm with Arighna.
   const derived = rows.flatMap((r) => {
-    const out: { id: string; severity: Severity; title: string; detail: string; who: string }[] = [];
+    const out: { id: string; severity: Severity; title: string; detail: string; who: string }[] =
+      [];
     const missed = metric(r, 'missed_doctor_pct');
     if (missed?.value != null && missed.value >= 30)
       out.push({
@@ -255,13 +320,26 @@ function Attention({ rows, className }: { rows: KpiReport['rows']; className?: s
             </Link>
           </Button>
         </div>
-        <CardDescription>From this month&apos;s KPIs, most serious first. Thresholds to confirm with Arighna.</CardDescription>
+        <CardDescription>
+          From this month&apos;s KPIs, most serious first. Thresholds to confirm with Arighna.
+        </CardDescription>
       </CardHeader>
       <ul className="divide-y" data-testid="attention-kpi">
-        {derived.length === 0 && <li className="px-4 py-6 text-sm text-muted-foreground">Nothing over the thresholds.</li>}
+        {derived.length === 0 && (
+          <li className="px-4 py-6 text-sm text-muted-foreground">Nothing over the thresholds.</li>
+        )}
         {derived.map((a, i) => (
-          <li key={a.id} style={{ '--i': i } as React.CSSProperties} className="af-enter grid grid-cols-[4.5rem_1fr] items-start gap-3 px-4 py-3">
-            <span className={cn('pt-0.5 text-xs font-medium tracking-wide uppercase', SEVERITY[a.severity].text)}>
+          <li
+            key={a.id}
+            style={{ '--i': i } as React.CSSProperties}
+            className="af-enter grid grid-cols-[4.5rem_1fr] items-start gap-3 px-4 py-3"
+          >
+            <span
+              className={cn(
+                'pt-0.5 text-xs font-medium tracking-wide uppercase',
+                SEVERITY[a.severity].text,
+              )}
+            >
               {SEVERITY[a.severity].label}
             </span>
             <div className="min-w-0">
@@ -273,13 +351,20 @@ function Attention({ rows, className }: { rows: KpiReport['rows']; className?: s
         ))}
       </ul>
       <div className="flex items-center justify-between gap-2 border-t bg-muted/30 px-4 py-2">
-        <p className="text-xs font-medium text-muted-foreground">Not in the API yet: geofence, late DCR, sample stock</p>
+        <p className="text-xs font-medium text-muted-foreground">
+          Not in the API yet: geofence, late DCR, sample stock
+        </p>
         <SampleBadge />
       </div>
       <ul className="divide-y opacity-80" data-testid="attention-sample">
         {MOCK_ATTENTION.filter((a) => /geofence|stock|DCR missing/i.test(a.title)).map((a) => (
           <li key={a.id} className="grid grid-cols-[4.5rem_1fr_auto] items-start gap-3 px-4 py-3">
-            <span className={cn('pt-0.5 text-xs font-medium tracking-wide uppercase', SEVERITY[a.severity].text)}>
+            <span
+              className={cn(
+                'pt-0.5 text-xs font-medium tracking-wide uppercase',
+                SEVERITY[a.severity].text,
+              )}
+            >
               {SEVERITY[a.severity].label}
             </span>
             <div className="min-w-0">
@@ -322,7 +407,9 @@ function Approvals({ className }: { className?: string }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const load = useCallback(async () => {
     await apiReady();
-    const r = await api.GET('/v1/approvals', { params: { query: { status: 'pending', mine: 'to_decide', limit: 50 } } });
+    const r = await api.GET('/v1/approvals', {
+      params: { query: { status: 'pending', mine: 'to_decide', limit: 50 } },
+    });
     setItems(r.data?.items ?? []);
   }, []);
   useEffect(() => {
@@ -355,12 +442,16 @@ function Approvals({ className }: { className?: string }) {
     <Card className={cn('gap-0 py-0 shadow-xs', className)} data-testid="dash-approvals">
       <CardHeader className="border-b px-4 py-4">
         <CardTitle className="text-base">Approvals</CardTitle>
-        <CardDescription>{items === null ? 'Loading…' : `${items.length} waiting on you`}</CardDescription>
+        <CardDescription>
+          {items === null ? 'Loading…' : `${items.length} waiting on you`}
+        </CardDescription>
       </CardHeader>
       <Tabs defaultValue="all" className="gap-0">
         <TabsList className="mx-4 mt-3">
           {APPROVAL_TABS.map((t) => (
-            <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
+            <TabsTrigger key={t.value} value={t.value}>
+              {t.label}
+            </TabsTrigger>
           ))}
         </TabsList>
         {APPROVAL_TABS.map((t) => {
@@ -368,21 +459,43 @@ function Approvals({ className }: { className?: string }) {
           return (
             <TabsContent key={t.value} value={t.value}>
               {rows.length === 0 ? (
-                <p className="px-4 py-10 text-center text-sm text-muted-foreground">Nothing waiting.</p>
+                <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  Nothing waiting.
+                </p>
               ) : (
                 <ul className="divide-y">
                   {rows.map((a, i) => (
-                    <li key={a.id} style={{ '--i': i } as React.CSSProperties} className="af-enter px-4 py-3" data-testid="dash-approval">
+                    <li
+                      key={a.id}
+                      style={{ '--i': i } as React.CSSProperties}
+                      className="af-enter px-4 py-3"
+                      data-testid="dash-approval"
+                    >
                       <div className="flex items-center justify-between gap-2">
                         <p className="truncate text-sm font-medium">{a.requestedByName}</p>
-                        <Badge variant="secondary" className="font-normal">{SUBJECT_LABEL[a.subjectType] ?? a.subjectType}</Badge>
+                        <Badge variant="secondary" className="font-normal">
+                          {SUBJECT_LABEL[a.subjectType] ?? a.subjectType}
+                        </Badge>
                       </div>
                       <p className="mt-0.5 text-xs text-muted-foreground">{a.summary}</p>
                       <div className="mt-2 flex gap-2">
-                        <Button size="sm" disabled={deciding !== null} onClick={() => void decide(a, 'approve')} data-testid="dash-approve">
+                        <Button
+                          size="sm"
+                          disabled={deciding !== null}
+                          onClick={() => void decide(a, 'approve')}
+                          data-testid="dash-approve"
+                        >
                           {deciding === a.id ? 'Approving…' : 'Approve'}
                         </Button>
-                        <Button size="sm" variant="outline" disabled={deciding !== null} onClick={() => setReturning(a)} data-testid="dash-reject">Reject</Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={deciding !== null}
+                          onClick={() => setReturning(a)}
+                          data-testid="dash-reject"
+                        >
+                          Reject
+                        </Button>
                         <Button
                           size="sm"
                           variant="ghost"
@@ -419,7 +532,8 @@ function TeamTable({ report }: { report: KpiReport | null }) {
       <CardHeader className="border-b px-4 py-4">
         <CardTitle className="text-base">Team this month</CardTitle>
         <CardDescription>
-          {report ? `${report.rows.length} people in your reporting line` : 'Loading…'} · hover a number for how it is worked out
+          {report ? `${report.rows.length} people in your reporting line` : 'Loading…'} · hover a
+          number for how it is worked out
         </CardDescription>
       </CardHeader>
       <div className="overflow-x-auto">
@@ -428,7 +542,9 @@ function TeamTable({ report }: { report: KpiReport | null }) {
             <TableRow>
               <TableHead className="pl-4">Person</TableHead>
               {TEAM_COLUMNS.map((k) => (
-                <TableHead key={k} className="text-right last:pr-4">{KPI_META[k].label}</TableHead>
+                <TableHead key={k} className="text-right last:pr-4">
+                  {KPI_META[k].label}
+                </TableHead>
               ))}
             </TableRow>
           </TableHeader>
@@ -443,7 +559,11 @@ function TeamTable({ report }: { report: KpiReport | null }) {
                     <TableCell
                       key={k}
                       className="text-right tabular-nums last:pr-4"
-                      title={m && m.denominator != null ? `${m.numerator} ${meta.num} ÷ ${m.denominator} ${meta.den}` : undefined}
+                      title={
+                        m && m.denominator != null
+                          ? `${m.numerator} ${meta.num} ÷ ${m.denominator} ${meta.den}`
+                          : undefined
+                      }
                     >
                       {m ? formatKpi(m.value, m.unit) : '—'}
                     </TableCell>
@@ -474,7 +594,10 @@ function ProductKpis({ month }: { month: string }) {
     <Card className="gap-0 py-0 shadow-xs">
       <CardHeader className="border-b px-4 py-4">
         <CardTitle className="text-base">Products this month</CardTitle>
-        <CardDescription>Detailing, samples and orders by product. Share = calls detailing the product ÷ doctor calls.</CardDescription>
+        <CardDescription>
+          Detailing, samples and orders by product. Share = calls detailing the product ÷ doctor
+          calls.
+        </CardDescription>
       </CardHeader>
       <div className="overflow-x-auto">
         <Table data-testid="kpi-products">
@@ -505,7 +628,9 @@ function ProductKpis({ month }: { month: string }) {
                   </div>
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{r.firstPositionCalls}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatKpi(r.detailingSharePct, 'percent')}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatKpi(r.detailingSharePct, 'percent')}
+                </TableCell>
                 <TableCell className="text-right tabular-nums">{r.sampleQty}</TableCell>
                 <TableCell className="text-right tabular-nums">{r.pobQty}</TableCell>
                 <TableCell className="pr-4 text-right tabular-nums">{inr(r.pobValue)}</TableCell>

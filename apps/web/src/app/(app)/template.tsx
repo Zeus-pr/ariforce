@@ -14,7 +14,9 @@ declare global {
  * The first paint belongs to the splash and the SSR HTML, so only client-side navigations animate.
  */
 export default function Template({ children }: { children: React.ReactNode }) {
-  const [animateIn] = useState(() => typeof window !== 'undefined' && window.__afShellMounted === true);
+  const [animateIn] = useState(
+    () => typeof window !== 'undefined' && window.__afShellMounted === true,
+  );
   useEffect(() => {
     window.__afShellMounted = true;
   }, []);

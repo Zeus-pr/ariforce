@@ -271,11 +271,18 @@ function ApproveDialog({
     void apiReady()
       .then(() =>
         api.GET('/v1/territories', {
-          params: { query: { limit: 200, ...territoryQueryFor(bmOnly ? 'business_manager' : null) } as never },
+          params: {
+            query: {
+              limit: 200,
+              ...territoryQueryFor(bmOnly ? 'business_manager' : null),
+            } as never,
+          },
         }),
       )
       .then((r) => {
-        const items = (r.data?.items ?? []).filter((t) => t.level !== 'territory' && (!bmOnly || t.level === 'headquarter'));
+        const items = (r.data?.items ?? []).filter(
+          (t) => t.level !== 'territory' && (!bmOnly || t.level === 'headquarter'),
+        );
         if (live) setTerritories(items.map((t) => ({ id: t.id, name: t.name })));
       })
       .catch(() => live && setTerritories([]));
@@ -440,7 +447,8 @@ function RejectDialog({
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (reason.trim()) void run(() => signupAdapter.reject(req.id, reason.trim()), 'rejected');
+            if (reason.trim())
+              void run(() => signupAdapter.reject(req.id, reason.trim()), 'rejected');
           }}
         >
           <div className="grid gap-1.5">
