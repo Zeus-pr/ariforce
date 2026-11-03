@@ -27,6 +27,7 @@ import { SearchSelect, type SelectOption } from './search-select';
 import { failureMessage, thrownMessage } from '@/lib/dcr/errors';
 import { bandOf, sfcCategoryOf } from '@/lib/dcr/bands';
 import { ProductPresentation } from './product-presentation';
+import { cachedGet } from '@/lib/query';
 
 const inr = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -302,7 +303,9 @@ function useCustomers(
       const rs = await Promise.all(
         queries.map((query) =>
           kind === 'doctor'
-            ? api.GET('/v1/doctors', { params: { query } })
+            ? cachedGet(['doctors', 'query', query], () =>
+                api.GET('/v1/doctors', { params: { query } }),
+              )
             : kind === 'chemist'
               ? api.GET('/v1/chemists', { params: { query } })
               : api.GET('/v1/stockists', {
