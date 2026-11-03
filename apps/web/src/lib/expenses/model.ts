@@ -23,17 +23,18 @@ export const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
 };
 export const STATUS_LABEL: Record<ExpenseStatus, string> = {
   draft: 'Draft',
-  submitted: 'Waiting for approval',
+  submitted: 'Submitted',
   approved: 'Approved',
-  rejected: 'Sent back',
+  rejected: 'Rejected',
   paid: 'Paid',
 };
+/** Status chips: Draft grey, Submitted teal, Approved navy, Paid green, Rejected red. */
 export const STATUS_TONE: Record<ExpenseStatus, string> = {
-  draft: 'bg-muted text-foreground',
-  submitted: 'bg-amber-100 text-amber-900',
-  approved: 'bg-emerald-100 text-emerald-900',
-  rejected: 'bg-red-100 text-red-900',
-  paid: 'bg-sky-100 text-sky-900',
+  draft: 'bg-slate-100 text-slate-700 ring-slate-200',
+  submitted: 'bg-teal-100 text-teal-700 ring-teal-200',
+  approved: 'bg-brand-100 text-brand-600 ring-brand-200',
+  rejected: 'bg-red-50 text-red-700 ring-red-200',
+  paid: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
 };
 
 export const can = (role: Role, p: Permission) =>
@@ -101,8 +102,8 @@ export function checkFile(
 
 const MESSAGES: Record<string, string> = {
   EXPENSE_NOT_EDITABLE: 'This claim can no longer be edited.',
-  EXPENSE_EMPTY: 'Add at least one line before you submit.',
-  RECEIPT_REQUIRED: 'Every hotel line needs a receipt before you submit.',
+  EXPENSE_EMPTY: 'Add at least one expense before you submit.',
+  RECEIPT_REQUIRED: 'Every hotel expense needs a receipt before you submit.',
   TOO_MANY_FILES: `A line can have at most ${MAX_FILES} receipts.`,
   UPLOAD_MISSING: 'The upload did not arrive. Try the file again.',
   UPLOAD_SIZE_MISMATCH: 'The file changed during upload. Try again.',
@@ -111,7 +112,8 @@ const MESSAGES: Record<string, string> = {
   UPLOAD_NOT_CONFIRMED: 'This receipt is still uploading.',
   APPROVAL_NOT_YOUR_STEP: 'This claim is waiting for a different approver.',
   APPROVAL_ALREADY_DECIDED_BY_YOU: 'You already decided an earlier step of this claim.',
-  VERSION_CONFLICT: 'Someone changed this line. Reload and try again.',
+  VERSION_CONFLICT: 'Someone changed this expense. Reload and try again.',
+  DCR_NOT_APPROVED: 'Every expense day needs an approved DCR before this can be approved.',
 };
 export const messageFor = (e: { code?: string; message?: string }) =>
   (e.code && MESSAGES[e.code]) || e.message || 'Something went wrong.';
@@ -131,3 +133,19 @@ export function quietAbort(signal: AbortSignal, p: Promise<unknown>) {
     if (!signal.aborted) throw e;
   });
 }
+
+/** Last selectable day of a claim month: today if the month is current, else its last day. */
+export function lastDayOf(month: string) {
+  const t = todayIST();
+  const end = new Date(Date.UTC(+month.slice(0, 4), +month.slice(5, 7), 0))
+    .toISOString()
+    .slice(0, 10);
+  return t < end ? t : end;
+}
+export const dayLabel = (d: string) =>
+  new Intl.DateTimeFormat('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    weekday: 'short',
+    timeZone: 'UTC',
+  }).format(new Date(`${d}T00:00:00Z`));
