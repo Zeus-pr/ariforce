@@ -61,6 +61,17 @@ html.af-splash [data-af-header-logo] {
 .af-splash .af-enter {
   animation: none;
 }
+/* Route enter (client navigations only): 6px rise + fade, opacity/transform only. */
+@keyframes af-route {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.af-route {
+  animation: af-route 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
 /* Wider stagger for short form sequences (sign-in). */
 .af-enter-form {
   animation-duration: 260ms;
@@ -79,6 +90,7 @@ html.af-splash [data-af-header-logo] {
 
 @media (prefers-reduced-motion: reduce) {
   .af-enter,
+  .af-route,
   .af-fade {
     animation: none;
   }
