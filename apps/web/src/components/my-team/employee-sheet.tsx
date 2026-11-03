@@ -207,14 +207,22 @@ function Form({
           )}
         </div>
       )}
-      {edit && REAL && (
-        <Button asChild size="sm" className="mx-4 w-fit">
-          <Link href={`/team/members/${edit.id}`} data-testid="sheet-profile">
-            View full profile
-          </Link>
-        </Button>
+      {edit && (REAL || (edit.invited && !self)) && (
+        <div className="flex flex-col items-start gap-3 px-4">
+          {REAL && (
+            <Button asChild size="sm">
+              <Link href={`/team/members/${edit.id}`} data-testid="sheet-profile">
+                View full profile
+              </Link>
+            </Button>
+          )}
+          {edit.invited && !self && (
+            <div className="w-full">
+              <InviteOne role={role} employee={edit} sentBefore={false} />
+            </div>
+          )}
+        </div>
       )}
-      {edit?.invited && !self && <InviteOne role={role} employee={edit} sentBefore={false} />}
       {!self && (
         <SheetFooter className="mt-auto flex-row flex-wrap justify-between gap-2">
           {edit ? (
