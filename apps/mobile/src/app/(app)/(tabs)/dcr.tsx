@@ -3,13 +3,7 @@ import { useQueries } from '@tanstack/react-query';
 import { Redirect, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { SelectSheet } from '@/components/masters/select-sheet';
-import {
-  mockTpCard,
-  rangeLabel,
-  useMyTps,
-  type TpDraftCard,
-  type TpItem,
-} from '@/lib/tp/adapter';
+import { mockTpCard, rangeLabel, useMyTps, type TpDraftCard, type TpItem } from '@/lib/tp/adapter';
 import { tpPillLabel } from '@/lib/tp/calendar';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { PullToRefresh } from '@/components/refresh';
@@ -31,12 +25,7 @@ import {
   useSubmittedHistory,
 } from '@/lib/dcr/api';
 import { reviewOf, useDecisions } from '@/lib/dcr/adapter';
-import {
-  dcrListLabel,
-  dcrPillLabel,
-  dcrPillsByDate,
-  groupDcrs,
-} from '@/lib/dcr/calendar';
+import { dcrListLabel, dcrPillLabel, dcrPillsByDate, groupDcrs } from '@/lib/dcr/calendar';
 import { dateLabel, todayIST } from '@/lib/dcr/dates';
 import { saveMessage } from '@/lib/dcr/errors';
 import { normaliseWorkTypes, territoryRows, type CallKind } from '@/lib/dcr/model';
@@ -167,9 +156,7 @@ function DcrWorkspace() {
     const live = (optionsQ.data as { tourPlanDrafts?: TpDraftCard[] } | undefined)?.tourPlanDrafts;
     if (live) return [...live].sort((a, b) => a.from.localeCompare(b.from));
     const filed = new Set(
-      (tpFiledQ.data?.items ?? [])
-        .filter((d) => d.status !== 'draft')
-        .map((d) => d.date),
+      (tpFiledQ.data?.items ?? []).filter((d) => d.status !== 'draft').map((d) => d.date),
     );
     const drafted = new Set(
       (draftsQ.data?.items ?? []).filter((d) => d.status === 'draft').map((d) => d.date),
@@ -182,10 +169,7 @@ function DcrWorkspace() {
 
   const pillLabelOf = useMemo(() => (d: Dcr) => dcrPillLabel(d, names), [names]);
   const listLabelOf = useMemo(() => (d: Dcr) => dcrListLabel(d, names), [names]);
-  const tpPillOf = useMemo(
-    () => (t: TpDraftCard) => tpPillLabel(t as TpItem, names),
-    [names],
-  );
+  const tpPillOf = useMemo(() => (t: TpDraftCard) => tpPillLabel(t as TpItem, names), [names]);
   const tpListOf = useMemo(() => {
     return (t: TpDraftCard) => {
       const base = tpPillLabel(t as TpItem, names);
@@ -255,8 +239,7 @@ function DcrWorkspace() {
       : null;
 
   const loading = draftsQ.isPending && historyQ.isPending;
-  const empty =
-    !allRows.length && !tpCards.length && !draftsQ.isPending && !historyQ.isPending;
+  const empty = !allRows.length && !tpCards.length && !draftsQ.isPending && !historyQ.isPending;
 
   return (
     <TabScene>
