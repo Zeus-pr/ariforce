@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- generic drizzle glue over many master tables */
+import { authContextWriteIf } from '../auth/auth-context-cache';
 import {
   ConflictException,
   ForbiddenException,
@@ -245,7 +246,11 @@ export class MastersService {
 
   create(def: MasterDef, p: Principal, body: Row) {
     this.assertCanWrite(def, p);
-    return this.tenant.run(p, (tx) => this.insert(tx, def, p, body));
+    return authContextWriteIf(
+      def.entity === 'territory',
+      p.companyId,
+      this.tenant.run(p, (tx) => this.insert(tx, def, p, body)),
+    );
   }
 
   async patch(tx: Tx, def: MasterDef, p: Principal, id: string, body: Row, action = 'update') {
@@ -310,16 +315,24 @@ export class MastersService {
 
   remove(def: MasterDef, p: Principal, id: string) {
     this.assertCanWrite(def, p);
-    return this.tenant.run(p, async (tx) => {
-      await this.findRow(tx, def, p, id);
-      await tx
-        .update(def.table)
-        .set({ deletedAt: sql`now()` } as any)
-        .where(eq(def.table.id, id));
-      await this.audit.record(tx, p, `${def.entity}.delete`, {
-        entityType: def.entity,
-        entityId: id,
-      });
-    });
+    return authContextWriteIf(
+      def.entity === 'territory',
+      p.companyId,
+      authContextWriteIf(
+        def.entity === 'territory',
+        p.companyId,
+        this.tenant.run(p, async (tx) => {
+          await this.findRow(tx, def, p, id);
+          await tx
+            .update(def.table)
+            .set({ deletedAt: sql`now()` } as any)
+            .where(eq(def.table.id, id));
+          await this.audit.record(tx, p, `${def.entity}.delete`, {
+            entityType: def.entity,
+            entityId: id,
+          });
+        }),
+      ),
+    );
   }
 }
