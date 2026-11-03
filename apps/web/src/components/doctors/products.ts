@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { api, apiReady } from '@/lib/api';
+import { apiReady } from '@/lib/api';
+import { getProducts } from '@/lib/query';
 
 /** Product id -> name from GET /v1/products. */
 export function useProductNames() {
@@ -9,8 +10,8 @@ export function useProductNames() {
   useEffect(() => {
     void (async () => {
       await apiReady();
-      const r = await api.GET('/v1/products', { params: { query: { limit: 200 } } });
-      setNames(new Map((r.data?.items ?? []).map((p) => [p.id, p.name])));
+      const r = await getProducts();
+      setNames(new Map((r.data ?? []).map((p) => [p.id, p.name])));
     })().catch(() => {});
   }, []);
   return names;

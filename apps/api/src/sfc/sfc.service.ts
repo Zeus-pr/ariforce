@@ -17,6 +17,7 @@ import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
+import { invalidateCompanySettings } from '../field/field.util';
 
 type Row = typeof sfcRoutes.$inferSelect;
 const num = (v: string | null) => (v === null ? null : Number(v));
@@ -104,8 +105,8 @@ export class SfcService {
     return this.tenant.run(p, (tx) => this.rate(tx, p));
   }
 
-  putSettings(p: Principal, b: SfcSettings): Promise<SfcSettings> {
-    return this.tenant.run(p, async (tx) => {
+  async putSettings(p: Principal, b: SfcSettings): Promise<SfcSettings> {
+    const res = await this.tenant.run(p, async (tx) => {
       const before = await this.rate(tx, p);
       const [row] = await tx
         .update(companies)
@@ -122,6 +123,8 @@ export class SfcService {
       });
       return after;
     });
+    invalidateCompanySettings(p.companyId); // companies.version moved
+    return res;
   }
 
   /** Sales-hierarchy users visible to the caller, with their top role. */

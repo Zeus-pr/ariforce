@@ -25,6 +25,8 @@ import { isFieldRole } from '@/lib/roles';
 import { useRole } from '@/components/shell/role-context';
 import { CheckInMap, MapLegend } from './check-in-map';
 import { dateLabel, kindLabel, timeIST, todayIST } from './format';
+import { cachedGet } from '@/lib/query';
+import { allPages } from '@/lib/paging';
 
 type Fix = {
   location: { lat: number; lng: number };
@@ -85,14 +87,19 @@ function AttendanceDayView({ today }: { today: string }) {
   const load = useCallback(async () => {
     await apiReady();
     const q = { from: date, to: date, limit: 200 };
+    // Page through: a big team can have more than 200 check-ins in a day.
     const [c, a] = await Promise.all([
-      api.GET('/v1/check-ins', { params: { query: q } }),
-      api.GET('/v1/attendance', { params: { query: q } }),
+      allPages((cursor) =>
+        api.GET('/v1/check-ins', { params: { query: { ...q, ...(cursor ? { cursor } : {}) } } }),
+      ),
+      allPages((cursor) =>
+        api.GET('/v1/attendance', { params: { query: { ...q, ...(cursor ? { cursor } : {}) } } }),
+      ),
     ]);
     if (c.error || a.error) return setError(toApiError(c.error ? c : a).message);
     setError(null);
-    setCheckIns(c.data.items);
-    setDays(a.data.items);
+    setCheckIns(c.data?.items ?? []);
+    setDays(a.data?.items ?? []);
   }, [date]);
 
   useEffect(() => {
@@ -115,9 +122,11 @@ function AttendanceDayView({ today }: { today: string }) {
       ];
       const results = await Promise.all(
         Array.from({ length: Math.ceil(ids.length / 100) }, (_, i) =>
-          api.GET('/v1/doctors', {
-            params: { query: { ids: ids.slice(i * 100, (i + 1) * 100).join(','), limit: 100 } },
-          }),
+          cachedGet(['doctors', 'ids', ids.slice(i * 100, (i + 1) * 100).join(',')], () =>
+            api.GET('/v1/doctors', {
+              params: { query: { ids: ids.slice(i * 100, (i + 1) * 100).join(','), limit: 100 } },
+            }),
+          ),
         ),
       );
       if (!live) return;
@@ -349,7 +358,9 @@ function TodayPanel({
     setDoctorsError(null);
     try {
       await apiReady();
-      const r = await api.GET('/v1/doctors', { params: { query: { limit: 100, sort: 'name' } } });
+      const r = await cachedGet(['doctors', 'first-page'], () =>
+        api.GET('/v1/doctors', { params: { query: { limit: 100, sort: 'name' } } }),
+      );
       if (!r.data) throw new Error(toApiError(r).message || 'Could not load doctors.');
       setDoctors(r.data.items);
     } catch (cause) {

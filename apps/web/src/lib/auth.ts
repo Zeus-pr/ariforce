@@ -8,6 +8,7 @@ import { ROLES, ROLE_LABEL, roleLevel, type Role } from './roles';
 import { API_URL, api, setAccountStateHandler, setUnauthenticatedHandler } from './api';
 
 import { SESSION_KEY, migrateLegacySession } from './auth-boot';
+import { meQuery, queryClient } from './query';
 
 export { SESSION_KEY };
 
@@ -127,7 +128,9 @@ export const resendLoginOtp = sendLoginOtp;
 
 /** After the session exists: load the profile and store the signed-in user. */
 async function finishSignIn(): Promise<User | SignInError> {
+  queryClient.clear();
   const { data: me } = await api.GET('/v1/me');
+  if (me) queryClient.setQueryData(meQuery.queryKey, me);
   if (!me)
     return { field: 'password', message: 'Signed in, but your profile could not be loaded.' };
   const role = primaryRole(me.roles);
@@ -237,11 +240,13 @@ export function signOut() {
   void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(
     () => {},
   );
+  queryClient.clear();
   write(null);
 }
 
 if (typeof window !== 'undefined')
   setAccountStateHandler((state) => {
+    queryClient.clear();
     write(null);
     if (!location.pathname.startsWith('/sign-in')) location.replace(`/sign-in?account=${state}`);
   });
@@ -249,6 +254,7 @@ if (typeof window !== 'undefined')
 if (typeof window !== 'undefined')
   setUnauthenticatedHandler(() => {
     const p = location.pathname;
+    queryClient.clear();
     write(null);
     if (!p.startsWith('/sign-in'))
       location.replace(

@@ -13,8 +13,7 @@ import {
   DialogTitle,
 } from '@ariforce/ui/components/dialog';
 import { toast } from '@ariforce/ui/components/sonner';
-import { api, apiReady } from '@/lib/api';
-import { territoryQueryFor } from '@/lib/assign-errors';
+import { apiReady } from '@/lib/api';
 import { useSession } from '@/lib/auth';
 import { ROLE_LABEL, roleLevel, type Role } from '@/lib/roles';
 import {
@@ -28,6 +27,7 @@ import {
 } from '@/lib/signup/adapter';
 import { apiTeamAdapter } from '@/lib/team-adapter/adapter';
 import type { Employee } from '@/lib/team-adapter/types';
+import { getTerritories } from '@/lib/query';
 
 const SELECT =
   'h-10 w-full rounded-md border border-input bg-transparent px-3 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm';
@@ -269,19 +269,10 @@ function ApproveDialog({
     let live = true;
     setTerritories(null);
     void apiReady()
-      .then(() =>
-        api.GET('/v1/territories', {
-          params: {
-            query: {
-              limit: 200,
-              ...territoryQueryFor(bmOnly ? 'business_manager' : null),
-            } as never,
-          },
-        }),
-      )
-      .then((r) => {
-        const items = (r.data?.items ?? []).filter(
-          (t) => t.level !== 'territory' && (!bmOnly || t.level === 'headquarter'),
+      .then(() => getTerritories())
+      .then((all) => {
+        const items = all.filter(
+          (t) => !t.deletedAt && t.level !== 'territory' && (!bmOnly || t.level === 'headquarter'),
         );
         if (live) setTerritories(items.map((t) => ({ id: t.id, name: t.name })));
       })

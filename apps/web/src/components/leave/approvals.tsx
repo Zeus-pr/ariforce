@@ -17,6 +17,7 @@ import { useRole } from '@/components/shell/role-context';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { selfId } from '@/lib/expenses/model';
 import { daysLabel, leaveMessage, rangeLabel, type LeaveReq } from '@/lib/leave/model';
+import { ShowMore, useShowMore } from '@/lib/paging';
 
 type Decision = { req: LeaveReq; kind: 'approve' | 'reject' };
 
@@ -24,6 +25,7 @@ type Decision = { req: LeaveReq; kind: 'approve' | 'reject' };
 export function LeaveApprovals({ levels, onDecided }: { levels: number; onDecided: () => void }) {
   const { role, user } = useRole();
   const [rows, setRows] = useState<LeaveReq[] | null>(null);
+  const page = useShowMore(rows);
   const [error, setError] = useState<string | null>(null);
   const [deciding, setDeciding] = useState<Decision | null>(null);
   const [tick, setTick] = useState(0);
@@ -75,45 +77,48 @@ export function LeaveApprovals({ levels, onDecided }: { levels: number; onDecide
           Nothing waiting. Leave your team applies for shows up here.
         </p>
       ) : (
-        <ul className="divide-y rounded-lg border bg-card">
-          {rows.map((r) => (
-            <li
-              key={r.id}
-              className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3"
-              data-testid="leave-approval"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="font-medium">{r.userName}</p>
-                <p className="text-sm text-muted-foreground">
-                  {r.typeName} · {rangeLabel(r)} · {daysLabel(r.days)}
-                </p>
-                {r.reason && <p className="mt-1 text-sm">“{r.reason}”</p>}
-                {r.approvalStep && levels > 1 && (
-                  <p className="mt-1 text-xs text-muted-foreground" data-testid="leave-step">
-                    Step {r.approvalStep} of {levels}
+        <>
+          <ul className="divide-y rounded-lg border bg-card">
+            {page.visible.map((r) => (
+              <li
+                key={r.id}
+                className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3"
+                data-testid="leave-approval"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{r.userName}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {r.typeName} · {rangeLabel(r)} · {daysLabel(r.days)}
                   </p>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setDeciding({ req: r, kind: 'reject' })}
-                  data-testid="leave-reject"
-                >
-                  Reject
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => setDeciding({ req: r, kind: 'approve' })}
-                  data-testid="leave-approve"
-                >
-                  Approve
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
+                  {r.reason && <p className="mt-1 text-sm">“{r.reason}”</p>}
+                  {r.approvalStep && levels > 1 && (
+                    <p className="mt-1 text-xs text-muted-foreground" data-testid="leave-step">
+                      Step {r.approvalStep} of {levels}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDeciding({ req: r, kind: 'reject' })}
+                    data-testid="leave-reject"
+                  >
+                    Reject
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setDeciding({ req: r, kind: 'approve' })}
+                    data-testid="leave-approve"
+                  >
+                    Approve
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <ShowMore more={page.more} onClick={page.showMore} />
+        </>
       )}
       <DecisionDialog
         d={deciding}

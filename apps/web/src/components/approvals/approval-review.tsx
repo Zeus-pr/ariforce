@@ -6,6 +6,7 @@ import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
 import { api, apiReady } from '@/lib/api';
 import { openReceipt } from '@/lib/expenses/upload';
+import { getTerritories } from '@/lib/query';
 
 /**
  * Read-only view of what an approval decides on. Primary source: GET /v1/approvals/{id} (ApprovalDetail,
@@ -428,7 +429,7 @@ function DoctorReview({ a }: { a: Approval }) {
       setD(doc);
       if (!doc) return;
       const [t, m] = await Promise.all([
-        api.GET('/v1/territories', { params: { query: { limit: 200 } as never } }),
+        getTerritories().then((items) => ({ data: { items } })),
         api.POST('/v1/doctors/duplicate-check', {
           body: {
             name: doc.name,

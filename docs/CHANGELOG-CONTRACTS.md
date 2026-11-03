@@ -10,6 +10,23 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## perf/expense-list-paging-report-batch (2026-11-03): opt-in paging for expense claims (additive)
+
+- `GET /v1/expense-claims`: new optional `limit` (1..200) and `cursor` (opaque, from `nextCursor`).
+  Without both: unchanged (all matching claims, body `{ items }` only).
+  With either: one page (limit defaults to 50), ordered month desc, user name, id; body adds `limit`, `total` (all pages) and `nextCursor` (null on the last page). Bad cursor or limit: 422 `VALIDATION`.
+- `GET /v1/expense-reports` and exports: same output; the server now loads lines and DCR days for all claims in two queries instead of three per claim.
+
+## perf/dcr-products-endpoint (2026-11-03): DCR products on their own endpoint (additive)
+
+- New: `GET /v1/dcrs/products` (`field:read`) -> `DcrProducts { products: DcrProductOption[], detailProducts: DcrDetailProduct[], etag }`.
+  Same items as `options.products` / `options.detailProducts`. Optional `ids=` (1..100 comma-separated UUIDs, only active products returned).
+  Headers: `ETag` (weak, also in the body), `Cache-Control: private, max-age=60`. `If-None-Match` with the etag -> `304`, empty body.
+  The etag changes when any product row changes or the 30-min image-URL signing window rolls, so a 304 never keeps expired picture URLs.
+- `GET /v1/dcrs/options`: new optional `includeProducts=false` returns `products: []`, `detailProducts: []` (skips the product load). Default unchanged.
+  `products` / `detailProducts` are marked **deprecated** (still filled by default).
+- No `updatedSince`: removals (deactivated/deleted products) would need tombstones; revalidate with the ETag instead.
+
 ## feat/dcr-pob-review (2026-10-29): expense approval needs approved DCRs; unlock decisions director-only
 
 Migration 0051 (roles.permissions: dcr_unlock:decide for director).
