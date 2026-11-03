@@ -484,31 +484,39 @@ export class DcrFlowService {
           keepHqs.length ? notInArray(dcrSfcRoutes.hqTerritoryId, keepHqs) : sql`true`,
         ),
       );
+    // One read of the live rows for this DCR instead of a select per HQ.
+    const live = choices?.length
+      ? await tx
+          .select({
+            id: dcrSfcRoutes.id,
+            hq: dcrSfcRoutes.hqTerritoryId,
+            sfcRouteId: dcrSfcRoutes.sfcRouteId,
+          })
+          .from(dcrSfcRoutes)
+          .where(and(eq(dcrSfcRoutes.dcrId, dcrId), isNull(dcrSfcRoutes.deletedAt)))
+      : [];
+    const byHq = new Map(live.map((r) => [r.hq, { id: r.id, sfcRouteId: r.sfcRouteId }]));
     for (const c of choices ?? []) {
-      const [old] = await tx
-        .select()
-        .from(dcrSfcRoutes)
-        .where(
-          and(
-            eq(dcrSfcRoutes.dcrId, dcrId),
-            eq(dcrSfcRoutes.hqTerritoryId, c.hqTerritoryId),
-            isNull(dcrSfcRoutes.deletedAt),
-          ),
-        );
+      const old = byHq.get(c.hqTerritoryId);
       if (old && old.sfcRouteId === c.sfcRouteId) continue;
-      if (old)
+      if (old) {
         await tx
           .update(dcrSfcRoutes)
           .set({ sfcRouteId: c.sfcRouteId, snapshot: null })
           .where(eq(dcrSfcRoutes.id, old.id));
-      else
-        await tx.insert(dcrSfcRoutes).values({
+        byHq.set(c.hqTerritoryId, { id: old.id, sfcRouteId: c.sfcRouteId });
+      } else {
+        const row = {
           id: uuidv7(),
           companyId: p.companyId,
           dcrId,
           hqTerritoryId: c.hqTerritoryId,
           sfcRouteId: c.sfcRouteId,
-        });
+        };
+        await tx.insert(dcrSfcRoutes).values(row);
+        // Same HQ twice in one payload behaves as before (second one updates the first).
+        byHq.set(c.hqTerritoryId, { id: row.id, sfcRouteId: row.sfcRouteId });
+      }
     }
   }
 
