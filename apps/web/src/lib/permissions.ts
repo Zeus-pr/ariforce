@@ -34,7 +34,8 @@ export const EXPENSE_PAYERS: Role[] = ['director', 'system_admin'];
 export const canPayExpenses = (role: Role, permissions?: readonly string[]) =>
   permissions
     ? permissions.includes('expenses:pay')
-    : (DEFAULT_ROLE_PERMISSIONS[role] ?? []).includes('expenses:pay') || EXPENSE_PAYERS.includes(role);
+    : (DEFAULT_ROLE_PERMISSIONS[role] ?? []).includes('expenses:pay') ||
+      EXPENSE_PAYERS.includes(role);
 
 /**
  * Who may edit product prices and the product image on the Product prices page: the

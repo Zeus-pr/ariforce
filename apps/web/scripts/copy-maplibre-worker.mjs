@@ -8,4 +8,7 @@ const require = createRequire(import.meta.url);
 const dist = path.dirname(require.resolve('maplibre-gl/package.json')) + '/dist';
 const out = path.resolve(import.meta.dirname, '../public/vendor');
 fs.mkdirSync(out, { recursive: true });
-fs.copyFileSync(path.join(dist, 'maplibre-gl-worker.mjs'), path.join(out, 'maplibre-gl-worker.mjs'));
+fs.copyFileSync(
+  path.join(dist, 'maplibre-gl-worker.mjs'),
+  path.join(out, 'maplibre-gl-worker.mjs'),
+);

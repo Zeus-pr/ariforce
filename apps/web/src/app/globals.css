@@ -46,7 +46,6 @@ html.af-splash [data-af-header-logo] {
   opacity: 0;
 }
 
-
 /* List / row enter: 4px rise + fade, staggered by --i (capped so long pages don't drag). */
 @keyframes af-enter {
   from {

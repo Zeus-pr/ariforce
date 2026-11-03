@@ -56,7 +56,8 @@ export function useHqs() {
             params: { query: { ...extra, limit: 200, cursor, sort: 'name' } as never },
           });
           if (!r.data) break;
-          for (const t of r.data.items) out.set(t.id, { id: t.id, name: t.name, code: t.code, level: t.level });
+          for (const t of r.data.items)
+            out.set(t.id, { id: t.id, name: t.name, code: t.code, level: t.level });
           cursor = r.data.nextCursor ?? undefined;
           if (!cursor) break;
         }
@@ -478,7 +479,11 @@ function ManualInvite({ hqs, onSent }: { hqs: Terr[] | null; onSent: () => void 
                       </p>
                     )}
                     {hqs
-                      ?.filter((h) => h.level !== 'territory' && (r.role !== 'business_manager' || h.level === 'headquarter'))
+                      ?.filter(
+                        (h) =>
+                          h.level !== 'territory' &&
+                          (r.role !== 'business_manager' || h.level === 'headquarter'),
+                      )
                       .map((h) => (
                         <SelectItem key={h.id} value={h.id}>
                           {h.name} ({h.code})

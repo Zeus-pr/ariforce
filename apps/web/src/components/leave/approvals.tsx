@@ -3,7 +3,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { LoaderCircle } from 'lucide-react';
 import { Button } from '@ariforce/ui/components/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@ariforce/ui/components/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@ariforce/ui/components/dialog';
 import { Label } from '@ariforce/ui/components/label';
 import { toast } from '@ariforce/ui/components/sonner';
 import { useRole } from '@/components/shell/role-context';
@@ -27,17 +34,30 @@ export function LeaveApprovals({ levels, onDecided }: { levels: number; onDecide
     void (async () => {
       await apiReady();
       const me = await selfId(role, user);
-      const r = await api.GET('/v1/leave/requests', { params: { query: { status: 'pending', mine: 'false' } }, signal: ac.signal }).catch(() => null);
+      const r = await api
+        .GET('/v1/leave/requests', {
+          params: { query: { status: 'pending', mine: 'false' } },
+          signal: ac.signal,
+        })
+        .catch(() => null);
       if (ac.signal.aborted || !r) return;
       if (r.error) return setError(leaveMessage(toApiError(r)));
       setError(null);
-      setRows((r.data?.items ?? []).filter((x) => x.userId !== me).sort((a, z) => a.fromDate.localeCompare(z.fromDate)));
+      setRows(
+        (r.data?.items ?? [])
+          .filter((x) => x.userId !== me)
+          .sort((a, z) => a.fromDate.localeCompare(z.fromDate)),
+      );
     })().catch(() => {});
     return () => ac.abort();
   }, [role, user, tick]);
 
   return (
-    <section aria-labelledby="leave-appr-h" className="flex flex-col gap-3" data-testid="leave-approvals">
+    <section
+      aria-labelledby="leave-appr-h"
+      className="flex flex-col gap-3"
+      data-testid="leave-approvals"
+    >
       <h2 id="leave-appr-h" className="text-base font-semibold">
         Waiting for your decision{rows?.length ? ` (${rows.length})` : ''}
       </h2>
@@ -48,13 +68,20 @@ export function LeaveApprovals({ levels, onDecided }: { levels: number; onDecide
       ) : rows === null ? (
         <div className="h-32 animate-pulse rounded-lg bg-muted/60" />
       ) : rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground" data-testid="leave-approvals-empty">
+        <p
+          className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground"
+          data-testid="leave-approvals-empty"
+        >
           Nothing waiting. Leave your team applies for shows up here.
         </p>
       ) : (
         <ul className="divide-y rounded-lg border bg-card">
           {rows.map((r) => (
-            <li key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3" data-testid="leave-approval">
+            <li
+              key={r.id}
+              className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3"
+              data-testid="leave-approval"
+            >
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{r.userName}</p>
                 <p className="text-sm text-muted-foreground">
@@ -68,10 +95,19 @@ export function LeaveApprovals({ levels, onDecided }: { levels: number; onDecide
                 )}
               </div>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={() => setDeciding({ req: r, kind: 'reject' })} data-testid="leave-reject">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setDeciding({ req: r, kind: 'reject' })}
+                  data-testid="leave-reject"
+                >
                   Reject
                 </Button>
-                <Button size="sm" onClick={() => setDeciding({ req: r, kind: 'approve' })} data-testid="leave-approve">
+                <Button
+                  size="sm"
+                  onClick={() => setDeciding({ req: r, kind: 'approve' })}
+                  data-testid="leave-approve"
+                >
                   Approve
                 </Button>
               </div>
@@ -91,7 +127,15 @@ export function LeaveApprovals({ levels, onDecided }: { levels: number; onDecide
   );
 }
 
-function DecisionDialog({ d, onClose, onDone }: { d: Decision | null; onClose: () => void; onDone: () => void }) {
+function DecisionDialog({
+  d,
+  onClose,
+  onDone,
+}: {
+  d: Decision | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,7 +158,11 @@ function DecisionDialog({ d, onClose, onDone }: { d: Decision | null; onClose: (
     // LEAVE_DCR_CONFLICT (approve): nothing saved, the request stays pending; the dialog stays open with why.
     if (r.error) return setError(leaveMessage(toApiError(r)));
     toast.success(
-      r.data.status === 'pending' ? `Approved; sent to the next approver` : reject ? 'Leave rejected' : 'Leave approved',
+      r.data.status === 'pending'
+        ? `Approved; sent to the next approver`
+        : reject
+          ? 'Leave rejected'
+          : 'Leave approved',
     );
     setComment('');
     setError(null);
@@ -126,10 +174,14 @@ function DecisionDialog({ d, onClose, onDone }: { d: Decision | null; onClose: (
       <DialogContent className="sm:max-w-sm" data-testid="leave-decide-dialog">
         <DialogHeader>
           <DialogTitle>{reject ? 'Reject leave' : 'Approve leave'}</DialogTitle>
-          <DialogDescription>{d ? `${d.req.userName}: ${d.req.typeName}, ${rangeLabel(d.req)}` : ''}</DialogDescription>
+          <DialogDescription>
+            {d ? `${d.req.userName}: ${d.req.typeName}, ${rangeLabel(d.req)}` : ''}
+          </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="leave-comment">{reject ? 'Reason (required)' : 'Comment (optional)'}</Label>
+          <Label htmlFor="leave-comment">
+            {reject ? 'Reason (required)' : 'Comment (optional)'}
+          </Label>
           <textarea
             id="leave-comment"
             data-testid="leave-comment"
@@ -149,7 +201,12 @@ function DecisionDialog({ d, onClose, onDone }: { d: Decision | null; onClose: (
           <Button variant="outline" onClick={onClose}>
             Back
           </Button>
-          <Button variant={reject ? 'destructive' : 'default'} onClick={go} disabled={busy || (reject && !comment.trim())} data-testid="leave-decide-confirm">
+          <Button
+            variant={reject ? 'destructive' : 'default'}
+            onClick={go}
+            disabled={busy || (reject && !comment.trim())}
+            data-testid="leave-decide-confirm"
+          >
             {busy && <LoaderCircle className="animate-spin" />}
             {reject ? 'Reject' : 'Approve'}
           </Button>

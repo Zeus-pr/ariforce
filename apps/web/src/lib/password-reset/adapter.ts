@@ -47,7 +47,8 @@ async function post(path: string, body: unknown): Promise<{ ok: true } | ResetFa
     const h = Number(res.headers.get('Retry-After'));
     return { kind: 'busy', seconds: Number.isFinite(h) && h > 0 ? Math.ceil(h) : null };
   }
-  if (code === 'PASSWORD_RESET_TOO_MANY_ATTEMPTS' || res.status === 403) return { kind: 'attempts' };
+  if (code === 'PASSWORD_RESET_TOO_MANY_ATTEMPTS' || res.status === 403)
+    return { kind: 'attempts' };
   if (code === 'PASSWORD_RESET_CODE_EXPIRED') return { kind: 'expired' };
   if (code === 'PASSWORD_RESET_CODE_INVALID') return { kind: 'wrong' };
   if (res.status === 400 || res.status === 422) return { kind: 'invalid', message };

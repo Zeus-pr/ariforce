@@ -26,15 +26,24 @@ export const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 export const PRODUCT_IMAGE_MAX_MB = PRODUCT_IMAGE_MAX_BYTES / 1024 / 1024;
 export const PRODUCT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export type ProductImageType = (typeof PRODUCT_IMAGE_TYPES)[number];
-const EXT_TYPE: Record<string, ProductImageType> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+const EXT_TYPE: Record<string, ProductImageType> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+};
 /** Accept list for <input type="file"> (types and extensions). */
-export const PRODUCT_IMAGE_ACCEPT = [...PRODUCT_IMAGE_TYPES, ...Object.keys(EXT_TYPE).map((e) => `.${e}`)].join(',');
+export const PRODUCT_IMAGE_ACCEPT = [
+  ...PRODUCT_IMAGE_TYPES,
+  ...Object.keys(EXT_TYPE).map((e) => `.${e}`),
+].join(',');
 
 export class ProductImageError extends Error {}
 
 /** The content type we will send, or null when the file is not JPEG, PNG or WebP. */
 export function imageTypeOf(file: File): ProductImageType | null {
-  if ((PRODUCT_IMAGE_TYPES as readonly string[]).includes(file.type)) return file.type as ProductImageType;
+  if ((PRODUCT_IMAGE_TYPES as readonly string[]).includes(file.type))
+    return file.type as ProductImageType;
   // Some browsers leave `type` empty; fall back to the extension.
   if (!file.type) return EXT_TYPE[file.name.split('.').pop()?.toLowerCase() ?? ''] ?? null;
   return null;
@@ -73,10 +82,16 @@ function message(r: Raw): string {
   if (r.response?.status === 404 && e.code !== 'PRODUCT_NOT_FOUND')
     return 'Product images are not switched on on the server yet.';
   if (e.code === 'PRODUCT_NOT_FOUND') return 'This product no longer exists. Reload the page.';
-  if (e.code === 'FORBIDDEN') return 'Only users who can edit product prices can change product images.';
-  if (e.code === 'VALIDATION') return e.message ? `The server refused this image: ${e.message}` : 'The server refused this image.';
-  if (e.code === 'NETWORK') return 'Could not reach the server. Check your connection and try again.';
-  if (r.response?.status === 503) return 'File storage is not available right now. Try again later.';
+  if (e.code === 'FORBIDDEN')
+    return 'Only users who can edit product prices can change product images.';
+  if (e.code === 'VALIDATION')
+    return e.message
+      ? `The server refused this image: ${e.message}`
+      : 'The server refused this image.';
+  if (e.code === 'NETWORK')
+    return 'Could not reach the server. Check your connection and try again.';
+  if (r.response?.status === 503)
+    return 'File storage is not available right now. Try again later.';
   return e.message || 'Something went wrong. Try again.';
 }
 
@@ -88,13 +103,22 @@ function result(data: unknown): ProductImageResult {
   };
 }
 
-function putXhr(url: string, headers: Record<string, string>, file: File, onProgress: (p: number) => void, signal?: AbortSignal) {
+function putXhr(
+  url: string,
+  headers: Record<string, string>,
+  file: File,
+  onProgress: (p: number) => void,
+  signal?: AbortSignal,
+) {
   return new Promise<void>((resolve, reject) => {
     const x = new XMLHttpRequest();
     x.open('PUT', url);
     for (const [k, v] of Object.entries(headers)) x.setRequestHeader(k, v);
     x.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
-    x.onload = () => (x.status >= 200 && x.status < 300 ? resolve() : reject(new ProductImageError('Upload failed. Try again.')));
+    x.onload = () =>
+      x.status >= 200 && x.status < 300
+        ? resolve()
+        : reject(new ProductImageError('Upload failed. Try again.'));
     x.onerror = () => reject(new ProductImageError('Upload failed. Check your connection.'));
     x.onabort = () => reject(new ProductImageError('Upload cancelled.'));
     signal?.addEventListener('abort', () => x.abort());
@@ -103,7 +127,13 @@ function putXhr(url: string, headers: Record<string, string>, file: File, onProg
 }
 
 /** fetch PUT for mock mode: MSW intercepts fetch, not XHR, so there is no byte progress. */
-async function putFetch(url: string, headers: Record<string, string>, file: File, onProgress: (p: number) => void, signal?: AbortSignal) {
+async function putFetch(
+  url: string,
+  headers: Record<string, string>,
+  file: File,
+  onProgress: (p: number) => void,
+  signal?: AbortSignal,
+) {
   onProgress(0.5);
   const r = await fetch(url, { method: 'PUT', headers, body: file, signal }).catch(() => null);
   if (signal?.aborted) throw new ProductImageError('Upload cancelled.');
@@ -121,13 +151,28 @@ export async function uploadProductImage(
   if (problem) throw new ProductImageError(problem);
   const contentType = imageTypeOf(file)!;
   const u = await raw.POST('/v1/files/upload-url', {
-    body: { purpose: PRODUCT_IMAGE_PURPOSE, contentType, sizeBytes: file.size, fileName: file.name.slice(0, 200) },
+    body: {
+      purpose: PRODUCT_IMAGE_PURPOSE,
+      contentType,
+      sizeBytes: file.size,
+      fileName: file.name.slice(0, 200),
+    },
   });
-  const up = u.data as { fileKey?: string; uploadUrl?: string; headers?: Record<string, string> } | undefined;
+  const up = u.data as
+    { fileKey?: string; uploadUrl?: string; headers?: Record<string, string> } | undefined;
   if (!up?.fileKey || !up.uploadUrl) throw new ProductImageError(message(u));
-  await (MOCKING ? putFetch : putXhr)(up.uploadUrl, up.headers ?? { 'content-type': contentType }, file, onProgress, opts.signal);
+  await (MOCKING ? putFetch : putXhr)(
+    up.uploadUrl,
+    up.headers ?? { 'content-type': contentType },
+    file,
+    onProgress,
+    opts.signal,
+  );
   onProgress(1);
-  const s = await raw.PUT('/v1/products/{id}/image', { params: { path: { id: productId } }, body: { fileKey: up.fileKey } });
+  const s = await raw.PUT('/v1/products/{id}/image', {
+    params: { path: { id: productId } },
+    body: { fileKey: up.fileKey },
+  });
   if (!s.response?.ok) throw new ProductImageError(message(s));
   return result(s.data);
 }
