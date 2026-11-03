@@ -18,7 +18,12 @@ import { parseArgs } from 'node:util';
 import { Client } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { sfcAmounts } from '@ariforce/contracts';
-import { matchSheet, normCategory, parseSfcWorkbook, type SfcCandidate } from '../src/sfc/sfc-import';
+import {
+  matchSheet,
+  normCategory,
+  parseSfcWorkbook,
+  type SfcCandidate,
+} from '../src/sfc/sfc-import';
 
 const envFile = resolve(import.meta.dirname, '../.env');
 if (!process.env.DATABASE_URL && existsSync(envFile)) process.loadEnvFile(envFile);

@@ -17,24 +17,63 @@ for (const role of ['director', 'business_manager', 'area_business_manager']) {
 for (const view of ['desktop', 'mobile']) {
   const { ctx, page } = await open('system_admin', '/admin/invites', view);
   await page.getByTestId('invite-mode-existing').waitFor({ timeout: 20000 });
-  if (view === 'desktop') check(await navLink(page).first().waitFor({ state: 'attached', timeout: 10000 }).then(() => true, () => false), 'sysadmin: nav entry shown');
+  if (view === 'desktop')
+    check(
+      await navLink(page)
+        .first()
+        .waitFor({ state: 'attached', timeout: 10000 })
+        .then(
+          () => true,
+          () => false,
+        ),
+      'sysadmin: nav entry shown',
+    );
   // Existing employee: someone already signed in has no link; a not-yet-joined person gets one.
   const opts = page.getByTestId('employee-search-option');
   await opts.first().waitFor({ timeout: 15000 });
   await opts.first().click();
   await page.getByTestId('employee-details').waitFor();
-  check((await page.getByTestId('invite-not-allowed').count()) === 1, `${view}: joined employee → no link, plain note`);
+  check(
+    (await page.getByTestId('invite-not-allowed').count()) === 1,
+    `${view}: joined employee → no link, plain note`,
+  );
   await page.getByTestId('employee-search').fill('Nisha');
-  await page.waitForFunction(() => { const o = document.querySelectorAll('[data-testid=employee-search-option]'); return o.length === 1 && /Nisha/.test(o[0].textContent); }, null, { timeout: 10000 });
+  await page.waitForFunction(
+    () => {
+      const o = document.querySelectorAll('[data-testid=employee-search-option]');
+      return o.length === 1 && /Nisha/.test(o[0].textContent);
+    },
+    null,
+    { timeout: 10000 },
+  );
   await opts.first().click();
   await page.getByTestId('detail-name').filter({ hasText: 'Nisha' }).waitFor();
-  check((await page.getByTestId('detail-email').textContent()) === 'nisha.pending@example.test', `${view}: details show saved email`);
-  check(/Kolkata North HQ/.test(await page.getByTestId('detail-hq').textContent()), `${view}: details show HQ`);
-  await page.waitForFunction(() => !/Loading/.test(document.querySelector('[data-testid=detail-manager]')?.textContent ?? 'Loading'), null, { timeout: 10000 });
-  check((await page.getByTestId('detail-manager').textContent()) !== 'Nobody', `${view}: details show manager`);
+  check(
+    (await page.getByTestId('detail-email').textContent()) === 'nisha.pending@example.test',
+    `${view}: details show saved email`,
+  );
+  check(
+    /Kolkata North HQ/.test(await page.getByTestId('detail-hq').textContent()),
+    `${view}: details show HQ`,
+  );
+  await page.waitForFunction(
+    () =>
+      !/Loading/.test(
+        document.querySelector('[data-testid=detail-manager]')?.textContent ?? 'Loading',
+      ),
+    null,
+    { timeout: 10000 },
+  );
+  check(
+    (await page.getByTestId('detail-manager').textContent()) !== 'Nobody',
+    `${view}: details show manager`,
+  );
   await page.getByTestId('invite-existing-send').click();
   await page.getByTestId('invite-url').waitFor({ timeout: 10000 });
-  check(/\/invite\?token=/.test(await page.getByTestId('invite-url').inputValue()), `${view}: existing → link shown`);
+  check(
+    /\/invite\?token=/.test(await page.getByTestId('invite-url').inputValue()),
+    `${view}: existing → link shown`,
+  );
   await noOverflow(page, `${view} existing`);
   await shot(page, `${view}-existing.png`);
 
@@ -45,11 +84,24 @@ for (const view of ['desktop', 'mobile']) {
   await page.getByTestId('manual-email').fill(em);
   await page.getByTestId('manual-phone').fill('9800000000');
   await page.getByTestId('manual-role').click();
-  check((await page.getByRole('option', { name: /System Admin/ }).getAttribute('aria-disabled')) !== 'true', `${view}: every role offered incl. System Admin`);
-  check((await page.getByRole('option', { name: /Distribution Head|Accountant/ }).count()) === 0, `${view}: no Distribution Head or Accountant`);
-  await page.getByRole('option', { name: /System Admin/ }).first().click();
+  check(
+    (await page.getByRole('option', { name: /System Admin/ }).getAttribute('aria-disabled')) !==
+      'true',
+    `${view}: every role offered incl. System Admin`,
+  );
+  check(
+    (await page.getByRole('option', { name: /Distribution Head|Accountant/ }).count()) === 0,
+    `${view}: no Distribution Head or Accountant`,
+  );
+  await page
+    .getByRole('option', { name: /System Admin/ })
+    .first()
+    .click();
   await page.getByTestId('manual-functional').waitFor();
-  check((await page.getByTestId('manual-hq').count()) === 0, `${view}: functional role → no HQ/manager`);
+  check(
+    (await page.getByTestId('manual-hq').count()) === 0,
+    `${view}: functional role → no HQ/manager`,
+  );
   await page.getByTestId('manual-role').click();
   await page.getByRole('option', { name: 'Business Manager', exact: true }).click();
   await page.getByTestId('manual-hq').click();
@@ -59,8 +111,13 @@ for (const view of ['desktop', 'mobile']) {
   await page.getByTestId('manager-search-option').first().click();
   await page.getByTestId('manual-manager-picked').waitFor();
   await page.getByTestId('manual-send').click();
-  await page.locator('[data-testid=manual-result][data-status=invited]').waitFor({ timeout: 10000 });
-  check(/\/invite\?token=/.test(await page.getByTestId('invite-url').first().inputValue()), `${view}: manual → link shown`);
+  await page
+    .locator('[data-testid=manual-result][data-status=invited]')
+    .waitFor({ timeout: 10000 });
+  check(
+    /\/invite\?token=/.test(await page.getByTestId('invite-url').first().inputValue()),
+    `${view}: manual → link shown`,
+  );
   await noOverflow(page, `${view} manual`);
   await noBannedWords(page, `${view} manual`);
   await shot(page, `${view}-manual.png`);

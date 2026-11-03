@@ -29,7 +29,11 @@ export function memorySource<T>(
         out = [...out].sort((a, b) => (key(a) < key(b) ? -dir : key(a) > key(b) ? dir : 0));
       }
       const start = (q.page - 1) * q.pageSize;
-      return { items: out.slice(start, start + q.pageSize), total: out.length, hasNext: start + q.pageSize < out.length };
+      return {
+        items: out.slice(start, start + q.pageSize),
+        total: out.length,
+        hasNext: start + q.pageSize < out.length,
+      };
     },
   };
 }

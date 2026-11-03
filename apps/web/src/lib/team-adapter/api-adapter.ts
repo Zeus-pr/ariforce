@@ -44,7 +44,9 @@ const toEmployee = (n: Node, rootId?: string): Employee => {
 };
 
 function fail(error: unknown): never {
-  const e = (error as { error?: { code?: string; message?: string; details?: { field?: string }[] } })?.error;
+  const e = (
+    error as { error?: { code?: string; message?: string; details?: { field?: string }[] } }
+  )?.error;
   const rule = assignField(e?.code);
   if (rule) throw new AdapterError(assignMessage(e)!, rule === 'role' ? 'role' : 'hqId');
   const field = Array.isArray(e?.details) ? e.details[0]?.field : undefined;
@@ -93,13 +95,16 @@ export const apiTeamAdapter = {
     if (!last) await load();
     const r = await api
       .GET('/v1/territories', {
-        params: { query: { limit: 200, sort: 'name', ...territoryQueryFor('business_manager') } as never },
+        params: {
+          query: { limit: 200, sort: 'name', ...territoryQueryFor('business_manager') } as never,
+        },
       })
       .catch(() => null);
     const items = r?.data?.items.filter((t) => t.level === 'headquarter') ?? [];
     if (!items.length) return hqCache;
     const seen = new Map(hqCache.map((h) => [h.id, h]));
-    for (const t of items) if (!seen.has(t.id)) seen.set(t.id, { id: t.id, name: t.name, city: '', state: '' });
+    for (const t of items)
+      if (!seen.has(t.id)) seen.set(t.id, { id: t.id, name: t.name, city: '', state: '' });
     hqCache = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
     return hqCache;
   },
@@ -152,13 +157,20 @@ export const apiTeamAdapter = {
   },
   /** POST /v1/employees/{id}/invite: revokes earlier links. */
   async invite(_role: Role, id: string): Promise<InviteResult> {
-    const { data, error } = await api.POST('/v1/employees/{id}/invite', { params: { path: { id } } });
+    const { data, error } = await api.POST('/v1/employees/{id}/invite', {
+      params: { path: { id } },
+    });
     if (error || !data) fail(error);
-    const name = [...(last?.nodes ?? []), ...(last?.unassigned ?? [])].find((n) => n.id === id)?.name ?? '';
+    const name =
+      [...(last?.nodes ?? []), ...(last?.unassigned ?? [])].find((n) => n.id === id)?.name ?? '';
     return { id, name, expiresAt: data.expiresAt, inviteUrl: absolute(data.inviteUrl) };
   },
   /** POST /v1/employees/invite-bulk in chunks of 200; each row is created + invited on its own (partial success). */
-  async inviteBulk(_role: Role, inputs: EmployeeInput[], onProgress?: (done: number) => void): Promise<BulkInviteResult> {
+  async inviteBulk(
+    _role: Role,
+    inputs: EmployeeInput[],
+    onProgress?: (done: number) => void,
+  ): Promise<BulkInviteResult> {
     const rows: BulkInviteRow[] = [];
     for (let at = 0; at < inputs.length; at += BULK_CHUNK) {
       const chunk = inputs.slice(at, at + BULK_CHUNK);

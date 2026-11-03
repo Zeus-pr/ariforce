@@ -2,11 +2,10 @@
 
 All switching lives in `apps/web/src/lib/api.ts`.
 
-| Variable | Values | Default | Meaning |
-|---|---|---|---|
-| `NEXT_PUBLIC_API_MODE` | `mock` \| `real` | `mock` | `mock` starts MSW in the browser with the contract mocks. `real` never loads MSW and calls the API. |
-| `NEXT_PUBLIC_API_BASE_URL` | URL | `http://localhost:4000` | API origin. |
-
+| Variable                   | Values           | Default                 | Meaning                                                                                             |
+| -------------------------- | ---------------- | ----------------------- | --------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_API_MODE`     | `mock` \| `real` | `mock`                  | `mock` starts MSW in the browser with the contract mocks. `real` never loads MSW and calls the API. |
+| `NEXT_PUBLIC_API_BASE_URL` | URL              | `http://localhost:4000` | API origin.                                                                                         |
 
 ## Real mode behaviour
 
@@ -45,10 +44,10 @@ Top bar (or Cmd/Ctrl+K; search icon on phones) opens a command palette. Groups: 
 
 ### List search audit (Oct 27)
 
-| Page | Search | Real mode |
-| --- | --- | --- |
-| Doctors, Chemists, Stockists | DataTable + masterSource | Server: 300 ms debounce, `q` to API, back to page 1 (URL state) |
-| My Team | Tree search | **Fixed:** real mode now asks `GET /v1/users?q=` (250 ms debounce, abortable) and highlights those ids; mock still filters locally (name, code, HQ, city) |
-| Exceptions | memorySource | Client-side: no list endpoint (known gap) |
-| Sign-up requests | Status tabs | No `q` in the contract (#23) |
-| DCR product picker | Local filter | Picker inside a form, not a list page; products loaded once |
+| Page                         | Search                   | Real mode                                                                                                                                                 |
+| ---------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Doctors, Chemists, Stockists | DataTable + masterSource | Server: 300 ms debounce, `q` to API, back to page 1 (URL state)                                                                                           |
+| My Team                      | Tree search              | **Fixed:** real mode now asks `GET /v1/users?q=` (250 ms debounce, abortable) and highlights those ids; mock still filters locally (name, code, HQ, city) |
+| Exceptions                   | memorySource             | Client-side: no list endpoint (known gap)                                                                                                                 |
+| Sign-up requests             | Status tabs              | No `q` in the contract (#23)                                                                                                                              |
+| DCR product picker           | Local filter             | Picker inside a form, not a list page; products loaded once                                                                                               |

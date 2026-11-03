@@ -3,13 +3,15 @@
 Against the contracts on `feat/roles-hierarchy` (merged locally into the web branches). Nothing here is invented in the UI; where a gap blocks a feature, the screen says so.
 
 ## Closed by feat/contracts-gaps / feat/roles-hierarchy
+
 - Lists: `sort`, `includeTotal`, `q`, filters (territory / specialty / category) are used by Masters; the pager shows real totals.
 - Territories paginate past 200; the lookups page through every cursor.
 - Import: `POST /v1/{doctors|chemists|stockists}/import` dry run then save, with `onDuplicate`; per-row results shown.
 - Roles: the web uses the contract `ROLE_KEYS` / `HIERARCHY_ROLE_KEYS` directly.
 
 ## Open
-1. **Import row keys.** `docs/IMPORT.md` says rows are keyed by template columns (`territory_code`, `specialty_code`, snake_case). The mock validates rows with the entity *create* schema (camelCase, ids). The web currently sends create-schema rows (ids resolved client-side) because that is what the mock accepts. Please pick one and align docs + mock.
+
+1. **Import row keys.** `docs/IMPORT.md` says rows are keyed by template columns (`territory_code`, `specialty_code`, snake_case). The mock validates rows with the entity _create_ schema (camelCase, ids). The web currently sends create-schema rows (ids resolved client-side) because that is what the mock accepts. Please pick one and align docs + mock.
 2. **Import file audit.** The wizard does not upload the source file to R2 yet (`fileId` is optional); will wire `/v1/files/upload-url` once the mock supports PUT to the presigned URL.
 3. ~~KPI endpoints~~ Closed by feat/import-kpis: the dashboard reads `GET /v1/kpis` and `GET /v1/kpis/products`.
 4. **Attendance is caller-only in the mock.** `GET /v1/attendance` builds days only from the caller's own check-ins and labels every day with `me.name` ("Demo Director" even when signed in as a BM). For the approver team view we need: mock users per role (so `userId`/`userName` match the signed-in mock user), team rows for `userId`/`territoryId` filters, and absent/leave rows for people with no check-ins. Also no `GET /v1/users` (team list) to pick a person.
@@ -70,13 +72,34 @@ The top-bar palette (Cmd/Ctrl+K) works today by fanning out to the list endpoint
 **Scoping:** the same territory-subtree scoping as the list endpoints (users: own subtree; System Admin company-wide). No deleted rows. Matches name and code (users: name, employeeCode), case- and accent-insensitive, prefix matches ranked first.
 
 **Response 200:**
+
 ```json
-{ "q": "sen",
+{
+  "q": "sen",
   "groups": [
-    { "group": "doctors", "total": 3, "items": [ { "id": "…", "name": "Dr. A. Sen", "code": "D-001", "subtitle": "General Physician · Kolkata" } ] },
-    { "group": "users", "total": 1, "items": [ { "id": "…", "name": "…", "code": "E-104", "subtitle": "Regional Business Manager" } ] }
-  ] }
+    {
+      "group": "doctors",
+      "total": 3,
+      "items": [
+        {
+          "id": "…",
+          "name": "Dr. A. Sen",
+          "code": "D-001",
+          "subtitle": "General Physician · Kolkata"
+        }
+      ]
+    },
+    {
+      "group": "users",
+      "total": 1,
+      "items": [
+        { "id": "…", "name": "…", "code": "E-104", "subtitle": "Regional Business Manager" }
+      ]
+    }
+  ]
+}
 ```
+
 Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the UI can say "All N matching". No emails or phone numbers in items. Errors: 422 (q too short or long), 429 RATE_LIMITED. Pages/navigation stay client-side (from the role's nav).
 
 **Also missing:** a products page in the web. Product hits open Sales by brand (`/sales`) for roles that can see it; roles without it (System Admin) get no Products group.
@@ -106,6 +129,7 @@ Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the 
 - No missing endpoints. One web-only note: mock-mode My Team runs on the local sample org, whose ids are not contract ids, so the sheet link is shown only in real mode.
 
 ## 40. POB / RCPA on DCR (web, against de138d4)
+
 - No missing endpoints. The POB/RCPA product picker uses `GET /v1/products?limit=200` (active only); `GET /v1/rcpa/competitor-brands?q` feeds the brand autocomplete.
 - Web never sends or computes `PobLine.value`; it shows the server value after save ("value after save" before).
 - Nice-to-have (not blocking): a `q` search on `/v1/products` for companies with more than 200 active products.
@@ -125,9 +149,11 @@ Groups in a fixed order; empty groups omitted; `total` capped (e.g. 100) so the 
 - Territory choice for the day stays a dropdown of the user's own HQs (already scoped and short; type-ahead works); the outlet picker has a Region / HQ filter over all territories in scope.
 
 ## Exceptions (web)
+
 - Mock `/v1/me` is not persona-scoped by the x-mock-user middleware; the Exceptions detail sends `x-mock-user` explicitly (mock only) to decide subject vs manager actions. Real mode uses the session.
 
 ## Real API read-only check (2026-10-27, :3200 → :4000, no login available)
+
 - No non-admin credentials were available, and accounts must not be created, so only unauthenticated GETs were run.
 - Every route the web uses returns 401 with `{"error":{"code":"UNAUTHENTICATED","message":"Sign in required"}}` (JSON): /v1/me, /v1/doctors (incl. ?approvalStatus=pending), /v1/chemists, /v1/territories, /v1/allowance-rates, /v1/allowance-places, /v1/notifications, /v1/notifications/unread-count, /v1/products, /v1/exceptions, /v1/exceptions/summary, /v1/exception-rules. Unknown routes return 404 NOT_FOUND, so all of these are mounted. This matches the contract's error envelope.
 - `/health` is not under that path (404); not used by the web.
@@ -146,6 +172,7 @@ Built only from endpoints that exist; nothing is faked. Gaps for the API:
 - Approver read access to a subordinate's leave request, claim and doctor depends on API scoping; unverified without a real login.
 
 ### Resolved by feat/approvals-detail (e757379), adopted in web
+
 - RESOLVED: approver detail → `GET /v1/approvals/{id}` (ApprovalDetail.subject; `null` shown as "details not visible to you").
 - RESOLVED: `GET /v1/tour-plans/{id}` (used for `/tour-plans?plan=<id>` deep links); `submitterNote` shown to the approver.
 - RESOLVED: rejecter name/date → `rejectionReason`, `rejectedBy {id,name}`, `rejectedAt` on TourPlan, LeaveRequest, ExpenseClaim, Doctor; UI shows "Rejected: <reason>, by <name>, <date>".
@@ -155,6 +182,7 @@ Built only from endpoints that exist; nothing is faked. Gaps for the API:
 - Open: rejected sign-up applicants cannot read their reason (API does not support it).
 
 ## Real API read-only findings (2026-10-27, test sysadmin, 1 sign-in, 0 writes, API d82dd05)
+
 - Match the contract: /v1/me, notifications (+unread-count), products, price-history, doctors (incl. rejection fields), doctors?ids, chemists, territories, approvals, allowance rates/places.
 - GAP: GET /v1/admin/products has no schema in packages/contracts (the web reads it untyped). Needs an AdminProduct schema + openapi entry.
 - DATA: all 101 products have no PTR (missingPtr=true returns 101, false returns 0). Price history is empty ("No price changes yet").
@@ -162,12 +190,14 @@ Built only from endpoints that exist; nothing is faked. Gaps for the API:
 - Not verified: approver views (TP submissions, approvals detail) on real data. This needs a BM/approver test login.
 
 ## #86 Tour plan per-day submissions (web, against 35022cd)
+
 - Adopted: day status/submissionId, submissions[], month aggregate, submit {submitterNote?, dates?}, DAY_LOCKED (details.dates), EMPTY_PLAN, calendar days[], approval subject.submission + submission-only days, Approval.subjectId = submission id.
 - Mock follows the contract. Open question: should plan-level rejectionReason/rejectedBy still be set? The web reads per-submission fields and only falls back to the plan-level ones.
 
 ## System Admin invites (feat/sysadmin-invite-any acf486a, merged a5406bf)
 
 Adopted in web `/admin/invites`. Still open, by design or not yet in the API:
+
 - No endpoint to cancel a link on its own; sending a new link cancels the earlier one.
 - No endpoint lists invites; the pending list is `GET /v1/users?status=invited` (+ `inviteStatus`/`inviteExpiresAt`).
 - Links are shown only when the API returns `inviteUrl` (`INVITE_RETURN_LINK=true`, non-production); otherwise the screen says the invite was emailed.
@@ -178,6 +208,7 @@ Adopted in web `/admin/invites`. Still open, by design or not yet in the API:
 ## System Admin People (feat/sysadmin-people 310ae1c, merged f4e38c1)
 
 Adopted in web `/admin/people`. Open items:
+
 - No `GET /v1/users/{id}`; after a save or a conflict the web re-reads the person with `GET /v1/users?q=<email>` and matches the id.
 - No `inviteStatus` filter on `GET /v1/users`, so "invite expired" is shown per row only, not as a filter.
 - `lastActiveAt` exists but the list doesn't show it yet; there is no `lastLoginAt`.
@@ -188,6 +219,7 @@ Adopted in web `/admin/people`. Open items:
 ## SFC (adopted origin/feat/sfc-routes, merged 2fcb049)
 
 The web now uses the Architect contract (docs/SFC.md, `packages/contracts/src/schemas/sfc.ts`) through `apps/web/src/lib/sfc/adapter.ts`. The web-local MSW mock (`lib/sfc/mock-handler.ts`) uses the same paths and shapes with the Burdwan fixtures. What changed from the earlier web assumptions:
+
 - Paths: the sheet is `GET/PUT /v1/sfc/employees/{userId}/routes` (was `/v1/sfc/{userId}`); employees are listed with `?territoryId=` (was `hqId`).
 - Concurrency: an opaque `etag` (409 `VERSION_CONFLICT` returns `details.etag`), not a numeric `version`. The PUT also sends `hqTerritoryId`.
 - HQs: `{ id, name, code, level, parentId, parentName, employeeCount, routeCount }`; `code` and the parent area can be null (the web groups those under "Other HQs").
@@ -216,6 +248,7 @@ The web uses `POST /v1/auth/password/forgot {email}` -> 200 `{ok,message}` (same
 ### (old) assumed contract
 
 One thin layer: `apps/web/src/lib/password-reset/adapter.ts` (MSW mock in `lib/password-reset/mock-handler.ts`). Assumed better-auth email-OTP routes under the existing `/v1/auth` base:
+
 - `POST /v1/auth/email-otp/send-verification-otp` `{ email, type: 'forget-password' }` -> 200 for every email (no account enumeration). The web always shows "If the account exists, we sent a code"; only 429 is surfaced.
 - `POST /v1/auth/email-otp/reset-password` `{ email, otp, password }` -> 200; the API revokes every session of that user (web toast says so).
 - Errors read from either `{ code, message }` (better-auth) or `{ error: { code, message } }`: `INVALID_OTP` (wrong), `OTP_EXPIRED`, `TOO_MANY_ATTEMPTS` (mock: 3 wrong codes, cleared by a new code), 400/422 password rule message, 429 with `Retry-After`.

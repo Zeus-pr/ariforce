@@ -15,8 +15,9 @@ describe('master batch ids', () => {
 
   it('rejects malformed or oversized ID batches', () => {
     expect(ChemistListQuery.safeParse({ ids: `${firstId},bad` }).success).toBe(false);
-    const ids = Array.from({ length: 101 }, (_, i) =>
-      `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
+    const ids = Array.from(
+      { length: 101 },
+      (_, i) => `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
     ).join(',');
     expect(OutletListQuery.safeParse({ ids }).success).toBe(false);
   });
@@ -28,8 +29,9 @@ describe('DCR work-with batch ids', () => {
       firstId,
       secondId,
     ]);
-    const ids = Array.from({ length: 21 }, (_, i) =>
-      `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
+    const ids = Array.from(
+      { length: 21 },
+      (_, i) => `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
     ).join(',');
     expect(DcrWorkWithQuery.safeParse({ ids }).success).toBe(false);
   });

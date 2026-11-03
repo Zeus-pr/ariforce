@@ -105,7 +105,9 @@ async function sendLoginOtp(): Promise<OtpError | null> {
       signal: AbortSignal.timeout(8000),
     });
     if (res.status === 429)
-      return { message: rateLimitMessage({ response: res, error: await res.json().catch(() => null) }) };
+      return {
+        message: rateLimitMessage({ response: res, error: await res.json().catch(() => null) }),
+      };
     if (res.ok) return null;
     // The password step expired or never happened: start over.
     return { message: 'Your sign-in expired. Enter your password again.', restart: true };
@@ -120,11 +122,14 @@ export const resendLoginOtp = sendLoginOtp;
 /** After the session exists: load the profile and store the signed-in user. */
 async function finishSignIn(): Promise<User | SignInError> {
   const { data: me } = await api.GET('/v1/me');
-  if (!me) return { field: 'password', message: 'Signed in, but your profile could not be loaded.' };
+  if (!me)
+    return { field: 'password', message: 'Signed in, but your profile could not be loaded.' };
   const role = primaryRole(me.roles);
   if (!role) {
     // Signed in, but no role with portal access (e.g. Distribution Head, Accountant): sign out again.
-    void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(() => {});
+    void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(
+      () => {},
+    );
     return { field: 'password', message: NO_PORTAL_MESSAGE };
   }
   const user: User = {
@@ -151,7 +156,9 @@ export async function verifyLoginOtp(code: string): Promise<User | SignInError |
       signal: AbortSignal.timeout(8000),
     });
     if (res.status === 429)
-      return { message: rateLimitMessage({ response: res, error: await res.json().catch(() => null) }) };
+      return {
+        message: rateLimitMessage({ response: res, error: await res.json().catch(() => null) }),
+      };
     if (!res.ok) {
       const b = (await res.json().catch(() => null)) as { code?: string } | null;
       if (b?.code === 'INVALID_TWO_FACTOR_COOKIE')
@@ -185,7 +192,10 @@ export async function signIn(
       signal: AbortSignal.timeout(8000),
     });
     if (res.status === 429)
-      return { field: 'password', message: rateLimitMessage({ response: res, error: await res.json().catch(() => null) }) };
+      return {
+        field: 'password',
+        message: rateLimitMessage({ response: res, error: await res.json().catch(() => null) }),
+      };
     if (res.status === 403) {
       // better-auth shape { code, message } (no error wrapper); accept the wrapped shape too.
       const b = (await res.json().catch(() => null)) as {
@@ -216,7 +226,6 @@ export async function signIn(
     return { field: 'password', message: 'Could not reach the server. Check your connection.' };
   }
 }
-
 
 export function signOut() {
   void fetch(`${API_URL}/v1/auth/sign-out`, { method: 'POST', credentials: 'include' }).catch(

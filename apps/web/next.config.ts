@@ -10,7 +10,11 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       { source: '/masters', destination: '/doctors', permanent: false },
-      { source: '/masters/:kind(doctors|chemists|stockists)', destination: '/:kind', permanent: false },
+      {
+        source: '/masters/:kind(doctors|chemists|stockists)',
+        destination: '/:kind',
+        permanent: false,
+      },
       {
         source: '/masters/:kind(doctors|chemists|stockists)/import',
         destination: '/:kind/import',

@@ -1,6 +1,12 @@
 'use client';
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ariforce/ui/components/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@ariforce/ui/components/select';
 import { cn } from '@ariforce/ui/lib/utils';
 
 export type Choice = { value: string; label: string; hint?: string | null; disabled?: boolean };
@@ -52,9 +58,21 @@ export function ChoiceSelect({
       >
         <SelectValue placeholder={placeholder}>{chosen?.label}</SelectValue>
       </SelectTrigger>
-      <SelectContent position="popper" collisionPadding={8} className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-(--radix-select-trigger-width) min-w-[12rem]">
+      <SelectContent
+        position="popper"
+        collisionPadding={8}
+        className="max-h-[min(20rem,var(--radix-select-content-available-height))] w-(--radix-select-trigger-width) min-w-[12rem]"
+      >
         {choices.map((c) => (
-          <SelectItem key={c.value} value={c.value} textValue={c.label} disabled={c.disabled} className="min-h-11 py-2 md:min-h-9" data-testid={testId ? `${testId}-option` : undefined} data-value={c.value}>
+          <SelectItem
+            key={c.value}
+            value={c.value}
+            textValue={c.label}
+            disabled={c.disabled}
+            className="min-h-11 py-2 md:min-h-9"
+            data-testid={testId ? `${testId}-option` : undefined}
+            data-value={c.value}
+          >
             <span className="flex min-w-0 flex-col items-start gap-0.5">
               <span className="truncate">{c.label}</span>
               {c.hint && <span className="text-xs text-muted-foreground">{c.hint}</span>}

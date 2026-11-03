@@ -15,10 +15,22 @@ type Dead = 'missing' | 'invalid' | 'used' | 'expired';
 type State = 'reading' | 'form' | 'done' | Dead;
 
 const DEAD: Record<Dead, { title: string; body: string }> = {
-  missing: { title: 'This link is incomplete', body: 'Open the full link your manager sent you, or ask them to copy it again.' },
-  invalid: { title: 'This invite link is not valid', body: 'It may have been replaced by a newer invite. Ask your manager to send a new one.' },
-  used: { title: 'This invite was already used', body: 'Your password is already set. Sign in with your work email, or ask your manager if you cannot get in.' },
-  expired: { title: 'This invite has expired', body: 'Invite links last 7 days. Ask your manager to send a new one.' },
+  missing: {
+    title: 'This link is incomplete',
+    body: 'Open the full link your manager sent you, or ask them to copy it again.',
+  },
+  invalid: {
+    title: 'This invite link is not valid',
+    body: 'It may have been replaced by a newer invite. Ask your manager to send a new one.',
+  },
+  used: {
+    title: 'This invite was already used',
+    body: 'Your password is already set. Sign in with your work email, or ask your manager if you cannot get in.',
+  },
+  expired: {
+    title: 'This invite has expired',
+    body: 'Invite links last 7 days. Ask your manager to send a new one.',
+  },
 };
 
 /**
@@ -56,7 +68,9 @@ export function AcceptInviteForm() {
     setErr(null);
     setBusy(true);
     await apiReady();
-    const r = await api.POST('/v1/invites/accept', { body: { token: token!, password: pw } }).catch(() => null);
+    const r = await api
+      .POST('/v1/invites/accept', { body: { token: token!, password: pw } })
+      .catch(() => null);
     setBusy(false);
     if (r?.data) {
       setPw('');
@@ -68,10 +82,13 @@ export function AcceptInviteForm() {
     const code = r ? toApiError(r).code : 'NETWORK';
     const status = r?.response.status;
     const dead: Dead | null =
-      code === 'INVITE_USED' || status === 409 ? 'used'
-      : code === 'INVITE_EXPIRED' || status === 410 ? 'expired'
-      : code === 'INVITE_INVALID' || status === 404 ? 'invalid'
-      : null;
+      code === 'INVITE_USED' || status === 409
+        ? 'used'
+        : code === 'INVITE_EXPIRED' || status === 410
+          ? 'expired'
+          : code === 'INVITE_INVALID' || status === 404
+            ? 'invalid'
+            : null;
     if (dead) {
       setToken(null);
       setPw('');
@@ -80,52 +97,116 @@ export function AcceptInviteForm() {
     }
     const limit = authLimitMessage(r);
     if (limit) return setErr(limit);
-    if (status === 422) return setErr(r ? toApiError(r).message || `Password must be at least ${MIN} characters.` : '');
+    if (status === 422)
+      return setErr(
+        r ? toApiError(r).message || `Password must be at least ${MIN} characters.` : '',
+      );
     setErr('Could not reach the server. Check your connection and try again.');
   };
 
   if (state === 'reading') return <div className="h-64" aria-busy="true" />;
   if (state in DEAD)
     return (
-      <div className="grid gap-3 rounded-xl border bg-background p-5 text-sm shadow-xs" data-testid={`invite-${state}`}>
-        <p className="flex items-center gap-2 font-medium"><LinkIcon className="size-4" aria-hidden />{DEAD[state as Dead].title}</p>
+      <div
+        className="grid gap-3 rounded-xl border bg-background p-5 text-sm shadow-xs"
+        data-testid={`invite-${state}`}
+      >
+        <p className="flex items-center gap-2 font-medium">
+          <LinkIcon className="size-4" aria-hidden />
+          {DEAD[state as Dead].title}
+        </p>
         <p className="text-muted-foreground">{DEAD[state as Dead].body}</p>
-        <Button asChild variant="outline"><Link href="/sign-in">Go to sign in</Link></Button>
+        <Button asChild variant="outline">
+          <Link href="/sign-in">Go to sign in</Link>
+        </Button>
       </div>
     );
   if (state === 'done')
     return (
-      <div className="grid gap-3 rounded-xl border bg-background p-5 text-sm shadow-xs" data-testid="invite-done">
-        <p className="flex items-center gap-2 font-medium"><CircleCheck className="size-4 text-success" aria-hidden /> Password set</p>
-        <p className="text-muted-foreground">Sign in with {email ?? 'your work email'} and the password you just chose.</p>
-        <Button asChild><Link href={`/sign-in${email ? `?email=${encodeURIComponent(email)}` : ''}`} data-testid="invite-to-sign-in">Sign in</Link></Button>
+      <div
+        className="grid gap-3 rounded-xl border bg-background p-5 text-sm shadow-xs"
+        data-testid="invite-done"
+      >
+        <p className="flex items-center gap-2 font-medium">
+          <CircleCheck className="size-4 text-success" aria-hidden /> Password set
+        </p>
+        <p className="text-muted-foreground">
+          Sign in with {email ?? 'your work email'} and the password you just chose.
+        </p>
+        <Button asChild>
+          <Link
+            href={`/sign-in${email ? `?email=${encodeURIComponent(email)}` : ''}`}
+            data-testid="invite-to-sign-in"
+          >
+            Sign in
+          </Link>
+        </Button>
       </div>
     );
   return (
-    <form onSubmit={submit} noValidate className="grid gap-4 rounded-xl border bg-background p-5 shadow-xs" data-testid="invite-form">
+    <form
+      onSubmit={submit}
+      noValidate
+      className="grid gap-4 rounded-xl border bg-background p-5 shadow-xs"
+      data-testid="invite-form"
+    >
       <input type="text" name="username" autoComplete="username" hidden readOnly value="" />
       <div className="grid gap-1.5">
         <Label htmlFor={`${id}-pw`}>New password</Label>
         <div className="relative">
-          <Input id={`${id}-pw`} type={show ? 'text' : 'password'} autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} aria-describedby={`${id}-hint`} className="h-10 pr-10 text-base md:text-base" data-testid="invite-password" />
-          <Button type="button" variant="ghost" size="icon" onClick={() => setShow((s) => !s)} aria-label={show ? 'Hide password' : 'Show password'} aria-pressed={show} className="absolute top-0.5 right-0.5 size-9 text-muted-foreground">
+          <Input
+            id={`${id}-pw`}
+            type={show ? 'text' : 'password'}
+            autoComplete="new-password"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            aria-describedby={`${id}-hint`}
+            className="h-10 pr-10 text-base md:text-base"
+            data-testid="invite-password"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => setShow((s) => !s)}
+            aria-label={show ? 'Hide password' : 'Show password'}
+            aria-pressed={show}
+            className="absolute top-0.5 right-0.5 size-9 text-muted-foreground"
+          >
             {show ? <EyeOff /> : <Eye />}
           </Button>
         </div>
         <div id={`${id}-hint`} className="flex items-center gap-2" aria-live="polite">
           <div className="flex flex-1 gap-1" aria-hidden>
             {[1, 2, 3, 4].map((i) => (
-              <span key={i} className={`h-1 flex-1 rounded-full ${i <= st.score ? (st.score >= 3 ? 'bg-success' : 'bg-warning') : 'bg-muted'}`} />
+              <span
+                key={i}
+                className={`h-1 flex-1 rounded-full ${i <= st.score ? (st.score >= 3 ? 'bg-success' : 'bg-warning') : 'bg-muted'}`}
+              />
             ))}
           </div>
-          <span className="text-xs text-muted-foreground" data-testid="pw-strength">{pw ? st.label : `At least ${MIN} characters`}</span>
+          <span className="text-xs text-muted-foreground" data-testid="pw-strength">
+            {pw ? st.label : `At least ${MIN} characters`}
+          </span>
         </div>
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor={`${id}-pw2`}>Type it again</Label>
-        <Input id={`${id}-pw2`} type={show ? 'text' : 'password'} autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} className="h-10 text-base md:text-base" data-testid="invite-password2" />
+        <Input
+          id={`${id}-pw2`}
+          type={show ? 'text' : 'password'}
+          autoComplete="new-password"
+          value={pw2}
+          onChange={(e) => setPw2(e.target.value)}
+          className="h-10 text-base md:text-base"
+          data-testid="invite-password2"
+        />
       </div>
-      {err && <p role="alert" className="text-sm text-destructive" data-testid="invite-error">{err}</p>}
+      {err && (
+        <p role="alert" className="text-sm text-destructive" data-testid="invite-error">
+          {err}
+        </p>
+      )}
       <Button type="submit" disabled={busy} className="h-10" data-testid="invite-submit">
         {busy && <LoaderCircle className="animate-spin" aria-hidden />} Set password
       </Button>

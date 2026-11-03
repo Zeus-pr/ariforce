@@ -63,7 +63,10 @@ export function AppSidebar() {
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
 
   return (
-    <Sidebar collapsible="icon" className="af-page top-(--header-height) h-[calc(100dvh-var(--header-height))]!">
+    <Sidebar
+      collapsible="icon"
+      className="af-page top-(--header-height) h-[calc(100dvh-var(--header-height))]!"
+    >
       <SidebarContent className="gap-0">
         {NAV_SECTIONS.map((section) => {
           const list = items.filter((i) => i.section === section.id);
@@ -73,7 +76,12 @@ export function AppSidebar() {
           const open = iconOnly || hasActive || !closed.includes(section.id);
           const id = `nav-${section.id}`;
           return (
-            <SidebarGroup key={section.id} className="py-1" data-testid="nav-section" data-section={section.id}>
+            <SidebarGroup
+              key={section.id}
+              className="py-1"
+              data-testid="nav-section"
+              data-section={section.id}
+            >
               <SidebarGroupLabel asChild>
                 <button
                   type="button"
@@ -97,7 +105,11 @@ export function AppSidebar() {
                   <SidebarMenu>
                     {list.map((item) => (
                       <SidebarMenuItem key={item.href}>
-                        <SidebarMenuButton asChild isActive={isActive(item.href)} tooltip={item.title}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={isActive(item.href)}
+                          tooltip={item.title}
+                        >
                           <Link href={item.href} data-testid="nav-item">
                             <item.icon />
                             <span>{item.title}</span>

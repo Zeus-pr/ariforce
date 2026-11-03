@@ -84,7 +84,10 @@ export function MyTeamView() {
   }, [load]);
 
   const hqMap = useMemo(() => new Map(apiTeamAdapter.allHqs().map((h) => [h.id, h])), [tree]);
-  const pending = useMemo(() => (tree ? tree.nodes.filter((e) => e.id !== tree.rootId && e.invited && e.active) : []), [tree]);
+  const pending = useMemo(
+    () => (tree ? tree.nodes.filter((e) => e.id !== tree.rootId && e.invited && e.active) : []),
+    [tree],
+  );
   const below = useMemo(() => (tree ? tree.nodes.filter((e) => e.id !== tree.rootId) : []), [tree]);
   const managers = useMemo(
     () => (tree ? tree.nodes.filter((e) => e.role !== 'business_manager' && e.active) : []),

@@ -32,7 +32,9 @@ describe.skipIf(!OWNER || !APP)('sign-in OTP (real API, mocked mail)', () => {
   const http = () => request(app.getHttpServer());
   const tick = () => new Promise((r) => setTimeout(r, 80));
   const cookies = (res: request.Response) =>
-    ((res.headers['set-cookie'] ?? []) as unknown as string[]).map((c) => c.split(';')[0]!).join('; ');
+    ((res.headers['set-cookie'] ?? []) as unknown as string[])
+      .map((c) => c.split(';')[0]!)
+      .join('; ');
   const codeFor = async (email: string) => {
     await tick();
     const m = [...mail.sent].reverse().find((x) => x.to === email && x.kind === 'login_code');
@@ -62,7 +64,8 @@ describe.skipIf(!OWNER || !APP)('sign-in OTP (real API, mocked mail)', () => {
   };
   const signIn = (email: string, password = PASSWORD) =>
     http().post('/v1/auth/sign-in/email').send({ email, password });
-  const sendOtp = (c: string) => http().post('/v1/auth/two-factor/send-otp').set('cookie', c).send({});
+  const sendOtp = (c: string) =>
+    http().post('/v1/auth/two-factor/send-otp').set('cookie', c).send({});
   const verify = (c: string, code: string) =>
     http().post('/v1/auth/two-factor/verify-otp').set('cookie', c).send({ code });
 
@@ -147,7 +150,13 @@ describe.skipIf(!OWNER || !APP)('sign-in OTP (real API, mocked mail)', () => {
   });
 
   it('authenticator and backup-code routes are not exposed', async () => {
-    for (const p of ['enable', 'disable', 'verify-totp', 'verify-backup-code', 'generate-backup-codes']) {
+    for (const p of [
+      'enable',
+      'disable',
+      'verify-totp',
+      'verify-backup-code',
+      'generate-backup-codes',
+    ]) {
       const r = await http().post(`/v1/auth/two-factor/${p}`).send({});
       expect(r.status, p).toBe(404);
     }

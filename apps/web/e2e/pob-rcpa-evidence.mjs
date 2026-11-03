@@ -30,7 +30,10 @@ for (const view of ['desktop', 'mobile']) {
   await page.getByTestId('pob-qty').last().fill('10');
   await page.getByTestId('call-add').click();
   await page.getByTestId('dcr-call-pob').first().waitFor();
-  check((await page.getByTestId('dcr-call-pob').first().textContent()).includes('value after save'), `${view}: no client-side order value`);
+  check(
+    (await page.getByTestId('dcr-call-pob').first().textContent()).includes('value after save'),
+    `${view}: no client-side order value`,
+  );
   // Chemist call with POB + RCPA (competitor brand).
   await page.getByTestId('dcr-add-call').click();
   await pick(page, 'call-kind', 0, 'Chemist');
@@ -51,8 +54,19 @@ for (const view of ['desktop', 'mobile']) {
   await page.getByTestId('dcr-call-rcpa').first().waitFor();
   check(true, `${view}: chemist call with RCPA added`);
   await page.getByTestId('dcr-save').click();
-  await page.waitForFunction(() => document.querySelector('[data-testid=dcr-status]')?.textContent === 'Draft', null, { timeout: 10000 });
-  await page.waitForFunction(() => [...document.querySelectorAll('[data-testid=dcr-call-pob]')].every((e) => !e.textContent.includes('after save')), null, { timeout: 10000 });
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid=dcr-status]')?.textContent === 'Draft',
+    null,
+    { timeout: 10000 },
+  );
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll('[data-testid=dcr-call-pob]')].every(
+        (e) => !e.textContent.includes('after save'),
+      ),
+    null,
+    { timeout: 10000 },
+  );
   const t = await page.getByTestId('dcr-call-pob').first().textContent();
   check(/₹|price/.test(t), `${view}: order value from server after save (${t})`);
   await noOverflow(page, `${view} dcr`);

@@ -20,9 +20,17 @@ export function dcrSummary(d: Dcr, workType: string | undefined, placeName: Map<
     : d.territoryIds.length
       ? `${d.territoryIds.length} ${d.territoryIds.length === 1 ? 'territory' : 'territories'}`
       : null;
-  const what = workType ?? (band ? 'Field work' : d.details?.kind ? d.details.kind[0]!.toUpperCase() + d.details.kind.slice(1) : 'Report');
+  const what =
+    workType ??
+    (band
+      ? 'Field work'
+      : d.details?.kind
+        ? d.details.kind[0]!.toUpperCase() + d.details.kind.slice(1)
+        : 'Report');
   const n = d.callCount ?? d.calls.length;
-  return [what, band ? band.label : null, territory, band || n ? calls(n) : null].filter(Boolean).join(' · ');
+  return [what, band ? band.label : null, territory, band || n ? calls(n) : null]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 /**
@@ -65,7 +73,8 @@ export function Reveal({
       data-open={expanded}
       data-settled={(expanded && (settled || reduced)) || undefined}
       onTransitionEnd={(e) => {
-        if (e.target === e.currentTarget && e.propertyName === 'grid-template-rows' && expanded) setSettled(true);
+        if (e.target === e.currentTarget && e.propertyName === 'grid-template-rows' && expanded)
+          setSettled(true);
       }}
     >
       <div>{children}</div>

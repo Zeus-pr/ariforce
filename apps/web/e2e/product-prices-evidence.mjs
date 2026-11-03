@@ -3,7 +3,8 @@
 // Usage: BROWSER=chromium|webkit BASE_URL=http://localhost:3000 node e2e/product-prices-evidence.mjs
 import { setup } from './lib.mjs';
 
-const { BASE, check, open, shot, noOverflow, noBannedWords, finish } = await setup('product-prices');
+const { BASE, check, open, shot, noOverflow, noBannedWords, finish } =
+  await setup('product-prices');
 for (const view of ['desktop', 'mobile']) {
   const { ctx, page } = await open('system_admin', '/', view);
   await page.goto(`${BASE}/admin/product-prices`, { waitUntil: 'load' });
@@ -15,7 +16,10 @@ for (const view of ['desktop', 'mobile']) {
   await page.waitForTimeout(800);
   const m = await page.getByTestId('pp-row').count();
   const e = await page.getByTestId('pp-empty').count();
-  check((m > 0 && (await page.getByTestId('pp-no-ptr').count()) === m) || e === 1, `${view}: missing-PTR filter (${m} rows, flagged ${noPtr} before)`);
+  check(
+    (m > 0 && (await page.getByTestId('pp-no-ptr').count()) === m) || e === 1,
+    `${view}: missing-PTR filter (${m} rows, flagged ${noPtr} before)`,
+  );
   await page.getByTestId('pp-missing').uncheck();
   await page.waitForTimeout(800);
   const row = page.getByTestId('pp-row').first();
@@ -23,15 +27,28 @@ for (const view of ['desktop', 'mobile']) {
   await row.getByTestId('pp-mrp').fill('100');
   await row.getByTestId('pp-ptr').fill('150');
   await row.getByTestId('pp-save').click();
-  check((await row.getByTestId('pp-row-error').textContent()).includes('PTR cannot be above MRP'), `${view}: PTR above MRP message`);
+  check(
+    (await row.getByTestId('pp-row-error').textContent()).includes('PTR cannot be above MRP'),
+    `${view}: PTR above MRP message`,
+  );
   await row.getByTestId('pp-ptr').fill('80.5');
   await row.getByTestId('pp-pts').fill('70');
   await row.getByTestId('pp-save').click();
-  await page.waitForFunction(() => !document.querySelector('[data-testid=pp-row]')?.hasAttribute('data-dirty'), null, { timeout: 10000 });
-  check((await row.getByTestId('pp-ptr').inputValue()) === '80.5', `${view}: row saved with server values`);
+  await page.waitForFunction(
+    () => !document.querySelector('[data-testid=pp-row]')?.hasAttribute('data-dirty'),
+    null,
+    { timeout: 10000 },
+  );
+  check(
+    (await row.getByTestId('pp-ptr').inputValue()) === '80.5',
+    `${view}: row saved with server values`,
+  );
   await row.getByTestId('pp-history').click();
   await page.getByTestId('pp-history-item').first().waitFor({ timeout: 10000 });
-  check((await page.getByTestId('pp-history-item').first().textContent()).includes('80.50'), `${view}: history shows the change`);
+  check(
+    (await page.getByTestId('pp-history-item').first().textContent()).includes('80.50'),
+    `${view}: history shows the change`,
+  );
   await page.keyboard.press('Escape');
   await page.getByTestId('pp-history-sheet').waitFor({ state: 'hidden' });
   // Bulk: two rows edited, one invalid on the server side is not reachable here, so check summary counts.
@@ -40,13 +57,19 @@ for (const view of ['desktop', 'mobile']) {
   await r2.getByTestId('pp-mrp').fill('500');
   await r2.getByTestId('pp-ptr').fill('400');
   await r3.getByTestId('pp-ptr').fill('');
-  check((await page.getByTestId('pp-save-all').textContent()).includes('(2)'), `${view}: save all counts edited rows`);
+  check(
+    (await page.getByTestId('pp-save-all').textContent()).includes('(2)'),
+    `${view}: save all counts edited rows`,
+  );
   await page.getByTestId('pp-save-all').click();
   await page.getByTestId('pp-bulk-summary').waitFor({ timeout: 10000 });
   const sum = await page.getByTestId('pp-bulk-summary').textContent();
   check(/Saved 2 rows: 2 updated/.test(sum), `${view}: bulk summary (${sum.trim()})`);
   await page.waitForTimeout(800);
-  check((await page.getByTestId('pp-row').nth(0).getByTestId('pp-no-ptr').count()) === 1, `${view}: cleared PTR is flagged`);
+  check(
+    (await page.getByTestId('pp-row').nth(0).getByTestId('pp-no-ptr').count()) === 1,
+    `${view}: cleared PTR is flagged`,
+  );
   await noOverflow(page, `${view} prices`);
   await noBannedWords(page, `${view} prices`);
   await shot(page, `prices-${view}.png`);
@@ -54,7 +77,10 @@ for (const view of ['desktop', 'mobile']) {
 }
 {
   const { ctx, page } = await open('director', '/');
-  check((await page.locator('a[href="/admin/product-prices"]').count()) === 0, 'director: no Product prices nav');
+  check(
+    (await page.locator('a[href="/admin/product-prices"]').count()) === 0,
+    'director: no Product prices nav',
+  );
   await page.goto(`${BASE}/admin/product-prices`, { waitUntil: 'load' });
   await page.waitForURL((u) => !u.pathname.startsWith('/admin'), { timeout: 15000 });
   check(true, 'director: route gated');

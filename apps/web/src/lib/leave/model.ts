@@ -21,7 +21,8 @@ export type LeaveBalanceItem = z.infer<typeof LeaveBalanceSchema>;
 export type LeaveCalendarEntry = z.infer<typeof LeaveCalendarSchema>;
 export type LeaveStatus = LeaveReq['status'];
 
-export const canLeave = (role: Role, p: Permission) => (DEFAULT_ROLE_PERMISSIONS[role] ?? []).includes(p);
+export const canLeave = (role: Role, p: Permission) =>
+  (DEFAULT_ROLE_PERMISSIONS[role] ?? []).includes(p);
 /** Everyone with a reporting line applies; System Admin has no leave. */
 export const seesLeave = (role: Role) => canLeave(role, 'leave:read');
 
@@ -51,8 +52,17 @@ export function countDays(from: string, to: string, half: 'am' | 'pm' | null, we
   return half ? Math.min(n, 0.5) : n;
 }
 
-const fmt = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-const fmtShort = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const fmt = new Intl.DateTimeFormat('en-IN', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+const fmtShort = new Intl.DateTimeFormat('en-IN', {
+  day: 'numeric',
+  month: 'short',
+  timeZone: 'UTC',
+});
 export const dateLabel = (d: string) => fmt.format(new Date(`${d}T00:00:00Z`));
 export function rangeLabel(r: Pick<LeaveReq, 'fromDate' | 'toDate' | 'half'>) {
   const half = r.half ? ` (${r.half === 'am' ? 'morning' : 'afternoon'})` : '';
@@ -63,7 +73,9 @@ export const daysLabel = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
 
 type Err = { code?: string; message?: string; details?: unknown };
 const list = (ds: unknown) =>
-  Array.isArray(ds) && ds.length ? ` (${(ds as string[]).slice(0, 5).map(dateLabel).join(', ')}${ds.length > 5 ? '…' : ''})` : '';
+  Array.isArray(ds) && ds.length
+    ? ` (${(ds as string[]).slice(0, 5).map(dateLabel).join(', ')}${ds.length > 5 ? '…' : ''})`
+    : '';
 
 /** "29 Oct", "29 Oct and 30 Oct", "29 Oct, 30 Oct and 31 Oct" (first 5, then "and N more"). */
 export function shortDates(ds: string[]): string {
@@ -80,13 +92,16 @@ export function shortDates(ds: string[]): string {
 export function leaveDcrConflictMessage(details: unknown): string {
   const p = LeaveDcrConflictDetails.safeParse(details);
   const dates = p.success ? p.data.dates : [];
-  if (!dates.length) return 'Can’t approve: a DCR is already submitted on a leave date. Sort it out with a correction first.';
+  if (!dates.length)
+    return 'Can’t approve: a DCR is already submitted on a leave date. Sort it out with a correction first.';
   return `Can’t approve: ${dates.length > 1 ? 'DCRs are' : 'a DCR is'} already submitted for ${shortDates(dates)}. Sort ${dates.length > 1 ? 'them' : 'it'} out with a correction first.`;
 }
 
 /** Message for a failed POST /v1/approvals/{id}/decision: LEAVE_DCR_CONFLICT spelled out, others as sent. */
 export function approvalDecisionMessage(e: Err): string {
-  return e.code === LEAVE_DCR_CONFLICT ? leaveDcrConflictMessage(e.details) : e.message || 'Could not save the decision. Try again.';
+  return e.code === LEAVE_DCR_CONFLICT
+    ? leaveDcrConflictMessage(e.details)
+    : e.message || 'Could not save the decision. Try again.';
 }
 
 /** Plain-language message for leave errors, including LEAVE_DAY_BLOCKED from Tour Plans and DCR. */
@@ -127,4 +142,5 @@ export function leaveMessage(e: Err): string {
 }
 
 /** Save errors on Tour Plans / DCR: explain an approved-leave block, otherwise the server message. */
-export const saveMessage = (e: Err) => (e.code === 'LEAVE_DAY_BLOCKED' ? leaveMessage(e) : e.message || 'Something went wrong.');
+export const saveMessage = (e: Err) =>
+  e.code === 'LEAVE_DAY_BLOCKED' ? leaveMessage(e) : e.message || 'Something went wrong.';
