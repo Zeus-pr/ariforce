@@ -7278,6 +7278,18 @@
           },
           {
             "in": "query",
+            "name": "doctorId",
+            "schema": {
+              "description": "Doctor 360: only DCRs with at least one (non-deleted) call at this doctor. Same user scope as without it (own, or reporting line for dcr:review); combine with limit",
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "description": "Doctor 360: only DCRs with at least one (non-deleted) call at this doctor. Same user scope as without it (own, or reporting line for dcr:review); combine with limit"
+          },
+          {
+            "in": "query",
             "name": "status",
             "schema": {
               "type": "string",

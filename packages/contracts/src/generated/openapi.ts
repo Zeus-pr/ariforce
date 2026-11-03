@@ -12399,6 +12399,8 @@ export interface operations {
         userId?: string;
         /** @description Territory incl. descendants */
         territoryId?: string;
+        /** @description Doctor 360: only DCRs with at least one (non-deleted) call at this doctor. Same user scope as without it (own, or reporting line for dcr:review); combine with limit */
+        doctorId?: string;
         status?: 'draft' | 'submitted' | 'locked' | 'approved' | 'rejected';
         /** @description true: only the caller's own DCRs (ignores userId). Otherwise callers with dcr:review see their team (approvals hierarchy, incl. themselves); everyone else sees only their own */
         mine?: 'true' | 'false';
