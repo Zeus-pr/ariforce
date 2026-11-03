@@ -22,6 +22,7 @@ import {
   TableRow,
 } from '@ariforce/ui/components/table';
 import { Tabs, TabsList, TabsTrigger } from '@ariforce/ui/components/tabs';
+import { Member360 } from './member-360';
 import { formatKpi, KPI_META } from '@/components/dashboard/kpi-meta';
 import { API_URL, api, apiReady, toApiError } from '@/lib/api';
 import { roleLabel } from '@/lib/roles';
@@ -136,40 +137,48 @@ export function ProfileView({ userId }: { userId: string }) {
         />
         <Fact label="Contact" value={m.email ?? '—'} sub={m.phone ?? undefined} />
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="profile-counts">
-        <Fact label="Doctors" value={String(p.counts.doctors)} />
-        <Fact label="Chemists" value={String(p.counts.chemists)} />
-        <Fact label="Direct reports" value={String(p.counts.directReports)} />
-        <Fact label="Everyone below" value={String(p.counts.subtreeSize)} />
-      </div>
+      <Member360
+        userId={userId}
+        canSeeExpenses={p.canSeeExpenses}
+        performance={
+          <div className="grid gap-5">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="profile-counts">
+              <Fact label="Doctors" value={String(p.counts.doctors)} />
+              <Fact label="Chemists" value={String(p.counts.chemists)} />
+              <Fact label="Direct reports" value={String(p.counts.directReports)} />
+              <Fact label="Everyone below" value={String(p.counts.subtreeSize)} />
+            </div>
 
-      {p.exceptions && (
-        <Card className="gap-3 p-4" data-testid="profile-exceptions">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-base font-semibold">Exceptions</h2>
-            <p className="text-sm text-muted-foreground">
-              {p.exceptions.open} open · {p.exceptions.openHigh} high · {p.exceptions.last30Days} in
-              the last 30 days
-            </p>
+            {p.exceptions && (
+              <Card className="gap-3 p-4" data-testid="profile-exceptions">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h2 className="text-base font-semibold">Exceptions</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {p.exceptions.open} open · {p.exceptions.openHigh} high ·{' '}
+                    {p.exceptions.last30Days} in the last 30 days
+                  </p>
+                </div>
+                {p.exceptions.byRule.length > 0 ? (
+                  <ul className="flex flex-wrap gap-2">
+                    {p.exceptions.byRule.map((r) => (
+                      <li key={r.ruleCode}>
+                        <Badge variant="secondary">
+                          {EXCEPTION_RULES[r.ruleCode]?.name ?? r.ruleCode}: {r.count}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">None open.</p>
+                )}
+              </Card>
+            )}
+
+            <Performance userId={userId} canSeeExpenses={p.canSeeExpenses} />
+            <Outlets userId={userId} />
           </div>
-          {p.exceptions.byRule.length > 0 ? (
-            <ul className="flex flex-wrap gap-2">
-              {p.exceptions.byRule.map((r) => (
-                <li key={r.ruleCode}>
-                  <Badge variant="secondary">
-                    {EXCEPTION_RULES[r.ruleCode]?.name ?? r.ruleCode}: {r.count}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">None open.</p>
-          )}
-        </Card>
-      )}
-
-      <Performance userId={userId} canSeeExpenses={p.canSeeExpenses} />
-      <Outlets userId={userId} />
+        }
+      />
     </div>
   );
 }
