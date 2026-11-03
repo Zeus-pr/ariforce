@@ -106,6 +106,31 @@ export const ExpenseLine = z
   })
   .meta({ id: 'ExpenseLine' });
 
+export const ExpenseApprover = z
+  .object({ id: Id, name: z.string(), role: z.string().nullable() })
+  .meta({ id: 'ExpenseApprover', description: 'User ref with their most senior role key' });
+export type ExpenseApprover = z.infer<typeof ExpenseApprover>;
+
+export const ExpenseApprovalLevel = z
+  .object({
+    level: z.int().min(1),
+    approver: ExpenseApprover.nullable().meta({
+      description:
+        'Assigned approver of this level (projected up the manager chain for levels not reached yet); null when skipped, shared queue or auto-approved',
+    }),
+    decidedBy: ExpenseApprover.nullable().meta({
+      description:
+        'Who actually decided (may be above the assigned approver); null if undecided or system',
+    }),
+    status: z.enum(['pending', 'approved', 'rejected', 'skipped']),
+    current: z.boolean().meta({ description: 'True for the level awaiting a decision now' }),
+    decidedAt: Timestamp.nullable(),
+    comment: z.string().nullable(),
+    rejectionReason: z.string().nullable().meta({ description: 'comment when status is rejected' }),
+  })
+  .meta({ id: 'ExpenseApprovalLevel' });
+export type ExpenseApprovalLevel = z.infer<typeof ExpenseApprovalLevel>;
+
 export const ExpenseClaim = z
   .object({
     id: Id,
@@ -139,6 +164,24 @@ export const ExpenseClaim = z
         'Dates of live lines whose DCR was rejected (lines[].dcrRejectedAt set); approvers see the flag dcr_rejected_lines on the Approval',
     }),
     version: z.int(),
+    approvalTrail: z.array(ExpenseApprovalLevel).default([]).meta({
+      description:
+        'Per-level history of the current approval request, level 1..totalLevels (empty while draft/never submitted)',
+    }),
+    totalLevels: z
+      .int()
+      .min(1)
+      .meta({ description: 'Configured approval levels (EXPENSE_APPROVAL_LEVELS)' }),
+    currentApprover: ExpenseApprover.nullable().meta({
+      description:
+        'Approver of the level awaiting a decision; null unless submitted (or shared queue)',
+    }),
+    canDecide: z.boolean().meta({
+      description:
+        'The caller may approve/reject now (same rules as POST /decision; DCR gate not pre-checked)',
+    }),
+    canPay: z.boolean().meta({ description: 'The caller may mark it paid now (POST /pay)' }),
+    paidBy: UserRef.nullable().meta({ description: 'Who marked it paid; null unless paid' }),
   })
   .meta({ id: 'ExpenseClaim' });
 export type ExpenseClaim = z.infer<typeof ExpenseClaim>;

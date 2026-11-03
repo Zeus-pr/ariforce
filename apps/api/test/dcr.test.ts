@@ -210,6 +210,30 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
     ).toBe(200);
   });
 
+  it('DCR_DATE_NOT_TODAY: future days, and a director past day (never locks, not unlocked)', async () => {
+    const TOMORROW = ist(new Date(Date.now() + 864e5));
+    const body = { workTypeId: leave, territoryIds: [], calls: [], deviationReason: 'x' };
+    for (const [who, date] of [
+      ['bm', TOMORROW],
+      ['director', TOMORROW],
+      ['director', OLD],
+    ] as const) {
+      const up = await http()
+        .put('/v1/dcrs')
+        .set(as(who))
+        .send({ ...body, date });
+      expect(up.status, `${who} ${date}`).toBe(422);
+      expect(up.body.error.code).toBe('DCR_DATE_NOT_TODAY');
+      expect(up.body.error.details).toMatchObject({ date, today: TODAY });
+      const dr = await http()
+        .put('/v1/dcrs/draft')
+        .set(as(who))
+        .send({ ...body, date, workWithUserIds: [] });
+      expect(dr.status, `${who} draft ${date}`).toBe(422);
+      expect(dr.body.error.code).toBe('DCR_DATE_NOT_TODAY');
+    }
+  });
+
   it('locks old days; correction request + approval unlocks for 48h (gap #8)', async () => {
     const body = {
       date: OLD,

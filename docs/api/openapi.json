@@ -7400,7 +7400,7 @@
             }
           },
           "422": {
-            "description": "Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown or inactive products, a check-in that is not your visit to that outlet, RCPA on a non-chemist call (details.rcpaOutletCallIds), duplicate POB products or RCPA brands in a call (details.duplicatePob / duplicateRcpa), or an out-of-scope stockistId / RCPA doctorId",
+            "description": "DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today). Validation failed: DEVIATION_REASON_REQUIRED, calls on a non-field day, unknown or inactive products, a check-in that is not your visit to that outlet, RCPA on a non-chemist call (details.rcpaOutletCallIds), duplicate POB products or RCPA brands in a call (details.duplicatePob / duplicateRcpa), or an out-of-scope stockistId / RCPA doctorId",
             "content": {
               "application/json": {
                 "schema": {
@@ -7933,7 +7933,7 @@
             }
           },
           "422": {
-            "description": "VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds)",
+            "description": "DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today), VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8045,7 +8045,7 @@
             }
           },
           "422": {
-            "description": "VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND",
+            "description": "DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND",
             "content": {
               "application/json": {
                 "schema": {
@@ -29803,6 +29803,50 @@
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
           },
+          "approvalTrail": {
+            "default": [],
+            "description": "Per-level history of the current approval request, level 1..totalLevels (empty while draft/never submitted)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExpenseApprovalLevel"
+            }
+          },
+          "totalLevels": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "description": "Configured approval levels (EXPENSE_APPROVAL_LEVELS)"
+          },
+          "currentApprover": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpenseApprover"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Approver of the level awaiting a decision; null unless submitted (or shared queue)"
+          },
+          "canDecide": {
+            "type": "boolean",
+            "description": "The caller may approve/reject now (same rules as POST /decision; DCR gate not pre-checked)"
+          },
+          "canPay": {
+            "type": "boolean",
+            "description": "The caller may mark it paid now (POST /pay)"
+          },
+          "paidBy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who marked it paid; null unless paid"
+          },
           "lineCount": {
             "type": "integer",
             "minimum": -9007199254740991,
@@ -29830,9 +29874,125 @@
           "paymentRef",
           "dcrRejectedDates",
           "version",
+          "approvalTrail",
+          "totalLevels",
+          "currentApprover",
+          "canDecide",
+          "canPay",
+          "paidBy",
           "lineCount"
         ],
         "additionalProperties": false
+      },
+      "ExpenseApprovalLevel": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "approver": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpenseApprover"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Assigned approver of this level (projected up the manager chain for levels not reached yet); null when skipped, shared queue or auto-approved"
+          },
+          "decidedBy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpenseApprover"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who actually decided (may be above the assigned approver); null if undecided or system"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "skipped"
+            ]
+          },
+          "current": {
+            "type": "boolean",
+            "description": "True for the level awaiting a decision now"
+          },
+          "decidedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rejectionReason": {
+            "description": "comment when status is rejected",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "level",
+          "approver",
+          "decidedBy",
+          "status",
+          "current",
+          "decidedAt",
+          "comment",
+          "rejectionReason"
+        ],
+        "additionalProperties": false
+      },
+      "ExpenseApprover": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role"
+        ],
+        "additionalProperties": false,
+        "description": "User ref with their most senior role key"
       },
       "ExpenseClaim": {
         "type": "object",
@@ -30015,6 +30175,50 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "approvalTrail": {
+            "default": [],
+            "description": "Per-level history of the current approval request, level 1..totalLevels (empty while draft/never submitted)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExpenseApprovalLevel"
+            }
+          },
+          "totalLevels": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "description": "Configured approval levels (EXPENSE_APPROVAL_LEVELS)"
+          },
+          "currentApprover": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpenseApprover"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Approver of the level awaiting a decision; null unless submitted (or shared queue)"
+          },
+          "canDecide": {
+            "type": "boolean",
+            "description": "The caller may approve/reject now (same rules as POST /decision; DCR gate not pre-checked)"
+          },
+          "canPay": {
+            "type": "boolean",
+            "description": "The caller may mark it paid now (POST /pay)"
+          },
+          "paidBy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who marked it paid; null unless paid"
           }
         },
         "required": [
@@ -30038,7 +30242,13 @@
           "paidAt",
           "paymentRef",
           "dcrRejectedDates",
-          "version"
+          "version",
+          "approvalTrail",
+          "totalLevels",
+          "currentApprover",
+          "canDecide",
+          "canPay",
+          "paidBy"
         ],
         "additionalProperties": false
       },
