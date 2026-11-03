@@ -1,5 +1,6 @@
 'use client';
 
+import { DcrReportBody } from '@/components/dcr/team-dcr-detail';
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -369,14 +370,7 @@ function DayDetail({ userId, date }: { userId: string; date: string }) {
           ['Calls', d.calls],
         ]}
       />
-      {d.dcr && (
-        <Link
-          href={`/dcr/reports/${d.dcr.id}`}
-          className="self-start text-sm font-medium text-primary underline-offset-4 hover:underline"
-        >
-          Open report
-        </Link>
-      )}
+      {d.dcr && <DcrReportBody id={d.dcr.id} inline readOnly />}
       {points.length > 0 && (
         <CheckInMap
           points={points}
@@ -400,7 +394,7 @@ function DayDetail({ userId, date }: { userId: string; date: string }) {
           ))}
         </ul>
       ) : (
-        <Empty>No calls on this day.</Empty>
+        !d.dcr && <Empty>No calls on this day.</Empty>
       )}
     </div>
   );
