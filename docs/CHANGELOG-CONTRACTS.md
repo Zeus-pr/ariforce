@@ -10,6 +10,13 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## feat/dcr-expenses (server, no contract change)
+
+- Implements DCR expenses as specified: draft/submit persistence, idempotent link into the month
+  claim (origin `dcr`), `claim_locked` skip, `DCR_EXPENSE_CATEGORY_INVALID`, read fields on Dcr.
+- `ExpenseLine.origin` is now returned (`manual` | `ta_da` | `dcr`). Editing/deleting an origin
+  `dcr` line returns 409 `EXPENSE_NOT_EDITABLE` (`details.reason: 'DCR_LINE'`).
+
 ## feat/dcr-meeting-times (2026-11-04): server for meeting sub-types, endTime, places
 
 No contract change, no migration. Enforces #121 on PUT /v1/dcrs/draft, POST /v1/dcrs/{id}/submit,
