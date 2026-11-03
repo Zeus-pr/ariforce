@@ -5,6 +5,7 @@ import { CalendarPlus, Lock, MapPin, RotateCw, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import type { Dcr } from '@ariforce/contracts';
+import { DEFAULT_MEETING_TYPE, MEETING_TYPES } from '@/lib/dcr/meeting-types';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
@@ -599,13 +600,6 @@ function Field({
   );
 }
 
-const MEETING_TYPES = [
-  'Cycle meeting',
-  'Area review',
-  'Regional review',
-  'Conference or CME',
-  'Team meeting',
-];
 const TRAINING_TYPES = [
   'Product training',
   'Induction',
@@ -635,6 +629,7 @@ function TypeSelect({
   disabled,
   errors = [],
   testId,
+  allowOther = true,
 }: {
   id: string;
   label: string;
@@ -647,9 +642,12 @@ function TypeSelect({
   disabled: boolean;
   errors?: string[];
   testId: string;
+  /** false: only the presets; a saved value outside them still shows as its own choice. */
+  allowOther?: boolean;
 }) {
   const [otherPicked, setOtherPicked] = useState(false);
-  const other = otherPicked || (!!value && !presets.includes(value));
+  const legacy = !allowOther && !!value && !presets.includes(value);
+  const other = allowOther && (otherPicked || (!!value && !presets.includes(value)));
   return (
     <div className="flex flex-col gap-1.5">
       <Label id={`${id}-label`}>{label}</Label>
@@ -662,8 +660,9 @@ function TypeSelect({
           onChange(v === OTHER ? '' : v);
         }}
         choices={[
+          ...(legacy ? [{ value, label: value }] : []),
           ...presets.map((p) => ({ value: p, label: p })),
-          { value: OTHER, label: 'Other', hint: 'Type it in' },
+          ...(allowOther ? [{ value: OTHER, label: 'Other', hint: 'Type it in' }] : []),
         ]}
         placeholder={placeholder}
         disabled={disabled}
@@ -806,13 +805,19 @@ export function MeetingFields({
 }) {
   const set = (p: Partial<MeetingForm>) => onChange({ ...value, ...p });
   const what = kind === 'meeting' ? 'Meeting' : 'Training';
+  // A new meeting starts on the common case; the user can switch to the other type.
+  const needsDefault = kind === 'meeting' && !readOnly && !value.title;
+  useEffect(() => {
+    if (needsDefault) onChange({ ...value, title: DEFAULT_MEETING_TYPE });
+  }, [needsDefault]);
   return (
     <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-2" data-testid={`dcr-${kind}`}>
       <div className="sm:col-span-2">
         <TypeSelect
           id="m-title"
           label={`${what} type`}
-          presets={kind === 'meeting' ? MEETING_TYPES : TRAINING_TYPES}
+          presets={kind === 'meeting' ? [...MEETING_TYPES] : TRAINING_TYPES}
+          allowOther={kind !== 'meeting'}
           value={value.title}
           onChange={(title) => set({ title })}
           placeholder={`Choose the ${what.toLowerCase()} type`}
