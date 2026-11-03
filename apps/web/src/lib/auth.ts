@@ -7,7 +7,9 @@ import { rateLimitMessage, SUSPENDED_MESSAGE } from '@/lib/auth-errors';
 import { ROLES, ROLE_LABEL, roleLevel, type Role } from './roles';
 import { API_URL, api, setAccountStateHandler, setUnauthenticatedHandler } from './api';
 
-export { SESSION_KEY } from './auth-boot';
+import { SESSION_KEY } from './auth-boot';
+
+export { SESSION_KEY };
 
 export type User = { id: string; name: string; email: string; role: Role; territory: string };
 
@@ -17,7 +19,6 @@ export type SignedIn = { user: User; role: Role };
 
 let cache: { raw: string | null; value: SignedIn | null } = { raw: null, value: null };
 const listeners = new Set<() => void>();
-const SESSION_KEY = 'ariforce-session';
 
 function read(): SignedIn | null {
   let raw: string | null = null;
