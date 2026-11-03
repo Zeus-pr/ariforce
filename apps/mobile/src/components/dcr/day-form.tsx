@@ -13,6 +13,7 @@ import { LeaveFields } from '@/components/dcr/leave-fields';
 import { MeetingEditor } from '@/components/dcr/meeting-editor';
 import { MultiSelectSheet } from '@/components/dcr/multi-select-sheet';
 import { OfficeEditor } from '@/components/dcr/office-editor';
+import { TpSfcReview } from '@/components/approvals/sfc-review';
 import { SfcSection } from '@/components/dcr/sfc-section';
 import { useBottomSpace } from '@/components/floating-tab-bar';
 import { Icon } from '@/components/icon';
@@ -55,6 +56,8 @@ import {
   addDays,
   datesOf,
   rangeLabel,
+  tpDefaultFromDate,
+  tpFutureMonthCutoffError,
   tpMessage,
   useDeleteTp,
   useSaveTp,
@@ -188,7 +191,15 @@ export function DcrForm({
   const decisionsQ = useDecisions();
   const decisions = decisionsQ.data ?? {};
   const review = dcr ? reviewOf(dcr, decisions) : null;
-  const locked = !isTp && isDayLocked(dcr, s.date) && dcr?.status !== 'submitted';
+  const dayLock = optionsQ.data
+    ? {
+        lockAt: optionsQ.data.lockAt,
+        unlockedUntil: optionsQ.data.unlockedUntil ?? optionsQ.data.dcr?.unlockedUntil,
+        locked: optionsQ.data.locked,
+      }
+    : null;
+  const locked =
+    !isTp && isDayLocked(dcr, s.date, new Date(), dayLock) && dcr?.status !== 'submitted';
   const v2Unlock = optionsQ.data && 'unlockRequest' in optionsQ.data;
   // Old API only: best-effort match of my pending dcr_unlock approvals.
   const myUnlocksQ = useMyUnlockRequests(locked && !v2Unlock);
@@ -231,9 +242,17 @@ export function DcrForm({
   const daySub = optionsQ.data?.submitted ?? null;
   const subRejected = !!daySub && reviewOf(daySub, decisions).status === 'rejected';
   const blocked = !!daySubmitted && dcr?.status !== 'submitted' && !subRejected;
+  const dcrReview = review?.status ?? (dcr ? reviewOf(dcr, decisions).status : null);
   const readOnly = isTp
     ? tpItem?.status === 'pending' || tpItem?.status === 'approved'
-    : dcr?.status === 'submitted' || locked || blocked || review?.status === 'rejected';
+    : // Submitted / approved / locked are view-only. Rejected stays editable so they can fix & resubmit.
+      dcr?.status === 'submitted' ||
+      dcr?.status === 'locked' ||
+      dcrReview === 'submitted' ||
+      dcrReview === 'approved' ||
+      dcrReview === 'locked' ||
+      locked ||
+      blocked;
   const busy = !!saving || saveDraft.isPending || submitMut.isPending || deleteMut.isPending;
 
   // Hydrate from options + optional record
@@ -249,7 +268,8 @@ export function DcrForm({
       setLoadError('This tour plan no longer exists.');
       return;
     }
-    const hydrateKey = `${optionsQ.data.date}|${reportId ?? ''}|${tpItem?.id ?? ''}`;
+    // Include lock/unlock so an approved correction re-opens the form without a remount.
+    const hydrateKey = `${optionsQ.data.date}|${reportId ?? ''}|${tpItem?.id ?? ''}|${optionsQ.data.locked ?? ''}|${optionsQ.data.unlockedUntil ?? optionsQ.data.dcr?.unlockedUntil ?? ''}|${optionsQ.data.dcr?.status ?? ''}`;
     if (hydratedFor.current === hydrateKey) return;
     const wts = normaliseWorkTypes(optionsQ.data.workTypes);
     setWorkTypes(wts);
@@ -317,8 +337,12 @@ export function DcrForm({
       if (det?.kind === 'leave') next.leaveRequestId = det.leaveRequestId;
       next.deviationReason = src.deviationReason ?? '';
       setAskDeviation(!!src.deviationReason);
-      if (d && (d.status === 'submitted' || d.status === 'locked')) {
-        next.sfc = { state: 'ok', hqs: [] };
+      // Prefer frozen snapshots on filed DCRs (SfcSection falls back to dcr.sfcRoutes when idle).
+      if (d) {
+        const st = reviewOf(d, decisions).status;
+        if (st === 'submitted' || st === 'approved' || st === 'locked' || d.status === 'locked') {
+          next.sfc = { state: 'idle', hqs: [] };
+        }
       }
     }
     setS(next);
@@ -380,9 +404,17 @@ export function DcrForm({
     };
   }, [missingNames]);
 
-  // SFC match
+  // SFC match — still load for read-only TP so details show; filed DCRs use frozen snapshots instead.
+  const frozenDcrSfc =
+    !isTp &&
+    !!dcr?.sfcRoutes?.some((r) => r.snapshot) &&
+    (readOnly ||
+      dcr.status === 'submitted' ||
+      dcr.status === 'locked' ||
+      dcrReview === 'approved' ||
+      dcrReview === 'submitted');
   const sfcKey =
-    field && s.workTypeId && s.territoryIds.length && s.workWithDone && !readOnly
+    field && s.workTypeId && s.territoryIds.length && s.workWithDone && !frozenDcrSfc
       ? `${s.date}|${s.workTypeId}|${s.territoryIds.join(',')}`
       : '';
   useEffect(() => {
@@ -587,6 +619,11 @@ export function DcrForm({
       setFormError(`A tour plan covers at most ${MAX_TP_DAYS} days.`);
       return;
     }
+    const cutoff = tpFutureMonthCutoffError(s.date);
+    if (cutoff) {
+      setFormError(cutoff);
+      return;
+    }
     if (!user) return;
     const b = draftBody(sEff, null);
     setSaving(send ? 'submit' : 'draft');
@@ -663,12 +700,21 @@ export function DcrForm({
     );
   }
 
-  // TP dates: today and the next 60 days (same sheet picker as the DCR date).
+  // TP dates: only the next calendar month while its window is open (never current month).
   const planDates = isTp
-    ? Array.from({ length: 61 }, (_, i) => {
-        const v = addDays(today, i);
-        return { value: v, label: dateLabel(v), hint: i === 0 ? 'Today' : undefined };
-      })
+    ? (() => {
+        const from = tpDefaultFromDate();
+        if (!from) return [];
+        const y = Number(from.slice(0, 4));
+        const m = Number(from.slice(5, 7));
+        const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+        const monthEnd = `${from.slice(0, 7)}-${String(last).padStart(2, '0')}`;
+        return datesOf(from, monthEnd).map((v, i) => ({
+          value: v,
+          label: dateLabel(v),
+          hint: i === 0 ? 'First of month' : undefined,
+        }));
+      })()
     : [];
   const status = locked ? 'Locked' : review ? REVIEW_LABEL[review.status] : 'Not started';
   const statusTone = locked ? 'neutral' : review ? REVIEW_TONE[review.status] : 'neutral';
@@ -688,6 +734,17 @@ export function DcrForm({
         'Your manager will review it. You can edit once it is approved.',
       );
     } catch (e) {
+      // Director already approved on web: server is open, but this screen still looked locked.
+      if (
+        e instanceof ApiError &&
+        e.status === 409 &&
+        /already unlocked|not locked/i.test(e.message)
+      ) {
+        setUnlockError(null);
+        await optionsQ.refetch();
+        Alert.alert('Day unlocked', 'This day is open again. You can file or edit the DCR now.');
+        return;
+      }
       setUnlockError(saveMessage(e));
     }
   }
@@ -941,7 +998,9 @@ export function DcrForm({
               </>
             ) : null}
 
-            {s.workWithDone ? (
+            {isTp && tpItem && tpItem.status !== 'draft' ? (
+              <TpSfcReview item={tpItem} />
+            ) : s.workWithDone ? (
               <SfcSection
                 sfc={s.sfc}
                 routeChoice={s.routeChoice}

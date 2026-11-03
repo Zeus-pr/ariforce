@@ -161,6 +161,9 @@ export class DcrFlowService {
         .select()
         .from(dcrs)
         .where(and(eq(dcrs.userId, p.userId), eq(dcrs.date, date), isNull(dcrs.deletedAt)));
+      // Always include day lock/unlock so clients know a day is open after an approved
+      // correction even when there is no DCR row yet.
+      const li = await this.dcr.lockInfo(tx, s, p.userId, date);
       return {
         date,
         workTypes: wts.map((w) => ({
@@ -173,6 +176,9 @@ export class DcrFlowService {
           detailsKind: dcrDetailsKind(w),
         })),
         dcr: row ? (await this.dcr.toDto(tx, s, [row]))[0]! : null,
+        lockAt: li.lockAt.toISOString(),
+        unlockedUntil: li.unlockedUntil?.toISOString() ?? null,
+        locked: li.locked,
       };
     });
   }

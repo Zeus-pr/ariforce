@@ -4,6 +4,7 @@ import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { DecisionBar } from '@/components/approvals/decision-bar';
+import { DcrSfcReview } from '@/components/approvals/sfc-review';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
@@ -23,11 +24,12 @@ import {
   reviewOf,
   useDecideDcr,
   useDecisions,
+  useTeamNames,
 } from '@/lib/dcr/adapter';
-import { useDcrOptions, useDcrRecord } from '@/lib/dcr/api';
+import { useDcrOptions, useDcrRecord, useDcrTerritories } from '@/lib/dcr/api';
 import { dateLabel, savedLabel } from '@/lib/dcr/dates';
 import { saveMessage } from '@/lib/dcr/errors';
-import { BAND_LABEL, KIND_LABEL, timeOfIso } from '@/lib/dcr/model';
+import { BAND_LABEL, KIND_LABEL, timeOfIso, territoryRows } from '@/lib/dcr/model';
 import { formatHHmmLabel } from '@/lib/clock12';
 import { formatINR } from '@/lib/money';
 import { isApprover } from '@/lib/roles';
@@ -50,9 +52,17 @@ function Review({ id, repName }: { id: string; repName: string }) {
   const d = recordQ.data;
   const optionsQ = useDcrOptions(d?.date ?? '');
   const productsQ = useDcrProducts(optionsQ.data, !!d);
+  const terrQ = useDcrTerritories(!!d);
+  const namesQ = useTeamNames(!!d);
   const decisionsQ = useDecisions();
   const decide = useDecideDcr();
   const [error, setError] = useState<string | null>(null);
+
+  const placeName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of territoryRows(terrQ.data ?? [])) m.set(r.id, r.name);
+    return m;
+  }, [terrQ.data]);
 
   const outlets = useQueries({
     queries: (d?.calls ?? []).map((c) => ({
@@ -120,6 +130,36 @@ function Review({ id, repName }: { id: string; repName: string }) {
           ) : null}
           {dayPob > 0 ? <AppText variant="label">Day POB {formatINR(dayPob)}</AppText> : null}
         </Card>
+
+        <Card style={styles.pad}>
+          <AppText variant="label">Work on</AppText>
+          <AppText variant="body">
+            {[workType, d.band ? BAND_LABEL[d.band] : null].filter(Boolean).join(' · ') || '—'}
+          </AppText>
+          {d.territoryIds.length ? (
+            <>
+              <AppText variant="label">Territories</AppText>
+              <AppText variant="body">
+                {d.territoryIds.map((x) => placeName.get(x) ?? 'Territory').join(', ')}
+              </AppText>
+            </>
+          ) : null}
+          {d.workWithUserIds?.length ? (
+            <>
+              <AppText variant="label">Work with</AppText>
+              <AppText variant="body">
+                {d.workWithUserIds.map((u) => namesQ.data?.get(u) ?? 'Colleague').join(', ')}
+              </AppText>
+            </>
+          ) : d.band ? (
+            <>
+              <AppText variant="label">Work with</AppText>
+              <AppText variant="body">Alone</AppText>
+            </>
+          ) : null}
+        </Card>
+
+        <DcrSfcReview dcr={d} />
 
         {d.details ? (
           <Card style={styles.pad}>

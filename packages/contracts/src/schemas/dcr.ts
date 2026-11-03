@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { DateOnly, Id } from './common';
+import { DateOnly, Id, Timestamp } from './common';
 import { DcrBand, DcrDetails, DcrSfcRouteChoice, DcrSfcSource } from './dcr-parts';
 import { Dcr, DcrCallInput } from './field';
 import { SfcCategory, SfcTravelMode } from './sfc';
@@ -38,6 +38,12 @@ export const DcrOptions = z
       .array(Dcr)
       .default([])
       .meta({ description: 'Your drafts for the date, newest first (several allowed per day)' }),
+    /** Day lock clock (00:00 IST next day + company hours). Always present, even with no DCR. */
+    lockAt: Timestamp.optional(),
+    /** End of an approved unlock window; null when locked or never unlocked. */
+    unlockedUntil: Timestamp.nullable().optional(),
+    /** True when past lockAt and not inside an unlock window. */
+    locked: z.boolean().optional(),
   })
   .meta({ id: 'DcrOptions' });
 export type DcrOptions = z.infer<typeof DcrOptions>;

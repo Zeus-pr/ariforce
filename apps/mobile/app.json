@@ -10,7 +10,7 @@
     "backgroundColor": "#F4F8FD",
     "ios": {
       "bundleIdentifier": "in.arighna.ariforce",
-      "supportsTablet": false
+      "supportsTablet": true
     },
     "android": {
       "package": "in.arighna.ariforce",
@@ -66,7 +66,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiUrl": "https://ariforce-api.prajeshchoudhury.in"
+      "apiUrl": "https://ariforce-api.arighnapharma.com"
     }
   }
 }

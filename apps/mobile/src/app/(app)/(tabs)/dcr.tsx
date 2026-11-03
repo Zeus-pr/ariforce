@@ -1,45 +1,90 @@
 import type { Dcr } from '@ariforce/contracts';
+import { useQueries } from '@tanstack/react-query';
 import { Redirect, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { SelectSheet } from '@/components/masters/select-sheet';
-import { mockTpCard, rangeLabel, useMyTps, type TpDraftCard } from '@/lib/tp/adapter';
+import {
+  mockTpCard,
+  rangeLabel,
+  useMyTps,
+  type TpDraftCard,
+  type TpItem,
+} from '@/lib/tp/adapter';
+import { tpPillLabel } from '@/lib/tp/calendar';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { PullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
-import { Chip } from '@/components/chip';
 import { Icon } from '@/components/icon';
-import { ListRow } from '@/components/list-row';
 import { ScrollView } from '@/components/scroll';
 import { SkeletonList } from '@/components/skeleton';
-import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
-import { useDeleteDraft, useDraftList, useDcrOptions, useSubmittedHistory } from '@/lib/dcr/api';
-import { REVIEW_LABEL, REVIEW_TONE, counts, reviewOf, useDecisions } from '@/lib/dcr/adapter';
-import { dateLabel, savedLabel, todayIST } from '@/lib/dcr/dates';
+import { FloatingFab, useFabScrollPad } from '@/components/floating-fab';
+import { TabScene } from '@/components/floating-tab-bar';
+import { MonthCalendar } from '@/components/tp/month-calendar';
+import { DcrStatusSections } from '@/components/dcr/status-sections';
+import { apiFetch } from '@/lib/api';
+import {
+  useDeleteDraft,
+  useDraftList,
+  useDcrOptions,
+  useDcrTerritories,
+  useSubmittedHistory,
+} from '@/lib/dcr/api';
+import { reviewOf, useDecisions } from '@/lib/dcr/adapter';
+import {
+  dcrListLabel,
+  dcrPillLabel,
+  dcrPillsByDate,
+  groupDcrs,
+} from '@/lib/dcr/calendar';
+import { dateLabel, todayIST } from '@/lib/dcr/dates';
 import { saveMessage } from '@/lib/dcr/errors';
-import { BANDS, normaliseWorkTypes } from '@/lib/dcr/model';
+import { normaliseWorkTypes, territoryRows, type CallKind } from '@/lib/dcr/model';
 import { useAuth } from '@/lib/auth-context';
 import { isSalesRole } from '@/lib/roles';
-import { colors, layout, radius, shadows, spacing, touch } from '@/theme';
+import { colors, layout, spacing } from '@/theme';
+
+const OUTLET_PATH: Record<CallKind, string> = {
+  doctor: '/v1/doctors',
+  chemist: '/v1/chemists',
+  stockist: '/v1/stockists',
+};
+
+function monthRange(year: number, monthIndex: number) {
+  const from = `${year}-${String(monthIndex + 1).padStart(2, '0')}-01`;
+  const last = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+  const to = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+  return { from, to };
+}
 
 /**
- * DCR workspace (web dcr-workspace.tsx): saved drafts, New DCR, and submitted history.
- * Opening a card pushes the form stack screen.
+ * DCR workspace: month calendar (Outlook-style day labels) + Approved / Pending /
+ * Rejected / Drafts / Drafts from TP. New DCR FAB.
  */
 export default function DcrTab() {
   const { user } = useAuth();
-  // DCR is for the sales ladder only (web nav.ts SALES); the tab is hidden for others too.
   if (!isSalesRole(user?.roles ?? [])) return <Redirect href="/" />;
   return <DcrWorkspace />;
 }
 
 function DcrWorkspace() {
   const router = useRouter();
-  const bottom = useBottomSpace();
+  const scrollPad = useFabScrollPad();
   const today = todayIST();
+  const [cursor, setCursor] = useState(() => {
+    const [y, m] = today.split('-').map(Number);
+    return { year: y!, monthIndex: m! - 1 };
+  });
+  const [selected, setSelected] = useState<string | null>(today);
+  const range = useMemo(
+    () => monthRange(cursor.year, cursor.monthIndex),
+    [cursor.year, cursor.monthIndex],
+  );
+
   const draftsQ = useDraftList();
-  const historyQ = useSubmittedHistory();
+  const historyQ = useSubmittedHistory(range.from, range.to);
   const optionsQ = useDcrOptions(today);
+  const terrQ = useDcrTerritories(true);
   const remove = useDeleteDraft();
   const decisionsQ = useDecisions();
   const { user } = useAuth();
@@ -52,36 +97,78 @@ function DcrWorkspace() {
   const tpTo = approvedTps.reduce((m, t) => (t.to > m ? t.to : m), today);
   const tpFiledQ = useSubmittedHistory(tpFrom, tpTo);
   const [pickTp, setPickTp] = useState<TpDraftCard | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
 
-  const workTypeName = useMemo(() => {
+  const wtName = useMemo(() => {
     const map = new Map<string, string>();
     for (const w of normaliseWorkTypes(optionsQ.data?.workTypes ?? [])) map.set(w.id, w.name);
     return map;
   }, [optionsQ.data]);
 
-  const history = useMemo(
+  const terrName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of territoryRows(terrQ.data ?? [])) map.set(r.id, r.name);
+    return map;
+  }, [terrQ.data]);
+
+  const historyRows = useMemo(
     () =>
       (historyQ.data?.items ?? [])
-        .filter((d) => d.status !== 'draft' && (d.submittedAt || d.status !== 'locked'))
+        .filter((d) => d.status !== 'draft')
         .map((d) => ({ d, review: reviewOf(d, decisionsQ.data) })),
     [historyQ.data, decisionsQ.data],
   );
-  // Rejected reports never count and never block the day: the rep files it again.
-  const submittedDays = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const { d, review } of history) if (counts(review)) m.set(d.date, d.id);
-    return m;
-  }, [history]);
 
-  // Approved TPs as one draft card each: options.tourPlanDrafts once the TP API is live, else the
-  // same rule on the mock (unfiled days from today on; past days are locked and drop out).
+  const draftRows = useMemo(
+    () =>
+      (draftsQ.data?.items ?? [])
+        .filter((d) => d.status === 'draft')
+        .map((d) => ({ d, review: reviewOf(d, decisionsQ.data) })),
+    [draftsQ.data, decisionsQ.data],
+  );
+
+  const allRows = useMemo(() => [...draftRows, ...historyRows], [draftRows, historyRows]);
+
+  // Resolve real doctor / chemist / stockist names for calendar pills.
+  const outletRefs = useMemo(() => {
+    const seen = new Map<string, { kind: CallKind; id: string }>();
+    for (const { d } of allRows) {
+      for (const c of d.calls ?? []) {
+        const k = `${c.outletKind}:${c.outletId}`;
+        if (!seen.has(k)) seen.set(k, { kind: c.outletKind, id: c.outletId });
+      }
+    }
+    return [...seen.values()];
+  }, [allRows]);
+
+  const outletQs = useQueries({
+    queries: outletRefs.map((o) => ({
+      queryKey: ['outlet', o.kind, o.id],
+      staleTime: 10 * 60_000,
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        apiFetch<{ name: string }>(`${OUTLET_PATH[o.kind]}/${o.id}`, { signal }),
+    })),
+  });
+
+  const outletName = useMemo(() => {
+    const m = new Map<string, string>();
+    outletRefs.forEach((o, i) => {
+      const n = outletQs[i]?.data?.name?.trim();
+      if (n) m.set(o.id, n);
+    });
+    return m;
+  }, [outletRefs, outletQs]);
+
+  const names = useMemo(
+    () => ({ territory: terrName, workType: wtName, outlet: outletName }),
+    [terrName, wtName, outletName],
+  );
+
   const tpCards = useMemo(() => {
     const live = (optionsQ.data as { tourPlanDrafts?: TpDraftCard[] } | undefined)?.tourPlanDrafts;
     if (live) return [...live].sort((a, b) => a.from.localeCompare(b.from));
     const filed = new Set(
       (tpFiledQ.data?.items ?? [])
-        .filter((d) => d.status !== 'draft' && counts(reviewOf(d, decisionsQ.data)))
+        .filter((d) => d.status !== 'draft')
         .map((d) => d.date),
     );
     const drafted = new Set(
@@ -91,32 +178,52 @@ function DcrWorkspace() {
       .map((t) => mockTpCard(t, filed, drafted, today))
       .filter((c): c is TpDraftCard => !!c)
       .sort((a, b) => a.from.localeCompare(b.from));
-  }, [optionsQ.data, approvedTps, tpFiledQ.data, draftsQ.data, decisionsQ.data, today]);
-  const openTpDay = (t: TpDraftCard, date: string) => openForm({ new: '1', date, tp: t.id });
+  }, [optionsQ.data, approvedTps, tpFiledQ.data, draftsQ.data, today]);
 
-  const drafts = useMemo(
-    () => (draftsQ.data?.items ?? []).filter((d) => d.status === 'draft'),
-    [draftsQ.data],
+  const pillLabelOf = useMemo(() => (d: Dcr) => dcrPillLabel(d, names), [names]);
+  const listLabelOf = useMemo(() => (d: Dcr) => dcrListLabel(d, names), [names]);
+  const tpPillOf = useMemo(
+    () => (t: TpDraftCard) => tpPillLabel(t as TpItem, names),
+    [names],
   );
+  const tpListOf = useMemo(() => {
+    return (t: TpDraftCard) => {
+      const base = tpPillLabel(t as TpItem, names);
+      return base ? `TP · ${base}` : `TP · ${rangeLabel(t.from, t.to)}`;
+    };
+  }, [names]);
 
-  const refresh = () => Promise.all([draftsQ.refetch(), historyQ.refetch(), optionsQ.refetch()]);
+  const pills = useMemo(
+    () => dcrPillsByDate(allRows, tpCards, pillLabelOf, tpPillOf, names),
+    [allRows, tpCards, pillLabelOf, tpPillOf, names],
+  );
+  const groups = useMemo(() => groupDcrs(allRows), [allRows]);
+
+  const refresh = () =>
+    Promise.all([
+      draftsQ.refetch(),
+      historyQ.refetch(),
+      optionsQ.refetch(),
+      tpsQ.refetch(),
+      terrQ.refetch(),
+    ]);
 
   const openForm = (params: { id?: string; date?: string; new?: string; tp?: string }) =>
     router.push({ pathname: '/dcr/form', params });
 
+  const openTpDay = (t: TpDraftCard, date: string) => openForm({ new: '1', date, tp: t.id });
+
   const confirmDelete = (d: Dcr) => {
     Alert.alert(
       'Delete this draft?',
-      `The draft for ${dateLabel(d.date)}${workTypeName.get(d.workTypeId) ? ` (${workTypeName.get(d.workTypeId)})` : ''} and its calls will be deleted. This can’t be undone.`,
+      `The draft for ${dateLabel(d.date)}${wtName.get(d.workTypeId) ? ` (${wtName.get(d.workTypeId)})` : ''} and its calls will be deleted. This can’t be undone.`,
       [
         { text: 'Keep draft', style: 'cancel' },
         {
           text: 'Delete draft',
           style: 'destructive',
           onPress: () => {
-            setBusyId(d.id);
             remove.mutate(d.id, {
-              onSettled: () => setBusyId(null),
               onError: (e) => Alert.alert('Could not delete', saveMessage(e)),
             });
           },
@@ -125,23 +232,21 @@ function DcrWorkspace() {
     );
   };
 
-  const subtitle = (d: Dcr) => {
-    const band = BANDS.find((b) => b.band === d.band);
-    const what =
-      workTypeName.get(d.workTypeId) ??
-      (band
-        ? 'Field work'
-        : d.details?.kind
-          ? d.details.kind[0]!.toUpperCase() + d.details.kind.slice(1)
-          : 'Report');
-    const n = d.callCount ?? d.calls?.length ?? 0;
-    const territory = d.territoryIds.length
-      ? `${d.territoryIds.length} ${d.territoryIds.length === 1 ? 'territory' : 'territories'}`
-      : null;
-    return [what, band?.label, territory, band || n ? `${n} call${n === 1 ? '' : 's'}` : null]
-      .filter(Boolean)
-      .join(' · ');
-  };
+  function onSelectDay(date: string, dayPills: { itemId: string; status: string }[]) {
+    setSelected(date);
+    if (dayPills.length === 1) {
+      const p = dayPills[0]!;
+      if (p.itemId.startsWith('tp:')) {
+        const id = p.itemId.slice(3);
+        const card = tpCards.find((t) => t.id === id);
+        if (card) openTpDay(card, date);
+        return;
+      }
+      openForm({ id: p.itemId, date });
+      return;
+    }
+    if (!dayPills.length) openForm({ new: '1', date });
+  }
 
   const listError = draftsQ.isError
     ? saveMessage(draftsQ.error)
@@ -149,27 +254,18 @@ function DcrWorkspace() {
       ? saveMessage(historyQ.error)
       : null;
 
+  const loading = draftsQ.isPending && historyQ.isPending;
+  const empty =
+    !allRows.length && !tpCards.length && !draftsQ.isPending && !historyQ.isPending;
+
   return (
     <TabScene>
       <View style={styles.flex}>
         <PullToRefresh onRefresh={refresh}>
           <ScrollView
             style={styles.flex}
-            contentContainerStyle={[
-              styles.content,
-              { paddingBottom: bottom + touch.control + spacing.lg },
-            ]}
+            contentContainerStyle={[styles.content, { paddingBottom: scrollPad }]}
           >
-            <View style={styles.headRow}>
-              <AppText variant="small">
-                {draftsQ.isPending
-                  ? 'Saved drafts'
-                  : drafts.length
-                    ? `Saved drafts (${drafts.length})`
-                    : 'No saved drafts'}
-              </AppText>
-            </View>
-
             {listError ? (
               <Card style={styles.pad}>
                 <AppText variant="bodyMuted">{listError}</AppText>
@@ -180,110 +276,48 @@ function DcrWorkspace() {
               </Card>
             ) : null}
 
-            {tpCards.length ? (
-              <Card>
-                {tpCards.map((t, i) => (
-                  <ListRow
-                    key={t.id}
-                    icon="calendar-check-outline"
-                    tone="blue"
-                    title={`TP · ${rangeLabel(t.from, t.to)}`}
-                    subtitle={
-                      t.pendingDates.length === 1
-                        ? `${dateLabel(t.pendingDates[0]!)} to file`
-                        : `${t.pendingDates.length} days to file · pick a day`
-                    }
-                    trailing={<Chip label="Approved plan" tone="green" />}
-                    onPress={() =>
-                      t.pendingDates.length === 1 ? openTpDay(t, t.pendingDates[0]!) : setPickTp(t)
-                    }
-                    divider={i < tpCards.length - 1}
-                  />
-                ))}
-              </Card>
-            ) : null}
-
-            {draftsQ.isPending ? (
-              <SkeletonList count={2} />
-            ) : !drafts.length ? (
-              <Card style={styles.pad}>
-                <AppText variant="body">No saved drafts</AppText>
-                <AppText variant="bodyMuted">
-                  Start today’s report with New DCR. Save it as a draft to come back later.
-                </AppText>
-              </Card>
-            ) : (
-              <Card>
-                {drafts.map((d, i) => (
-                  <ListRow
-                    key={d.id}
-                    icon="clipboard-text-outline"
-                    tone="teal"
-                    title={dateLabel(d.date)}
-                    subtitle={`${subtitle(d)} · Saved ${savedLabel(d.updatedAt)}`}
-                    trailing={
-                      <View style={styles.trail}>
-                        <View style={styles.badges}>
-                          <Chip label="Draft" tone="blue" />
-                          {submittedDays.has(d.date) ? (
-                            <Chip label="Day submitted" tone="orange" />
-                          ) : null}
-                        </View>
-                        <Pressable
-                          onPress={() => confirmDelete(d)}
-                          disabled={busyId === d.id}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Delete draft for ${dateLabel(d.date)}`}
-                          hitSlop={8}
-                          style={styles.trash}
-                        >
-                          <Icon name="trash-can-outline" color={colors.danger} size={20} />
-                        </Pressable>
-                      </View>
-                    }
-                    onPress={() => openForm({ id: d.id, date: d.date })}
-                    divider={i < drafts.length - 1}
-                  />
-                ))}
-              </Card>
-            )}
-
-            <AppText variant="small" style={styles.section}>
-              {historyQ.isPending
-                ? 'History'
-                : `History · ${submittedDays.size} day${submittedDays.size === 1 ? '' : 's'} filed this month`}
-            </AppText>
-            {historyQ.isPending ? (
+            {loading ? (
               <SkeletonList count={4} />
-            ) : !history.length ? (
-              <Card style={styles.pad}>
-                <AppText variant="bodyMuted">No submitted reports this month yet.</AppText>
-              </Card>
             ) : (
-              <Card>
-                {history.map(({ d, review }, i) => (
-                  <ListRow
-                    key={d.id}
-                    icon={
-                      review.status === 'rejected'
-                        ? 'close-octagon-outline'
-                        : 'check-decagram-outline'
-                    }
-                    tone={review.status === 'rejected' ? 'red' : 'green'}
-                    title={dateLabel(d.date)}
-                    subtitle={
-                      review.status === 'rejected'
-                        ? `Rejected: ${review.reason || 'no reason given'} · File this day again`
-                        : subtitle(d)
-                    }
-                    trailing={
-                      <Chip label={REVIEW_LABEL[review.status]} tone={REVIEW_TONE[review.status]} />
-                    }
-                    onPress={() => openForm({ id: d.id, date: d.date })}
-                    divider={i < history.length - 1}
-                  />
-                ))}
-              </Card>
+              <>
+                <MonthCalendar
+                  year={cursor.year}
+                  monthIndex={cursor.monthIndex}
+                  selected={selected}
+                  pills={pills}
+                  onSelectMonth={(year, monthIndex) => setCursor({ year, monthIndex })}
+                  onSelectDay={onSelectDay}
+                />
+
+                {empty ? (
+                  <Card style={styles.pad}>
+                    <AppText variant="body">No DCRs yet</AppText>
+                    <AppText variant="bodyMuted">
+                      Start today’s report with New DCR. Approved tour-plan days show as pills on
+                      the calendar until you file them.
+                    </AppText>
+                  </Card>
+                ) : (
+                  <View style={styles.lists}>
+                    <DcrStatusSections
+                      approved={groups.approved}
+                      pending={groups.pending}
+                      rejected={groups.rejected}
+                      drafts={groups.drafts}
+                      tpCards={tpCards}
+                      labelOf={listLabelOf}
+                      tpLabelOf={tpListOf}
+                      onOpenDcr={(d) => openForm({ id: d.id, date: d.date })}
+                      onOpenTp={(t) =>
+                        t.pendingDates.length === 1
+                          ? openTpDay(t, t.pendingDates[0]!)
+                          : setPickTp(t)
+                      }
+                      onDeleteDraft={confirmDelete}
+                    />
+                  </View>
+                )}
+              </>
             )}
           </ScrollView>
         </PullToRefresh>
@@ -291,7 +325,6 @@ function DcrWorkspace() {
         <SelectSheet
           visible={!!pickTp}
           title={pickTp ? `File a day · ${rangeLabel(pickTp.from, pickTp.to)}` : 'File a day'}
-          // fileableDates (today) can be submitted; other pending days take a draft until the day.
           options={(pickTp?.pendingDates ?? []).map((d) => ({
             value: d,
             label: dateLabel(d),
@@ -310,21 +343,11 @@ function DcrWorkspace() {
           onClose={() => setPickTp(null)}
         />
 
-        <Pressable
-          onPress={() => openForm({ new: '1', date: today })}
-          accessibilityRole="button"
+        <FloatingFab
+          label="New DCR"
           accessibilityLabel="New DCR"
-          style={({ pressed }) => [
-            styles.fab,
-            { bottom: bottom + spacing.lg },
-            pressed && styles.fabPressed,
-          ]}
-        >
-          <Icon name="plus" color={colors.onNavy} />
-          <AppText variant="button" style={styles.fabText}>
-            New DCR
-          </AppText>
-        </Pressable>
+          onPress={() => openForm({ new: '1', date: today })}
+        />
       </View>
     </TabScene>
   );
@@ -332,36 +355,8 @@ function DcrWorkspace() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm, gap: spacing.md },
-  headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  section: { marginTop: spacing.sm },
-  pad: { padding: spacing.lg, gap: spacing.sm },
+  content: { paddingTop: spacing.sm, gap: spacing.md },
+  lists: { paddingHorizontal: layout.gutter },
+  pad: { marginHorizontal: layout.gutter, padding: spacing.lg, gap: spacing.sm },
   retry: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, alignSelf: 'flex-start' },
-  trail: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    flexShrink: 1,
-  },
-  badges: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs },
-  trash: {
-    minWidth: touch.min,
-    minHeight: touch.min,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fab: {
-    position: 'absolute',
-    right: layout.gutter,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    height: touch.control,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.full,
-    backgroundColor: colors.navy,
-    boxShadow: shadows.floating,
-  },
-  fabPressed: { backgroundColor: colors.navyPressed },
-  fabText: { color: colors.onNavy },
 });

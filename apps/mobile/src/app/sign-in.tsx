@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, type TextInputInstance } from 'react-native';
 import { KeyboardAwareScrollView } from '@/components/scroll';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,7 +7,7 @@ import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
 import { LogoLockup } from '@/components/logo-lockup';
 import { TextField } from '@/components/text-field';
-import { AuthError } from '@/lib/auth-api';
+import { AuthError, type OtpChallenge } from '@/lib/auth-api';
 import { useAuth } from '@/lib/auth-context';
 import { colors, radius, spacing } from '@/theme';
 
@@ -18,11 +18,12 @@ const TITLES: Partial<Record<AuthError['kind'], string>> = {
   'rate-limited': 'Too many attempts',
   account: 'Can’t sign in with this account',
   'no-role': 'No access',
+  'otp-expired': 'Sign-in expired',
   origin: 'Sign-in blocked',
 };
 
 export default function SignInScreen() {
-  const { signIn, notice, clearNotice } = useAuth();
+  const { signIn, completeOtp, resendOtp, notice, clearNotice } = useAuth();
   const insets = useSafeAreaInsets();
   const passwordRef = useRef<TextInputInstance>(null);
   const [email, setEmail] = useState('');
@@ -30,6 +31,61 @@ export default function SignInScreen() {
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [formError, setFormError] = useState<{ title: string; body: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [challenge, setChallenge] = useState<OtpChallenge | null>(null);
+  const [code, setCode] = useState('');
+  const [codeError, setCodeError] = useState<string | undefined>();
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  function restart(message?: string) {
+    setChallenge(null);
+    setCode('');
+    setCodeError(undefined);
+    setPassword('');
+    if (message) setFormError({ title: TITLES['otp-expired'] ?? 'Sign-in expired', body: message });
+  }
+
+  async function submitCode() {
+    if (busy || !challenge) return;
+    if (!/^\d{6}$/.test(code)) {
+      setCodeError('Enter the 6-digit code from your email.');
+      return;
+    }
+    setCodeError(undefined);
+    setBusy(true);
+    try {
+      await completeOtp(challenge, code);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const kind = err instanceof AuthError ? err.kind : 'server';
+      const message = err instanceof Error ? err.message : 'Something went wrong. Try again.';
+      if (kind === 'otp-expired') restart(message);
+      else {
+        setCodeError(message);
+        setCode('');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resend() {
+    if (!challenge || cooldown > 0) return;
+    setCooldown(45);
+    try {
+      await resendOtp(challenge);
+      setCodeError(undefined);
+    } catch (err) {
+      if (err instanceof AuthError && err.kind === 'otp-expired') restart(err.message);
+      else setCodeError(err instanceof Error ? err.message : 'Could not resend the code.');
+    }
+  }
 
   // A session the app ended on its own (role without access, account state) explains itself here.
   const banner = formError ?? (notice ? { title: 'Signed out', body: notice } : null);
@@ -48,7 +104,12 @@ export default function SignInScreen() {
 
     setBusy(true);
     try {
-      await signIn(e, password);
+      const next = await signIn(e, password);
+      if (next) {
+        setChallenge(next);
+        setCooldown(45);
+        return;
+      }
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       // The auth guard in app/_layout.tsx moves us to home.
     } catch (err) {
@@ -67,6 +128,65 @@ export default function SignInScreen() {
       setBusy(false);
     }
   }
+
+  if (challenge)
+    return (
+      <KeyboardAwareScrollView
+        style={styles.flex}
+        bottomOffset={spacing.xl}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + spacing.xl },
+        ]}
+      >
+        <LogoLockup />
+        <View style={styles.heading}>
+          <AppText variant="title" accessibilityRole="header">
+            Check your email
+          </AppText>
+          <AppText variant="subhead">
+            We sent a 6-digit code to {challenge.email}. It expires in 5 minutes.
+          </AppText>
+        </View>
+        <View style={styles.form}>
+          <TextField
+            label="Sign-in code"
+            value={code}
+            onChangeText={(t) => {
+              setCode(t.replace(/\D/g, '').slice(0, 6));
+              if (codeError) setCodeError(undefined);
+            }}
+            placeholder="123456"
+            keyboardType="number-pad"
+            autoComplete="one-time-code"
+            textContentType="oneTimeCode"
+            returnKeyType="go"
+            onSubmitEditing={submitCode}
+            editable={!busy}
+            error={codeError}
+          />
+          <Button
+            label="Verify and sign in"
+            loadingLabel="Verifying…"
+            loading={busy}
+            onPress={submitCode}
+          />
+          <Button
+            label={cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
+            variant="secondary"
+            onPress={resend}
+            disabled={busy || cooldown > 0}
+          />
+          <Button
+            label="Use a different account"
+            variant="tint"
+            onPress={() => restart()}
+            disabled={busy}
+          />
+        </View>
+      </KeyboardAwareScrollView>
+    );
 
   return (
     <KeyboardAwareScrollView

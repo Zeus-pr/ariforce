@@ -79,7 +79,7 @@ export function SfcSection({
             </View>
           );
         })
-      ) : dcr?.sfcRoutes?.length && readOnly ? (
+      ) : readOnly && dcr?.sfcRoutes?.some((r) => r.snapshot) ? (
         dcr.sfcRoutes.map((r) =>
           r.snapshot ? (
             <SfcRouteCard
@@ -104,6 +104,8 @@ export function SfcSection({
             />
           ) : null,
         )
+      ) : sfc.state === 'idle' && readOnly ? (
+        <AppText variant="bodyMuted">No SFC / TA·DA on this day.</AppText>
       ) : null}
       <Errors list={errors} />
     </View>

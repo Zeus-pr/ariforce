@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { AppHeader } from '@/components/app-header';
-import { colors } from '@/theme';
+import { Platform, StyleSheet, View } from 'react-native';
+import { colors, layout, motion } from '@/theme';
 
 /**
  * Signed-in area: the tab navigator, plus feature screens pushed over it. Pushed screens share
@@ -8,6 +9,22 @@ import { colors } from '@/theme';
  * The tabs draw their own headers (same component), so the stack hides its header for "(tabs)".
  */
 export default function AppLayout() {
+  return (
+    <View style={styles.backdrop}>
+      <View style={styles.column}>
+        <AppStack />
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  backdrop: { flex: 1, alignItems: 'center', backgroundColor: colors.ground },
+  // Tablets: one centred, readable column instead of stretching every screen edge to edge.
+  column: { flex: 1, width: '100%', maxWidth: layout.maxContent },
+});
+
+function AppStack() {
   return (
     <Stack
       screenOptions={{
@@ -18,6 +35,11 @@ export default function AppLayout() {
           />
         ),
         contentStyle: { backgroundColor: colors.ground },
+        // Native slide: iOS push with swipe-back, Android shared-axis style.
+        animation: Platform.OS === 'ios' ? 'default' : 'slide_from_right',
+        animationDuration: motion.base,
+        gestureEnabled: true,
+        fullScreenGestureEnabled: true,
       }}
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -25,6 +47,7 @@ export default function AppLayout() {
       <Stack.Screen name="masters/[kind]/index" />
       <Stack.Screen name="masters/[kind]/[id]" />
       <Stack.Screen name="masters/[kind]/form" />
+      <Stack.Screen name="products/index" options={{ title: 'Products' }} />
       <Stack.Screen name="dcr/form" />
       <Stack.Screen name="tour-plan/form" />
       <Stack.Screen name="notifications" />

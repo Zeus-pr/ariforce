@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { Dimensions, Easing, View } from 'react-native';
 import { AppHeader } from '@/components/app-header';
 import { HeaderActions } from '@/components/header-actions';
 import { useUnreadCount } from '@/lib/notifications';
@@ -6,7 +7,15 @@ import { FloatingTabBar, TabBarProvider, type TabMeta } from '@/components/float
 import { LogoLockup } from '@/components/logo-lockup';
 import { useAuth } from '@/lib/auth-context';
 import { isSalesRole } from '@/lib/roles';
-import { colors } from '@/theme';
+import { colors, motion, spacing } from '@/theme';
+
+const SLIDE = Math.min(Dimensions.get('window').width, 480);
+
+/** Just enough teal under the rounded white header — not a full canopy wash. */
+const homeHeaderShell = {
+  backgroundColor: colors.canopy,
+  paddingBottom: spacing.sm,
+} as const;
 
 function HomeHeaderRight() {
   const { user } = useAuth();
@@ -37,7 +46,7 @@ const TABS: Record<string, TabMeta> = {
   },
   // Short word in the bar; screen readers and the screen title keep "Tour Plan".
   'tour-plan': {
-    label: 'Plans',
+    label: 'Tour Plan',
     a11yLabel: 'Tour Plan',
     icon: 'calendar-month-outline',
     iconActive: 'calendar-month',
@@ -69,6 +78,27 @@ export default function TabsLayout() {
             <AppHeader title={typeof options.title === 'string' ? options.title : route.name} />
           ),
           sceneStyle: { backgroundColor: colors.ground },
+          // Tabs slide horizontally in the direction of travel (progress is -1 / 0 / 1).
+          sceneStyleInterpolator: ({ current }) => ({
+            sceneStyle: {
+              opacity: current.progress.interpolate({
+                inputRange: [-1, -0.6, 0, 0.6, 1],
+                outputRange: [0, 0.4, 1, 0.4, 0],
+              }),
+              transform: [
+                {
+                  translateX: current.progress.interpolate({
+                    inputRange: [-1, 0, 1],
+                    outputRange: [-SLIDE, 0, SLIDE],
+                  }),
+                },
+              ],
+            },
+          }),
+          transitionSpec: {
+            animation: 'timing',
+            config: { duration: motion.fast, easing: Easing.out(Easing.cubic) },
+          },
         }}
       >
         <Tabs.Screen
@@ -76,12 +106,17 @@ export default function TabsLayout() {
           options={{
             title: 'Home',
             header: () => (
-              <AppHeader
-                title="Home"
-                titleNode={<LogoLockup />}
-                right={<HomeHeaderRight />}
-                background={colors.homeSky}
-              />
+              // Thin teal lip above/below the white header so the bottom radius
+              // reads against canopy — not a full-screen teal wash.
+              <View style={homeHeaderShell}>
+                <AppHeader
+                  title="Home"
+                  titleNode={<LogoLockup />}
+                  right={<HomeHeaderRight />}
+                  background={colors.surface}
+                  roundBottom
+                />
+              </View>
             ),
           }}
         />

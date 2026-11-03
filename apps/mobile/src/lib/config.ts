@@ -20,7 +20,7 @@ function pick(): string {
     (isAndroidEmulator && process.env.EXPO_PUBLIC_API_URL_ANDROID_EMULATOR) ||
     process.env.EXPO_PUBLIC_API_URL ||
     fromConfig ||
-    'https://ariforce-api.prajeshchoudhury.in';
+    'https://ariforce-api.arighnapharma.com';
   const url = base.replace(/\/+$/, '');
   return isAndroidEmulator
     ? url.replace(/\/\/(localhost|127\.0\.0\.1)(?=[:/]|$)/, '//10.0.2.2')
@@ -31,3 +31,12 @@ export const API_URL = pick();
 
 /** better-auth is mounted under /v1/auth (apps/api/src/auth/auth.ts AUTH_BASE_PATH). */
 export const AUTH_URL = `${API_URL}/v1/auth`;
+
+/**
+ * Origin sent with the sign-in code step. The OTP challenge travels as a cookie we forward by hand,
+ * and better-auth refuses cookie-carrying requests without a trusted Origin. Must be one of the
+ * API's WEB_ORIGIN values; override with EXPO_PUBLIC_AUTH_ORIGIN.
+ */
+export const AUTH_ORIGIN = (
+  process.env.EXPO_PUBLIC_AUTH_ORIGIN || 'https://ariforce.arighnapharma.com'
+).replace(/\/+$/, '');

@@ -50,8 +50,14 @@ export async function pickPhoto(camera: boolean): Promise<PickedFile | null> {
   const r = camera ? await p.launchCameraAsync(opts) : await p.launchImageLibraryAsync(opts);
   const a = r.canceled ? null : r.assets[0];
   if (!a) return null;
-  const name = a.fileName || `receipt-${Date.now()}.jpg`;
-  return { uri: a.uri, name, type: a.mimeType || 'image/jpeg', size: a.fileSize ?? 0 };
+  // quality re-encodes to JPEG on most devices; keep name/type aligned for R2 magic checks.
+  const type = a.mimeType || 'image/jpeg';
+  let name = a.fileName || `receipt-${Date.now()}.jpg`;
+  if (type === 'image/jpeg' && !/\.jpe?g$/i.test(name)) name = `${name.replace(/\.[^.]+$/, '') || 'receipt'}.jpg`;
+  if (type === 'image/png' && !/\.png$/i.test(name)) name = `${name.replace(/\.[^.]+$/, '') || 'receipt'}.png`;
+  if ((type === 'image/heic' || type === 'image/heif') && !/\.hei[cf]$/i.test(name))
+    name = `${name.replace(/\.[^.]+$/, '') || 'receipt'}.heic`;
+  return { uri: a.uri, name, type, size: a.fileSize ?? 0 };
 }
 
 export async function pickDocument(): Promise<PickedFile | null> {

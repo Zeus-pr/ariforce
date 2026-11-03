@@ -20,9 +20,14 @@ import {
   StyleSheet,
   Text,
   View,
-  type LayoutChangeEvent,
 } from 'react-native';
-import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  Easing,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, type IconName } from './icon';
 import { canBlur, getBlurKit } from '@/lib/blur';
@@ -31,7 +36,6 @@ import {
   glass,
   iconSize,
   layout,
-  motion,
   radius,
   shadows,
   sizes,
@@ -93,6 +97,11 @@ export function TabScene({ children }: { children: ReactNode }) {
   );
 }
 
+/** Fixed-duration ease-out: no spring tail, so it ends cleanly. */
+const PILL_MS = 200;
+const PILL_STRETCH = 0.35;
+const PILL_TIMING = { duration: PILL_MS, easing: Easing.bezier(0.22, 1, 0.36, 1) };
+
 /** Bar's distance from the bottom edge: above the home indicator / gesture bar, never flush. */
 const barBottom = (safeBottom: number) => Math.max(safeBottom, spacing.sm) + layout.tabBarLift;
 
@@ -144,7 +153,6 @@ function Glass() {
   const { BlurView } = kit;
   return (
     <BlurView
-      // Android: remount when the focused scene changes so the blur re-binds to it.
       key={android ? target?.id : undefined}
       tint={glass.tint}
       intensity={glass.intensity}
@@ -157,17 +165,9 @@ function Glass() {
   );
 }
 
-// Active pill = padding + icon + gap + label. Roomy padding when it fits, compact otherwise.
-const PILL_PAD = spacing.md;
-const PILL_PAD_COMPACT = spacing.sm;
-const pillWidth = (label: number, pad: number) => pad * 2 + iconSize.md + spacing.xs + label;
-
 /**
- * Floating capsule tab bar (CUTLY's approved "expanding capsule", in AriForce navy): frosted
- * glass where the binary has a blur, translucent white elsewhere, inset from the sides, soft shadow, above the safe area. The active tab is a navy pill
- * sized to its measured label (never truncated); the other tabs share the rest equally, at
- * least 48 dp each. Widths animate as Reanimated CSS transitions (instant under Reduce Motion).
- * Selection haptic on every press.
+ * Stitch Field Command bottom nav: floating frosted capsule, equal tabs, always-visible
+ * labels, active tint = canopy teal, with a pill that springs to the selected tab.
  */
 export function FloatingTabBar({
   state,
@@ -176,63 +176,76 @@ export function FloatingTabBar({
   meta,
 }: TabBarProps & { meta: Record<string, TabMeta> }) {
   const insets = useSafeAreaInsets();
-  const reduced = useReducedMotion();
-  const duration = reduced ? 0 : motion.base;
-  const [barWidth, setBarWidth] = useState(0);
-  const [labelWidths, setLabelWidths] = useState<Record<string, number>>({});
-
   const routes = state.routes.filter((r) => meta[r.name]);
   const active = state.routes[state.index];
-  const activeLabel = active ? labelWidths[active.name] : undefined;
+  const reduced = useReducedMotion();
+  const [rowW, setRowW] = useState(0);
+  const slot = routes.length > 0 ? rowW / routes.length : 0;
+  const activeIdx = Math.max(0, routes.findIndex((r) => r.key === active?.key));
+  const x = useSharedValue(0);
+  const from = useSharedValue(0);
+  const dest = useSharedValue(0);
 
-  // Widths: the pill takes what its label needs (capped so every other tab keeps 48 dp); the
-  // rest split evenly. Until measured, all tabs are equal and the label waits.
-  const others = Math.max(routes.length - 1, 0);
-  const maxPill = barWidth - others * touch.min;
-  let pad: number = PILL_PAD;
-  let pill = activeLabel != null ? pillWidth(activeLabel, PILL_PAD) : 0;
-  if (pill > maxPill) {
-    pad = PILL_PAD_COMPACT;
-    pill = Math.min(pillWidth(activeLabel ?? 0, PILL_PAD_COMPACT), maxPill);
+  function glide(to: number) {
+    if (to === dest.value) return;
+    from.value = x.value;
+    dest.value = to;
+    x.value = withTiming(to, PILL_TIMING);
   }
-  const measured = barWidth > 0 && activeLabel != null;
-  const rest = others > 0 ? (barWidth - pill) / others : 0;
+  function jump(to: number) {
+    from.value = to;
+    dest.value = to;
+    x.value = to;
+  }
+  const placed = useRef(false);
+  const pressAt = useRef(0);
 
-  const onBarLayout = (e: LayoutChangeEvent) => setBarWidth(e.nativeEvent.layout.width);
-  const onLabelLayout = (name: string) => (e: LayoutChangeEvent) => {
-    const w = Math.ceil(e.nativeEvent.layout.width) + 1; // +1: sub-pixel slack
-    setLabelWidths((m) => (m[name] === w ? m : { ...m, [name]: w }));
-  };
+  useEffect(() => {
+    if (slot === 0) return;
+    const to = activeIdx * slot;
+    // First layout jumps; later changes (e.g. programmatic navigation) glide.
+    if (!placed.current || reduced) jump(to);
+    else glide(to);
+    placed.current = true;
+  }, [activeIdx, slot, reduced]);
+
+  // Liquid stretch: the pill elongates mid-travel (sine of progress) and relaxes at both ends.
+  const pillStyle = useAnimatedStyle(() => {
+    const span = dest.value - from.value;
+    const t = span === 0 ? 0 : Math.min(1, Math.max(0, (x.value - from.value) / span));
+    const stretch = 1 + PILL_STRETCH * Math.sin(Math.PI * t) * Math.min(1, Math.abs(span) / slot / 2);
+    return { transform: [{ translateX: x.value }, { scaleX: stretch }] };
+  });
 
   return (
     <View pointerEvents="box-none" style={[styles.wrap, { bottom: barBottom(insets.bottom) }]}>
       <View style={styles.bar}>
         <Glass />
-        {/* Invisible copies of every label, to measure their width at the current font scale. */}
         <View
-          style={styles.measure}
-          pointerEvents="none"
-          importantForAccessibility="no-hide-descendants"
+          style={styles.row}
+          accessibilityRole="tablist"
+          onLayout={(e) => setRowW(e.nativeEvent.layout.width)}
         >
-          {routes.map((r) => (
-            <Text
-              key={r.key}
-              style={styles.label}
-              numberOfLines={1}
-              onLayout={onLabelLayout(r.name)}
-              accessibilityElementsHidden
-            >
-              {meta[r.name]?.label}
-            </Text>
-          ))}
-        </View>
-
-        <View style={styles.row} onLayout={onBarLayout} accessibilityRole="tablist">
+          {slot > 0 ? (
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.pill, { width: slot }, pillStyle]}
+            />
+          ) : null}
           {routes.map((route) => {
             const m = meta[route.name];
             if (!m) return null;
             const focused = route.key === active?.key;
-            const width = measured ? (focused ? pill : rest) : undefined;
+            const tint = focused ? colors.canopy : colors.subtle;
+
+            // Start the pill on touch-down, before navigation and the next screen's render.
+            function onPressIn() {
+              if (focused || slot === 0) return;
+              const to = routes.indexOf(route) * slot;
+              if (reduced) jump(to);
+              else glide(to);
+              pressAt.current = Date.now();
+            }
 
             function onPress() {
               Haptics.selectionAsync().catch(() => {});
@@ -241,61 +254,38 @@ export function FloatingTabBar({
                 target: route.key,
                 canPreventDefault: true,
               });
-              if (!focused && !event.defaultPrevented) navigateToTab(route.key);
+              if (focused || event.defaultPrevented) return;
+              // Let the pill land first: mounting the next screen mid-glide is what made it hitch.
+              const wait = reduced ? 0 : Math.max(0, PILL_MS - (Date.now() - pressAt.current));
+              setTimeout(() => navigateToTab(route.key), wait);
             }
 
             return (
-              <Animated.View
+              <Pressable
                 key={route.key}
-                style={[
-                  width == null ? styles.equal : { width },
-                  {
-                    transitionProperty: 'width',
-                    transitionDuration: duration,
-                    transitionTimingFunction: motion.cssEaseOut,
-                  },
-                ]}
+                onPressIn={onPressIn}
+                onPress={onPress}
+                onLongPress={() => emitter.emit({ type: 'tabLongPress', target: route.key })}
+                accessibilityRole="tab"
+                accessibilityLabel={m.a11yLabel}
+                accessibilityState={{ selected: focused }}
+                style={styles.hit}
               >
-                <Pressable
-                  onPress={onPress}
-                  onLongPress={() => emitter.emit({ type: 'tabLongPress', target: route.key })}
-                  accessibilityRole="tab"
-                  accessibilityLabel={m.a11yLabel}
-                  accessibilityState={{ selected: focused }}
-                  style={styles.hit}
-                >
-                  <Animated.View
-                    style={[
-                      styles.capsule,
-                      focused && { paddingHorizontal: pad },
-                      {
-                        backgroundColor: focused ? colors.navy : colors.navyClear,
-                        transitionProperty: 'backgroundColor',
-                        transitionDuration: duration,
-                        transitionTimingFunction: motion.cssEaseOut,
-                      },
-                    ]}
+                <View style={styles.tab}>
+                  <Icon
+                    name={focused ? m.iconActive : m.icon}
+                    size={iconSize.md}
+                    color={tint}
+                  />
+                  <Text
+                    style={[styles.label, { color: tint }, focused && styles.labelOn]}
+                    numberOfLines={1}
+                    importantForAccessibility="no"
                   >
-                    <Icon
-                      name={focused ? m.iconActive : m.icon}
-                      color={focused ? colors.onNavy : colors.muted}
-                    />
-                    {focused && measured ? (
-                      <Animated.Text
-                        entering={reduced ? undefined : FadeIn.duration(motion.fast).delay(60)}
-                        style={[styles.label, styles.labelOn]}
-                        numberOfLines={1}
-                        // Fallback only: the pill is sized to the label, so this rarely kicks in.
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.85}
-                        importantForAccessibility="no"
-                      >
-                        {m.label}
-                      </Animated.Text>
-                    ) : null}
-                  </Animated.View>
-                </Pressable>
-              </Animated.View>
+                    {m.label}
+                  </Text>
+                </View>
+              </Pressable>
             );
           })}
         </View>
@@ -307,35 +297,40 @@ export function FloatingTabBar({
 const styles = StyleSheet.create({
   scene: { flex: 1, backgroundColor: colors.ground },
   wrap: { position: 'absolute', left: layout.tabBarInset, right: layout.tabBarInset },
-  // Shadow + border on the outer shape; the glass fills it and is clipped to the same radius.
   bar: {
     height: sizes.tabBar,
     paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
     justifyContent: 'center',
     borderRadius: radius.full,
     borderCurve: 'continuous',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
+    borderColor: colors.separator,
     boxShadow: shadows.floating,
+    overflow: 'hidden',
   },
   fill: { ...StyleSheet.absoluteFill, borderRadius: radius.full },
   round: { overflow: 'hidden', borderCurve: 'continuous' },
   tint: { backgroundColor: colors.glassTint },
   solid: { backgroundColor: colors.surface },
   fallback: { backgroundColor: colors.glassFallback },
-  measure: { position: 'absolute', left: 0, top: 0, opacity: 0, alignItems: 'flex-start' },
   row: { flexDirection: 'row', alignItems: 'center' },
-  equal: { flex: 1 },
-  hit: { height: touch.min, justifyContent: 'center' },
-  capsule: {
-    height: touch.min,
-    flexDirection: 'row',
+  pill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: radius.full,
+    borderCurve: 'continuous',
+    backgroundColor: colors.canopyPill,
+  },
+  hit: { flex: 1, minHeight: touch.min, justifyContent: 'center' },
+  tab: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.full,
-    overflow: 'hidden',
+    gap: 2,
+    paddingVertical: 2,
   },
-  label: { ...tabLabel, color: colors.ink },
-  labelOn: { color: colors.onNavy, flexShrink: 1 },
+  label: { ...tabLabel, fontSize: 10, lineHeight: 12 },
+  labelOn: {},
 });

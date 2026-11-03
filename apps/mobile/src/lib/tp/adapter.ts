@@ -33,6 +33,7 @@ import type { DcrDetails } from '@ariforce/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { mockDeleteTp, mockGetTp, mockListTps, mockPutTp } from '@/mocks/tp';
 import { ApiError, apiFetch, idempotencyKey } from '../api';
+import { todayIST } from '../dcr/dates';
 import { tpCaps } from './caps';
 
 /**
@@ -120,14 +121,69 @@ const TP_ERRORS: Record<string, string> = {
   TP_IN_PAST: 'A tour plan must start today or later. Change the From date.',
   TP_OVERLAP: 'These dates overlap another tour plan that is pending or approved.',
   TP_LOCKED: 'This tour plan is pending or approved and can no longer be changed.',
+  TP_CUTOFF:
+    'Tour plans for that month closed after the 22nd of the previous month at 12:10 AM IST.',
   VERSION_CONFLICT: 'This tour plan changed on another device. Go back and open it again.',
   REJECTION_REASON_REQUIRED: 'Give a reason to reject.',
   CONFLICT: 'This tour plan is no longer waiting for approval.',
   APPROVAL_NOT_YOUR_STEP: 'This tour plan is waiting for a different approver.',
 };
+
+const MONTH_NAMES =
+  'January February March April May June July August September October November December'.split(
+    ' ',
+  );
+
+/** YYYY-MM of the calendar month after `ym` (YYYY-MM). */
+function nextYmOf(ym: string) {
+  const [y, m] = ym.split('-').map(Number);
+  let ny = y!;
+  let nm = m! + 1;
+  if (nm > 12) {
+    nm = 1;
+    ny += 1;
+  }
+  return `${ny}-${String(nm).padStart(2, '0')}`;
+}
+
+/**
+ * Tour plans are for the **next** calendar month only (never current/past).
+ * Window closes on the 22nd of the current month at 12:10 AM IST.
+ * Example on 1 Nov: December is open until 22 Nov 12:10 AM IST; November is blocked.
+ * Returns an error string when not allowed; null when OK.
+ */
+export function tpFutureMonthCutoffError(from: string, now = new Date()): string | null {
+  const planYm = from.slice(0, 7);
+  const currentYm = todayIST().slice(0, 7);
+  const nextYm = nextYmOf(currentYm);
+  const [py, pm] = planYm.split('-').map(Number);
+  const planLabel = `${MONTH_NAMES[pm! - 1]} ${py}`;
+  const [cy, cm] = currentYm.split('-').map(Number);
+  const currLabel = `${MONTH_NAMES[cm! - 1]} ${cy}`;
+
+  if (planYm <= currentYm)
+    return `Tour plans are for the next month only — ${planLabel} is not open (current month is ${currLabel}).`;
+  if (planYm !== nextYm)
+    return `Only ${MONTH_NAMES[Number(nextYm.slice(5, 7)) - 1]} ${nextYm.slice(0, 4)} can be planned now.`;
+
+  const cutoff = new Date(`${currentYm}-22T00:10:00+05:30`);
+  if (now.getTime() < cutoff.getTime()) return null;
+  return `Tour plans for ${planLabel} closed after 22 ${currLabel} at 12:10 AM IST.`;
+}
+
+/** First day of the next month when the TP window is still open; otherwise null. */
+export function tpDefaultFromDate(now = new Date()): string | null {
+  const nextYm = nextYmOf(todayIST().slice(0, 7));
+  const from = `${nextYm}-01`;
+  return tpFutureMonthCutoffError(from, now) ? null : from;
+}
 /** Plain-language TP errors (28f8820 codes; leave/holiday work types come back as VALIDATION). */
 export function tpMessage(e: unknown): string {
-  if (!(e instanceof ApiError)) return (e as Error)?.message || 'Something went wrong.';
+  if (!(e instanceof ApiError)) {
+    const code = (e as { code?: string } | null)?.code;
+    if (code && TP_ERRORS[code]) return TP_ERRORS[code]!;
+    return (e as Error)?.message || 'Something went wrong.';
+  }
   if (e.code && TP_ERRORS[e.code]) return TP_ERRORS[e.code]!;
   if (e.code === 'VALIDATION' && /leave/i.test(e.message))
     return 'Leave and holidays are not planned in a tour plan. Apply for leave instead.';
@@ -247,6 +303,12 @@ export type TpSaveInput = {
 };
 
 async function saveTp(b: TpSaveInput): Promise<TpItem> {
+  const cutoff = tpFutureMonthCutoffError(b.from);
+  if (cutoff) {
+    const err = new Error(cutoff) as Error & { code?: string };
+    err.code = 'TP_CUTOFF';
+    throw err;
+  }
   if (await isLive())
     return apiFetch<TpItem>('/v1/tour-plans/items', {
       method: 'PUT',

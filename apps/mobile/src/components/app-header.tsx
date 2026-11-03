@@ -19,6 +19,7 @@ export function AppHeader({
   onBack,
   right,
   background,
+  roundBottom,
 }: {
   title: string;
   /** Replaces the text title visually (Home's logo); `title` stays the accessible name. */
@@ -27,6 +28,8 @@ export function AppHeader({
   right?: ReactNode;
   /** Band colour behind the header and the status bar (default: the ground). */
   background?: string;
+  /** Match the Home sheet’s top radius (quick-actions curve). */
+  roundBottom?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   return (
@@ -34,6 +37,7 @@ export function AppHeader({
       style={[
         styles.bar,
         background ? { backgroundColor: background } : null,
+        roundBottom && styles.roundBottom,
         { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right },
       ]}
     >
@@ -72,6 +76,13 @@ const RIGHT_PAD = layout.gutter - (touch.min - sizes.avatar) / 2;
 
 const styles = StyleSheet.create({
   bar: { backgroundColor: colors.ground },
+  roundBottom: {
+    borderBottomLeftRadius: radius.xl,
+    borderBottomRightRadius: radius.xl,
+    borderCurve: 'continuous',
+    overflow: 'hidden',
+    zIndex: 2,
+  },
   row: { height: sizes.header, flexDirection: 'row', alignItems: 'center' },
   withBack: { paddingLeft: spacing.xs },
   noBack: { paddingLeft: layout.gutter },

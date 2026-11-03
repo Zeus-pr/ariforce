@@ -24,6 +24,10 @@ export type DcrOptions = {
   dcr?: Dcr | null;
   drafts?: Dcr[];
   submitted?: Dcr | null;
+  /** From lockInfo — set even when `dcr` is null (approved unlock with no draft yet). */
+  lockAt?: string;
+  unlockedUntil?: string | null;
+  locked?: boolean;
 } & OptionsV2;
 
 export type { ProductOpt } from './adapter';
@@ -58,6 +62,9 @@ export function useDcrOptions(date: string) {
   return useQuery({
     queryKey: [...dcrKey, 'options', date],
     enabled: !!date,
+    // Unlock can be approved on web while the form stays mounted — keep this fresh.
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
     queryFn: async ({ signal }) => {
       const o = await apiFetch<DcrOptions>('/v1/dcrs/options', { signal, query: { date } });
       noteOptions(o);

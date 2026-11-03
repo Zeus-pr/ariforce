@@ -406,11 +406,30 @@ export function defaultLockAt(date: string) {
   return d;
 }
 
-/** Locked: past the lock time (server lockAt, else 00:00 IST next day) and not reopened. */
-export function isDayLocked(dcr: Dcr | null, date: string, now = new Date()) {
-  if (dcr?.unlockedUntil && new Date(dcr.unlockedUntil) > now) return false;
+/** Optional day-lock fields from GET /v1/dcrs/options (present even when there is no DCR yet). */
+export type DayLockInfo = {
+  lockAt?: string | null;
+  unlockedUntil?: string | null;
+  locked?: boolean;
+};
+
+/** Locked: past the lock time and not inside an approved unlock window. */
+export function isDayLocked(
+  dcr: Dcr | null,
+  date: string,
+  now = new Date(),
+  day?: DayLockInfo | null,
+) {
+  // Prefer the options payload: it is authoritative for unlock-without-a-DCR days.
+  if (typeof day?.locked === 'boolean') return day.locked;
+  const unlockedUntil = day?.unlockedUntil ?? dcr?.unlockedUntil ?? null;
+  if (unlockedUntil && new Date(unlockedUntil) > now) return false;
   if (dcr?.status === 'locked') return true;
-  const lockAt = dcr?.lockAt ? new Date(dcr.lockAt) : defaultLockAt(date);
+  const lockAt = day?.lockAt
+    ? new Date(day.lockAt)
+    : dcr?.lockAt
+      ? new Date(dcr.lockAt)
+      : defaultLockAt(date);
   return now >= lockAt;
 }
 

@@ -1,25 +1,38 @@
 import { Redirect, useRouter } from 'expo-router';
-import { useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Alert, StyleSheet, View } from 'react-native';
 import { PullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
-import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
-import { Icon } from '@/components/icon';
-import { ListRow } from '@/components/list-row';
+import { FloatingFab, useFabScrollPad } from '@/components/floating-fab';
+import { TabScene } from '@/components/floating-tab-bar';
 import { ScrollView } from '@/components/scroll';
 import { SkeletonList } from '@/components/skeleton';
+import { MonthCalendar } from '@/components/tp/month-calendar';
+import { StatusSections } from '@/components/tp/status-sections';
 import { useAuth } from '@/lib/auth-context';
-import { useDcrOptions } from '@/lib/dcr/api';
+import { useDcrOptions, useDcrTerritories } from '@/lib/dcr/api';
 import { todayIST } from '@/lib/dcr/dates';
 import { saveMessage } from '@/lib/dcr/errors';
-import { normaliseWorkTypes } from '@/lib/dcr/model';
+import { normaliseWorkTypes, territoryRows } from '@/lib/dcr/model';
 import { isSalesRole } from '@/lib/roles';
-import { CONTRACT, TP_LABEL, TP_TONE, rangeLabel, useMyTps } from '@/lib/tp/adapter';
-import { colors, layout, radius, shadows, spacing, touch } from '@/theme';
+import {
+  CONTRACT,
+  tpDefaultFromDate,
+  tpFutureMonthCutoffError,
+  useMyTps,
+  type TpItem,
+} from '@/lib/tp/adapter';
+import {
+  groupByStatus,
+  pillsByDate,
+  tpListLabel,
+  tpPillLabel,
+} from '@/lib/tp/calendar';
+import { layout, spacing } from '@/theme';
 
-/** Tour plans: my one-day or from-to plans with their approval status, and New TP. */
+/** Tour plans: Stitch month calendar + status lists, New TP FAB. */
 export default function TourPlanTab() {
   const { user } = useAuth();
   if (!isSalesRole(user?.roles ?? [])) return <Redirect href="/" />;
@@ -28,15 +41,56 @@ export default function TourPlanTab() {
 
 function TourPlans({ myId }: { myId?: string }) {
   const router = useRouter();
-  const bottom = useBottomSpace();
+  const scrollPad = useFabScrollPad();
   const q = useMyTps(myId);
   const optionsQ = useDcrOptions(todayIST());
+  const terrQ = useDcrTerritories(true);
+  const today = todayIST();
+  const openFrom = tpDefaultFromDate();
+  const [cursor, setCursor] = useState(() => {
+    const anchor = openFrom ?? today;
+    const [y, m] = anchor.split('-').map(Number);
+    return { year: y!, monthIndex: m! - 1 };
+  });
+  const [selected, setSelected] = useState<string | null>(openFrom);
+
   const wtName = useMemo(() => {
     const m = new Map<string, string>();
     for (const w of normaliseWorkTypes(optionsQ.data?.workTypes ?? [])) m.set(w.id, w.name);
     return m;
   }, [optionsQ.data]);
+
+  const terrName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of territoryRows(terrQ.data ?? [])) m.set(r.id, r.name);
+    return m;
+  }, [terrQ.data]);
+
   const items = q.data ?? [];
+  const names = useMemo(
+    () => ({ territory: terrName, workType: wtName }),
+    [terrName, wtName],
+  );
+  const pillLabelOf = useMemo(() => (t: TpItem) => tpPillLabel(t, names), [names]);
+  const listLabelOf = useMemo(() => (t: TpItem) => tpListLabel(t, names), [names]);
+
+  const pills = useMemo(() => pillsByDate(items, pillLabelOf), [items, pillLabelOf]);
+  const groups = useMemo(() => groupByStatus(items), [items]);
+
+  function openItem(id: string) {
+    router.push({ pathname: '/tour-plan/form', params: { id } });
+  }
+
+  function onSelectDay(date: string, dayPills: { itemId: string }[]) {
+    setSelected(date);
+    if (dayPills.length === 1) openItem(dayPills[0]!.itemId);
+    else if (!dayPills.length) {
+      if (tpFutureMonthCutoffError(date)) return;
+      router.push({ pathname: '/tour-plan/form', params: { date } });
+    }
+  }
+
+  const dayNotPlannable = (date: string) => !!tpFutureMonthCutoffError(date);
 
   return (
     <TabScene>
@@ -44,70 +98,71 @@ function TourPlans({ myId }: { myId?: string }) {
         <PullToRefresh onRefresh={() => q.refetch()}>
           <ScrollView
             style={styles.flex}
-            contentContainerStyle={[
-              styles.content,
-              { paddingBottom: bottom + touch.control + spacing.lg },
-            ]}
+            contentContainerStyle={[styles.content, { paddingBottom: scrollPad }]}
           >
-            <View style={styles.head}>
-              <AppText variant="small">
-                {q.isPending ? 'Your tour plans' : `Your tour plans (${items.length})`}
-              </AppText>
-              {!CONTRACT.tpItems ? <Chip label="Sample mode" tone="orange" /> : null}
-            </View>
+            {!CONTRACT.tpItems ? (
+              <View style={styles.head}>
+                <Chip label="Sample mode" tone="orange" />
+              </View>
+            ) : null}
+
             {q.isPending ? (
-              <SkeletonList count={3} />
+              <SkeletonList count={4} />
             ) : q.isError ? (
               <Card style={styles.pad}>
                 <AppText variant="bodyMuted">{saveMessage(q.error)}</AppText>
               </Card>
-            ) : !items.length ? (
-              <Card style={styles.pad}>
-                <AppText variant="body">No tour plans yet</AppText>
-                <AppText variant="bodyMuted">
-                  Plan a day or a few days with New TP, then send it to your manager. Approved plans
-                  show on the DCR screen, ready to file.
-                </AppText>
-              </Card>
             ) : (
-              <Card>
-                {items.map((t, i) => (
-                  <ListRow
-                    key={t.id}
-                    icon="calendar-month-outline"
-                    tone={t.status === 'rejected' ? 'red' : 'blue'}
-                    title={`TP · ${rangeLabel(t.from, t.to)}`}
-                    subtitle={
-                      t.status === 'rejected'
-                        ? `Rejected: ${t.rejectionReason || 'no reason given'}`
-                        : (wtName.get(t.plan.workTypeId) ?? 'Planned day')
-                    }
-                    trailing={<Chip label={TP_LABEL[t.status]} tone={TP_TONE[t.status]} />}
-                    onPress={() =>
-                      router.push({ pathname: '/tour-plan/form', params: { id: t.id } })
-                    }
-                    divider={i < items.length - 1}
-                  />
-                ))}
-              </Card>
+              <>
+                <MonthCalendar
+                  year={cursor.year}
+                  monthIndex={cursor.monthIndex}
+                  selected={selected}
+                  pills={pills}
+                  isDayDisabled={dayNotPlannable}
+                  onSelectMonth={(year, monthIndex) => setCursor({ year, monthIndex })}
+                  onSelectDay={onSelectDay}
+                />
+                {!items.length ? (
+                  <Card style={styles.pad}>
+                    <AppText variant="body">No tour plans yet</AppText>
+                    <AppText variant="bodyMuted">
+                      Plan a day with New TP, then send it to your manager. Approved days show as
+                      pills on the calendar.
+                    </AppText>
+                  </Card>
+                ) : (
+                  <View style={styles.lists}>
+                    <StatusSections
+                      approved={groups.approved}
+                      pending={groups.pending}
+                      rejected={groups.rejected}
+                      drafts={groups.drafts}
+                      labelOf={listLabelOf}
+                      onOpen={openItem}
+                    />
+                  </View>
+                )}
+              </>
             )}
           </ScrollView>
         </PullToRefresh>
-        <Pressable
-          onPress={() => router.push('/tour-plan/form')}
-          accessibilityRole="button"
+        <FloatingFab
+          label="New TP"
           accessibilityLabel="New tour plan"
-          style={({ pressed }) => [
-            styles.fab,
-            { bottom: bottom + spacing.lg },
-            pressed && styles.fabPressed,
-          ]}
-        >
-          <Icon name="plus" color={colors.onNavy} />
-          <AppText variant="button" style={styles.fabText}>
-            New TP
-          </AppText>
-        </Pressable>
+          tone="canopy"
+          onPress={() => {
+            const from = tpDefaultFromDate();
+            if (!from) {
+              Alert.alert(
+                'Tour plan closed',
+                'Tour plans are only for the next month, and that window closed after the 22nd at 12:10 AM IST.',
+              );
+              return;
+            }
+            router.push(`/tour-plan/form?date=${from}`);
+          }}
+        />
       </View>
     </TabScene>
   );
@@ -115,26 +170,12 @@ function TourPlans({ myId }: { myId?: string }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm, gap: spacing.md },
+  content: { paddingTop: spacing.sm, gap: spacing.md },
   head: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
+    paddingHorizontal: layout.gutter,
   },
-  pad: { padding: spacing.lg, gap: spacing.sm },
-  fab: {
-    position: 'absolute',
-    right: layout.gutter,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    height: touch.control,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.full,
-    backgroundColor: colors.navy,
-    boxShadow: shadows.floating,
-  },
-  fabPressed: { backgroundColor: colors.navyPressed },
-  fabText: { color: colors.onNavy },
+  lists: { paddingHorizontal: layout.gutter },
+  pad: { marginHorizontal: layout.gutter, padding: spacing.lg, gap: spacing.sm },
 });

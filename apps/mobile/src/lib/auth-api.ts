@@ -8,7 +8,7 @@
  * `Authorization: Bearer <token>`. This works against the live API with no server change.
  */
 import type { AUTH_STATE_CODES, Me, RETIRED_ROLE_KEYS, RoleKey } from '@ariforce/contracts';
-import { API_URL, AUTH_URL } from './config';
+import { API_URL, AUTH_ORIGIN, AUTH_URL } from './config';
 
 export type AuthUser = Pick<Me, 'id' | 'name' | 'email' | 'companyName' | 'roles'>;
 
@@ -47,7 +47,9 @@ export type AuthErrorKind =
   | 'network'
   | 'server'
   | 'unauthorized'
-  | 'no-role';
+  | 'no-role'
+  | 'otp'
+  | 'otp-expired';
 
 export class AuthError extends Error {
   constructor(
@@ -153,15 +155,77 @@ function toError(res: Response, body: Record<string, unknown> | null): AuthError
   );
 }
 
-/** POST /v1/auth/sign-in/email. Returns the bearer token for later requests. */
-export async function signInEmail(email: string, password: string): Promise<string> {
+/** Password accepted; a 6-digit code was emailed. `cookie` is the signed challenge to send back. */
+export type OtpChallenge = { cookie: string; email: string };
+
+/** The challenge is a cookie set by sign-in; we forward it by hand (the OS cookie jar is off). */
+function challengeCookie(res: Response): string | null {
+  const raw = res.headers.get('set-cookie');
+  const m = raw?.match(/((?:__Secure-)?[\w.-]*two_factor)=([^;,\s]+)/);
+  return m ? `${m[1]}=${m[2]}` : null;
+}
+
+const otpHeaders = (cookie: string) => ({ cookie, origin: AUTH_ORIGIN });
+
+/** POST /v1/auth/two-factor/send-otp: (re)send the sign-in code to the account's email. */
+export async function sendLoginOtp(challenge: OtpChallenge): Promise<void> {
+  const res = await request(`${AUTH_URL}/two-factor/send-otp`, {
+    method: 'POST',
+    body: '{}',
+    headers: otpHeaders(challenge.cookie),
+  });
+  if (res.ok) return;
+  const body = await readBody(res);
+  if (res.status === 429) throw toError(res, body);
+  throw new AuthError('otp-expired', 'Your sign-in expired. Enter your password again.');
+}
+
+/** POST /v1/auth/sign-in/email. Returns the bearer token, or an OTP challenge when a code is required. */
+export async function signInEmail(
+  email: string,
+  password: string,
+): Promise<string | OtpChallenge> {
   const res = await request(`${AUTH_URL}/sign-in/email`, {
     method: 'POST',
     body: JSON.stringify({ email, password, rememberMe: true }),
   });
   const body = await readBody(res);
   if (!res.ok) throw toError(res, body);
+  if (body?.twoFactorRedirect) {
+    const cookie = challengeCookie(res);
+    if (!cookie)
+      throw new AuthError('server', 'Could not start the email code step. Try again.');
+    const challenge = { cookie, email };
+    await sendLoginOtp(challenge);
+    return challenge;
+  }
   // bearer() puts the signed session token in `set-auth-token`; the body token also works.
+  const token =
+    res.headers.get('set-auth-token') ?? (typeof body?.token === 'string' ? body.token : null);
+  if (!token)
+    throw new AuthError('server', 'Signed in, but the server sent no session token. Try again.');
+  return token;
+}
+
+/** POST /v1/auth/two-factor/verify-otp: the emailed code. Returns the bearer token. */
+export async function verifyLoginOtp(challenge: OtpChallenge, code: string): Promise<string> {
+  const res = await request(`${AUTH_URL}/two-factor/verify-otp`, {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+    headers: otpHeaders(challenge.cookie),
+  });
+  const body = await readBody(res);
+  if (!res.ok) {
+    if (res.status === 429) throw toError(res, body);
+    const c = errorCode(body);
+    if (c === 'INVALID_TWO_FACTOR_COOKIE')
+      throw new AuthError('otp-expired', 'Your sign-in expired. Enter your password again.', c);
+    if (c === 'TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE' || c === 'OTP_HAS_EXPIRED')
+      throw new AuthError('otp', 'That code is no longer valid. Ask for a new one.', c);
+    if (c === 'ACCOUNT_TEMPORARILY_LOCKED')
+      throw new AuthError('otp', 'Too many wrong codes. Try again later.', c);
+    throw new AuthError('otp', 'That code is not right. Check it and try again.', c);
+  }
   const token =
     res.headers.get('set-auth-token') ?? (typeof body?.token === 'string' ? body.token : null);
   if (!token)

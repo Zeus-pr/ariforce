@@ -38,6 +38,8 @@ export type PlannedDoctor = {
   name: string;
   speciality: string;
   area: string;
+  /** Planned slot for Today's Schedule. */
+  plannedAt: Date;
   /** null = planned, not yet called on. */
   metAt: Date | null;
 };
@@ -49,16 +51,26 @@ export type Kpi = {
   target: string;
   /** 0..1, share of target reached. */
   progress: number;
+  /** Optional delta chip e.g. "+0.2". */
+  delta?: string;
 };
 
 export type HomeData = {
   attendance: { punchedInAt: Date | null; place: string };
   todayPlan: { workType: string; area: string; band: string; workWith: string | null };
-  dcrToday: { submitted: boolean };
+  dcrToday: { submitted: boolean; dueBy: string };
+  dailyTarget: { done: number; total: number; cluster: string; stp: string };
   attention: AttentionItem[];
   doctorsToday: PlannedDoctor[];
   approvals: { dcr: number; tourPlans: number; leave: number; expenses: number };
   kpis: Kpi[];
+  offlineCache: { label: string };
+  quickHints: {
+    dcr: string;
+    tourPlan: string;
+    pob: string;
+    expenses: string;
+  };
 };
 
 const at = (day: Date, h: number, m: number) => {
@@ -76,10 +88,51 @@ const daysFrom = (day: Date, n: number) => {
 /** PLACEHOLDER: dates are relative to `now` so the sample stays believable on any day. */
 export function getHomeMock(now: Date): HomeData {
   const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const doctorsToday: PlannedDoctor[] = [
+    {
+      id: 'd1',
+      name: 'Dr. P. K. Banerjee',
+      speciality: 'Paediatrics',
+      area: 'Town North',
+      plannedAt: at(now, 9, 30),
+      metAt: at(now, 9, 45),
+    },
+    {
+      id: 'd2',
+      name: 'Ghosh Medical Stores',
+      speciality: 'Chemist',
+      area: 'Station Road Hub',
+      plannedAt: at(now, 10, 15),
+      metAt: at(now, 10, 40),
+    },
+    {
+      id: 'd3',
+      name: 'Dr. Debabrata Roy',
+      speciality: 'Orthopaedic',
+      area: 'Medicity Plaza',
+      plannedAt: at(now, 14, 0),
+      metAt: null,
+    },
+    {
+      id: 'd4',
+      name: 'Dr. Satyarup Banerjee',
+      speciality: 'Physician',
+      area: 'Burdwan',
+      plannedAt: at(now, 16, 0),
+      metAt: null,
+    },
+  ];
+  const met = doctorsToday.filter((d) => d.metAt).length;
   return {
-    attendance: { punchedInAt: at(now, 9, 12), place: 'Burdwan HQ' },
+    attendance: { punchedInAt: at(now, 8, 30), place: 'Burdwan Cluster' },
     todayPlan: { workType: 'Field work', area: 'Burdwan', band: 'HQ', workWith: 'Amit Das (ABM)' },
-    dcrToday: { submitted: false },
+    dcrToday: { submitted: false, dueBy: '18:00' },
+    dailyTarget: {
+      done: met,
+      total: 10,
+      cluster: 'Burdwan Cluster',
+      stp: 'South Zone',
+    },
     attention: [
       {
         id: 'dcr-missing',
@@ -98,66 +151,45 @@ export function getHomeMock(now: Date): HomeData {
         feature: 'tour-plan',
       },
     ],
-    doctorsToday: [
-      {
-        id: 'd1',
-        name: 'Dr. R Kartikeyan',
-        speciality: 'Neuro Surgeon',
-        area: 'Burdwan',
-        metAt: at(now, 10, 30),
-      },
-      {
-        id: 'd2',
-        name: 'Dr. Arijit Ghosh',
-        speciality: 'Orthopaedician',
-        area: 'Burdwan',
-        metAt: null,
-      },
-      {
-        id: 'd3',
-        name: 'Dr. Pratyay Mukherjee',
-        speciality: 'Orthopaedician',
-        area: 'Burdwan',
-        metAt: null,
-      },
-      {
-        id: 'd4',
-        name: 'Dr. Satyarup Banerjee',
-        speciality: 'Physician',
-        area: 'Burdwan',
-        metAt: null,
-      },
-    ],
+    doctorsToday,
     approvals: { dcr: 2, tourPlans: 1, leave: 1, expenses: 3 },
     kpis: [
       {
         key: 'call_average',
-        label: 'Call average',
-        value: '9.4',
-        target: 'Target 10 a day',
-        progress: 0.94,
+        label: 'Call Avg',
+        value: '10.2',
+        target: 'Target: 10.0 calls',
+        progress: 1.02,
+        delta: '+0.2',
       },
       {
         key: 'coverage_pct',
         label: 'Coverage',
-        value: '62%',
-        target: 'Target 90%',
-        progress: 0.69,
+        value: '88%',
+        target: '44 of 50 Target Drs',
+        progress: 0.88,
       },
       {
         key: 'chemist_call_average',
-        label: 'Chemist calls',
-        value: '3.1',
-        target: 'Target 4 a day',
-        progress: 0.78,
+        label: 'Chemist Calls',
+        value: '3 / 4',
+        target: 'Completed today',
+        progress: 0.75,
       },
       {
         key: 'dcr_on_time_pct',
-        label: 'DCR on time',
-        value: '92%',
-        target: 'Target 100%',
-        progress: 0.92,
+        label: 'DCR On-Time',
+        value: '96%',
+        target: 'Punctuality Score',
+        progress: 0.96,
       },
     ],
+    offlineCache: { label: '14 Doctor Profiles Cached Offline' },
+    quickHints: {
+      dcr: 'Due today by 18:00',
+      tourPlan: 'STP Burdwan Hub',
+      pob: 'Booking Desk (3 orders)',
+      expenses: 'Claim & Allowance',
+    },
   };
 }

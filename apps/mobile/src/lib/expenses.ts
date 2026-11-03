@@ -121,12 +121,14 @@ const MONTHS =
 export const monthLabel = (m: string) => `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
 
 type ContentType = keyof typeof EXPENSE_FILE_TYPES;
-/** The content type to declare: the picker's when allowed and matching, else from the extension. */
+/** The content type to declare: picker mime when allow-listed, else from the extension. */
 export function contentTypeFor(f: { name: string; type: string }): ContentType | null {
   const ext = fileExt(f.name);
   const types = Object.entries(EXPENSE_FILE_TYPES) as [ContentType, readonly string[]][];
   return (
     types.find(([t, exts]) => t === f.type && exts.includes(ext))?.[0] ??
+    // Prefer mime over a mismatched extension (iOS often keeps .HEIC after JPEG re-encode).
+    types.find(([t]) => t === f.type)?.[0] ??
     types.find(([, exts]) => exts.includes(ext))?.[0] ??
     null
   );
@@ -247,24 +249,126 @@ export function usePlaces(enabled: boolean) {
   });
 }
 
+const SFC_TA_TAG = '[SFC TA]';
+const SFC_DA_TAG = '[SFC DA]';
+
+/** TA / DA / km from a submitted DCR’s frozen SFC snapshots (one day). */
+export function taDaFromSfc(dcr: Dcr): { ta: number; da: number; km: number; routes: string[] } {
+  const snaps = (dcr.sfcRoutes ?? []).map((r) => r.snapshot).filter(Boolean);
+  if (!snaps.length) return { ta: 0, da: 0, km: 0, routes: [] };
+  const ta = snaps.reduce((s, x) => s + (x!.bothWayAmount ?? x!.oneWayAmount ?? 0), 0);
+  const das = snaps.map((x) => x!.da ?? 0).filter((n) => n > 0);
+  const da = das.length ? Math.max(...das) : 0;
+  const km = snaps.reduce((s, x) => s + (x!.bothWayKm || 0), 0);
+  const routes = snaps.map((x) => `${x!.fromPlace} → ${x!.toPlace}`);
+  return {
+    ta: Math.round(ta * 100) / 100,
+    da: Math.round(da * 100) / 100,
+    km: Math.round(km * 10) / 10,
+    routes,
+  };
+}
+
+function dayHasTa(lines: Line[]) {
+  return lines.some(
+    (l) =>
+      (l.source === 'auto' && (l.category === 'travel' || l.category === 'mileage')) ||
+      (l.notes ?? '').includes(SFC_TA_TAG),
+  );
+}
+function dayHasDa(lines: Line[]) {
+  return lines.some(
+    (l) =>
+      (l.source === 'auto' && l.category === 'allowance') || (l.notes ?? '').includes(SFC_DA_TAG),
+  );
+}
+
+/**
+ * If allowance engine left a day empty, seed travel/DA lines from that day’s DCR SFC snapshot.
+ * Idempotent via [SFC TA]/[SFC DA] note tags. Manual extras stay separate and add to the total.
+ */
+export async function seedTaDaFromDcrSfc(claim: Claim, dcrs: Dcr[]): Promise<Claim> {
+  let c = claim;
+  if (!isEditable(c.status)) return c;
+  for (const dcr of dcrs) {
+    if (dcr.status === 'draft') continue;
+    const { ta, da, km } = taDaFromSfc(dcr);
+    if (!(ta > 0) && !(da > 0)) continue;
+    const dayLines = c.lines.filter((l) => l.date === dcr.date);
+    if (ta > 0 && !dayHasTa(dayLines)) {
+      c = await apiFetch<Claim>(`/v1/expense-claims/${c.id}/lines`, {
+        method: 'POST',
+        body: {
+          date: dcr.date,
+          category: km > 0 ? 'mileage' : 'travel',
+          amount: ta,
+          notes: `${SFC_TA_TAG}\nFrom DCR SFC`,
+          mileageKm: km > 0 ? km : null,
+          dcrId: dcr.id,
+          tourPlanId: null,
+        } satisfies LineInput,
+      });
+    }
+    if (da > 0 && !dayHasDa(c.lines.filter((l) => l.date === dcr.date))) {
+      c = await apiFetch<Claim>(`/v1/expense-claims/${c.id}/lines`, {
+        method: 'POST',
+        body: {
+          date: dcr.date,
+          category: 'allowance',
+          amount: da,
+          notes: `${SFC_DA_TAG}\nFrom DCR SFC`,
+          mileageKm: null,
+          dcrId: dcr.id,
+          tourPlanId: null,
+        } satisfies LineInput,
+      });
+    }
+  }
+  return c;
+}
+
 /**
  * Make sure the month's claim carries the TA/DA draft for every submitted DCR day (idempotent).
- * Skips when the server does it, or when the claim is no longer editable. Never throws.
+ * 1) Server allowances engine when available
+ * 2) Fallback: seed from each DCR’s frozen SFC TA/DA
+ * Skips when the claim is no longer editable. Never throws.
  */
-export async function ensureExpenseDraft(date: string, rejectedDcrIds: string[] = []) {
+export async function ensureExpenseDraft(
+  date: string,
+  rejectedDcrIds: string[] = [],
+  dcrs: Dcr[] = [],
+) {
   try {
-    if (await serverDraftsExpense()) return null;
     const claim = await ensureClaim(monthOf(date));
     if (!isEditable(claim.status)) return claim;
-    const r = await runAllowances(claim.id, false);
-    let c = r.claim ?? claim;
-    // The live engine still drafts TA/DA for rejected DCRs: remove those unsubmitted auto lines.
+    let c = claim;
+    if (!(await serverDraftsExpense())) {
+      try {
+        const r = await runAllowances(claim.id, false);
+        c = r.claim ?? claim;
+      } catch {
+        // Fall through to SFC seeding.
+      }
+    }
+    // Drop auto lines of rejected DCRs (engine may still draft them).
     const bad = c.lines.filter(
       (l) => l.source === 'auto' && l.dcrId && rejectedDcrIds.includes(l.dcrId),
     );
     for (const l of bad)
       await apiFetch<void>(`/v1/expense-claims/${c.id}/lines/${l.id}`, { method: 'DELETE' });
     if (bad.length) c = await apiFetch<Claim>(`/v1/expense-claims/${c.id}`);
+
+    // Fill any remaining gaps from DCR SFC snapshots (full records preferred).
+    const needFetch = dcrs.filter((d) => !(d.sfcRoutes ?? []).some((r) => r.snapshot));
+    const full: Dcr[] = [...dcrs.filter((d) => !needFetch.includes(d))];
+    for (const d of needFetch) {
+      try {
+        full.push(await apiFetch<Dcr>(`/v1/dcrs/${d.id}`));
+      } catch {
+        full.push(d);
+      }
+    }
+    if (full.length) c = await seedTaDaFromDcrSfc(c, full);
     return c;
   } catch {
     return null;
@@ -327,29 +431,121 @@ export type LineInput = {
   tourPlanId: string | null;
 };
 
-/** Receipt upload (web lib/expenses/upload.ts): URL, PUT bytes to storage, confirm. */
+/**
+ * Manual boxes on the claim form (from field expense statements).
+ * Stored as `other` lines; tag is a notes prefix so we can round-trip.
+ * (Company brand / Linux name is never shown — use signed-in user only.)
+ */
+export const MANUAL_FIELDS = [
+  { key: 'additional_tada', label: 'Additional TA/DA', tag: 'Additional TA/DA' },
+  { key: 'courier', label: 'Courier', tag: 'Courier' },
+  { key: 'mobile', label: 'Mobile', tag: 'Mobile' },
+  { key: 'team_meeting', label: 'Team meeting expense', tag: 'Team meeting' },
+] as const;
+export type ManualFieldKey = (typeof MANUAL_FIELDS)[number]['key'];
+
+const TAG_RE = /^\[([^\]]+)\](?:\n|$)/;
+
+export function manualTag(key: ManualFieldKey): string {
+  return MANUAL_FIELDS.find((f) => f.key === key)!.tag;
+}
+
+export function parseManualLine(l: Line): ManualFieldKey | 'remarks' | null {
+  if (l.source === 'auto') return null;
+  const m = TAG_RE.exec(l.notes ?? '');
+  if (!m) return l.category === 'other' && l.notes ? 'remarks' : null;
+  const tag = m[1]!;
+  const hit = MANUAL_FIELDS.find((f) => f.tag === tag);
+  return hit?.key ?? (tag === 'Remarks' ? 'remarks' : null);
+}
+
+export function stripManualTag(notes: string | null): string {
+  if (!notes) return '';
+  return notes.replace(TAG_RE, '').trim();
+}
+
+export function withManualTag(key: ManualFieldKey | 'remarks', body: string): string {
+  const tag = key === 'remarks' ? 'Remarks' : manualTag(key);
+  const rest = body.trim();
+  return rest ? `[${tag}]\n${rest}` : `[${tag}]`;
+}
+
+/** Split a day's lines into auto/SFC TA/DA vs manual boxes (statement layout). */
+export function dayExpenseSplit(lines: Line[]) {
+  const isTa = (l: Line) =>
+    (l.source === 'auto' && (l.category === 'travel' || l.category === 'mileage')) ||
+    (l.notes ?? '').includes(SFC_TA_TAG);
+  const isDa = (l: Line) =>
+    (l.source === 'auto' && l.category === 'allowance') || (l.notes ?? '').includes(SFC_DA_TAG);
+  const tada = lines.filter((l) => isTa(l) || isDa(l));
+  const ta = tada.filter(isTa).reduce((s, l) => s + l.amount, 0);
+  const da = tada.filter(isDa).reduce((s, l) => s + l.amount, 0);
+  const km = tada.reduce((s, l) => s + (l.mileageKm ?? 0), 0);
+  const manual: Partial<Record<ManualFieldKey | 'remarks', Line>> = {};
+  for (const l of lines) {
+    if (isTa(l) || isDa(l)) continue;
+    const k = parseManualLine(l);
+    if (k) manual[k] = l;
+  }
+  return { auto: tada, ta, da, km, manual };
+}
+
+/**
+ * PUT raw bytes to the R2 presigned URL.
+ * Use ArrayBuffer + XHR: RN Blob/fetch often send a different length than the signed
+ * Content-Length (or chunked encoding), which R2 rejects with 403.
+ */
+function putToR2(
+  url: string,
+  headers: Record<string, string>,
+  body: ArrayBuffer,
+): Promise<{ ok: boolean; status: number }> {
+  return new Promise((resolve) => {
+    const x = new XMLHttpRequest();
+    x.open('PUT', url);
+    for (const [k, v] of Object.entries(headers)) x.setRequestHeader(k, v);
+    x.onload = () => resolve({ ok: x.status >= 200 && x.status < 300, status: x.status });
+    x.onerror = () => resolve({ ok: false, status: 0 });
+    x.send(body);
+  });
+}
+
+/** Receipt upload (web lib/expenses/upload.ts): URL, PUT bytes to R2, confirm. */
 export async function uploadReceipt(claimId: string, lineId: string, f: PickedFile) {
   const contentType = contentTypeFor(f);
   if (!contentType) throw new Error('Unsupported file type.');
-  const blob = await (await fetch(f.uri)).blob();
-  const size = f.size || blob.size;
+
+  // Actual on-disk bytes — picker `size` is often wrong after compression.
+  let bytes: ArrayBuffer;
+  try {
+    const local = await fetch(f.uri);
+    bytes = await local.arrayBuffer();
+  } catch {
+    throw new Error('Could not read the file. Try picking it again.');
+  }
+  const sizeBytes = bytes.byteLength;
+  if (!sizeBytes) throw new Error('That file is empty.');
+  if (sizeBytes > EXPENSE_MAX_FILE_BYTES) throw new Error(`${f.name} is over ${MAX_MB} MB.`);
+
   const r = await apiFetch<{
     attachment: { id: string };
     uploadUrl: string;
     headers: Record<string, string>;
   }>(`/v1/expense-claims/${claimId}/lines/${lineId}/attachments`, {
     method: 'POST',
-    body: { fileName: f.name, contentType, sizeBytes: size },
+    body: { fileName: f.name, contentType, sizeBytes },
   });
-  const put = await fetch(r.uploadUrl, { method: 'PUT', headers: r.headers, body: blob }).catch(
-    () => null,
-  );
-  if (!put?.ok) {
-    // Leave no pending attachment behind.
+
+  const put = await putToR2(r.uploadUrl, r.headers, bytes);
+  if (!put.ok) {
     await apiFetch<void>(`/v1/expense-attachments/${r.attachment.id}`, { method: 'DELETE' }).catch(
       () => {},
     );
-    throw new Error('Upload failed. Check your connection and try again.');
+    throw new Error(
+      put.status
+        ? `Upload to storage failed (${put.status}). Try again.`
+        : 'Upload failed. Check your connection and try again.',
+    );
   }
   await apiFetch(`/v1/expense-attachments/${r.attachment.id}/confirm`, { method: 'POST' });
 }

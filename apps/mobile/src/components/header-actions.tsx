@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     backgroundColor: colors.danger,
     borderWidth: 1.5,
-    borderColor: colors.homeSky, // ring matches the Home band behind the bell
+    borderColor: colors.surface,
   },
   badgeText: { color: colors.onNavy, fontSize: 11, lineHeight: 14 },
 });

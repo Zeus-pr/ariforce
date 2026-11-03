@@ -13,7 +13,16 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { AuthError, fetchMe, signInEmail, signOutRemote, type AuthUser } from './auth-api';
+import {
+  AuthError,
+  fetchMe,
+  sendLoginOtp,
+  signInEmail,
+  signOutRemote,
+  verifyLoginOtp,
+  type AuthUser,
+  type OtpChallenge,
+} from './auth-api';
 import { tokenStore } from './token-store';
 
 type Status = 'loading' | 'signed-out' | 'signed-in';
@@ -24,7 +33,10 @@ type AuthContextValue = {
   /** Why the app signed the user out on its own (e.g. role without access); shown on sign-in. */
   notice: string | null;
   clearNotice: () => void;
-  signIn: (email: string, password: string) => Promise<void>;
+  /** Resolves with an OTP challenge when the server emailed a sign-in code, otherwise signs in. */
+  signIn: (email: string, password: string) => Promise<OtpChallenge | void>;
+  completeOtp: (challenge: OtpChallenge, code: string) => Promise<void>;
+  resendOtp: (challenge: OtpChallenge) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -88,10 +100,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (me.data) void tokenStore.setUser(me.data);
   }, [me.data]);
 
-  const signIn = useCallback(
-    async (email: string, password: string) => {
-      setNotice(null);
-      const t = await signInEmail(email, password);
+  const finishWithToken = useCallback(
+    async (t: string) => {
       let user: AuthUser;
       try {
         user = await fetchMe(t);
@@ -107,6 +117,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     [queryClient],
   );
+
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      setNotice(null);
+      const r = await signInEmail(email, password);
+      if (typeof r !== 'string') return r;
+      await finishWithToken(r);
+    },
+    [finishWithToken],
+  );
+
+  const completeOtp = useCallback(
+    async (challenge: OtpChallenge, code: string) => {
+      await finishWithToken(await verifyLoginOtp(challenge, code));
+    },
+    [finishWithToken],
+  );
+
+  const resendOtp = useCallback((challenge: OtpChallenge) => sendLoginOtp(challenge), []);
 
   const signOut = useCallback(() => endSession(null), [endSession]);
 
@@ -132,10 +161,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       notice,
       clearNotice: () => setNotice(null),
       signIn,
+      completeOtp,
+      resendOtp,
       signOut,
       refresh,
     }),
-    [status, me.data, notice, signIn, signOut, refresh],
+    [status, me.data, notice, signIn, completeOtp, resendOtp, signOut, refresh],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

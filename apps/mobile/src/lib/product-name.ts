@@ -7,6 +7,20 @@
 const STRENGTH_TOKEN = /^\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)*(?:mg|mcg|g|ml|iu|%)?$/i;
 /** A unit written as its own word after a strength ('10 mg'). */
 const UNIT_TOKEN = /^(?:mg|mcg|g|ml|iu|%)$/i;
+
+/** Strength tokens are not a separate product field, so read them from the product name. */
+export function productStrength(name: string): string | null {
+  const words = name.trim().split(/\s+/).slice(1);
+  const strengths: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i]!;
+    if (!STRENGTH_TOKEN.test(word)) continue;
+    const unit = words[i + 1];
+    strengths.push(UNIT_TOKEN.test(unit ?? '') ? `${word} ${words[++i]}` : word);
+  }
+  return strengths.length ? strengths.join(' + ') : null;
+}
+
 /**
  * Product name without strength numbers, for doctor detailing ('ARIPIX 10' -> 'ARIPIX',
  * 'ESCINEX CZ 10/0.25' -> 'ESCINEX CZ', 'NERGALIN 75 SR' -> 'NERGALIN SR', 'Paracetamol 650 mg'

@@ -14,7 +14,7 @@ type Feature = {
 
 /**
  * AriForce features the mobile app links to. Each opens a "Coming soon" screen until it is built
- * (DCR, doctors, chemists and stockists are built: see featureHref).
+ * (DCR, doctors, chemists, stockists and products are built: see featureHref).
  * Titles match the website's navigation.
  */
 export const FEATURES = {
@@ -46,6 +46,13 @@ export const FEATURES = {
     short: 'TA/DA and other claims',
     blurb: 'TA/DA from your DCRs, plus other claims with bills.',
   },
+  pob: {
+    title: 'POB',
+    icon: 'cart-outline',
+    tone: 'blue',
+    short: 'Chemist booking desk',
+    blurb: 'Book chemist purchase orders from the field. Coming to mobile soon.',
+  },
   doctors: {
     title: 'Doctors',
     icon: 'stethoscope',
@@ -66,6 +73,13 @@ export const FEATURES = {
     tone: 'orange',
     short: 'Stockists for your territories',
     blurb: 'Stockists that supply your territories.',
+  },
+  products: {
+    title: 'Products',
+    icon: 'package-variant-closed',
+    tone: 'blue',
+    short: 'Product details and prices',
+    blurb: 'Browse product compositions, strengths and prices.',
   },
   approvals: {
     title: 'Approvals',
@@ -113,6 +127,7 @@ export const featureHref = (feature: FeatureKey, roles?: readonly string[]) => {
   if (feature === 'notifications') return '/notifications' as const;
   if (feature === 'leave') return '/leave' as const;
   if (feature === 'expenses') return '/expenses' as const;
+  if (feature === 'products') return '/products' as const;
   if (isMasterBuilt(feature))
     return { pathname: '/masters/[kind]', params: { kind: feature } } as const;
   return { pathname: '/coming-soon/[feature]', params: { feature } } as const;

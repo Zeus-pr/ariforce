@@ -18,17 +18,26 @@ export const colors = {
   tealSoft: '#BFE8EF',
   tealWash: '#E8F6F9',
   tealInk: '#24485F', // body text on tealWash
-  ground: '#F4F8FD',
+  ground: '#F8FAFC',
   surface: '#FFFFFF',
   ink: '#0F2A4A',
   muted: '#55667B',
-  // Home top band (Sharanya, 2026-10-29). On it: navy 8.4:1, onSkyMuted 5.6:1 (WCAG AA body text);
-  // `muted` is only 3.4:1 there, so secondary text on the band uses onSkyMuted.
-  homeSky: '#87CEFA',
-  onSkyMuted: '#33465C',
+  // Stitch Field Command canopy (Clinical Field Precision). White text on canopy.
+  canopy: '#0891B2',
+  canopyDeep: '#0E7490',
+  canopyTrack: '#075985',
+  canopyPill: 'rgba(8, 145, 178, 0.14)', // active tab pill
+  // Punch button: face + darker 3D edge (emerald = punch in, vibrant red = punch out).
+  punchIn: '#10B981',
+  punchInEdge: '#047857',
+  punchOut: '#EF4444',
+  punchOutEdge: '#B91C1C',
+  // Legacy home band alias — Home now uses canopy; keep for any remaining references.
+  homeSky: '#0891B2',
+  onSkyMuted: 'rgba(255, 255, 255, 0.85)',
   subtle: '#7D8A9B',
-  separator: '#DCE4EE',
-  borderStrong: '#B8C5D6',
+  separator: '#E2E8F0',
+  borderStrong: '#CBD5E1',
   danger: '#B42318',
   dangerWash: '#FEF3F2',
   dangerBorder: '#FBD5D0',
@@ -76,7 +85,7 @@ export const spacing = {
   xxxl: 48,
 } as const;
 
-export const radius = { sm: 8, md: 12, lg: 16, full: 9999 } as const;
+export const radius = { sm: 8, md: 12, lg: 16, xl: 24, full: 9999 } as const;
 
 /** Fixed component sizes (dp). */
 export const sizes = {
@@ -100,6 +109,7 @@ export const layout = {
   inner: spacing.md, // section title to content, and between cards in a grid
   tabBarInset: spacing.lg, // floating bar distance from the screen sides
   tabBarLift: spacing.sm, // floating bar distance above the safe area / gesture bar
+  maxContent: 1024, // widest the app column grows on tablets; phones are narrower so unaffected
 } as const;
 
 /** Frosted tab bar: expo-blur settings (Android intensity is divided by blurReductionFactor 4). */

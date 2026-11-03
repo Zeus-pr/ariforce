@@ -2,6 +2,7 @@ import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { DecisionBar } from '@/components/approvals/decision-bar';
+import { TpSfcReview } from '@/components/approvals/sfc-review';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
@@ -128,14 +129,11 @@ function Review({ id }: { id: string }) {
               <AppText variant="body">{people.length ? people.join(', ') : 'Alone'}</AppText>
             </>
           ) : null}
-          {t.plan.sfcRoutes.length ? (
-            <AppText variant="small">
-              {t.plan.sfcRoutes.length} SFC route{t.plan.sfcRoutes.length === 1 ? '' : 's'} chosen
-            </AppText>
-          ) : null}
           {det && 'title' in det ? <AppText variant="body">{det.title}</AppText> : null}
           {det && 'description' in det ? <AppText variant="body">{det.description}</AppText> : null}
         </Card>
+
+        <TpSfcReview item={t} />
 
         {t.status === 'pending' ? (
           <Card style={styles.pad}>

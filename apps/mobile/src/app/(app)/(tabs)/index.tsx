@@ -3,27 +3,25 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ScrollView } from '@/components/scroll';
 import { PullToRefresh } from '@/components/refresh';
-import { AppText } from '@/components/app-text';
-import { Chip } from '@/components/chip';
 import { ApprovalsCard } from '@/components/home/approvals-card';
-import { useHomeAttention } from '@/lib/home-attention';
 import { AttentionList } from '@/components/home/attention-list';
-import { DoctorsToday } from '@/components/home/doctors-today';
+import { CanopyHero } from '@/components/home/canopy-hero';
 import { KpiGrid } from '@/components/home/kpi-grid';
+import { BusinessTiles } from '@/components/home/business-tiles';
 import { QuickActions } from '@/components/home/quick-actions';
-import { TodayCard } from '@/components/home/today-card';
+import { ScheduleToday } from '@/components/home/schedule-today';
+import { SyncStrip } from '@/components/home/sync-strip';
 import { useAuth } from '@/lib/auth-context';
 import { featureHref, type FeatureKey } from '@/lib/features';
-import { formatDate, greeting } from '@/lib/format';
-import { isApprover } from '@/lib/roles';
+import { useHomeAttention } from '@/lib/home-attention';
+import { isApprover, roleLabel } from '@/lib/roles';
 import { getHomeMock, HOME_IS_PLACEHOLDER } from '@/mocks/home';
 import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
-import { colors, layout, spacing } from '@/theme';
+import { colors, layout, radius, spacing } from '@/theme';
 
 /**
- * Rep home, top to bottom in the order the day needs it:
- * greeting → today (punch, tour plan, DCR) → flags → quick actions → approvals (managers) →
- * doctors to visit → this month's KPIs. Everything but the user comes from src/mocks/home.ts.
+ * Stitch Field Command home: canopy → quick actions → business masters → attention →
+ * schedule → KPIs → sync stub. User identity from auth; everything else from mocks/home.
  */
 export default function HomeScreen() {
   const { user, refresh } = useAuth();
@@ -31,17 +29,16 @@ export default function HomeScreen() {
   const [now, setNow] = useState(() => new Date());
   const bottom = useBottomSpace();
 
-  // Keep the greeting and date right if the app stays open across noon, 5 pm or midnight.
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(t);
   }, []);
 
   const day = now.toDateString();
-  // PLACEHOLDER: one sample per calendar day (see src/mocks/home.ts).
   const data = useMemo(() => getHomeMock(new Date(day)), [day]);
 
   const name = user?.name?.trim() || user?.email || 'there';
+  const role = roleLabel(user?.roles ?? []);
   const approver = isApprover(user?.roles ?? []);
   const attention = useHomeAttention(user);
   const roles = user?.roles;
@@ -59,60 +56,53 @@ export default function HomeScreen() {
     <TabScene>
       <PullToRefresh onRefresh={onRefresh}>
         <ScrollView
-          // Home keeps a gentle native overscroll (Android stretch, iOS bounce); other screens are fixed.
           overScrollMode="auto"
           bounces
           alwaysBounceVertical
-          // iOS must not add its own safe-area inset above the band (that opened a gap under the header).
           contentInsetAdjustmentBehavior="never"
           automaticallyAdjustContentInsets={false}
           style={styles.flex}
           contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
         >
-          {/* Top band: continues the header's sky colour edge to edge (status bar icons stay dark). */}
-          <View style={styles.band}>
-            {/* Sky above the band: a top overscroll/bounce reveals blue, never the ground colour. */}
-            <View pointerEvents="none" style={styles.bandSky} />
-            <AppText variant="greeting" style={styles.onSky}>
-              {greeting(now)},
-            </AppText>
-            <AppText variant="name" accessibilityRole="header" numberOfLines={2}>
-              {name}
-            </AppText>
-            <View style={styles.dateRow}>
-              <AppText variant="caption" style={styles.onSky}>
-                {formatDate(now)}
-              </AppText>
-              {HOME_IS_PLACEHOLDER ? (
-                <Chip label="Sample: today, doctors, KPIs" tone="orange" />
-              ) : null}
-            </View>
-          </View>
+          <CanopyHero
+            name={name}
+            role={role}
+            now={now}
+            data={data}
+            sample={HOME_IS_PLACEHOLDER}
+          />
 
-          <View style={styles.section}>
-            <TodayCard key={day} data={data} onOpen={open} />
-          </View>
+          <View style={styles.sheet}>
+            <QuickActions onOpen={open} roles={user?.roles ?? []} hints={data.quickHints} />
 
-          <View style={styles.section}>
-            <AttentionList items={attention.items} pending={attention.pending} />
-          </View>
-
-          <View style={styles.section}>
-            <QuickActions onOpen={open} roles={user?.roles ?? []} />
-          </View>
-
-          {approver ? (
             <View style={styles.section}>
-              <ApprovalsCard counts={attention.counts} onOpen={() => open('approvals')} />
+              <BusinessTiles onOpen={open} roles={user?.roles ?? []} />
             </View>
-          ) : null}
 
-          <View style={styles.section}>
-            <DoctorsToday doctors={data.doctorsToday} onOpenDoctors={() => open('doctors')} />
-          </View>
+            <View style={styles.section}>
+              <AttentionList items={attention.items} pending={attention.pending} />
+            </View>
 
-          <View style={styles.section}>
-            <KpiGrid kpis={data.kpis} />
+            {approver ? (
+              <View style={styles.section}>
+                <ApprovalsCard counts={attention.counts} onOpen={() => open('approvals')} />
+              </View>
+            ) : null}
+
+            <View style={styles.section}>
+              <ScheduleToday
+                items={data.doctorsToday}
+                onFullRoute={() => open('tour-plan')}
+              />
+            </View>
+
+            <View style={styles.section}>
+              <KpiGrid kpis={data.kpis} />
+            </View>
+
+            <View style={styles.section}>
+              <SyncStrip label={data.offlineCache.label} />
+            </View>
           </View>
         </ScrollView>
       </PullToRefresh>
@@ -122,33 +112,20 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.ground },
-  content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm },
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+  content: { paddingHorizontal: layout.gutter, paddingTop: 0 },
+  sheet: {
+    // Full-bleed under the canopy so rounded corners don’t leave a white gap
+    // at the screen edges below the teal band.
+    marginHorizontal: -layout.gutter,
+    marginTop: -spacing.lg,
+    paddingHorizontal: layout.gutter,
+    backgroundColor: colors.ground,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    borderCurve: 'continuous',
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.sm,
+    gap: 0,
   },
   section: { marginTop: layout.section },
-  band: {
-    backgroundColor: colors.homeSky,
-    marginHorizontal: -layout.gutter,
-    marginTop: -spacing.sm,
-    paddingHorizontal: layout.gutter,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
-    // Card-like bottom curve; the top stays square and flush with the header band.
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    borderCurve: 'continuous',
-  },
-  bandSky: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: '100%',
-    height: 1000,
-    backgroundColor: colors.homeSky,
-  },
-  onSky: { color: colors.onSkyMuted },
 });
