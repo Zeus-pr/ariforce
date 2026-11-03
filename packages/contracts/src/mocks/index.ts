@@ -987,12 +987,14 @@ function fieldHandlers(baseUrl: string) {
       });
       if (b.data.expenses) d.expenses = b.data.expenses;
       const exp = d.expenses ?? [];
-      return HttpResponse.json({
-        ...Dcr.parse(withLock(d)),
-        expenseDraft: null,
+      Object.assign(d, {
         expenseClaimId: null,
         expenseTotal: Math.round(exp.reduce((t, e) => t + e.amount, 0) * 100) / 100,
         expenseCount: exp.length,
+      });
+      return HttpResponse.json({
+        ...Dcr.parse(withLock(d)),
+        expenseDraft: null,
         // The mock has no claim store here: report what the server would link.
         dcrExpenses: {
           status: exp.length ? ('linked' as const) : ('skipped' as const),

@@ -25875,6 +25875,31 @@
               "$ref": "#/components/schemas/DcrExpenseItemOutput"
             }
           },
+          "expenseClaimId": {
+            "description": "Month claim holding this DCR's expense lines (origin dcr); null when it has none. Absent from older APIs",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expenseTotal": {
+            "description": "Sum of this DCR's live origin-dcr claim lines, rupees (0 when none)",
+            "type": "number"
+          },
+          "expenseCount": {
+            "description": "Number of this DCR's live origin-dcr claim lines (0 when none)",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
           "callCount": {
             "description": "Live calls on this DCR (GET /v1/dcrs list only)",
             "type": "integer",
@@ -27643,6 +27668,31 @@
               "$ref": "#/components/schemas/DcrExpenseItemOutput"
             }
           },
+          "expenseClaimId": {
+            "description": "Month claim holding this DCR's expense lines (origin dcr); null when it has none. Absent from older APIs",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expenseTotal": {
+            "description": "Sum of this DCR's live origin-dcr claim lines, rupees (0 when none)",
+            "type": "number"
+          },
+          "expenseCount": {
+            "description": "Number of this DCR's live origin-dcr claim lines (0 when none)",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
           "callCount": {
             "description": "Live calls on this DCR (GET /v1/dcrs list only)",
             "type": "integer",
@@ -27660,31 +27710,6 @@
                 "type": "null"
               }
             ]
-          },
-          "expenseClaimId": {
-            "description": "Month claim holding this DCR's expense lines (dcrExpenses.claimId); null if not linked",
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                "description": "UUIDv7 identifier",
-                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "expenseTotal": {
-            "description": "Sum of the linked DCR expense lines, rupees",
-            "type": "number"
-          },
-          "expenseCount": {
-            "description": "Number of linked DCR expense lines",
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
           },
           "dcrExpenses": {
             "description": "Linking of the DCR's expenses into the month claim (always attempted, independent of autoExpenseOnDcrSubmit). null on a same-key retry; absent from older APIs",
