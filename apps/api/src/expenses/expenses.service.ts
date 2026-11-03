@@ -257,11 +257,36 @@ export class ExpensesService implements OnModuleInit {
     return parts.length ? or(...parts)! : sql`false`;
   }
 
-  private async claimRow(tx: Tx, p: Principal, id: string, lock = false): Promise<ClaimRow> {
+  /**
+   * GET /v1/expense-claims/{id} only (#128): the Director (company-wide, expenses:approve) may also
+   * open any claim of the company, drafts included, i.e. everything the scope=team list shows.
+   * Read-only: write/decide/pay paths keep using readable() alone, so nobody else changes.
+   */
+  private directorReadable(p: Principal): SQL {
+    return p.roles.includes('director') &&
+      p.teamUserIds === null &&
+      p.permissions.includes('expenses:approve')
+      ? or(this.readable(p), sql`true`)!
+      : this.readable(p);
+  }
+
+  private async claimRow(
+    tx: Tx,
+    p: Principal,
+    id: string,
+    lock = false,
+    directorRead = false,
+  ): Promise<ClaimRow> {
     const q = tx
       .select()
       .from(expenseClaims)
-      .where(and(eq(expenseClaims.id, id), isNull(expenseClaims.deletedAt), this.readable(p)));
+      .where(
+        and(
+          eq(expenseClaims.id, id),
+          isNull(expenseClaims.deletedAt),
+          directorRead ? this.directorReadable(p) : this.readable(p),
+        ),
+      );
     const [c] = lock ? await q.for('update') : await q;
     if (!c) throw new NotFoundException('Expense claim not found');
     return c;
@@ -579,7 +604,9 @@ export class ExpensesService implements OnModuleInit {
   }
 
   get(p: Principal, id: string) {
-    return this.tenant.run(p, async (tx) => this.toDto(tx, await this.claimRow(tx, p, id), p));
+    return this.tenant.run(p, async (tx) =>
+      this.toDto(tx, await this.claimRow(tx, p, id, false, true), p),
+    );
   }
 
   /** Creates your claim for the month, or returns the existing one (created = false). */

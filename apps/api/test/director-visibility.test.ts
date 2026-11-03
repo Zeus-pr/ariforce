@@ -48,6 +48,7 @@ describe.skipIf(!OWNER || !APP)('Director visibility (real API)', () => {
     await add('abm', 'area_business_manager', id.rbm!, [T.area]);
     await add('bm', 'business_manager', id.abm!, [T.hq]);
     await add('otherAbm', 'area_business_manager', id.rbm!, [T.area]);
+    await add('peer', 'business_manager', id.abm!, [T.hq]);
     company = (await owner.query(`select company_id from users where id = $1`, [id.bm])).rows[0]
       .company_id;
 
@@ -176,6 +177,56 @@ describe.skipIf(!OWNER || !APP)('Director visibility (real API)', () => {
     it('BM and System Admin (no expenses:approve) get 403', async () => {
       expect((await get('bm', '/v1/expense-claims?scope=team')).status).toBe(403);
       expect((await get('sysadmin', '/v1/expense-claims?scope=team')).status).toBe(403);
+    });
+  });
+
+  describe('GET /v1/expense-claims/{id}: Director reads drafts, read-only', () => {
+    const draft = () => made.claims[0]!;
+    it("Director opens another user's draft by id (flags stay off)", async () => {
+      const r = await get('director', `/v1/expense-claims/${draft()}`);
+      expect(r.status).toBe(200);
+      expect(r.body).toMatchObject({ id: draft(), status: 'draft', userId: id.bm });
+      expect(r.body.canDecide).toBe(false);
+      expect(r.body.canPay).toBe(false);
+    });
+    it('the draft stays 404 for the manager line, outside ABM, peer BM and System Admin', async () => {
+      for (const who of ['abm', 'rbm', 'otherAbm', 'peer', 'sysadmin'])
+        expect([who, (await get(who, `/v1/expense-claims/${draft()}`)).status]).toEqual([who, 404]);
+      // The owner still reads it.
+      expect((await get('bm', `/v1/expense-claims/${draft()}`)).status).toBe(200);
+    });
+    it('Director writes on that draft are still rejected and change nothing', async () => {
+      const auth = { authorization: tok.director! };
+      const tries = [
+        () => http().post(`/v1/expense-claims/${draft()}/submit`).set(auth).send({}),
+        () =>
+          http()
+            .post(`/v1/expense-claims/${draft()}/lines`)
+            .set(auth)
+            .send({ date: `${month}-01`, category: 'other', amount: 1 }),
+        () => http().post(`/v1/expense-claims/${draft()}/allowances`).set(auth).send({}),
+        () =>
+          http()
+            .post(`/v1/expense-claims/${draft()}/decision`)
+            .set(auth)
+            .send({ decision: 'approve' }),
+        () => http().post(`/v1/expense-claims/${draft()}/pay`).set(auth).send({}),
+        () => http().delete(`/v1/expense-claims/${draft()}`).set(auth),
+      ];
+      for (const t of tries) {
+        const r = await t();
+        expect(r.status, JSON.stringify(r.body)).toBeGreaterThanOrEqual(400);
+      }
+      const row = await owner.query(
+        `select status, total, deleted_at, version from expense_claims where id = $1`,
+        [draft()],
+      );
+      expect(row.rows[0]).toMatchObject({
+        status: 'draft',
+        total: '123.45',
+        deleted_at: null,
+        version: 1,
+      });
     });
   });
 
