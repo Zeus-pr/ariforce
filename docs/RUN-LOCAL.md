@@ -109,7 +109,7 @@ Names and purpose only. Source: `apps/api/src/config/env.ts` (validated at boot 
 | `SIGNUP_COMPANY_SLUG`      | no   | Company that self sign-up requests go to (default `arighna`)                                                               |
 | `TURNSTILE_SECRET`         | no   | Cloudflare Turnstile check on sign-up, active only when set (`CAPTCHA_FAILED`)                                             |
 | `INVITE_RETURN_LINK`       | no   | Local only: return the invite link in the response (mailer is a stub). Refused when `true` in production                   |
-| `EXPENSE_APPROVAL_LEVELS`  | no   | `1` or `2` approval steps for expense claims                                                                               |
+| `EXPENSE_APPROVAL_LEVELS`  | no   | `1`, `2` or `3` approval steps for expense claims (`3`: the last step is the Director)                                     |
 | `JOBS_RUNNER_ENABLED`      | no   | `true`/`false`; default on when `NODE_ENV=production`, off otherwise                                                       |
 | `JOBS_POLL_MS`             | no   | Runner poll interval (default 2000)                                                                                        |
 | `JOBS_BATCH_SIZE`          | no   | Jobs claimed per poll (default 10)                                                                                         |

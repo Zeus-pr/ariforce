@@ -299,11 +299,6 @@ export function ExpensesView() {
               : scope === 'all'
                 ? 'No expenses match these filters.'
                 : 'Nothing to pay.'}
-          {scope === 'mine' && mayWrite && (
-            <Button className="bg-brand-600 hover:bg-brand-700" onClick={() => setCreating(true)}>
-              <Plus aria-hidden /> New expense
-            </Button>
-          )}
         </div>
       ) : (
         <>

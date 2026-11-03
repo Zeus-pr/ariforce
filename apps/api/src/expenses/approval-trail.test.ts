@@ -33,6 +33,34 @@ const req = (state: string, currentStep: number, requestedBy = 'bm') => ({
 });
 
 describe('buildTrail', () => {
+  it('three levels, Director last: level 3 is the Director even when level 2 is not the chain top', () => {
+    const chain = new Map(users);
+    chain.set('rbm', { name: 'Ravi RBM', role: 'regional_business_manager', managerId: 'gm' });
+    chain.set('gm', { name: 'Gita GM', role: 'general_manager', managerId: 'dir' });
+    const t = buildTrail(3, req('pending', 1), [step(1, 'abm')], chain, 'dir');
+    expect(t.approvalTrail.map((l) => [l.level, l.status, l.approver?.id])).toEqual([
+      [1, 'pending', 'abm'],
+      [2, 'pending', 'rbm'],
+      [3, 'pending', 'dir'],
+    ]);
+  });
+
+  it('three levels, level 2 approver is the Director: level 3 is skipped', () => {
+    const t = buildTrail(
+      3,
+      req('pending', 2, 'rbm'),
+      [step(1, 'dir'), step(2, 'dir')],
+      users,
+      'dir',
+    );
+    expect(t.approvalTrail.at(-1)).toMatchObject({ level: 3, status: 'skipped', approver: null });
+  });
+
+  it('without a final approver the chain projection is unchanged', () => {
+    const t = buildTrail(3, req('pending', 1), [step(1, 'abm')], users);
+    expect(t.approvalTrail.map((l) => l.approver?.id)).toEqual(['abm', 'rbm', 'dir']);
+  });
+
   it('draft (no request): empty trail', () => {
     expect(buildTrail(2, null, [], users)).toEqual({ approvalTrail: [], currentApprover: null });
   });

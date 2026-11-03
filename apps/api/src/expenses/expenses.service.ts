@@ -129,6 +129,7 @@ export class ExpensesService implements OnModuleInit {
       },
       {
         levels: approvalLevels(),
+        finalDirector: approvalLevels() >= 3,
         permission: 'expenses:approve',
         beforeApprove: (tx, _p, req) => this.assertDcrsApproved(tx, req.entityId),
         onBlocked: (p, req, e) => this.notifyBlocked(p, req.entityId, e),
@@ -353,6 +354,7 @@ export class ExpensesService implements OnModuleInit {
    */
   private async trails(tx: Tx, p: Principal, cs: ClaimRow[]) {
     const totalLevels = approvalLevels();
+    const directorId = totalLevels >= 3 ? await this.approvals.directorId(tx) : null;
     const reqIds = [
       ...new Set(cs.flatMap((c) => (c.approvalRequestId ? [c.approvalRequestId] : []))),
     ];
@@ -380,6 +382,7 @@ export class ExpensesService implements OnModuleInit {
       ...steps.flatMap((s) => [s.approverUserId, s.decidedBy]),
       ...cs.map((c) => c.paidBy),
       ...cs.map((c) => c.userId),
+      directorId,
     ]);
     // Project pending requests up the manager chain (one users query per missing level).
     let frontier = reqs
@@ -403,7 +406,7 @@ export class ExpensesService implements OnModuleInit {
     for (const c of cs) {
       const req = reqs.find((r) => r.id === c.approvalRequestId) ?? null;
       const st = req ? steps.filter((s) => s.requestId === req.id) : [];
-      const t = buildTrail(totalLevels, req, st, um);
+      const t = buildTrail(totalLevels, req, st, um, directorId);
       out.set(c.id, {
         ...t,
         totalLevels,
