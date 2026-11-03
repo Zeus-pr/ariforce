@@ -9,6 +9,8 @@ import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
+import { EVERYONE, PersonPicker } from '@/components/team/person-picker';
+import { ROLE_SHORT } from '@/lib/roles';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { canPayExpenses } from '@/lib/permissions';
 import {
@@ -35,8 +37,11 @@ type Summary = TrailClaim & {
   status: ExpenseStatus;
   total: number;
   lineCount: number;
+  userRole?: keyof typeof ROLE_SHORT | null;
 };
-type Scope = 'mine' | 'team' | 'pay';
+const PAGE = 50;
+// 'all' = GET scope=team: the whole reporting subtree (Director: company) in any status, drafts too.
+type Scope = 'mine' | 'team' | 'all' | 'pay';
 type Recon = {
   byCategory: Partial<Record<ExpenseCategory, number>>;
   days: { dcrStatus: string | null }[];
@@ -50,11 +55,19 @@ export function ExpensesView() {
   const mayPay = canPayExpenses(role);
   const scopes: { id: Scope; label: string }[] = [
     ...(mayWrite ? [{ id: 'mine' as const, label: 'My expenses' }] : []),
-    ...(mayApprove ? [{ id: 'team' as const, label: 'To approve' }] : []),
+    ...(mayApprove
+      ? [
+          { id: 'team' as const, label: 'To approve' },
+          { id: 'all' as const, label: 'Team expenses' },
+        ]
+      : []),
     ...(mayPay || can(role, 'finance:read') ? [{ id: 'pay' as const, label: 'To pay' }] : []),
   ];
   const [scope, setScope] = useState<Scope>(scopes[0]?.id ?? 'mine');
   const [month, setMonth] = useState('');
+  const [person, setPerson] = useState(EVERYONE);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [status, setStatus] = useState<ExpenseStatus | 'all'>('all');
   const [rows, setRows] = useState<Summary[] | null>(null);
   const [recon, setRecon] = useState<Record<string, Recon>>({});
@@ -83,6 +96,9 @@ export function ExpensesView() {
             ...(month ? { month } : {}),
             ...(st ? { status: st } : {}),
             ...(scope === 'mine' && me ? { userId: me } : {}),
+            ...(scope === 'all'
+              ? { scope: 'team' as const, limit: PAGE, ...(person ? { userId: person } : {}) }
+              : {}),
           },
         },
         signal,
@@ -90,10 +106,12 @@ export function ExpensesView() {
       if (signal.aborted) return;
       if (r.error || !r.data) return setError(messageFor(toApiError(r)));
       const items = (r.data.items as Summary[]).sort((a, b) => b.month.localeCompare(a.month));
-      const list = scope === 'mine' ? items : items.filter((c) => c.userId !== me);
+      const list =
+        scope === 'mine' || scope === 'all' ? items : items.filter((c) => c.userId !== me);
+      setCursor(scope === 'all' ? (r.data.nextCursor ?? null) : null);
       setRows(list);
       // Approver queue: category totals and DCR status per claim.
-      if (scope !== 'mine') {
+      if (scope === 'team' || scope === 'pay') {
         const out: Record<string, Recon> = {};
         await Promise.all(
           list.slice(0, 30).map(async (c) => {
@@ -108,8 +126,28 @@ export function ExpensesView() {
       }
     },
     // tick: retry after an error
-    [month, status, scope, role, user, tick],
+    [month, status, scope, person, role, user, tick],
   );
+  async function loadMore() {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    const r = await api.GET('/v1/expense-claims', {
+      params: {
+        query: {
+          scope: 'team',
+          limit: PAGE,
+          cursor,
+          ...(month ? { month } : {}),
+          ...(status !== 'all' ? { status } : {}),
+          ...(person ? { userId: person } : {}),
+        },
+      },
+    });
+    setLoadingMore(false);
+    if (r.error || !r.data) return toast.error(messageFor(toApiError(r)));
+    setRows((prev) => [...(prev ?? []), ...(r.data.items as Summary[])]);
+    setCursor(r.data.nextCursor ?? null);
+  }
   useEffect(() => {
     const ac = new AbortController();
     quietAbort(ac.signal, load(ac.signal));
@@ -176,6 +214,12 @@ export function ExpensesView() {
           )}
         </div>
       </div>
+
+      {scope === 'all' && (
+        <div className="max-w-xs">
+          <PersonPicker value={person} onChange={setPerson} testId="exp-person" />
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         {chips.map((s) => (
@@ -252,7 +296,9 @@ export function ExpensesView() {
             ? 'No expenses yet.'
             : scope === 'team'
               ? 'Nothing to approve.'
-              : 'Nothing to pay.'}
+              : scope === 'all'
+                ? 'No expenses match these filters.'
+                : 'Nothing to pay.'}
         </div>
       ) : (
         <>
@@ -273,6 +319,7 @@ export function ExpensesView() {
                         {scope === 'mine' ? monthLabel(c.month) : c.userName}
                       </p>
                       <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        {scope !== 'mine' && c.userRole && <span>{ROLE_SHORT[c.userRole]}</span>}
                         {scope !== 'mine' && <span>{monthLabel(c.month)}</span>}
                         <span>
                           {c.lineCount} {c.lineCount === 1 ? 'expense' : 'expenses'}
@@ -311,6 +358,17 @@ export function ExpensesView() {
               );
             })}
           </ul>
+          {cursor && (
+            <Button
+              variant="outline"
+              className="self-center"
+              disabled={loadingMore}
+              onClick={() => void loadMore()}
+              data-testid="exp-more"
+            >
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </Button>
+          )}
           <p className="text-right text-sm text-muted-foreground" data-testid="exp-sum">
             Total <span className="font-semibold text-foreground tabular-nums">{money(total)}</span>
           </p>
