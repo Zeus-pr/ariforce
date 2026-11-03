@@ -18,10 +18,10 @@ const today = new Intl.DateTimeFormat('en-CA', {
 
 async function as(page, role) {
   await page.evaluate((r) => {
-    const s = JSON.parse(localStorage.getItem('af:mock-session'));
+    const s = JSON.parse(localStorage.getItem('af:session'));
     s.previewRole = r === s.role ? undefined : r;
-    localStorage.setItem('af:mock-session', JSON.stringify(s));
-    window.dispatchEvent(new StorageEvent('storage', { key: 'af:mock-session' }));
+    localStorage.setItem('af:session', JSON.stringify(s));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'af:session' }));
   }, role);
 }
 async function addLine(page, category, amount, notes) {

@@ -225,6 +225,25 @@ describe.skipIf(!OWNER || !APP)(
         .get(`/v1/check-ins?unlinked=true&outletKind=doctor&outletId=${doc.body.id}`)
         .set(as('bm'));
       expect(unl.body.items).toHaveLength(2);
+      // Doctor 360: doctorId + limit; a peer BM outside the line sees nothing and gets 403 by userId.
+      const d360 = await http().get(`/v1/check-ins?doctorId=${doc.body.id}`).set(as('bm'));
+      expect(d360.body.items).toHaveLength(2);
+      const one = await http().get(`/v1/check-ins?doctorId=${doc.body.id}&limit=1`).set(as('bm'));
+      expect(one.body.items).toHaveLength(1);
+      expect(one.body.nextCursor).toBeTruthy();
+      expect(
+        (await http().get(`/v1/check-ins?doctorId=${doc.body.id}`).set(as('abm'))).body.items,
+      ).toHaveLength(2);
+      expect(
+        (await http().get(`/v1/check-ins?doctorId=${doc.body.id}`).set(as('seedbm'))).body.items,
+      ).toHaveLength(0);
+      expect(
+        (
+          await http()
+            .get(`/v1/check-ins?doctorId=${doc.body.id}&userId=${p1.body.userId}`)
+            .set(as('seedbm'))
+        ).status,
+      ).toBe(403);
       const abm = await http().get(`/v1/check-ins?userId=${p1.body.userId}`).set(as('abm'));
       expect(abm.body.items.length).toBeGreaterThanOrEqual(3);
       const other = await http().get(`/v1/check-ins?userId=${p1.body.userId}`).set(as('bm'));

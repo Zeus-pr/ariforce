@@ -18,7 +18,7 @@
  * bumps the product `version`, and the read field name (`imageUrl`). Then regenerate the openapi
  * types and drop the untyped client below.
  */
-import { api, MOCKING, toApiError } from '@/lib/api';
+import { api, toApiError } from '@/lib/api';
 
 export const PRODUCT_IMAGE_PURPOSE = 'product_image';
 /** Client-side size limit. Change here only; the server limit is the real one. */
@@ -126,20 +126,6 @@ function putXhr(
   });
 }
 
-/** fetch PUT for mock mode: MSW intercepts fetch, not XHR, so there is no byte progress. */
-async function putFetch(
-  url: string,
-  headers: Record<string, string>,
-  file: File,
-  onProgress: (p: number) => void,
-  signal?: AbortSignal,
-) {
-  onProgress(0.5);
-  const r = await fetch(url, { method: 'PUT', headers, body: file, signal }).catch(() => null);
-  if (signal?.aborted) throw new ProductImageError('Upload cancelled.');
-  if (!r?.ok) throw new ProductImageError('Upload failed. Try again.');
-}
-
 /** Upload `file` and make it the product's image. `onProgress` gets 0..1. */
 export async function uploadProductImage(
   productId: string,
@@ -161,7 +147,7 @@ export async function uploadProductImage(
   const up = u.data as
     { fileKey?: string; uploadUrl?: string; headers?: Record<string, string> } | undefined;
   if (!up?.fileKey || !up.uploadUrl) throw new ProductImageError(message(u));
-  await (MOCKING ? putFetch : putXhr)(
+  await putXhr(
     up.uploadUrl,
     up.headers ?? { 'content-type': contentType },
     file,

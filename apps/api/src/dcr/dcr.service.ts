@@ -57,6 +57,7 @@ export interface DcrQuery {
   territoryId?: string;
   status?: Dcr['status'];
   mine?: 'true' | 'false';
+  doctorId?: string;
 }
 
 /**
@@ -375,6 +376,9 @@ export class DcrService {
         q.mine === 'true' || !p.permissions.includes('dcr:review')
           ? eq(dcrs.userId, p.userId)
           : this.checkIns.userFilter(p, q.userId, dcrs.userId),
+        q.doctorId
+          ? sql`exists (select 1 from dcr_calls c where c.company_id = ${dcrs.companyId} and c.dcr_id = ${dcrs.id} and c.outlet_kind = 'doctor' and c.outlet_id = ${q.doctorId} and c.deleted_at is null)`
+          : undefined,
         q.from ? sql`${dcrs.date} >= ${q.from}` : undefined,
         q.to ? sql`${dcrs.date} <= ${q.to}` : undefined,
         q.territoryId

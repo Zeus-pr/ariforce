@@ -1150,7 +1150,12 @@ function fieldHandlers(baseUrl: string) {
         url.searchParams.get('unlinked') === 'true'
           ? checkIns.filter((c) => c.kind === 'visit' && !linked.has(c.id))
           : checkIns;
-      return list(CheckIn, rows, url);
+      const doctorId = url.searchParams.get('doctorId');
+      return list(
+        CheckIn,
+        doctorId ? rows.filter((c) => c.outletKind === 'doctor' && c.outletId === doctorId) : rows,
+        url,
+      );
     }),
     http.get(`${baseUrl}/v1/users`, ({ request }) => {
       const url = new URL(request.url);
@@ -1630,8 +1635,13 @@ function fieldHandlers(baseUrl: string) {
     http.get(`${baseUrl}/v1/dcrs`, ({ request }) => {
       const url = new URL(request.url);
       const mine = url.searchParams.get('mine') === 'true';
+      const doctorId = url.searchParams.get('doctorId');
       const rows = dcrs
         .filter((x) => !mine || x.userId === fx.me.id)
+        .filter(
+          (x) =>
+            !doctorId || x.calls.some((c) => c.outletKind === 'doctor' && c.outletId === doctorId),
+        )
         .map((x) => ({ ...withLock(x), callCount: x.calls.length }));
       return list(Dcr, rows, url);
     }),

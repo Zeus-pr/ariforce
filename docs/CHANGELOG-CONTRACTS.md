@@ -18,6 +18,18 @@ TerritoryCompactList {items: {id, name, level, parentId}[], nextCursor}. Same co
 subtree scope as the full list, non-deleted only, name order. Weak ETag + Cache-Control: private,
 max-age=60; If-None-Match -> 304.
 
+## perf/batch-ids-doctor360 (2026-11-03): Doctor 360 filters on DCR and check-in lists
+
+Additive, no migration.
+
+- GET /v1/dcrs: new optional `doctorId` (uuid). Only DCRs with at least one non-deleted call at
+  that doctor. User scope unchanged (own DCRs; reporting line for dcr:review); `limit`/`cursor` as
+  before.
+- GET /v1/check-ins: new optional `doctorId` (uuid), same as `outletKind=doctor&outletId=`.
+  `userId` outside the reporting line is still 403.
+- `ids=` batch fetch on /v1/chemists and /v1/stockists already existed (max 100, readable rows
+  only, 422 on bad ids); now covered by a test.
+
 ## perf/expense-list-paging-report-batch (2026-11-03): opt-in paging for expense claims (additive)
 
 - `GET /v1/expense-claims`: new optional `limit` (1..200) and `cursor` (opaque, from `nextCursor`).

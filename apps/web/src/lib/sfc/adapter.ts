@@ -10,7 +10,7 @@
  * SFC_HQ_NOT_ASSIGNED / SFC_ROUTE_NOT_FOUND, 429. Amounts are computed by the server; the web shows
  * the same rule (km x rate, both way = 2x) while typing. DA is a money amount (number or null).
  */
-import { API_URL, MOCKING, apiReady } from '@/lib/api';
+import { API_URL, apiReady } from '@/lib/api';
 
 export const DEFAULT_RATE = 2.95;
 /** Display labels for the contract's SfcTravelMode values. */
@@ -93,19 +93,6 @@ async function call<T>(path: string, init?: { method?: string; body?: unknown })
   await apiReady();
   const headers: Record<string, string> = { accept: 'application/json' };
   if (init?.body !== undefined) headers['content-type'] = 'application/json';
-  if (MOCKING && typeof window !== 'undefined') {
-    // Mock mode: the SFC mock scopes by persona, like the other principal-aware mocks.
-    try {
-      const s = JSON.parse(localStorage.getItem('af:mock-session') ?? 'null') as {
-        role?: string;
-        previewRole?: string;
-      } | null;
-      const who = s?.previewRole ?? s?.role;
-      if (who) headers['x-mock-user'] = who;
-    } catch {
-      /* default persona */
-    }
-  }
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
