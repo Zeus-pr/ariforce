@@ -47,6 +47,7 @@ import {
   measured,
   sourceLink,
 } from './model';
+import { getMe } from '@/lib/query';
 
 const ALL = 'all';
 const PAGE = MOCKING ? 2 : 50;
@@ -353,8 +354,13 @@ function ExceptionDetail({
   useEffect(() => {
     // Mock: /v1/me is not persona-scoped by default, so name the persona explicitly.
     void apiReady()
-      .then(() => api.GET('/v1/me', MOCKING ? { headers: { 'x-mock-user': role } } : {}))
-      .then((r) => r.data && setMe(r.data.id));
+      .then(() =>
+        MOCKING
+          ? api.GET('/v1/me', { headers: { 'x-mock-user': role } }).then((r) => r.data ?? null)
+          : getMe(),
+      )
+      .then((m) => m && setMe(m.id))
+      .catch(() => {});
   }, [role]);
   const user = me ? { id: me } : null;
   const [x, setX] = useState<ExceptionItem | null>(null);

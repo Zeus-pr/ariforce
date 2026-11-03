@@ -28,6 +28,7 @@ import { dateLabel, timeIST, todayIST } from '@/components/attendance/format';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
 import { api, apiReady, MOCKING, toApiError } from '@/lib/api';
 import { saveMessage } from '@/lib/leave/model';
+import { dcrDateClosedText, dcrDateNotTodayMessage, dcrDateOpen } from '@/lib/dcr/date-rule';
 import { productImageUrl } from '@/lib/products/product-image';
 import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
 import { OutletPicker, TerritoryFilter } from '@/components/pickers/pickers';
@@ -45,6 +46,8 @@ import {
   type RcpaDraft,
 } from './pob-rcpa';
 import { ProductImg } from '@/components/media/product-img';
+import { cachedGet } from '@/lib/query';
+import { getProducts } from '@/lib/query';
 
 /** What the call form needs from a product. */
 type PickProduct = {
@@ -108,8 +111,10 @@ function DcrDay({ today }: { today: string }) {
       await apiReady();
       const [w, d, p, ch, st] = await Promise.all([
         api.GET('/v1/work-types', { params: { query: { limit: 100 } } }),
-        api.GET('/v1/doctors', { params: { query: { limit: 100, sort: 'name' } } }),
-        api.GET('/v1/products', { params: { query: { limit: 200 } } }),
+        cachedGet(['doctors', 'first-page'], () =>
+          api.GET('/v1/doctors', { params: { query: { limit: 100, sort: 'name' } } }),
+        ),
+        getProducts().then((r) => ({ data: r.data && { items: r.data }, error: r.error })),
         api.GET('/v1/chemists', { params: { query: { limit: 100 } } }),
         api.GET('/v1/stockists', { params: { query: { limit: 100 } } }),
       ]);
@@ -167,7 +172,9 @@ function DcrDay({ today }: { today: string }) {
   const field = workType?.kind === 'field';
   const deviates =
     !!planned && (planned.workTypeId !== wt || (field && (planned.territoryIds[0] ?? '') !== terr));
-  const locked = dcr?.status === 'submitted' || dcr?.status === 'locked';
+  // Today only (IST); a past day only while unlocked. Other days are view-only (history).
+  const dateClosed = !!today && !dcrDateOpen(date, today, dcr?.unlockedUntil ?? null);
+  const locked = dcr?.status === 'submitted' || dcr?.status === 'locked' || dateClosed;
   const productName = useMemo(
     () => new Map([...orderProducts, ...products].map((p) => [p.id, p.name])),
     [products, orderProducts],
@@ -214,6 +221,10 @@ function DcrDay({ today }: { today: string }) {
         ]
           .filter(Boolean)
           .join(' ') || null;
+      if (e.code === 'DCR_DATE_NOT_TODAY')
+        return toast.error(dcrDateNotTodayMessage(e.details, today ?? undefined), {
+          duration: 10000,
+        });
       return toast.error(pr ?? saveMessage(e), { duration: 10000 });
     }
     setDcr(r.data);
@@ -252,6 +263,12 @@ function DcrDay({ today }: { today: string }) {
           />
         </div>
       </div>
+
+      {dateClosed && today && dcr?.status !== 'submitted' && dcr?.status !== 'locked' && (
+        <p className="rounded-xl border bg-muted/40 p-4 text-sm" data-testid="dcr-date-closed">
+          {dcrDateClosedText(date, today)}
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="text-sm text-destructive">

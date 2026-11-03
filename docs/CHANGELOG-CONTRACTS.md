@@ -22,6 +22,13 @@ Additive, no migration.
 - `ids=` batch fetch on /v1/chemists and /v1/stockists already existed (max 100, readable rows
   only, 422 on bad ids); now covered by a test.
 
+## perf/expense-list-paging-report-batch (2026-11-03): opt-in paging for expense claims (additive)
+
+- `GET /v1/expense-claims`: new optional `limit` (1..200) and `cursor` (opaque, from `nextCursor`).
+  Without both: unchanged (all matching claims, body `{ items }` only).
+  With either: one page (limit defaults to 50), ordered month desc, user name, id; body adds `limit`, `total` (all pages) and `nextCursor` (null on the last page). Bad cursor or limit: 422 `VALIDATION`.
+- `GET /v1/expense-reports` and exports: same output; the server now loads lines and DCR days for all claims in two queries instead of three per claim.
+
 ## perf/dcr-products-endpoint (2026-11-03): DCR products on their own endpoint (additive)
 
 - New: `GET /v1/dcrs/products` (`field:read`) -> `DcrProducts { products: DcrProductOption[], detailProducts: DcrDetailProduct[], etag }`.

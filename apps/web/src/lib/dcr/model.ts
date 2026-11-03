@@ -6,6 +6,7 @@
 import type { Dcr, DcrBand, DcrDetails, DcrDraftPut, DcrSfcMatch } from '@ariforce/contracts';
 import { bandOf, categoryFitsBand, sfcCategoryOf } from './bands';
 import type { ApiError } from '@/lib/api';
+import { dcrDateNotTodayMessage } from './date-rule';
 
 export type WorkTypeOption = {
   id: string;
@@ -432,6 +433,8 @@ export function dcrErrorMessage(e: ApiError): string {
       return 'This report changed in another tab. Reload the page and try again.';
     case 'DAY_LOCKED':
       return 'This day is locked. Ask your manager to reopen it.';
+    case 'DCR_DATE_NOT_TODAY':
+      return dcrDateNotTodayMessage(e.details);
     case 'DAY_ALREADY_SUBMITTED':
       return 'You already submitted a report for this day. This draft can’t be saved or submitted; you can delete it.';
     case 'NOT_FOUND':
