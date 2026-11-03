@@ -45,6 +45,7 @@ import {
   type RcpaDraft,
 } from './pob-rcpa';
 import { cachedGet } from '@/lib/query';
+import { getProducts } from '@/lib/query';
 
 /** What the call form needs from a product. */
 type PickProduct = {
@@ -111,7 +112,7 @@ function DcrDay({ today }: { today: string }) {
         cachedGet(['doctors', 'first-page'], () =>
           api.GET('/v1/doctors', { params: { query: { limit: 100, sort: 'name' } } }),
         ),
-        api.GET('/v1/products', { params: { query: { limit: 200 } } }),
+        getProducts().then((r) => ({ data: r.data && { items: r.data }, error: r.error })),
         api.GET('/v1/chemists', { params: { query: { limit: 100 } } }),
         api.GET('/v1/stockists', { params: { query: { limit: 100 } } }),
       ]);

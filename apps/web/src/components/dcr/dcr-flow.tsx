@@ -60,6 +60,7 @@ import {
 } from './dcr-sections';
 import { SearchSelect, type SelectOption } from './search-select';
 import { cachedGet } from '@/lib/query';
+import { getProducts } from '@/lib/query';
 
 const noop = () => () => {};
 const nowHHmm = () =>
@@ -426,7 +427,8 @@ function Flow({
           );
         return;
       }
-      const r = await api.GET('/v1/products', { params: { query: { limit: 200 } } });
+      const p = await getProducts();
+      const r = { ...p, data: p.data && { items: p.data } };
       if (!live) return;
       if (!r.data) return setProductsError(failureMessage(r, 'Could not load products.'));
       setProducts(

@@ -82,6 +82,31 @@ export const useTerritories = () => useQuery(territoriesQuery);
 export const invalidateTerritories = () =>
   queryClient.invalidateQueries({ queryKey: territoriesQuery.queryKey });
 
+/** Every product (all pages). Shared by DCR, classic DCR and Doctor 360. */
+async function loadProducts() {
+  await apiReady();
+  const items = [];
+  let cursor: string | undefined;
+  for (let i = 0; i < 20; i++) {
+    const r = await api.GET('/v1/products', {
+      params: { query: { limit: 200, ...(cursor ? { cursor } : {}) } as never },
+    });
+    if (!r.data) throw new CachedApiError(r.error);
+    items.push(...r.data.items);
+    cursor = r.data.nextCursor ?? undefined;
+    if (!cursor) break;
+  }
+  return items;
+}
+export const productsQuery = {
+  queryKey: ['products', 'all'] as const,
+  queryFn: loadProducts,
+  staleTime: SHORT_STALE,
+};
+/** Same `{ data } | { error }` shape as the api client, so callers keep `toApiError(r)`. */
+export const getProducts = () =>
+  cachedGet(productsQuery.queryKey, async () => ({ data: await loadProducts() }));
+
 async function loadMe() {
   await apiReady();
   const r = await api.GET('/v1/me');
