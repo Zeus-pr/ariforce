@@ -32,3 +32,20 @@ export function clientIp(req: IncomingMessage): string | null {
   }
   return norm(req.socket?.remoteAddress);
 }
+
+/**
+ * Rate-limit bucket for a client IP: IPv4 as is, IPv6 by its /64 (one subscriber usually holds a
+ * whole /64, so per-address keys would let a client rotate addresses past the limit). `?` if unknown.
+ */
+export function ipRateKey(ip: string | null | undefined): string {
+  if (!ip) return '?';
+  if (isIP(ip) !== 6) return ip;
+  const [head = '', tail = ''] = ip.toLowerCase().split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail ? tail.split(':') : [];
+  const groups = ip.includes('::') ? [...h, ...Array(8 - h.length - t.length).fill('0'), ...t] : h;
+  return `${groups
+    .slice(0, 4)
+    .map((g) => g.replace(/^0+(?=.)/, ''))
+    .join(':')}::/64`;
+}
