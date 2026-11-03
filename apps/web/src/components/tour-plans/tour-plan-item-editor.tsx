@@ -37,6 +37,20 @@ import { ChoiceSelect } from '@/components/dcr/choice-select';
 import { MeetingFields, OfficeFields, SfcPanel } from '@/components/dcr/dcr-sections';
 import { SearchSelect, type SelectOption } from '@/components/dcr/search-select';
 import { saveTourPlanItem, submitTourPlanItem, type TpItem } from '@/lib/tour-plans/items';
+import { endTimeProblem, extraFormOf, spanMin } from '@/lib/dcr/times';
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+/** Start/end errors for the tour-plan editor (same rules as the DCR). */
+function timeErrors(f: { startTime: string; endTime: string }) {
+  const errors: Record<string, string[]> = {};
+  if (!HHMM.test(f.startTime)) errors.startTime = ['Enter a valid start time.'];
+  if (!HHMM.test(f.endTime)) errors.endTime = ['Enter a valid end time.'];
+  const bad = endTimeProblem(f.startTime, f.endTime);
+  if (bad) errors.endTime = [bad];
+  else if ((spanMin(f.startTime, f.endTime) ?? 0) > 720)
+    errors.endTime = ['A session can be at most 12 hours.'];
+  return errors;
+}
 
 type Props = {
   date: string | null;
@@ -88,6 +102,7 @@ function flowFromItem(date: string, item: TpItem | null): FlowState {
       attendees: details.attendees ?? '',
       remarks: details.remarks ?? '',
       trainer: details.kind === 'training' ? (details.trainer ?? '') : '',
+      ...extraFormOf(details),
     };
   }
   if (details?.kind === 'office') {
@@ -97,6 +112,7 @@ function flowFromItem(date: string, item: TpItem | null): FlowState {
       startTime: details.startTime ?? '',
       durationMin: String(details.durationMin),
       remarks: details.remarks ?? '',
+      ...extraFormOf(details),
     };
   }
   return state;
@@ -297,18 +313,12 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
         if (!state.meeting.title.trim()) errors.title = ['Choose or enter a type.'];
         if (state.meeting.mode === 'in_person' && !state.meeting.location.trim())
           errors.location = ['Enter the location.'];
-        if (!/^[0-2]\d:[0-5]\d$/.test(state.meeting.startTime))
-          errors.startTime = ['Enter a valid start time.'];
-        const duration = Number(state.meeting.durationMin);
-        if (!Number.isInteger(duration) || duration < 1 || duration > 720)
-          errors.durationMin = ['Enter 1 to 720 minutes.'];
+        Object.assign(errors, timeErrors(state.meeting));
       }
       if (state.workOn?.branch === 'office') {
         if (!state.office.taskType.trim()) errors.taskType = ['Choose or enter a task type.'];
         if (!state.office.description.trim()) errors.description = ['Describe the task.'];
-        const duration = Number(state.office.durationMin);
-        if (!Number.isInteger(duration) || duration < 1 || duration > 720)
-          errors.durationMin = ['Enter 1 to 720 minutes.'];
+        Object.assign(errors, timeErrors(state.office));
       }
     }
     return errors;

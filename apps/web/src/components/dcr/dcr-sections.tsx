@@ -28,6 +28,7 @@ import { SearchSelect, type SelectOption } from './search-select';
 import { failureMessage, thrownMessage } from '@/lib/dcr/errors';
 import { bandOf, sfcCategoryOf } from '@/lib/dcr/bands';
 import { cachedGet } from '@/lib/query';
+import { durationText, endTimeProblem, spanMin } from '@/lib/dcr/times';
 
 const ProductPresentation = dynamic(
   () => import('./product-presentation').then((m) => m.ProductPresentation),
@@ -689,6 +690,106 @@ function TypeSelect({
   );
 }
 
+type TimeForm = { startTime: string; endTime: string; durationMin: string };
+
+/**
+ * Start and end time with the duration worked out from them (read-only). The duration is written
+ * back to the form so the API's `durationMin` always matches. End before start is flagged inline.
+ */
+function TimeRange({
+  id,
+  value,
+  onChange,
+  errors,
+}: {
+  id: string;
+  value: TimeForm;
+  onChange: (p: Partial<TimeForm>) => void;
+  errors: Record<string, string[]>;
+}) {
+  const span = spanMin(value.startTime, value.endTime);
+  const inline = endTimeProblem(value.startTime, value.endTime);
+  const setTimes = (p: Partial<TimeForm>) => {
+    const next = { ...value, ...p };
+    const d = spanMin(next.startTime, next.endTime);
+    onChange({ ...p, durationMin: d ? String(d) : '' });
+  };
+  return (
+    <div className="grid gap-4 sm:col-span-2 sm:grid-cols-3">
+      <Field label="Start time" htmlFor={`${id}-start`} errors={errors.startTime}>
+        <Input
+          id={`${id}-start`}
+          type="time"
+          value={value.startTime}
+          onChange={(e) => setTimes({ startTime: e.target.value })}
+          className="min-h-11 md:text-base"
+          data-testid={`${id}-start`}
+        />
+      </Field>
+      <Field label="End time" htmlFor={`${id}-end`} errors={inline ? [inline] : errors.endTime}>
+        <Input
+          id={`${id}-end`}
+          type="time"
+          value={value.endTime}
+          min={value.startTime || undefined}
+          onChange={(e) => setTimes({ endTime: e.target.value })}
+          aria-invalid={!!inline || !!errors.endTime?.length || undefined}
+          className="min-h-11 md:text-base"
+          data-testid={`${id}-end`}
+        />
+      </Field>
+      <div className="flex flex-col gap-1.5">
+        <Label id={`${id}-dur-label`}>Duration</Label>
+        <p
+          aria-labelledby={`${id}-dur-label`}
+          className="flex min-h-11 items-center text-base text-foreground tabular-nums"
+          data-testid={`${id}-duration`}
+        >
+          {durationText(span)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+type PlaceForm = { fromPlace: string; toPlace: string };
+
+/** From and To place (meeting and admin work), side by side. */
+function PlacePair({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: PlaceForm;
+  onChange: (p: Partial<PlaceForm>) => void;
+}) {
+  return (
+    <>
+      <Field label="From place" optional htmlFor={`${id}-from`}>
+        <Input
+          id={`${id}-from`}
+          value={value.fromPlace}
+          maxLength={120}
+          onChange={(e) => onChange({ fromPlace: e.target.value })}
+          className="md:text-base"
+          data-testid={`${id}-from`}
+        />
+      </Field>
+      <Field label="To place" optional htmlFor={`${id}-to`}>
+        <Input
+          id={`${id}-to`}
+          value={value.toPlace}
+          maxLength={120}
+          onChange={(e) => onChange({ toPlace: e.target.value })}
+          className="md:text-base"
+          data-testid={`${id}-to`}
+        />
+      </Field>
+    </>
+  );
+}
+
 /** Meeting and Training: type/name, in person or online, where, when, how long, who, remarks. */
 export function MeetingFields({
   kind,
@@ -755,25 +856,8 @@ export function MeetingFields({
           />
         </Field>
       </div>
-      <Field label="Start time" htmlFor="m-start" errors={errors.startTime}>
-        <Input
-          id="m-start"
-          type="time"
-          value={value.startTime}
-          onChange={(e) => set({ startTime: e.target.value })}
-          className="min-h-11 md:text-base"
-        />
-      </Field>
-      <Field label="Duration (minutes)" htmlFor="m-dur" errors={errors.durationMin}>
-        <Input
-          id="m-dur"
-          inputMode="numeric"
-          value={value.durationMin}
-          onChange={(e) => set({ durationMin: e.target.value.replace(/\D/g, '').slice(0, 3) })}
-          placeholder="60"
-          className="md:text-base"
-        />
-      </Field>
+      <TimeRange id="m" value={value} onChange={set} errors={errors} />
+      {kind === 'meeting' && <PlacePair id="m" value={value} onChange={set} />}
       {kind === 'training' && (
         <div className="sm:col-span-2">
           <Field label="Trainer" optional htmlFor="m-trainer">
@@ -856,25 +940,8 @@ export function OfficeFields({
           />
         </Field>
       </div>
-      <Field label="Start time" optional htmlFor="o-start">
-        <Input
-          id="o-start"
-          type="time"
-          value={value.startTime}
-          onChange={(e) => set({ startTime: e.target.value })}
-          className="min-h-11 md:text-base"
-        />
-      </Field>
-      <Field label="Duration (minutes)" htmlFor="o-dur" errors={errors.durationMin}>
-        <Input
-          id="o-dur"
-          inputMode="numeric"
-          value={value.durationMin}
-          onChange={(e) => set({ durationMin: e.target.value.replace(/\D/g, '').slice(0, 3) })}
-          placeholder="120"
-          className="md:text-base"
-        />
-      </Field>
+      <TimeRange id="o" value={value} onChange={set} errors={errors} />
+      <PlacePair id="o" value={value} onChange={set} />
       <div className="sm:col-span-2">
         <Field label="Remarks" optional htmlFor="o-rem">
           <Input

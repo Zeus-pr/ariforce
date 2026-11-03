@@ -62,6 +62,7 @@ import {
 import { SearchSelect, type SelectOption } from './search-select';
 import { cachedGet } from '@/lib/query';
 import { getProducts } from '@/lib/query';
+import { extraFormOf } from '@/lib/dcr/times';
 
 const noop = () => () => {};
 const nowHHmm = () =>
@@ -342,6 +343,7 @@ function Flow({
             attendees: det.kind === 'meeting' ? (det.attendees ?? '') : '',
             remarks: det.remarks ?? '',
             trainer: det.kind === 'training' ? (det.trainer ?? '') : '',
+            ...extraFormOf(det),
           };
         if (det?.kind === 'office')
           next.office = {
@@ -350,6 +352,7 @@ function Flow({
             startTime: det.startTime ?? '',
             durationMin: String(det.durationMin),
             remarks: det.remarks ?? '',
+            ...extraFormOf(det),
           };
         if (det?.kind === 'leave') next.leaveRequestId = det.leaveRequestId;
         next.deviationReason = d.deviationReason ?? '';
@@ -1225,7 +1228,7 @@ function Flow({
             value={s.meeting}
             onChange={(v) => update({ meeting: v })}
             readOnly={readOnly}
-            errors={errorsByField(['title', 'location', 'startTime', 'durationMin'])}
+            errors={errorsByField(['title', 'location', 'startTime', 'endTime'])}
           />
         </Step>
       )}
@@ -1235,7 +1238,7 @@ function Flow({
             value={s.office}
             onChange={(v) => update({ office: v })}
             readOnly={readOnly}
-            errors={errorsByField(['taskType', 'description', 'durationMin'])}
+            errors={errorsByField(['taskType', 'description', 'startTime', 'endTime'])}
           />
         </Step>
       )}
