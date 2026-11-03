@@ -64,6 +64,10 @@ export const CheckInListQuery = FieldListQuery.extend({
   kind: CheckInKind.optional(),
   outletKind: OutletKind.optional(),
   outletId: Id.optional(),
+  doctorId: Id.optional().meta({
+    description:
+      'Doctor 360: only visit check-ins at this doctor (same as outletKind=doctor&outletId=). Still limited to the caller and their reporting line; combine with limit',
+  }),
   unlinked: z.enum(['true', 'false']).optional().meta({
     description:
       'true = only visit check-ins not yet linked to a DCR call (DCR call picker, gap #9)',
@@ -517,6 +521,10 @@ export const DcrCorrectionRequest = z
   .meta({ id: 'DcrCorrectionRequest' });
 export const DCR_UNLOCK_HOURS = 48;
 export const DcrListQuery = FieldListQuery.extend({
+  doctorId: Id.optional().meta({
+    description:
+      'Doctor 360: only DCRs with at least one (non-deleted) call at this doctor. Same user scope as without it (own, or reporting line for dcr:review); combine with limit',
+  }),
   status: z.enum(['draft', 'submitted', 'locked', 'approved', 'rejected']).optional(),
   mine: z.enum(['true', 'false']).optional().meta({
     description:

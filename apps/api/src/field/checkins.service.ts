@@ -38,6 +38,7 @@ export interface CheckInQuery {
   kind?: CheckIn['kind'];
   outletKind?: 'doctor' | 'chemist' | 'stockist';
   outletId?: string;
+  doctorId?: string;
   unlinked?: 'true' | 'false';
 }
 
@@ -113,6 +114,9 @@ export class CheckInsService {
           : inArray(geoCaptures.kind, ['punch_in', 'visit', 'punch_out']),
         q.outletKind ? eq(geoCaptures.entityType, q.outletKind) : undefined,
         q.outletId ? eq(geoCaptures.entityId, q.outletId) : undefined,
+        q.doctorId
+          ? and(eq(geoCaptures.entityType, 'doctor'), eq(geoCaptures.entityId, q.doctorId))
+          : undefined,
         q.territoryId
           ? inArray(geoCaptures.territoryId, this.territorySubtree(tx, q.territoryId))
           : undefined,
