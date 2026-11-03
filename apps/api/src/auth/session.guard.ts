@@ -12,19 +12,10 @@ import { randomUUID } from 'node:crypto';
 import type { Request } from 'express';
 import { AUTH_STATE_CODES, PERMISSIONS, type Permission, type RoleKey } from '@ariforce/contracts';
 import { err } from '../field/checkins.service';
-import {
-  authSession,
-  roles,
-  territories,
-  userRoles,
-  userTerritories,
-  withTenant,
-  type Db,
-} from '@ariforce/db';
+import { roles, territories, userRoles, userTerritories, withTenant, type Db } from '@ariforce/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { DB } from '../db/db.module';
 import { clientIp } from '../common/client-ip';
-import { sessionPastMaxAge } from './auth';
 import { AuthService } from './auth.service';
 import { IS_PUBLIC, PERMISSIONS_KEY } from './decorators';
 import { COMPANY_WIDE_ROLES, MASTERS_WIDE_ROLES, type Principal } from './principal';
@@ -47,11 +38,6 @@ export class SessionGuard implements CanActivate {
 
     const s = await this.authService.auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
     if (!s) throw new UnauthorizedException('Sign in required');
-    // Absolute cap (auth.ts SESSION_MAX_AGE_S): the sliding window alone would never end.
-    if (sessionPastMaxAge(s.session.createdAt)) {
-      await this.db.delete(authSession).where(eq(authSession.id, s.session.id));
-      throw new UnauthorizedException('Session expired; sign in again');
-    }
     const m = await this.authService.audit.resolveMembership(s.user.id);
     if (!m) {
       // Pending/rejected self sign-ups hold a login but no data access (cookie or bearer alike).

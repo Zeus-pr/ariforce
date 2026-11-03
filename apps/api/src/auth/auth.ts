@@ -27,17 +27,34 @@ import type { MailService } from '../mail/mail.service';
 
 export const AUTH_BASE_PATH = '/v1/auth';
 /**
- * Session lifetime (cookie and mobile bearer token alike: both are the same auth_session row).
- * Sliding idle window: a session expires 18 h after its last refresh; while in use better-auth
- * pushes the expiry forward at most once per SESSION_UPDATE_AGE_S. Absolute cap: the session guard
- * revokes any session older than SESSION_MAX_AGE_S since sign-in, however active.
+ * Session lifetime in seconds (cookie Max-Age and auth_session.expires_at; the mobile bearer token
+ * is the same row). Hard cap: updateAge = expiresIn, so use never extends a session; sign in again
+ * after SESSION_MAX_AGE_SECONDS (default 18 h) even while active.
  */
-export const SESSION_IDLE_S = 18 * 60 * 60;
-export const SESSION_UPDATE_AGE_S = 60 * 60;
-export const SESSION_MAX_AGE_S = 7 * 24 * 60 * 60;
-/** True when a session signed in at `createdAt` is past the absolute cap. */
-export const sessionPastMaxAge = (createdAt: Date | string, now = new Date()) =>
-  now.getTime() - new Date(createdAt).getTime() > SESSION_MAX_AGE_S * 1000;
+export const SESSION_MAX_AGE_DEFAULT_S = 18 * 60 * 60;
+export const sessionMaxAgeSeconds = (env: NodeJS.ProcessEnv = process.env) => {
+  const n = Number(env.SESSION_MAX_AGE_SECONDS);
+  return Number.isInteger(n) && n >= 300 && n <= 30 * 24 * 60 * 60 ? n : SESSION_MAX_AGE_DEFAULT_S;
+};
+/**
+ * Session cookie attributes: HttpOnly, Path=/, Secure on https (better-auth defaults). SameSite from
+ * AUTH_COOKIE_SAMESITE (lax default; none = cross-site web/API hosts, always Secure). AUTH_COOKIE_DOMAIN
+ * (e.g. x.com) shares the cookie across app.x.com / api.x.com.
+ */
+export function authCookieOptions(env: NodeJS.ProcessEnv = process.env) {
+  const raw = (env.AUTH_COOKIE_SAMESITE ?? '').trim().toLowerCase();
+  const sameSite = raw === 'none' || raw === 'strict' ? raw : 'lax';
+  const domain = (env.AUTH_COOKIE_DOMAIN ?? '').trim();
+  return {
+    defaultCookieAttributes: {
+      httpOnly: true,
+      path: '/',
+      sameSite,
+      ...(sameSite === 'none' ? { secure: true } : {}),
+    },
+    ...(domain ? { crossSubDomainCookies: { enabled: true, domain } } : {}),
+  } as const;
+}
 export const LOGIN_OTP_LENGTH = 6;
 export const LOGIN_OTP_TTL_MINUTES = 5;
 export const LOGIN_OTP_MAX_ATTEMPTS = 3;
@@ -83,8 +100,8 @@ export function createAuth(db: Db, audit: AuditService, mail?: MailService) {
       // Forgot password (email OTP) signs out every device (#79).
       revokeSessionsOnPasswordReset: true,
     },
-    // No cookieCache: every request reads auth_session, so revocation is immediate.
-    session: { expiresIn: SESSION_IDLE_S, updateAge: SESSION_UPDATE_AGE_S },
+    // Hard cap, no sliding (updateAge = expiresIn). No cookieCache: revocation stays immediate.
+    session: { expiresIn: sessionMaxAgeSeconds(), updateAge: sessionMaxAgeSeconds() },
     plugins: [
       bearer(),
       // Forgot password only (docs/AUTH-PASSWORD-RESET.md). The plugin's own routes are not
@@ -127,7 +144,7 @@ export function createAuth(db: Db, audit: AuditService, mail?: MailService) {
     ],
     telemetry: { enabled: false },
     // Only our own header (set in bootstrap from the trusted client IP; client values overwritten).
-    advanced: { ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] } },
+    advanced: { ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] }, ...authCookieOptions() },
     databaseHooks: {
       session: {
         create: {

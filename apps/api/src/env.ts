@@ -71,6 +71,14 @@ export const ProdEnv = z.object({
   JOBS_POLL_MS: intStr.optional(),
   JOBS_BATCH_SIZE: intStr.optional(),
   JOBS_LOCK_TIMEOUT_S: intStr.optional(),
+  SESSION_MAX_AGE_SECONDS: intStr
+    .refine((v) => Number(v) >= 300 && Number(v) <= 2_592_000, 'must be 300..2592000')
+    .optional(),
+  AUTH_COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none'], 'must be lax, strict or none').optional(),
+  AUTH_COOKIE_DOMAIN: z
+    .string()
+    .regex(/^[a-z0-9.-]+$/i, 'must be a bare domain like example.com')
+    .optional(),
   CLIENT_IP_MODE: z
     .enum(['cloudflare', 'railway', 'socket'], 'must be cloudflare, railway or socket')
     .optional(),

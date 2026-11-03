@@ -6,20 +6,29 @@ Hardening from the Cutly audit. One section per issue.
 
 - One `auth_session` row per sign-in; the browser cookie and the mobile bearer token
   (`Authorization: Bearer`, better-auth `bearer()` plugin) are the same row, so the same rules apply.
-- Sliding idle window **18 h** (`SESSION_IDLE_S`): any API use refreshes the expiry, at most once an
-  hour (`SESSION_UPDATE_AGE_S`). 18 h without use -> signed out.
-- Absolute cap **7 days** from sign-in (`SESSION_MAX_AGE_S`): the session guard deletes an older
-  session and answers 401, so a stolen token cannot be kept alive forever.
+- **Hard cap 18 h from sign-in, no sliding**: `expiresIn` = `updateAge` = `SESSION_MAX_AGE_SECONDS`
+  (default `64800`, allowed 300..2592000). Activity never extends a session.
+- Tradeoff: a user who is active all day must sign in again 18 h after signing in. The sliding
+  alternative is a small `updateAge` (e.g. 1 h), which gives an 18 h _idle_ window instead, but then an
+  active (or stolen) session never expires on its own.
+- Expired session -> better-auth returns no session -> `401` on `/v1/me` and every data route (tested in
+  `apps/api/test/session-lifetime.test.ts`).
 - No `cookieCache`: revocation (deactivate, password reset, role change) is immediate.
-- Cookie (better-auth defaults): `HttpOnly`, `SameSite=Lax`, `Secure` because `BETTER_AUTH_URL` is
-  https; name prefix `__Secure-` then. The web calls the API cross-origin with credentials, so web and
-  API must be on the same site (e.g. `app.x.com` + `api.x.com`); two `*.up.railway.app` hosts are
-  different sites and Lax cookies would not be sent.
+- Cookie: `HttpOnly`, `Path=/`, `Max-Age` = the cap, `Secure` (and the `__Secure-` name prefix) when
+  `BETTER_AUTH_URL` is https.
+  - `AUTH_COOKIE_SAMESITE` (`lax` default, `strict`, `none`; `none` forces `Secure`).
+  - `AUTH_COOKIE_DOMAIN` (optional bare parent domain, e.g. `x.com`) shares the cookie across subdomains.
+  - Recommended: custom domains on one site (`app.x.com` + `api.x.com`), `AUTH_COOKIE_SAMESITE=lax`,
+    `AUTH_COOKIE_DOMAIN=x.com`.
+  - Two `*.up.railway.app` hosts are different sites (public suffix): only `AUTH_COOKIE_SAMESITE=none`
+    works there, and Safari (ITP) may still drop the third-party cookie.
+- `WEB_ORIGIN` (CORS + better-auth `trustedOrigins`) must list the exact deployed web origin (scheme +
+  host, no trailing slash); CORS already sends credentials.
 - Login OTP (`LOGIN_OTP`): the code lives 5 min, the pending two-factor cookie 10 min; the session it
   creates then follows the rules above.
 - Changing `BETTER_AUTH_SECRET` or `BETTER_AUTH_URL` signs everyone out (cookie signature / name).
-- No session cleanup job: expired rows are rejected by better-auth; they stay in `auth_session` until
-  removed (harmless, tokens are useless).
+- Known item: natural expiry is not audited (better-auth expires the row itself; no
+  `auth.session_revoked` row). No session cleanup job: expired rows stay in `auth_session` (harmless).
 
 ## Session revocation (#79)
 
