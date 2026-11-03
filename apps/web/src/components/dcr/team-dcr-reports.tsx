@@ -25,7 +25,7 @@ const STATUS_LABEL: Record<Status, string> = {
 };
 const ROW_STATUS: Record<Dcr['status'], string> = {
   draft: 'Draft',
-  submitted: 'Submitted',
+  submitted: 'Waiting for review',
   approved: 'Approved',
   rejected: 'Rejected',
   locked: 'Locked',
@@ -55,7 +55,7 @@ async function loadDcrs(query: Record<string, string>) {
 }
 
 const select =
-  'h-11 rounded-md border bg-card px-3 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm';
+  'h-11 md:h-9 rounded-md border bg-card px-3 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm';
 
 /**
  * Team DCRs for managers and the Director: everyone the role can see (GET /v1/dcrs is
@@ -92,8 +92,10 @@ export function TeamDcrReports({
 
   return (
     <section className="flex flex-col gap-4" data-testid="team-dcr-reports">
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,16rem)_auto_auto]">
-        <PersonPicker value={person} onChange={setPerson} testId="team-dcr-person" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-[16rem_11rem_11rem]">
+        <div className="col-span-2 sm:col-span-1">
+          <PersonPicker value={person} onChange={setPerson} testId="team-dcr-person" />
+        </div>
         <select
           aria-label="Period"
           value={range}
@@ -148,20 +150,22 @@ export function TeamDcrReports({
             <li key={d.id}>
               <Link
                 href={`/dcr/reports/${d.id}`}
-                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3 hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+                className="block px-4 py-3 hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
                 data-testid="team-dcr-row"
               >
-                <span className="min-w-0">
-                  <span className="block font-medium">{name(d.userId)}</span>
-                  <span className="block text-sm text-muted-foreground">
-                    {dateLabel(d.date)}
-                    {wtName(d.workTypeId) ? ` · ${wtName(d.workTypeId)}` : ''}
-                    {typeof d.callCount === 'number'
-                      ? ` · ${d.callCount} call${d.callCount === 1 ? '' : 's'}`
-                      : ''}
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 truncate font-medium">{name(d.userId)}</span>
+                  <span className="shrink-0 text-sm text-muted-foreground">
+                    {ROW_STATUS[d.status]}
                   </span>
                 </span>
-                <span className="text-sm text-muted-foreground">{ROW_STATUS[d.status]}</span>
+                <span className="block truncate text-sm text-muted-foreground">
+                  {dateLabel(d.date)}
+                  {wtName(d.workTypeId) ? ` · ${wtName(d.workTypeId)}` : ''}
+                  {typeof d.callCount === 'number'
+                    ? ` · ${d.callCount} call${d.callCount === 1 ? '' : 's'}`
+                    : ''}
+                </span>
               </Link>
             </li>
           ))}

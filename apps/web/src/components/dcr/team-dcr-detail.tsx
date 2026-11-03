@@ -3,15 +3,35 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
+import type { Dcr } from '@ariforce/contracts';
 import { Skeleton } from '@ariforce/ui/components/skeleton';
-import { dateLabel } from '@/components/attendance/format';
+import { dateLabel, timeIST } from '@/components/attendance/format';
+import { useRole } from '@/components/shell/role-context';
 import { api, apiReady } from '@/lib/api';
 import { failureMessage } from '@/lib/dcr/errors';
+import { draftsOf, expensesOf } from '@/lib/dcr/expenses';
+import { money } from '@/lib/expenses/model';
 import { useTeamPeople } from '@/lib/team/people';
-import { useRole } from '@/components/shell/role-context';
-import { DcrFlow } from './dcr-flow';
+import { calls as callsLabel, dcrSummary } from './dcr-card-parts';
+import { DcrExpenses } from './dcr-expenses';
 
-/** One report, read-only, opened from the team list. Reuses DcrFlow's read-only view. */
+const ymd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' });
+/** The IST calendar day of a timestamp (00:00 IST belongs to the new day). */
+const istDay = (iso: string) => ymd.format(new Date(iso));
+const at = (iso?: string | null) => (iso ? `${dateLabel(istDay(iso))}, ${timeIST(iso)}` : '');
+const hm = (iso: string) => timeIST(iso).replace(' IST', '');
+
+const STATUS: Record<string, string> = {
+  draft: 'Draft',
+  submitted: 'Waiting for review',
+  locked: 'Locked',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
+const KIND: Record<string, string> = { doctor: 'Doctor', chemist: 'Chemist', stockist: 'Stockist' };
+const noop = () => {};
+
+/** Someone's report, read-only, opened from the team list: key facts first, then the day's work. */
 export function TeamDcrDetail({ id }: { id: string }) {
   const { role } = useRole();
   const people = useTeamPeople(role);
@@ -25,6 +45,7 @@ export function TeamDcrDetail({ id }: { id: string }) {
     },
   });
   const d = q.data;
+  const nameOf = (uid: string) => people.data?.byId.get(uid)?.name;
   return (
     <>
       <Link
@@ -33,20 +54,179 @@ export function TeamDcrDetail({ id }: { id: string }) {
       >
         <ArrowLeft className="size-4" aria-hidden /> Team DCRs
       </Link>
-      <h1 className="text-2xl font-semibold tracking-tight">
-        {d
-          ? `${people.data?.byId.get(d.userId)?.name ?? 'Team member'} · ${dateLabel(d.date)}`
-          : 'Daily call report'}
-      </h1>
       {q.error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {(q.error as Error).message}
-        </p>
+        <div role="alert" className="flex flex-col items-start gap-2 rounded-xl border p-4 text-sm">
+          <p className="text-destructive">{(q.error as Error).message}</p>
+          <button type="button" className="underline" onClick={() => void q.refetch()}>
+            Try again
+          </button>
+        </div>
       ) : !d ? (
-        <Skeleton className="h-64" />
+        <div className="flex flex-col gap-4" aria-busy>
+          <Skeleton className="h-8 w-2/3" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-48" />
+        </div>
       ) : (
-        <DcrFlow key={d.id} initialDate={d.date} dateLocked reportId={d.id} />
+        <>
+          <header className="flex flex-col gap-1">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {nameOf(d.userId) ?? 'Team member'}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {dateLabel(d.date)} · {STATUS[d.status] ?? d.status}
+            </p>
+          </header>
+          <ReportFacts d={d} nameOf={nameOf} />
+          <WorkDone d={d} />
+          <DcrExpenses
+            rows={draftsOf(expensesOf(d))}
+            onChange={noop}
+            readOnly
+            defaultCategory={() => 'other'}
+            showErrors={false}
+          />
+        </>
       )}
     </>
+  );
+}
+
+/** Review, lock and expense facts. Plain text, no actions. */
+function ReportFacts({ d, nameOf }: { d: Dcr; nameOf: (id: string) => string | undefined }) {
+  const who = (uid?: string | null) => (uid ? (nameOf(uid) ?? 'Manager') : 'Manager');
+  const rows: [string, string][] = [];
+  if (d.submittedAt) rows.push(['Submitted', at(d.submittedAt)]);
+  if (d.approvedAt)
+    rows.push([
+      'Approved',
+      d.autoApproved || !d.approvedBy
+        ? `Automatically, ${at(d.approvedAt)}`
+        : `${who(d.approvedBy)}, ${at(d.approvedAt)}`,
+    ]);
+  if (d.rejectedAt) rows.push(['Rejected', `${who(d.rejectedBy)}, ${at(d.rejectedAt)}`]);
+  if (d.rejectionReason) rows.push(['Reason', d.rejectionReason]);
+  if (d.deviationReason) rows.push(['Change from plan', d.deviationReason]);
+  if (d.neverLocks) rows.push(['Day lock', 'Never locks']);
+  else if (d.lockAt)
+    rows.push([
+      'Day lock',
+      `${Date.parse(d.lockAt) <= Date.now() ? 'Locked' : 'Locks'} ${at(d.lockAt)}`,
+    ]);
+  if (d.unlockedUntil && Date.parse(d.unlockedUntil) > Date.now())
+    rows.push(['Open for correction until', at(d.unlockedUntil)]);
+  if ((d.expenseCount ?? 0) > 0) rows.push(['Expenses', money(d.expenseTotal ?? 0)]);
+  if (!rows.length) return null;
+  return (
+    <dl
+      className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 rounded-xl border bg-card p-4 text-sm"
+      data-testid="dcr-facts"
+    >
+      {rows.map(([k, v]) => (
+        <div key={k} className="contents">
+          <dt className="text-muted-foreground">{k}</dt>
+          <dd className="min-w-0 break-words">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+type Details = {
+  kind?: string;
+  title?: string | null;
+  taskType?: string | null;
+  location?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  durationMin?: number | null;
+  fromPlace?: string | null;
+  toPlace?: string | null;
+  remarks?: string | null;
+};
+
+/** What the day was: summary, meeting/office details, and the calls with names. */
+function WorkDone({ d }: { d: Dcr }) {
+  const det = (d.details ?? null) as Details | null;
+  const names = useQuery({
+    queryKey: ['dcr-outlet-names', d.id],
+    enabled: d.calls.length > 0,
+    queryFn: async () => {
+      await apiReady();
+      const by = (k: string) => [
+        ...new Set(d.calls.filter((c) => c.outletKind === k).map((c) => c.outletId)),
+      ];
+      const m = new Map<string, string>();
+      const load = async (
+        path: '/v1/doctors' | '/v1/chemists' | '/v1/stockists',
+        ids: string[],
+      ) => {
+        if (!ids.length) return;
+        const r = await api.GET(path, { params: { query: { ids: ids.join(','), limit: 100 } } });
+        for (const o of (r.data?.items ?? []) as { id: string; name: string }[])
+          m.set(o.id, o.name);
+      };
+      await Promise.all([
+        load('/v1/doctors', by('doctor')),
+        load('/v1/chemists', by('chemist')),
+        load('/v1/stockists', by('stockist')),
+      ]);
+      return m;
+    },
+  });
+  const time =
+    det?.startTime && det?.endTime
+      ? `${det.startTime}–${det.endTime}`
+      : (det?.startTime ?? det?.endTime ?? null);
+  const facts = [
+    time && (det?.durationMin ? `${time} · ${det.durationMin} min` : time),
+    det?.fromPlace && det?.toPlace ? `${det.fromPlace} → ${det.toPlace}` : null,
+    det?.location ?? null,
+  ].filter(Boolean) as string[];
+  const sorted = [...d.calls].sort((a, b) => a.calledAt.localeCompare(b.calledAt));
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-sm font-medium">
+        {d.details || !sorted.length
+          ? dcrSummary(d, undefined, new Map())
+          : callsLabel(sorted.length)}
+      </h2>
+      {det && (det.title || det.taskType || facts.length > 0 || det.remarks) && (
+        <div className="flex flex-col gap-1 rounded-lg border bg-card px-3 py-2 text-sm">
+          {(det.title || det.taskType) && (
+            <p className="font-medium">{det.title ?? det.taskType}</p>
+          )}
+          {facts.map((f) => (
+            <p key={f} className="text-muted-foreground">
+              {f}
+            </p>
+          ))}
+          {det.remarks && <p>{det.remarks}</p>}
+        </div>
+      )}
+      {sorted.length > 0 && (
+        <ul
+          className="divide-y rounded-lg border bg-card text-sm"
+          aria-label={callsLabel(sorted.length)}
+        >
+          {sorted.map((c) => (
+            <li key={c.id} className="flex items-baseline justify-between gap-3 px-3 py-2">
+              <span className="min-w-0">
+                <span className="block truncate font-medium">
+                  {names.data?.get(c.outletId) ?? (names.isLoading ? '…' : KIND[c.outletKind])}
+                </span>
+                <span className="text-muted-foreground">
+                  {KIND[c.outletKind]}
+                  {c.productsDetailed.length > 0 &&
+                    ` · ${c.productsDetailed.length} product${c.productsDetailed.length === 1 ? '' : 's'}`}
+                  {c.remarks ? ` · ${c.remarks}` : ''}
+                </span>
+              </span>
+              <span className="shrink-0 tabular-nums text-muted-foreground">{hm(c.calledAt)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
