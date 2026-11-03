@@ -13,6 +13,7 @@ import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
+import { StorageService } from '../files/storage.service';
 import { PRICE_KEYS, recordPriceChange } from '../product-prices/product-prices.service';
 import { DoctorsService } from './doctors.service';
 import { baseFromRow, type MasterDef } from './master-defs';
@@ -45,11 +46,25 @@ export class MastersService {
     readonly tenant: TenantService,
     private readonly audit: AuditService,
     private readonly doctorsSvc: DoctorsService,
+    private readonly storage: StorageService,
   ) {}
 
   dto(def: MasterDef, r: Row) {
     const plain = baseFromRow(r);
     return def.dto.parse(def.fromRow ? def.fromRow(plain) : plain) as Row;
+  }
+
+  /** Products: presigned imageUrl for rows with a picture (local crypto; dto/audit keep it null). */
+  async withImages(def: MasterDef, p: Principal, items: Row[]): Promise<Row[]> {
+    if (def.entity !== 'product') return items;
+    return Promise.all(
+      items.map(async (r) => ({
+        ...r,
+        imageUrl: r.imageFileKey
+          ? await this.storage.imageUrl(p.companyId, String(r.imageFileKey))
+          : null,
+      })),
+    );
   }
 
   /** Base select with hierarchy scope (and the territories join it needs). */
@@ -89,8 +104,10 @@ export class MastersService {
       const col = def.sort[q.sort.replace(/^-/, '')];
       if (!col)
         throw new HttpException({ code: 'VALIDATION', message: `Unknown sort '${q.sort}'` }, 422);
-      order = [desc_ ? desc(col) : asc(col), asc(t.id)];
-    } else order = q.updatedSince ? [asc(t.updatedAt), asc(t.id)] : [asc(t.id)];
+      const key = q.sort.replace(/^-/, '') === 'name' && def.nameOrder ? sql`lower(${col})` : col;
+      order = [desc_ ? desc(key) : asc(key), asc(t.id)];
+    } else if (q.updatedSince) order = [asc(t.updatedAt), asc(t.id)];
+    else order = def.nameOrder ? [asc(sql`lower(${def.nameOrder})`), asc(t.id)] : [asc(t.id)];
     return this.tenant.run(p, async (tx) => {
       const s = this.select(tx, def, p, where);
       const rows = (await s.q
@@ -112,6 +129,7 @@ export class MastersService {
       }
       let items = rows.slice(0, limit).map((r) => this.dto(def, r.r));
       if (def.entity === 'doctor') items = await this.doctorsSvc.withRejection(tx, p, items);
+      items = await this.withImages(def, p, items);
       return {
         items,
         nextCursor: rows.length > limit ? encodeCursor(offset + limit) : null,
@@ -131,7 +149,12 @@ export class MastersService {
 
   get(def: MasterDef, p: Principal, id: string) {
     return this.tenant.run(p, async (tx) => {
-      if (def.entity !== 'doctor') return this.dto(def, await this.findRow(tx, def, p, id));
+      if (def.entity !== 'doctor') {
+        const [d] = await this.withImages(def, p, [
+          this.dto(def, await this.findRow(tx, def, p, id)),
+        ]);
+        return d!;
+      }
       // Doctors: an assigned approver may read the doctor by id even outside their territory scope.
       let row: Row | null;
       try {
@@ -280,7 +303,9 @@ export class MastersService {
 
   update(def: MasterDef, p: Principal, id: string, body: Row) {
     this.assertCanWrite(def, p);
-    return this.tenant.run(p, (tx) => this.patch(tx, def, p, id, body));
+    return this.tenant
+      .run(p, (tx) => this.patch(tx, def, p, id, body))
+      .then(async (d) => (await this.withImages(def, p, [d]))[0]!);
   }
 
   remove(def: MasterDef, p: Principal, id: string) {

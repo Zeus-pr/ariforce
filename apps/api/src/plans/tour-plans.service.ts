@@ -478,7 +478,7 @@ export class TourPlansService {
         .set({ submittedAt: new Date(), submitterNote: note })
         .where(eq(tourPlans.id, cur.id));
       await syncStatus(tx, cur.id);
-      await this.approvals.request(tx, p, 'tour_plan', subId, note, {
+      const reqId = await this.approvals.request(tx, p, 'tour_plan', subId, note, {
         month,
         planId: cur.id,
         submissionId: subId,
@@ -489,6 +489,8 @@ export class TourPlansService {
         entityId: cur.id,
         after: { submissionId: subId, dates: pick },
       });
+      // Director: approved now by the system (no manager).
+      await this.approvals.autoApprove(tx, p, reqId);
       const [row] = await tx.select().from(tourPlans).where(eq(tourPlans.id, cur.id));
       return (await plansOut(tx, [row!]))[0]!;
     });

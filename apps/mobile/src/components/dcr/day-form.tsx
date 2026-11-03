@@ -48,6 +48,7 @@ import {
   useRequestUnlock,
 } from '@/lib/dcr/adapter';
 import { dateLabel, nowHHmm, todayIST } from '@/lib/dcr/dates';
+import { dcrDateClosedText, dcrDateOpen } from '@/lib/dcr/date-rule';
 import { saveMessage } from '@/lib/dcr/errors';
 import {
   MAX_TP_DAYS,
@@ -200,6 +201,9 @@ export function DcrForm({
     : null;
   const locked =
     !isTp && isDayLocked(dcr, s.date, new Date(), dayLock) && dcr?.status !== 'submitted';
+  // Today-only rule (IST): other days are view-only unless unlocked (unlockedUntil in the future).
+  const istToday = todayIST();
+  const dateClosed = !isTp && !dcrDateOpen(s.date, istToday, dayLock?.unlockedUntil ?? null);
   const v2Unlock = optionsQ.data && 'unlockRequest' in optionsQ.data;
   // Old API only: best-effort match of my pending dcr_unlock approvals.
   const myUnlocksQ = useMyUnlockRequests(locked && !v2Unlock);
@@ -252,6 +256,7 @@ export function DcrForm({
       dcrReview === 'approved' ||
       dcrReview === 'locked' ||
       locked ||
+      dateClosed ||
       blocked;
   const busy = !!saving || saveDraft.isPending || submitMut.isPending || deleteMut.isPending;
 
@@ -852,6 +857,12 @@ export function DcrForm({
                 router.replace({ pathname: '/dcr/form', params: { new: '1', date: s.date } })
               }
             />
+          </View>
+        ) : null}
+
+        {dateClosed && !locked ? (
+          <View style={styles.warn}>
+            <AppText variant="bodyMuted">{dcrDateClosedText(s.date, istToday)}</AppText>
           </View>
         ) : null}
 

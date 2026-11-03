@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { Id, Timestamp } from './common';
+import { productImageFields } from './products';
 
 /** Product prices admin (system_admin only, permission `products:prices`). Docs: docs/PRODUCTS.md. */
 export const PRICE_MAX = 1_000_000;
@@ -42,7 +43,13 @@ export const AdminProduct = z
     id: Id,
     code: z.string(),
     name: z.string(),
+    displayName: z.string().meta({
+      readOnly: true,
+      description: 'Name without strength numbers (derived from name), e.g. ARIPIX',
+    }),
     brand: z.string().nullable(),
+    composition: z.string().nullable(),
+    packSize: z.string().nullable().meta({ example: '10 x 10 tablets' }),
     divisionId: Id,
     active: z.boolean(),
     mrp: z.number().nullable(),
@@ -54,10 +61,27 @@ export const AdminProduct = z
       .nullable()
       .meta({ description: 'Who last changed a price (from price history); null if never' }),
     pricesUpdatedAt: Timestamp.nullable(),
+    ...productImageFields,
     version: z.int().min(1),
   })
   .meta({ id: 'AdminProduct' });
 export type AdminProduct = z.infer<typeof AdminProduct>;
+/** PUT /v1/products/{id}/image: attach an uploaded picture (replaces any current one). */
+export const ProductImageSet = z
+  .object({
+    fileKey: z.string().min(1).max(300).meta({
+      description:
+        'fileKey from POST /v1/files/upload-url with purpose product_image, after the PUT',
+    }),
+    version: z
+      .int()
+      .min(1)
+      .optional()
+      .meta({ description: 'Current product version; mismatch = 409 VERSION_CONFLICT' }),
+  })
+  .meta({ id: 'ProductImageSet' });
+export type ProductImageSet = z.infer<typeof ProductImageSet>;
+
 export const AdminProductList = z
   .object({ items: z.array(AdminProduct), nextCursor: z.string().nullable() })
   .meta({ id: 'AdminProductList' });

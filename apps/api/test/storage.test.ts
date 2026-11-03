@@ -45,4 +45,12 @@ describe('R2 storage (presigned URLs)', () => {
       }),
     ).rejects.toThrow(/not configured/);
   });
+
+  it('image URL cache never serves another company a cached URL', async () => {
+    const now = new Date('2026-10-27T00:00:00Z');
+    const key = `${C}/product_image/2026/10/01930000-0000-7000-8000-0000000000aa.jpg`;
+    expect(await svc.imageUrl(C, key, now)).toMatch(/^https:/);
+    const other = '01930000-0000-7000-8000-000000000002';
+    expect(await svc.imageUrl(other, key, now)).toBeNull();
+  });
 });

@@ -1,7 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError } from 'better-auth/api';
-import { bearer, emailOTP } from 'better-auth/plugins';
+import { bearer, emailOTP, twoFactor } from 'better-auth/plugins';
 import { eq, sql } from 'drizzle-orm';
 import {
   AUTH_STATE_CODES,
@@ -13,6 +13,7 @@ import {
 import {
   authAccount,
   authSession,
+  authTwoFactor,
   authUser,
   authVerification,
   roles,
@@ -25,9 +26,44 @@ import { CLIENT_IP_HEADER } from '../common/client-ip';
 import type { MailService } from '../mail/mail.service';
 
 export const AUTH_BASE_PATH = '/v1/auth';
+/**
+ * Session lifetime in seconds (cookie Max-Age and auth_session.expires_at; the mobile bearer token
+ * is the same row). Hard cap: updateAge = expiresIn, so use never extends a session; sign in again
+ * after SESSION_MAX_AGE_SECONDS (default 18 h) even while active.
+ */
+export const SESSION_MAX_AGE_DEFAULT_S = 18 * 60 * 60;
+export const sessionMaxAgeSeconds = (env: NodeJS.ProcessEnv = process.env) => {
+  const n = Number(env.SESSION_MAX_AGE_SECONDS);
+  return Number.isInteger(n) && n >= 300 && n <= 30 * 24 * 60 * 60 ? n : SESSION_MAX_AGE_DEFAULT_S;
+};
+/**
+ * Session cookie attributes: HttpOnly, Path=/, Secure on https (better-auth defaults). SameSite from
+ * AUTH_COOKIE_SAMESITE (lax default; none = cross-site web/API hosts, always Secure). AUTH_COOKIE_DOMAIN
+ * (e.g. x.com) shares the cookie across app.x.com / api.x.com.
+ */
+export function authCookieOptions(env: NodeJS.ProcessEnv = process.env) {
+  const raw = (env.AUTH_COOKIE_SAMESITE ?? '').trim().toLowerCase();
+  const sameSite = raw === 'none' || raw === 'strict' ? raw : 'lax';
+  const domain = (env.AUTH_COOKIE_DOMAIN ?? '').trim();
+  return {
+    defaultCookieAttributes: {
+      httpOnly: true,
+      path: '/',
+      sameSite,
+      ...(sameSite === 'none' ? { secure: true } : {}),
+    },
+    ...(domain ? { crossSubDomainCookies: { enabled: true, domain } } : {}),
+  } as const;
+}
+export const LOGIN_OTP_LENGTH = 6;
+export const LOGIN_OTP_TTL_MINUTES = 5;
+export const LOGIN_OTP_MAX_ATTEMPTS = 3;
+/** Emailed sign-in code after the password. Off unless LOGIN_OTP is 1/true/on (rollout switch). */
+export const loginOtpEnabled = () =>
+  ['1', 'true', 'on'].includes((process.env.LOGIN_OTP ?? '').trim().toLowerCase());
 /** Browser origins allowed for CORS (with credentials) and better-auth: WEB_ORIGIN, comma-separated. */
 export const webOrigins = () =>
-  (process.env.WEB_ORIGIN ?? 'http://localhost:3000,http://localhost:3200')
+  (process.env.WEB_ORIGIN ?? 'http://localhost:3000,http://localhost:3100,http://localhost:3200')
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
@@ -54,6 +90,7 @@ export function createAuth(db: Db, audit: AuditService, mail?: MailService) {
         session: authSession,
         account: authAccount,
         verification: authVerification,
+        twoFactor: authTwoFactor,
       },
     }),
     emailAndPassword: {
@@ -63,7 +100,8 @@ export function createAuth(db: Db, audit: AuditService, mail?: MailService) {
       // Forgot password (email OTP) signs out every device (#79).
       revokeSessionsOnPasswordReset: true,
     },
-    session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24 },
+    // Hard cap, no sliding (updateAge = expiresIn). No cookieCache: revocation stays immediate.
+    session: { expiresIn: sessionMaxAgeSeconds(), updateAge: sessionMaxAgeSeconds() },
     plugins: [
       bearer(),
       // Forgot password only (docs/AUTH-PASSWORD-RESET.md). The plugin's own routes are not
@@ -80,10 +118,33 @@ export function createAuth(db: Db, audit: AuditService, mail?: MailService) {
           void mail.passwordResetCode(email, otp, PASSWORD_RESET_CODE_TTL_SECONDS / 60);
         },
       }),
+      // Second step after the password: a 6-digit code by email (docs/AUTH-LOGIN-OTP.md). The
+      // password check creates no usable session; /two-factor/verify-otp issues it. Email OTP only:
+      // TOTP and backup codes are off and their routes are blocked in bootstrap.
+      ...(loginOtpEnabled()
+        ? [
+            twoFactor({
+              issuer: 'AriForce',
+              twoFactorTable: 'twoFactor',
+              totpOptions: { disable: true },
+              twoFactorCookieMaxAge: 10 * 60,
+              otpOptions: {
+                digits: LOGIN_OTP_LENGTH,
+                period: LOGIN_OTP_TTL_MINUTES,
+                allowedAttempts: LOGIN_OTP_MAX_ATTEMPTS,
+                storeOTP: 'hashed',
+                sendOTP: async ({ user, otp }) => {
+                  if (!mail) return;
+                  void mail.loginCode(user.email, otp, LOGIN_OTP_TTL_MINUTES);
+                },
+              },
+            }),
+          ]
+        : []),
     ],
     telemetry: { enabled: false },
     // Only our own header (set in bootstrap from the trusted client IP; client values overwritten).
-    advanced: { ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] } },
+    advanced: { ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] }, ...authCookieOptions() },
     databaseHooks: {
       session: {
         create: {
@@ -126,7 +187,10 @@ export function createAuth(db: Db, audit: AuditService, mail?: MailService) {
                 });
             }
           },
-          after: async (session) => {
+          after: async (session, ctx) => {
+            // The password-only session is deleted at once when an OTP step follows; the real
+            // sign-in is recorded when /two-factor/verify-otp creates the session.
+            if (loginOtpEnabled() && ctx?.path === '/sign-in/email') return;
             await audit.recordForAuthUser(session.userId, 'auth.sign_in', {
               entityType: 'session',
               entityId: session.id,
@@ -137,6 +201,7 @@ export function createAuth(db: Db, audit: AuditService, mail?: MailService) {
         },
         delete: {
           after: async (session, ctx) => {
+            if (loginOtpEnabled() && ctx?.path === '/sign-in/email') return;
             await audit.recordForAuthUser(
               session.userId,
               ctx?.path === '/sign-out' ? 'auth.sign_out' : 'auth.session_revoked',

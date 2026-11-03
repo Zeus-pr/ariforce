@@ -14,6 +14,10 @@ export const colors = {
   navyClear: 'rgba(15, 42, 74, 0)', // navy at 0 alpha: fades to/from navy without greying
   brandNavy: '#162D5A', // the logo's own navy, for the wordmark
   teal: '#0CAAC1',
+  // Owner-approved brand pair (#0B1F4D / #00A9C4), used by the expense status chips and trail.
+  brandNavyCore: '#0B1F4D',
+  brandNavyWash: '#E8EBF2',
+  brandTeal: '#00A9C4',
   tealDeep: '#0C8498', // teal that passes 4.5:1 on white, for text and focus
   tealSoft: '#BFE8EF',
   tealWash: '#E8F6F9',
@@ -62,6 +66,8 @@ export const tones = {
   green: { fg: colors.success, bg: colors.successWash },
   red: { fg: colors.danger, bg: colors.dangerWash },
   neutral: { fg: colors.muted, bg: colors.ground },
+  navy: { fg: colors.brandNavyCore, bg: colors.brandNavyWash },
+  slate: { fg: colors.muted, bg: colors.separator },
 } as const;
 
 export type Tone = keyof typeof tones;

@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEMO_COMPANY_ID as A, T, U } from '@ariforce/db';
 import { Dcr, DcrOptions, DcrSfcMatch } from '@ariforce/contracts';
-import { insertStaff } from './support';
+import { insertStaff, otherHq } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 
@@ -19,6 +19,7 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
   let app: INestApplication;
   let owner: Pool;
   let me: { id: string; bearer: string };
+  let leaveWriter: { id: string; bearer: string } | undefined;
   let hq2: string;
   let doctorId: string;
   const wt: Record<string, string> = {};
@@ -55,11 +56,7 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
     app = configureApp(mod.createNestApplication({ bodyParser: false }));
     await app.init();
     owner = new Pool({ connectionString: OWNER });
-    const h = await owner.query(
-      `select id from territories where company_id=$1 and level='headquarter' and id <> $2 and deleted_at is null limit 1`,
-      [A, T.hq],
-    );
-    hq2 = h.rows[0].id;
+    hq2 = await otherHq(http, '', T.otherArea);
     me = await insertStaff(`dcr-flow-${RUN}@example.test`, 'business_manager', U.regional, [
       T.hq,
       hq2,
@@ -92,6 +89,7 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
       await owner.query(`delete from dcrs where user_id=$1`, [me.id]);
       await owner.query(`delete from sfc_routes where user_id=$1`, [me.id]);
     }
+    if (leaveWriter) await owner.query(`delete from dcrs where user_id=$1`, [leaveWriter.id]);
     await owner?.end();
     await app?.close();
   });
@@ -197,7 +195,7 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
     expect(again.body.id).toBe(id);
   });
 
-  it('after submit: other key 409, draft 409 ALREADY_SUBMITTED, old PUT 409', async () => {
+  it('after submit: other key 409, draft 409 DAY_ALREADY_SUBMITTED, old PUT 409', async () => {
     const k = await http()
       .post(`/v1/dcrs/${id}/submit`)
       .set(as())
@@ -209,7 +207,7 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
       .set(as())
       .send({ date: today, workTypeId: wt.FIELD_HQ, territoryIds: [T.hq] });
     expect(d.status).toBe(409);
-    expect(d.body.error.code).toBe('ALREADY_SUBMITTED');
+    expect(d.body.error.code).toBe('DAY_ALREADY_SUBMITTED');
     const o = await http()
       .put('/v1/dcrs')
       .set(as())
@@ -218,19 +216,25 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
   });
 
   it('leave without a leave request: LEAVE_NOT_FOUND', async () => {
-    const day = new Date(Date.now() + 5.5 * 36e5 - 864e5).toISOString().slice(0, 10);
+    leaveWriter = await insertStaff(
+      `dcr-flow-leave-${RUN}@example.test`,
+      'business_manager',
+      U.regional,
+      [T.hq],
+    );
+    const leaveAuth = { authorization: leaveWriter.bearer };
     const r = await http()
       .put('/v1/dcrs/draft')
-      .set(as())
+      .set(leaveAuth)
       .send({
-        date: day,
+        date: today,
         workTypeId: wt.LEAVE,
         details: { kind: 'leave', leaveRequestId: randomUUID() },
       });
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     const s = await http()
       .post(`/v1/dcrs/${r.body.id}/submit`)
-      .set(as())
+      .set(leaveAuth)
       .set('idempotency-key', `leave-${RUN}`)
       .send({ version: r.body.version });
     expect(s.status).toBe(422);

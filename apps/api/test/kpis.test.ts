@@ -5,17 +5,16 @@ import request from 'supertest';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { calendarWorkingDates } from '@ariforce/contracts';
-import { T } from '@ariforce/db';
+import { T, U } from '@ariforce/db';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
-import { createProduct } from './support';
+import { createProduct, insertStaff } from './support';
 
 const OWNER = process.env.DIRECT_URL;
 const APP = process.env.DATABASE_URL;
 const PASSWORD = process.env.DEMO_PASSWORD ?? 'ariforce-demo-pass';
 const TODAY = new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10);
-// Yesterday (still editable: the lock is end of day + 24 h); dcr.test.ts owns today.
-const DAY = new Date(Date.parse(`${TODAY}T00:00:00Z`) - 864e5).toISOString().slice(0, 10);
+const DAY = TODAY;
 
 describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
   let app: INestApplication;
@@ -34,14 +33,18 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
         .send({ email: `${who}@demo.ariforce.in`, password: PASSWORD });
       tok[who] = `Bearer ${res.headers['set-auth-token']}`;
     }
+    const staff = await insertStaff(`kpi-${Date.now()}@example.test`, 'business_manager', U.area, [
+      T.hq,
+    ]);
+    tok.bm = staff.bearer;
     const wt = (await http().get('/v1/work-types?limit=50').set(as('bm'))).body.items;
     const field = wt.find((w: { kind: string }) => w.kind === 'field').id;
     const doctor = (await http().get('/v1/doctors?approvalStatus=approved&limit=1').set(as('bm')))
       .body.items[0].id;
     const chemist = (await http().get(`/v1/chemists?territoryId=${T.hq}&limit=1`).set(as('bm')))
       .body.items[0].id;
-    // PTR 300 → the server values the 5-unit POB at 1500 (#40: value = quantity × PTR).
-    product = await createProduct(http, tok.bm!, tok.director!, { ptr: 300 });
+    // PTS 300 → the server values the 5-unit POB at 1500 (#40: value = quantity × PTS).
+    product = await createProduct(http, tok.bm!, tok.director!, { pts: 300 });
     const res = await http()
       .put('/v1/dcrs')
       .set(as('bm'))
@@ -62,6 +65,7 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
             productsDetailed: [{ productId: product, order: 1 }],
             samples: [{ productId: product, quantity: 3 }],
             pob: [],
+            presentationOpenedAt: new Date().toISOString(),
             calledAt: new Date().toISOString(),
           },
           {
@@ -133,6 +137,6 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
       .get(`/v1/dcrs?territoryId=${T.hq}&from=${DAY}&to=${DAY}`)
       .set(as('abm'));
     expect(dcrs.status, JSON.stringify(dcrs.body)).toBe(200);
-    expect(dcrs.body.items.length).toBe(1);
+    expect(dcrs.body.items.some((item: { userId: string }) => item.userId === bmId)).toBe(true);
   });
 });

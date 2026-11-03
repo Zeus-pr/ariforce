@@ -12,14 +12,26 @@ for (const view of ['desktop', 'mobile']) {
   await item.getByTestId('approval-view').click();
   const review = item.getByTestId('approval-review');
   await review.getByTestId('review-month').waitFor({ timeout: 10000 });
-  check(/\w+ \d{4}/.test(await review.getByTestId('review-month').innerText()), `${view}: plan review shows the month`);
-  check(await review.getByText('Business Manager').first().isVisible(), `${view}: plan review shows the submitter`);
-  check((await review.getByTestId('review-note').innerText()) === 'Hospital wing opens on the 1st', `${view}: plan review shows the submitter note (GET /v1/approvals/{id})`);
+  check(
+    /\w+ \d{4}/.test(await review.getByTestId('review-month').innerText()),
+    `${view}: plan review shows the month`,
+  );
+  check(
+    await review.getByText('Business Manager').first().isVisible(),
+    `${view}: plan review shows the submitter`,
+  );
+  check(
+    (await review.getByTestId('review-note').innerText()) === 'Hospital wing opens on the 1st',
+    `${view}: plan review shows the submitter note (GET /v1/approvals/{id})`,
+  );
   check((await review.getByTestId('review-doctors').count()) > 0, `${view}: planned doctors named`);
   const days = await review.getByTestId('review-day').count();
   check(days > 0, `${view}: plan review lists planned days (${days})`);
   const first = days ? await review.getByTestId('review-day').first().innerText() : '';
-  check(/·/.test(first) && !/…/.test(first), `${view}: day shows work type and names ("${first.replace(/\n/g, ' | ')}")`);
+  check(
+    /·/.test(first) && !/…/.test(first),
+    `${view}: day shows work type and names ("${first.replace(/\n/g, ' | ')}")`,
+  );
   await shot(page, `tp-review-${view}.png`);
   check(await item.getByTestId('tp-approve').isVisible(), `${view}: Approve still offered`);
   await item.getByTestId('tp-reject').click();
@@ -28,12 +40,18 @@ for (const view of ['desktop', 'mobile']) {
   check(await confirm.isDisabled(), `${view}: Reject disabled with no reason`);
   await page.getByTestId('reject-reason').fill('   ');
   check(await confirm.isDisabled(), `${view}: whitespace is not a reason`);
-  check((await page.getByTestId('reject-reason').getAttribute('maxlength')) === '1000', `${view}: reason capped at the API limit (1000)`);
+  check(
+    (await page.getByTestId('reject-reason').getAttribute('maxlength')) === '1000',
+    `${view}: reason capped at the API limit (1000)`,
+  );
   await page.getByTestId('reject-reason').fill('Add Kolkata North doctors on Mondays');
   check(await confirm.isEnabled(), `${view}: Reject enabled once a reason is typed`);
   await shot(page, `tp-reject-${view}.png`);
   await confirm.click();
-  await page.getByText(/rejected$/).first().waitFor({ timeout: 10000 });
+  await page
+    .getByText(/rejected$/)
+    .first()
+    .waitFor({ timeout: 10000 });
   check(true, `${view}: plan rejected with a reason`);
   await ctx.close();
 
@@ -45,9 +63,15 @@ for (const view of ['desktop', 'mobile']) {
   await row.getByTestId('approval-review').waitFor({ timeout: 10000 });
   await d.page.waitForTimeout(800);
   const txt = await row.getByTestId('approval-review').innerText();
-  check(!/could not be loaded/.test(txt) && txt.length > 20, `${view}: dashboard approval shows details (${(await row.getByTestId('approval-review').getAttribute('data-type'))})`);
+  check(
+    !/could not be loaded/.test(txt) && txt.length > 20,
+    `${view}: dashboard approval shows details (${await row.getByTestId('approval-review').getAttribute('data-type')})`,
+  );
   await row.getByTestId('dash-reject').click();
-  check(await d.page.getByTestId('reject-confirm').isDisabled(), `${view}: dashboard Reject disabled until a reason is typed`);
+  check(
+    await d.page.getByTestId('reject-confirm').isDisabled(),
+    `${view}: dashboard Reject disabled until a reason is typed`,
+  );
   await d.page.keyboard.press('Escape');
   await d.ctx.close();
 }
@@ -66,9 +90,15 @@ for (const view of ['desktop', 'mobile']) {
     const slot = await link.first().getAttribute('data-slot');
     check(slot === 'button', `team: View full profile renders as Button (data-slot=${slot})`);
     await link.first().focus();
-    check(await link.first().evaluate((e) => e === document.activeElement), 'team: View full profile is keyboard-focusable');
+    check(
+      await link.first().evaluate((e) => e === document.activeElement),
+      'team: View full profile is keyboard-focusable',
+    );
     const bg = await link.first().evaluate((e) => getComputedStyle(e).backgroundColor);
-    check(bg !== 'rgba(0, 0, 0, 0)', `team: View full profile has a filled brand background (${bg})`);
+    check(
+      bg !== 'rgba(0, 0, 0, 0)',
+      `team: View full profile has a filled brand background (${bg})`,
+    );
   } else check(false, 'team: View full profile not found');
   await ctx.close();
 }

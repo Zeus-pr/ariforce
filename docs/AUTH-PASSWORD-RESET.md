@@ -48,7 +48,7 @@ cannot be bypassed.
 ## Invite email
 
 Creating, re-inviting, or changing the email of an invited employee now emails the invitee
-`<WEB_ORIGIN first entry>/invite?token=...` (valid 7 days). It is sent fire-and-forget; a failed send
+`<WEB_ORIGIN first entry>/invite?token=...` (valid 7 days). It is sent only after the database transaction commits (a rolled-back create / re-invite / email change sends nothing), fire-and-forget; a failed send
 is logged (kind + recipient) and never fails the request. `INVITE_RETURN_LINK` is unchanged (dev only).
 
 ## Production settings (lead)

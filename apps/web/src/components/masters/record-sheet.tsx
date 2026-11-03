@@ -37,7 +37,10 @@ type Match = {
   rule: 'registration_no' | 'name_pincode';
   approvalStatus: string;
 };
-const RULE_LABEL = { registration_no: 'Same registration no.', name_pincode: 'Same name and PIN code' };
+const RULE_LABEL = {
+  registration_no: 'Same registration no.',
+  name_pincode: 'Same name and PIN code',
+};
 
 /** Create / edit / delete one master record. Validation is the contract's zod schema. */
 export function RecordSheet({
@@ -147,7 +150,8 @@ export function RecordSheet({
       else toast.error(err.message);
       return;
     }
-    const pending = (res.data as { approvalStatus?: string } | undefined)?.approvalStatus === 'pending';
+    const pending =
+      (res.data as { approvalStatus?: string } | undefined)?.approvalStatus === 'pending';
     toast.success(
       row
         ? `Saved ${String(values.name)}`
@@ -315,12 +319,19 @@ function DuplicatePanel({
       </p>
       <ul className="grid gap-1">
         {matches.map((m) => (
-          <li key={m.id} className="flex flex-wrap items-center gap-2" data-testid="dup-match" data-rule={m.rule}>
+          <li
+            key={m.id}
+            className="flex flex-wrap items-center gap-2"
+            data-testid="dup-match"
+            data-rule={m.rule}
+          >
             <span>{m.name}</span>
             <span className="text-muted-foreground">{m.territoryName}</span>
             <Badge variant="outline">{RULE_LABEL[m.rule]}</Badge>
             {m.approvalStatus !== 'approved' && (
-              <Badge variant="outline">{APPROVAL_LABEL[m.approvalStatus] ?? m.approvalStatus}</Badge>
+              <Badge variant="outline">
+                {APPROVAL_LABEL[m.approvalStatus] ?? m.approvalStatus}
+              </Badge>
             )}
           </li>
         ))}

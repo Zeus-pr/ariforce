@@ -13,6 +13,7 @@ export default tseslint.config(
       '**/drizzle/**',
       '**/*.config.*',
       '**/coverage/**',
+      '!**/src/app/(app)/coverage/**',
     ],
   },
   js.configs.recommended,

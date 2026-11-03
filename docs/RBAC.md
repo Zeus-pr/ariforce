@@ -38,29 +38,29 @@ Territory levels are a separate, geographic hierarchy (`national > zone > region
 
 ### Default permissions (`DEFAULT_ROLE_PERMISSIONS` in contracts; seeded per company)
 
-| Permission                                                                               |      BM      | ABM | RBM…VP | Director | System Admin | Distribution Head | Accountant |
-| ---------------------------------------------------------------------------------------- | :----------: | :-: | :----: | :------: | :----------: | :---------------: | :--------: |
-| `me:read`, `roles:read`, `territories:read`                                              |      ✓       |  ✓  |   ✓    |    ✓     |      ✓       |         ✓         |     ✓      |
-| `masters:read` (doctors, chemists, work types)                                           |      ✓       |  ✓  |   ✓    |    ✓     |      ✓       |                   |            |
-| `stockists:read`                                                                         |      ✓       |  ✓  |   ✓    |    ✓     |      ✓       |         ✓         |            |
-| `products:read` (products, divisions, HQ mappings)                                       |      ✓       |  ✓  |   ✓    |    ✓     |      ✓       |         ✓         |     ✓      |
-| `masters:write`, `territories:write`, `imports:write` (create, edit, import, deactivate) |              |     |   ✓    |    ✓     |      ✓       |                   |            |
-| `field:read` / `field:write`                                                             |    ✓ / ✓     | ✓ / |  ✓ /   |   ✓ /    |              |                   |            |
-| `users:read`                                                                             |              |  ✓  |   ✓    |    ✓     |      ✓       |                   |            |
-| `approvals:decide`, `reports:read`                                                       | reports only |  ✓  |   ✓    |    ✓     |              |                   |            |
-| `settings:write`, `audit:read`                                                           |              |     |        |    ✓     |      ✓       |                   |            |
-| `users:write`                                                                            |              |     |        |          |      ✓       |                   |            |
-| `products:prices`                                                                        |              |     |        |          |      ✓       |                   |            |
-| `sales:read`                                                                             |              |     |        |          |              |         ✓         |            |
-| `finance:read` (legacy, unchecked since 0040)                                            |              |     |        |          |              |                   |     ✓      |
-| `expenses:read`, `expenses:write` (own claims)                                           |      ✓       |  ✓  |   ✓    |    ✓     |              |                   |            |
-| `expenses:approve` (team expense claims)                                                 |              |  ✓  |   ✓    |    ✓     |              |                   |            |
-| `finance:write` (legacy, unchecked since 0040)                                           |              |     |        |          |              |                   |     ✓      |
-| `expenses:pay` (mark claims paid; approved/paid claims + reports company-wide)           |              |     |        |    ✓     |      ✓       |                   |            |
-| `leave:read`, `leave:write` (own leave)                                                  |      ✓       |  ✓  |   ✓    |    ✓     |              |                   |            |
-| `leave:approve` (team leave, grants, team calendar)                                      |              |  ✓  |   ✓    |    ✓     |              |                   |            |
-| `sfc:read` (SFC: own for BM, reporting line for managers, all for Director/System Admin) |      ✓       |  ✓  |   ✓    |    ✓     |      ✓       |                   |            |
-| `sfc:write` (edit SFC of people below; System Admin anyone)                              |              |  ✓  |   ✓    |    ✓     |      ✓       |                   |            |
+| Permission                                                                               |      BM      |  ABM  | RBM…VP | Director | System Admin | Distribution Head | Accountant |
+| ---------------------------------------------------------------------------------------- | :----------: | :---: | :----: | :------: | :----------: | :---------------: | :--------: |
+| `me:read`, `roles:read`, `territories:read`                                              |      ✓       |   ✓   |   ✓    |    ✓     |      ✓       |         ✓         |     ✓      |
+| `masters:read` (doctors, chemists, work types)                                           |      ✓       |   ✓   |   ✓    |    ✓     |      ✓       |                   |            |
+| `stockists:read`                                                                         |      ✓       |   ✓   |   ✓    |    ✓     |      ✓       |         ✓         |            |
+| `products:read` (products, divisions, HQ mappings)                                       |      ✓       |   ✓   |   ✓    |    ✓     |      ✓       |         ✓         |     ✓      |
+| `masters:write`, `territories:write`, `imports:write` (create, edit, import, deactivate) |              |       |   ✓    |    ✓     |      ✓       |                   |            |
+| `field:read` / `field:write`                                                             |    ✓ / ✓     | ✓ / ✓ | ✓ / ✓  |  ✓ / ✓   |              |                   |            |
+| `users:read`                                                                             |              |   ✓   |   ✓    |    ✓     |      ✓       |                   |            |
+| `approvals:decide`, `reports:read`                                                       | reports only |   ✓   |   ✓    |    ✓     |              |                   |            |
+| `settings:write`, `audit:read`                                                           |              |       |        |    ✓     |      ✓       |                   |            |
+| `users:write`                                                                            |              |       |        |          |      ✓       |                   |            |
+| `products:prices`                                                                        |              |       |        |          |      ✓       |                   |            |
+| `sales:read`                                                                             |              |       |        |          |              |         ✓         |            |
+| `finance:read` (legacy, unchecked since 0040)                                            |              |       |        |          |              |                   |     ✓      |
+| `expenses:read`, `expenses:write` (own claims)                                           |      ✓       |   ✓   |   ✓    |    ✓     |              |                   |            |
+| `expenses:approve` (team expense claims)                                                 |              |   ✓   |   ✓    |    ✓     |              |                   |            |
+| `finance:write` (legacy, unchecked since 0040)                                           |              |       |        |          |              |                   |     ✓      |
+| `expenses:pay` (mark claims paid; approved/paid claims + reports company-wide)           |              |       |        |    ✓     |      ✓       |                   |            |
+| `leave:read`, `leave:write` (own leave)                                                  |      ✓       |   ✓   |   ✓    |    ✓     |              |                   |            |
+| `leave:approve` (team leave, grants, team calendar)                                      |              |   ✓   |   ✓    |    ✓     |              |                   |            |
+| `sfc:read` (SFC: own for BM, reporting line for managers, all for Director/System Admin) |      ✓       |   ✓   |   ✓    |    ✓     |      ✓       |                   |            |
+| `sfc:write` (edit SFC of people below; System Admin anyone)                              |              |   ✓   |   ✓    |    ✓     |      ✓       |                   |            |
 
 Field-added doctors are `pending` unless created by a director or system admin; a pending doctor opens an approval request (`subjectType: 'doctor'`) to the creator's reporting manager. `POST /v1/doctors/duplicate-check` needs only `masters:read`. Details: docs/DOCTOR-APPROVAL.md (#26).
 
@@ -86,6 +86,10 @@ Prajesh retired both roles (soft). `RETIRED_ROLE_KEYS` in contracts.
 - **Kept**: the enum values, the role rows, their permission seeds, user rows and history.
 - **Expenses**: mark-paid moved to `expenses:pay` (director, system_admin), migration 0040. Nothing checks `finance:read`/`finance:write` any more. `sales:read` has no endpoint yet.
 - Data: `packages/db/scripts/data-fixes/2026-10-27-retired-role-holders-report.sql` (read-only) and `2026-10-27-retire-functional-role-holders.sql` (one-off, lead runs).
+
+### Managers file their own DCRs (migration 0044)
+
+`0044_manager_field_write` sets every role from `DEFAULT_ROLE_PERMISSIONS`: `field:write` (own DCR, check-ins) for ABM, RBM, ZBM, Sales Manager, GM, VP and Director, as BM already had. Generated by `db:role-perms`. Permissions are read from `roles` on every request, so a change applies on the next API call (no re-login). Side effect: the exceptions engine evaluates every `field:write` holder, so managers' own days are now evaluated too (docs/EXCEPTIONS.md).
 
 ### Expense pay (migration 0040)
 

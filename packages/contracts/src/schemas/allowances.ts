@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { DateOnly, Id, Timestamp } from './common';
-import { ExpenseClaim } from './expenses';
+import { ExpenseClaim, ExpenseStatus } from './expenses';
+import { Dcr } from './field';
 import { RoleKey } from './roles';
 
 /** TA/DA auto-calculation (#39). See docs/TADA.md. */
@@ -106,6 +107,7 @@ export const ALLOWANCE_DAY_ISSUES = [
   'place_required',
   'manual_line_exists',
   'dcr_not_submitted',
+  'dcr_rejected',
 ] as const;
 export const AllowanceDay = z
   .object({
@@ -132,3 +134,45 @@ export const AllowanceDraftResult = z
   })
   .meta({ id: 'AllowanceDraftResult' });
 export type AllowanceDraftResult = z.infer<typeof AllowanceDraftResult>;
+
+/** Server TA/DA auto-draft on DCR submit (companies.auto_expense_on_dcr_submit, migration 0052). */
+export const EXPENSE_AUTO_DRAFT_SKIPS = [
+  'claim_locked',
+  'manual_line_exists',
+  'no_allowance',
+] as const;
+export const ExpenseAutoDraft = z
+  .object({
+    status: z.enum(['drafted', 'skipped', 'error']).meta({
+      description:
+        "drafted = the day's auto lines were (re)written; skipped = nothing written (see reason); error = the TA/DA engine failed, nothing written, the DCR submit still succeeded",
+    }),
+    reason: z.enum(EXPENSE_AUTO_DRAFT_SKIPS).nullable().meta({
+      description:
+        'Set when skipped: claim_locked (the month claim is submitted/approved/paid), manual_line_exists (a manual allowance/mileage line on the day), no_allowance (work type pays no TA/DA or nothing computed)',
+    }),
+    date: DateOnly,
+    dcrId: Id,
+    claimId: Id.nullable(),
+    claimStatus: ExpenseStatus.nullable(),
+    claimCreated: z.boolean().meta({ description: 'True when the month claim was created now' }),
+    lines: z.int(),
+    da: z.number(),
+    ta: z.number(),
+    km: z.number(),
+    issues: z.array(z.enum(ALLOWANCE_DAY_ISSUES)).meta({
+      description:
+        'Engine problems on the day (no_rate, place_required, ...); lines may still be drafted',
+    }),
+    error: z.object({ code: z.string(), message: z.string() }).nullable(),
+  })
+  .meta({ id: 'ExpenseAutoDraft' });
+export type ExpenseAutoDraft = z.infer<typeof ExpenseAutoDraft>;
+
+export const DcrSubmitResult = Dcr.extend({
+  expenseDraft: ExpenseAutoDraft.nullable().default(null).meta({
+    description:
+      'Server TA/DA auto-draft outcome; null when the company setting autoExpenseOnDcrSubmit is off or on an idempotent retry. Clients: non-null means the server drafted (do not draft client-side)',
+  }),
+}).meta({ id: 'DcrSubmitResult' });
+export type DcrSubmitResult = z.infer<typeof DcrSubmitResult>;

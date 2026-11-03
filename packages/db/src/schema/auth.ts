@@ -1,4 +1,4 @@
-import { boolean, index, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 
 /**
  * better-auth identity tables (global, no company_id). An identity is linked to a tenant
@@ -12,9 +12,29 @@ export const authUser = pgTable('auth_user', {
   email: text('email').notNull().unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'),
+  // Sign-in needs an emailed code after the password (better-auth twoFactor, email OTP only).
+  // Default true: every identity, including future ones, is covered.
+  twoFactorEnabled: boolean('two_factor_enabled').notNull().default(true),
   createdAt: ts('created_at').notNull().defaultNow(),
   updatedAt: ts('updated_at').notNull().defaultNow(),
 });
+
+/** Required by the better-auth twoFactor plugin. Email OTP only, so no rows are ever written. */
+export const authTwoFactor = pgTable(
+  'auth_two_factor',
+  {
+    id: text('id').primaryKey(),
+    secret: text('secret').notNull(),
+    backupCodes: text('backup_codes').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => authUser.id, { onDelete: 'cascade' }),
+    verified: boolean('verified').notNull().default(true),
+    failedVerificationCount: integer('failed_verification_count').notNull().default(0),
+    lockedUntil: ts('locked_until'),
+  },
+  (t) => [index('auth_two_factor_user_idx').on(t.userId)],
+);
 
 export const authSession = pgTable(
   'auth_session',

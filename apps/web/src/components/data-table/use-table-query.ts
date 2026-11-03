@@ -21,7 +21,9 @@ export function useTableQuery(defaultPageSize = 25) {
       page: Math.max(1, Number(params.get('page')) || 1),
       pageSize: (PAGE_SIZES as readonly number[]).includes(size) ? size : defaultPageSize,
       query: params.get('q') ?? '',
-      sort: sortRaw ? { id: sortRaw.replace(/\.desc$/, ''), desc: sortRaw.endsWith('.desc') } : null,
+      sort: sortRaw
+        ? { id: sortRaw.replace(/\.desc$/, ''), desc: sortRaw.endsWith('.desc') }
+        : null,
       filters,
     };
   }, [params, defaultPageSize]);

@@ -44,7 +44,12 @@ export class AdapterError extends Error {
 }
 
 /** POST /v1/employees/{id}/invite. `inviteUrl` is null when the API emails it (INVITE_RETURN_LINK off). */
-export type InviteResult = { id: string; name: string; expiresAt: string; inviteUrl: string | null };
+export type InviteResult = {
+  id: string;
+  name: string;
+  expiresAt: string;
+  inviteUrl: string | null;
+};
 
 /** POST /v1/employees/invite-bulk, one row per person sent (index = position in the whole list). */
 export type BulkInviteRow = {
@@ -56,6 +61,9 @@ export type BulkInviteRow = {
   message: string | null;
   inviteUrl: string | null;
 };
-export type BulkInviteResult = { rows: BulkInviteRow[]; summary: { invited: number; skipped: number; failed: number } };
+export type BulkInviteResult = {
+  rows: BulkInviteRow[];
+  summary: { invited: number; skipped: number; failed: number };
+};
 /** Server cap per request; the client sends larger lists in chunks of this size. */
 export const BULK_CHUNK = 200;

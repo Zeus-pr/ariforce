@@ -182,9 +182,7 @@ export function SlideToConfirm({
      Inline Math.min/max only — calling a JS helper from a
      derived value hits the UI runtime as a remote function
      (Worklets "Tried to synchronously call a Remote Function"). */
-  const seen = useDerivedValue(() =>
-    Math.min(travelSV.value, Math.max(0, x.value)),
-  );
+  const seen = useDerivedValue(() => Math.min(travelSV.value, Math.max(0, x.value)));
   const wide = useDerivedValue(() => {
     const delta = Math.min(travelSV.value, Math.max(0, anchor.value - seen.value));
     return gripSizeSV.value + delta;
@@ -302,11 +300,7 @@ export function SlideToConfirm({
   }));
 
   const gripStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: seen.value },
-      { scaleX: sx.value },
-      { scaleY: sy.value },
-    ],
+    transform: [{ translateX: seen.value }, { scaleX: sx.value }, { scaleY: sy.value }],
     width: wide.value,
     borderRadius: gripR,
   }));
@@ -338,11 +332,7 @@ export function SlideToConfirm({
     >
       <GestureDetector gesture={pan}>
         <Animated.View
-          style={[
-            styles.track,
-            canopy ? styles.trackCanopy : styles.trackDefault,
-            trackStyle,
-          ]}
+          style={[styles.track, canopy ? styles.trackCanopy : styles.trackDefault, trackStyle]}
           onLayout={onLayout}
           accessibilityRole="adjustable"
           accessibilityLabel={done ? confirmedLabel : label}
@@ -378,11 +368,7 @@ export function SlideToConfirm({
               />
             </Animated.View>
             <Animated.View style={[styles.slot, styles.doneRow, doneStyle]}>
-              <Icon
-                name="check"
-                size={20}
-                color={canopy ? colors.canopyDeep : colors.surface}
-              />
+              <Icon name="check" size={20} color={canopy ? colors.canopyDeep : colors.surface} />
               <AppText
                 variant="action"
                 style={[styles.doneText, canopy ? styles.doneCanopy : styles.doneDefault]}

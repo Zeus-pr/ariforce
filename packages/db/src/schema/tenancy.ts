@@ -38,6 +38,8 @@ export const companies = pgTable('companies', {
   geofenceBlockMock: boolean('geofence_block_mock').notNull().default(true),
   /** SFC (Standard Fare Chart) TA rate per km, INR; amounts are computed on write. */
   sfcRatePerKm: numeric('sfc_rate_per_km', { precision: 8, scale: 2 }).notNull().default('2.95'),
+  /** Server TA/DA auto-draft on DCR submit (0052). Default off; turned on per company. */
+  autoExpenseOnDcrSubmit: boolean('auto_expense_on_dcr_submit').notNull().default(false),
   ...syncCols(),
 });
 

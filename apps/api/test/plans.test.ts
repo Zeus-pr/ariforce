@@ -156,7 +156,7 @@ describe.skipIf(!OWNER || !APP)('tour plans + approvals (real API)', () => {
     expect(one.status, JSON.stringify(one.body)).toBe(200);
     const sub = await http().post(`/v1/tour-plans/${cur}/submit`).set(as('director'));
     expect(sub.status, JSON.stringify(sub.body)).toBe(200);
-    expect(sub.body.status).toBe('submitted');
+    expect(sub.body.status).toBe('approved');
 
     // Partial future month (two days) submits too.
     const fm = '2027-06';

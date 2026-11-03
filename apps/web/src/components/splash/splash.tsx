@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import { useEffect, useRef, useState } from "react";
-import { SPLASH_CLASS, SPLASH_KEY } from "./splash-script";
+import { useEffect, useRef, useState } from 'react';
+import { SPLASH_CLASS, SPLASH_KEY } from './splash-script';
 
 const HOLD_MS = 700;
 const MOVE_MS = 850;
-const EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
+const EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
 export function Splash() {
   const [done, setDone] = useState(false);
@@ -21,18 +21,18 @@ export function Splash() {
     const logo = logoRef.current;
     const word = wordRef.current;
     const veil = veilRef.current;
-    const target = document.querySelector<HTMLElement>("[data-af-header-logo]");
-    const page = document.querySelectorAll<HTMLElement>(".af-page");
+    const target = document.querySelector<HTMLElement>('[data-af-header-logo]');
+    const page = document.querySelectorAll<HTMLElement>('.af-page');
     if (!logo || !word || !veil || !target) return;
 
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const running: Animation[] = [];
     let cancelled = false;
 
     const finish = () => {
       if (cancelled) return;
       try {
-        sessionStorage.setItem(SPLASH_KEY, "1");
+        sessionStorage.setItem(SPLASH_KEY, '1');
       } catch {
         // sessionStorage can be blocked (private mode); the splash just plays again next load.
       }
@@ -43,7 +43,12 @@ export function Splash() {
 
     const fadeIn = (duration: number, delay: number) =>
       [...page].map((el) =>
-        el.animate([{ opacity: 0 }, { opacity: 1 }], { duration, delay, easing: "ease-out", fill: "both" }),
+        el.animate([{ opacity: 0 }, { opacity: 1 }], {
+          duration,
+          delay,
+          easing: 'ease-out',
+          fill: 'both',
+        }),
       );
 
     const timer = window.setTimeout(
@@ -52,7 +57,10 @@ export function Splash() {
           // No movement: a plain crossfade from splash to page.
           running.push(
             ...fadeIn(250, 0),
-            veil.parentElement!.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, fill: "forwards" }),
+            veil.parentElement!.animate([{ opacity: 1 }, { opacity: 0 }], {
+              duration: 250,
+              fill: 'forwards',
+            }),
           );
           Promise.all(running.map((a) => a.finished)).then(finish, () => {});
           return;
@@ -66,23 +74,26 @@ export function Splash() {
         const dy = to.top - from.top;
 
         const move = logo.animate(
-          [{ transform: "translate(0px, 0px) scale(1)" }, { transform: `translate(${dx}px, ${dy}px) scale(${scale})` }],
-          { duration: MOVE_MS, easing: EASE, fill: "forwards" },
+          [
+            { transform: 'translate(0px, 0px) scale(1)' },
+            { transform: `translate(${dx}px, ${dy}px) scale(${scale})` },
+          ],
+          { duration: MOVE_MS, easing: EASE, fill: 'forwards' },
         );
         running.push(
           move,
           word.animate(
             [
-              { opacity: 1, transform: "translateY(0)" },
-              { opacity: 0, transform: "translateY(-6px)" },
+              { opacity: 1, transform: 'translateY(0)' },
+              { opacity: 0, transform: 'translateY(-6px)' },
             ],
-            { duration: 220, easing: "ease-out", fill: "forwards" },
+            { duration: 220, easing: 'ease-out', fill: 'forwards' },
           ),
           veil.animate([{ opacity: 1 }, { opacity: 0 }], {
             duration: 500,
             delay: MOVE_MS * 0.35,
-            easing: "ease-out",
-            fill: "forwards",
+            easing: 'ease-out',
+            fill: 'forwards',
           }),
           ...fadeIn(500, MOVE_MS * 0.35),
         );
@@ -101,7 +112,11 @@ export function Splash() {
   if (done) return null;
 
   return (
-    <div className="af-splash-overlay pointer-events-none fixed inset-0 z-50" aria-hidden="true" data-testid="splash">
+    <div
+      className="af-splash-overlay pointer-events-none fixed inset-0 z-50"
+      aria-hidden="true"
+      data-testid="splash"
+    >
       <div ref={veilRef} className="absolute inset-0 bg-white" />
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
         <img

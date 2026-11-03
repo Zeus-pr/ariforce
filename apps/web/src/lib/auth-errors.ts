@@ -23,7 +23,9 @@ export function retryAfterSeconds(r: Result): number | null {
 
 export function rateLimitMessage(r: Result) {
   const s = retryAfterSeconds(r);
-  return s ? `Too many attempts, try again in ${s} ${s === 1 ? 'second' : 'seconds'}.` : 'Too many attempts, try again in a minute.';
+  return s
+    ? `Too many attempts, try again in ${s} ${s === 1 ? 'second' : 'seconds'}.`
+    : 'Too many attempts, try again in a minute.';
 }
 
 /** Message for 429/403-suspended, or null when the response is neither. */

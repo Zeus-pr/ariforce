@@ -21,7 +21,11 @@ export function LeaveView() {
   }, [role, user]);
 
   if (!seesLeave(role)) {
-    return <p className="text-sm text-muted-foreground" data-testid="leave-no-access">Leave isn't part of your role.</p>;
+    return (
+      <p className="text-sm text-muted-foreground" data-testid="leave-no-access">
+        Leave isn't part of your role.
+      </p>
+    );
   }
   const approver = canLeave(role, 'leave:approve');
   const admin = canLeave(role, 'settings:write');
@@ -29,10 +33,22 @@ export function LeaveView() {
   return (
     <Tabs defaultValue="mine" className="gap-4">
       <TabsList className="max-w-full overflow-x-auto">
-        <TabsTrigger value="mine" data-testid="tab-mine">My leave</TabsTrigger>
-        {approver && <TabsTrigger value="approvals" data-testid="tab-approvals">Approvals</TabsTrigger>}
-        <TabsTrigger value="calendar" data-testid="tab-calendar">Calendar</TabsTrigger>
-        {(approver || admin) && <TabsTrigger value="admin" data-testid="tab-admin">{admin ? 'Settings' : 'Grants'}</TabsTrigger>}
+        <TabsTrigger value="mine" data-testid="tab-mine">
+          My leave
+        </TabsTrigger>
+        {approver && (
+          <TabsTrigger value="approvals" data-testid="tab-approvals">
+            Approvals
+          </TabsTrigger>
+        )}
+        <TabsTrigger value="calendar" data-testid="tab-calendar">
+          Calendar
+        </TabsTrigger>
+        {(approver || admin) && (
+          <TabsTrigger value="admin" data-testid="tab-admin">
+            {admin ? 'Settings' : 'Grants'}
+          </TabsTrigger>
+        )}
       </TabsList>
       {data.error && (
         <p className="text-sm text-destructive" role="alert" data-testid="leave-error">
@@ -52,7 +68,9 @@ export function LeaveView() {
       </TabsContent>
       {(approver || admin) && (
         <TabsContent value="admin" className="flex flex-col gap-6">
-          {admin && data.settings && <LeaveSettingsPanel settings={data.settings} types={data.types} onSaved={data.reload} />}
+          {admin && data.settings && (
+            <LeaveSettingsPanel settings={data.settings} types={data.types} onSaved={data.reload} />
+          )}
           {approver && <LeaveGrantPanel types={data.types} selfId={me} />}
         </TabsContent>
       )}

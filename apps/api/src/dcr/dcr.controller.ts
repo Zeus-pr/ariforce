@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Headers,
   Get,
   HttpCode,
@@ -16,6 +17,7 @@ import {
   DcrDraftPut,
   DcrListQuery,
   DcrOptionsQuery,
+  DcrDecision,
   DcrSfcMatchQuery,
   DcrSubmit,
   DcrSubmitHeaders,
@@ -29,6 +31,7 @@ import type { Principal } from '../auth/principal';
 import { ZodPipe } from '../common/zod.pipe';
 import { err } from '../field/checkins.service';
 import { DcrFlowService } from './dcr-flow.service';
+import { DcrReviewService } from './dcr-review.service';
 import { DcrService, type DcrQuery } from './dcr.service';
 
 @Controller({ path: 'dcrs', version: '1' })
@@ -36,7 +39,21 @@ export class DcrController {
   constructor(
     private readonly svc: DcrService,
     private readonly flow: DcrFlowService,
+    private readonly review: DcrReviewService,
   ) {}
+
+  /** Manager review: approve, or reject with a comment (stored as rejectionReason). */
+  @Post(':id/decision')
+  @HttpCode(200)
+  @RequirePermissions('dcr:review')
+  decision(
+    @CurrentPrincipal() p: Principal,
+    @Param('id') id: string,
+    @Body(new ZodPipe(DcrDecision)) b: z.infer<typeof DcrDecision>,
+  ) {
+    if (!Id.safeParse(id).success) throw new NotFoundException('DCR not found');
+    return this.review.decision(p, id, b);
+  }
 
   @Get('options')
   @RequirePermissions('field:read')
@@ -128,6 +145,15 @@ export class DcrController {
   get(@CurrentPrincipal() p: Principal, @Param('id') id: string) {
     if (!Id.safeParse(id).success) throw new NotFoundException('DCR not found');
     return this.svc.get(p, id);
+  }
+
+  /** Multi-draft: delete one of your drafts (soft delete with its calls and SFC choices). */
+  @Delete(':id')
+  @HttpCode(204)
+  @RequirePermissions('field:write')
+  async remove(@CurrentPrincipal() p: Principal, @Param('id') id: string) {
+    if (!Id.safeParse(id).success) throw new NotFoundException('DCR not found');
+    await this.flow.remove(p, id);
   }
 }
 

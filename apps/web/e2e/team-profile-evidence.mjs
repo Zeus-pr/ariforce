@@ -15,41 +15,81 @@ for (const view of ['desktop', 'mobile']) {
   check(true, `${view}: target BM ${target.id}`);
   await page.goto(`${BASE}/team/members/${target.id}`, { waitUntil: 'load' });
   await page.getByTestId('profile').waitFor({ timeout: 20000 });
-  check((await page.getByTestId('profile-name').textContent()) === target.name, `${view}: name in header`);
-  check((await page.getByTestId('profile-counts').textContent()).includes('Doctors'), `${view}: counts shown`);
-  check((await page.getByTestId('profile-today').textContent()).length > 5, `${view}: today status shown`);
+  check(
+    (await page.getByTestId('profile-name').textContent()) === target.name,
+    `${view}: name in header`,
+  );
+  check(
+    (await page.getByTestId('profile-counts').textContent()).includes('Doctors'),
+    `${view}: counts shown`,
+  );
+  check(
+    (await page.getByTestId('profile-today').textContent()).length > 5,
+    `${view}: today status shown`,
+  );
   const exc = await page.getByTestId('profile-exceptions').count();
   check(exc === 1, `${view}: exceptions summary shown for director (field:read)`);
   await page.getByTestId('perf-row').first().waitFor({ timeout: 10000 });
   const months = await page.getByTestId('perf-row').count();
   check(months >= 2, `${view}: monthly performance rows (${months})`);
   await page.getByTestId('perf-week').click();
-  await page.waitForFunction((n) => document.querySelectorAll('[data-testid=perf-row]').length !== n, months, { timeout: 10000 }).catch(() => {});
-  check((await page.getByTestId('perf-row').first().textContent()).includes('W'), `${view}: weekly buckets (ISO week labels)`);
-  await page.getByTestId('outlet-row').first().waitFor({ timeout: 10000 }).catch(() => {});
+  await page
+    .waitForFunction(
+      (n) => document.querySelectorAll('[data-testid=perf-row]').length !== n,
+      months,
+      { timeout: 10000 },
+    )
+    .catch(() => {});
+  check(
+    (await page.getByTestId('perf-row').first().textContent()).includes('W'),
+    `${view}: weekly buckets (ISO week labels)`,
+  );
+  await page
+    .getByTestId('outlet-row')
+    .first()
+    .waitFor({ timeout: 10000 })
+    .catch(() => {});
   const rows = await page.getByTestId('outlet-row').count();
   const empty = await page.getByTestId('outlets-empty').count();
   check(rows > 0 || empty === 1, `${view}: doctors list or empty state (${rows})`);
   if (await page.getByTestId('outlets-more').count()) {
     await page.getByTestId('outlets-more').click();
-    await page.waitForFunction((n) => document.querySelectorAll('[data-testid=outlet-row]').length > n, rows, { timeout: 10000 });
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('[data-testid=outlet-row]').length > n,
+      rows,
+      { timeout: 10000 },
+    );
     check(true, `${view}: load more appends the next page`);
   }
   if (rows > 0) {
-    const first = (await page.getByTestId('outlet-row').first().locator('td').first().textContent()).trim();
+    const first = (
+      await page.getByTestId('outlet-row').first().locator('td').first().textContent()
+    ).trim();
     await page.getByTestId('outlets-search').fill(first.slice(0, 5));
     await page.waitForTimeout(900);
-    check((await page.getByTestId('outlet-row').first().textContent()).includes(first.slice(0, 5)), `${view}: search narrows server-side`);
+    check(
+      (await page.getByTestId('outlet-row').first().textContent()).includes(first.slice(0, 5)),
+      `${view}: search narrows server-side`,
+    );
   }
   await page.getByTestId('outlets-chemists').click();
   await page.waitForTimeout(900);
-  check((await page.getByTestId('outlet-row').count()) > 0 || (await page.getByTestId('outlets-empty').count()) === 1, `${view}: chemists tab`);
+  check(
+    (await page.getByTestId('outlet-row').count()) > 0 ||
+      (await page.getByTestId('outlets-empty').count()) === 1,
+    `${view}: chemists tab`,
+  );
   await noOverflow(page, `${view} profile`);
   await noBannedWords(page, `${view} profile`);
   await shot(page, `profile-${view}.png`);
-  await page.goto(`${BASE}/team/members/00000000-0000-4000-8000-00000000dead`, { waitUntil: 'load' });
+  await page.goto(`${BASE}/team/members/00000000-0000-4000-8000-00000000dead`, {
+    waitUntil: 'load',
+  });
   await page.getByTestId('profile-error').waitFor({ timeout: 15000 });
-  check((await page.getByTestId('profile-error').textContent()).includes('not in your team'), `${view}: unknown id → 404 message`);
+  check(
+    (await page.getByTestId('profile-error').textContent()).includes('not in your team'),
+    `${view}: unknown id → 404 message`,
+  );
   await ctx.close();
 }
 // BM: /team is approver-only in the nav gate, so the profile route redirects away.
@@ -68,7 +108,10 @@ for (const view of ['desktop', 'mobile']) {
   check(true, 'ABM: report BM profile opens');
   await page.goto(`${BASE}/team/members/${uid(0)}`, { waitUntil: 'load' });
   await page.getByTestId('profile-error').waitFor({ timeout: 15000 });
-  check((await page.getByTestId('profile-error').textContent()).includes('not in your team'), 'ABM: director → not-in-team message');
+  check(
+    (await page.getByTestId('profile-error').textContent()).includes('not in your team'),
+    'ABM: director → not-in-team message',
+  );
   await ctx.close();
 }
 await finish();

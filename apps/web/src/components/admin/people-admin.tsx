@@ -37,7 +37,7 @@ import {
   useHqs,
   type Terr,
 } from '@/components/admin/invite-people';
-import { useSession } from '@/lib/mock-auth';
+import { useSession } from '@/lib/auth';
 import {
   failure,
   getPerson,

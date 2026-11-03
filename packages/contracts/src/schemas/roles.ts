@@ -119,6 +119,10 @@ export const PERMISSIONS = [
   'sfc:read',
   /** Edit SFC routes of the reporting line (ABM and above), company-wide for director and system_admin. */
   'sfc:write',
+  /** Approve or reject submitted DCRs of the reporting line (ABM and up, system_admin; never your own). */
+  'dcr:review',
+  /** Decide DCR unlock/correction requests (director only, 2026-10-29); other approvals keep approvals:decide. */
+  'dcr_unlock:decide',
 ] as const;
 export const Permission = z.enum(PERMISSIONS).meta({ id: 'Permission' });
 export type Permission = z.infer<typeof Permission>;
@@ -165,6 +169,7 @@ const MANAGER: Permission[] = [
   'leave:approve',
   'sfc:read',
   'sfc:write',
+  'dcr:review',
 ];
 /** RBM and above. */
 const SENIOR: Permission[] = [...MANAGER, ...MASTERS_WRITE];
@@ -185,7 +190,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
   sales_manager: SENIOR,
   general_manager: SENIOR,
   vice_president: SENIOR,
-  director: [...SENIOR, 'settings:write', 'audit:read', 'expenses:pay'],
+  director: [...SENIOR, 'settings:write', 'audit:read', 'expenses:pay', 'dcr_unlock:decide'],
   system_admin: [
     ...BASE,
     ...MASTERS_WRITE,
@@ -197,6 +202,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'sfc:read',
     'sfc:write',
     'expenses:pay',
+    'dcr:review',
   ],
   // Accepted by lead: read-only, company-wide; no doctors/chemists; never masters write.
   distribution_head: [

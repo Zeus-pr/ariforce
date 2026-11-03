@@ -7,6 +7,7 @@ import type { Dcr, DcrBand, DcrDetails, DcrDraftPut, DcrSfcMatch } from '@arifor
 import { bandOf, categoryFitsBand, sfcCategoryOf } from './bands';
 import type { ApiError } from '../api';
 import { tpCaps } from '../tp/caps';
+import { dcrDateNotTodayMessage } from './date-rule';
 import { callPresentationOpened, presentationInput, sendsCalledAt } from './adapter';
 
 export type WorkTypeOption = {
@@ -449,6 +450,8 @@ export function callsFromDcr(d: Dcr, names: Map<string, string>): CallDraft[] {
 /** Plain words for the redesign's error codes. */
 export function dcrErrorMessage(e: ApiError): string {
   switch (e.code) {
+    case 'DCR_DATE_NOT_TODAY':
+      return dcrDateNotTodayMessage(e.details);
     case 'SFC_NO_MATCH':
       return 'No matching SFC record for this band and territory. Change the territory or band, or ask your manager to add the route to your SFC.';
     case 'SFC_ROUTE_REQUIRED':
