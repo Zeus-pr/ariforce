@@ -85,6 +85,7 @@ import {
   type CallKind,
   type FlowState,
   type WorkTypeOption,
+  plusMinutes,
 } from '@/lib/dcr/model';
 import { colors, layout, radius, spacing, touch } from '@/theme';
 
@@ -326,6 +327,7 @@ export function DcrForm({
           mode: det.mode,
           location: det.location ?? '',
           startTime: det.startTime,
+          endTime: plusMinutes(det.startTime, det.durationMin),
           durationMin: String(det.durationMin),
           attendees: det.kind === 'meeting' ? (det.attendees ?? '') : '',
           remarks: det.remarks ?? '',
@@ -336,6 +338,7 @@ export function DcrForm({
           taskType: det.taskType,
           description: det.description,
           startTime: det.startTime ?? '',
+          endTime: det.startTime ? plusMinutes(det.startTime, det.durationMin) : '',
           durationMin: String(det.durationMin),
           remarks: det.remarks ?? '',
         };
@@ -1114,7 +1117,7 @@ export function DcrForm({
               title: err('title'),
               location: err('location'),
               startTime: err('startTime'),
-              durationMin: err('durationMin'),
+              endTime: err('endTime'),
             }}
             onChange={(meeting) => update({ meeting })}
           />
@@ -1127,7 +1130,8 @@ export function DcrForm({
             errors={{
               taskType: err('taskType'),
               description: err('description'),
-              durationMin: err('durationMin'),
+              startTime: err('startTime'),
+              endTime: err('endTime'),
             }}
             onChange={(office) => update({ office })}
           />

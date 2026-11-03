@@ -5,7 +5,7 @@ import { SelectSheet } from '@/components/masters/select-sheet';
 import { TextField } from '@/components/text-field';
 import type { FlowState } from '@/lib/dcr/model';
 import { dcrStyles, Field } from './field';
-import { TimeField } from './time-field';
+import { TimeRange } from './time-range';
 
 const ADMIN_TASKS = [
   'Expense filing',
@@ -14,8 +14,6 @@ const ADMIN_TASKS = [
   'Office visit',
   'Bank or courier work',
 ];
-
-const digits = (v: string) => v.replace(/\D/g, '').slice(0, 3);
 
 /** Admin work details (web dcr-sections OfficeSection). */
 export function OfficeEditor({
@@ -49,20 +47,11 @@ export function OfficeEditor({
         error={errors.description?.[0]}
         maxLength={1000}
       />
-      <TimeField
-        label="Start time"
-        value={value.startTime}
-        onChange={(startTime) => onChange({ ...value, startTime })}
-        editable={!readOnly}
-        optional
-      />
-      <TextField
-        label="Duration (minutes)"
-        value={value.durationMin}
-        onChangeText={(d) => onChange({ ...value, durationMin: digits(d) })}
-        editable={!readOnly}
-        keyboardType="number-pad"
-        error={errors.durationMin?.[0]}
+      <TimeRange
+        value={value}
+        readOnly={readOnly}
+        errors={{ startTime: errors.startTime?.[0], endTime: errors.endTime?.[0] }}
+        onChange={onChange}
       />
       <TextField
         label="Remarks"
