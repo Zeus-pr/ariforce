@@ -3,17 +3,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Approval } from '@ariforce/contracts';
-import { Badge } from '@ariforce/ui/components/badge';
 import { Skeleton } from '@ariforce/ui/components/skeleton';
 import { ApprovalTrail, TrailDots, type TrailClaim } from '@/components/expenses/approval-trail';
 import { EVERYONE, PersonPicker } from '@/components/team/person-picker';
 import { api, apiReady } from '@/lib/api';
 import { failureMessage } from '@/lib/dcr/errors';
-import { ROLE_SHORT } from '@/lib/roles';
 import { RANGE_LABEL, rangeOf, type RangeKey } from '@/lib/team/range';
 import { todayIST } from '@/components/attendance/format';
-import { ApprovalReview } from './approval-review';
-import { DecisionBar } from './decision-bar';
+import { ApprovalLine } from './approval-line';
 import { SUBJECT_LABEL } from './approvals-queue';
 
 type Status = Approval['status'] | 'all';
@@ -68,7 +65,6 @@ export function OrgApprovals() {
   const [status, setStatus] = useState<Status>('pending');
   const [type, setType] = useState<(typeof TYPES)[number]>('all');
   const [range, setRange] = useState<RangeKey>('month');
-  const [open, setOpen] = useState<string | null>(null);
   const { from, to } = rangeOf(range, todayIST());
   const q = useQuery({
     queryKey: ['approvals-org', person, status, type, from, to],
@@ -162,44 +158,21 @@ export function OrgApprovals() {
           No approvals match these filters.
         </p>
       ) : (
-        <ul className="divide-y rounded-lg border bg-card text-sm" data-testid="org-approvals">
+        <ul className="divide-y rounded-lg border bg-card" data-testid="org-approvals">
           {q.data.map((a) => (
-            <li key={a.id}>
-              <button
-                type="button"
-                aria-expanded={open === a.id}
-                onClick={() => setOpen(open === a.id ? null : a.id)}
-                className="flex w-full flex-col gap-0.5 px-4 py-3 text-left hover:bg-muted/50"
-              >
+            <ApprovalLine
+              key={a.id}
+              approval={a}
+              decidable={a.status === 'pending' && a.canDecide === true}
+              onDone={() => void q.refetch()}
+              lead={<ApprovalTrail claim={asTrail(a)} />}
+              meta={
                 <span className="flex items-center justify-between gap-2">
-                  <span className="truncate font-medium">
-                    {a.requestedByName}
-                    {a.requestedByRole && (
-                      <span className="ml-2 font-normal text-muted-foreground">
-                        {ROLE_SHORT[a.requestedByRole]}
-                      </span>
-                    )}
-                  </span>
-                  <Badge variant="secondary" className="shrink-0 font-normal">
-                    {SUBJECT_LABEL[a.subjectType] ?? a.subjectType}
-                  </Badge>
-                </span>
-                <span className="truncate text-muted-foreground">{a.summary}</span>
-                <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                   <span className="truncate">{stateLine(a)}</span>
                   <TrailDots claim={asTrail(a)} />
                 </span>
-              </button>
-              {open === a.id && (
-                <div className="flex flex-col gap-3 border-t px-4 py-4">
-                  <ApprovalTrail claim={asTrail(a)} />
-                  {a.canDecide && a.subjectType !== 'dcr' && a.subjectType !== 'signup' && (
-                    <DecisionBar approval={a} />
-                  )}
-                  <ApprovalReview approval={a} />
-                </div>
-              )}
-            </li>
+              }
+            />
           ))}
         </ul>
       )}
