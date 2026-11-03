@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'motion/react';
 import { useEffect, useState } from 'react';
 
 declare global {
@@ -10,7 +9,7 @@ declare global {
 }
 
 /**
- * Route enter: 6px rise + fade, 200ms, opacity/transform only (MotionConfig drops the rise for reduced motion).
+ * Route enter: CSS `af-route` (6px rise + fade, 200ms; off for reduced motion). No motion library.
  * The first paint belongs to the splash and the SSR HTML, so only client-side navigations animate.
  */
 export default function Template({ children }: { children: React.ReactNode }) {
@@ -21,13 +20,6 @@ export default function Template({ children }: { children: React.ReactNode }) {
     window.__afShellMounted = true;
   }, []);
   return (
-    <motion.div
-      initial={animateIn ? { opacity: 0, y: 6 } : false}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-      className="flex min-w-0 flex-1 flex-col"
-    >
-      {children}
-    </motion.div>
+    <div className={`flex min-w-0 flex-1 flex-col${animateIn ? ' af-route' : ''}`}>{children}</div>
   );
 }

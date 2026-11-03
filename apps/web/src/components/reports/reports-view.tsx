@@ -7,8 +7,8 @@ import { useEffect, useState } from 'react';
 import type { ProductKpiReport } from '@ariforce/contracts';
 import { Card } from '@ariforce/ui/components/card';
 import { cn } from '@ariforce/ui/lib/utils';
-import { rollupFor } from '@/components/dashboard/dashboard-view';
-import { coverageCols, COVERAGE_KPIS } from '@/components/performance/coverage-view';
+import { rollupFor } from '@/components/dashboard/rollup';
+import { coverageCols, COVERAGE_KPIS } from '@/components/performance/coverage-kpis';
 import {
   exportedAt,
   inr,
@@ -19,7 +19,7 @@ import {
   useMonth,
   type PerfCol,
 } from '@/components/performance/perf-ui';
-import { salesCols, SALES_KPIS } from '@/components/performance/sales-view';
+import { salesCols, SALES_KPIS } from '@/components/performance/sales-kpis';
 import { breakdownFor, usePerf, val, type Row } from '@/components/performance/use-perf';
 import { useRole } from '@/components/shell/role-context';
 import { api, apiReady } from '@/lib/api';
