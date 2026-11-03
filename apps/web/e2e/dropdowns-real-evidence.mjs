@@ -94,7 +94,7 @@ async function run(view, emptyMasters) {
   await ctx.addInitScript(() => {
     sessionStorage.setItem('af:splash-seen', '1');
     localStorage.setItem(
-      'af:mock-session',
+      'af:session',
       JSON.stringify({
         userId: '00000000-0000-7000-8000-000000000099',
         role: 'business_manager',
