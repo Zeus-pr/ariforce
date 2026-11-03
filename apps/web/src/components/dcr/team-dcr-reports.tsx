@@ -25,7 +25,7 @@ const STATUS_LABEL: Record<Status, string> = {
 };
 const ROW_STATUS: Record<Dcr['status'], string> = {
   draft: 'Draft',
-  submitted: 'Submitted',
+  submitted: 'Waiting for review',
   approved: 'Approved',
   rejected: 'Rejected',
   locked: 'Locked',
@@ -92,8 +92,10 @@ export function TeamDcrReports({
 
   return (
     <section className="flex flex-col gap-4" data-testid="team-dcr-reports">
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,16rem)_auto_auto]">
-        <PersonPicker value={person} onChange={setPerson} testId="team-dcr-person" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,16rem)_auto_auto]">
+        <div className="col-span-2 sm:col-span-1">
+          <PersonPicker value={person} onChange={setPerson} testId="team-dcr-person" />
+        </div>
         <select
           aria-label="Period"
           value={range}
