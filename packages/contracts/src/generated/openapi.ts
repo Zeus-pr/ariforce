@@ -5539,6 +5539,12 @@ export interface components {
       submittedBy: string | null;
       /** @description Expenses reported for the day (any work type). Linked into the month claim at submit (origin dcr); read-only after submit. Absent (older API) = none */
       expenses?: components['schemas']['DcrExpenseItemOutput'][];
+      /** @description Month claim holding this DCR's expense lines (origin dcr); null when it has none. Absent from older APIs */
+      expenseClaimId?: string | null;
+      /** @description Sum of this DCR's live origin-dcr claim lines, rupees (0 when none) */
+      expenseTotal?: number;
+      /** @description Number of this DCR's live origin-dcr claim lines (0 when none) */
+      expenseCount?: number;
       /** @description Live calls on this DCR (GET /v1/dcrs list only) */
       callCount?: number;
     };
@@ -6104,6 +6110,12 @@ export interface components {
       submittedBy: string | null;
       /** @description Expenses reported for the day (any work type). Linked into the month claim at submit (origin dcr); read-only after submit. Absent (older API) = none */
       expenses?: components['schemas']['DcrExpenseItemOutput'][];
+      /** @description Month claim holding this DCR's expense lines (origin dcr); null when it has none. Absent from older APIs */
+      expenseClaimId?: string | null;
+      /** @description Sum of this DCR's live origin-dcr claim lines, rupees (0 when none) */
+      expenseTotal?: number;
+      /** @description Number of this DCR's live origin-dcr claim lines (0 when none) */
+      expenseCount?: number;
       /** @description Live calls on this DCR (GET /v1/dcrs list only) */
       callCount?: number;
       /**
@@ -6111,12 +6123,6 @@ export interface components {
        * @default null
        */
       expenseDraft: components['schemas']['ExpenseAutoDraft'] | null;
-      /** @description Month claim holding this DCR's expense lines (dcrExpenses.claimId); null if not linked */
-      expenseClaimId?: string | null;
-      /** @description Sum of the linked DCR expense lines, rupees */
-      expenseTotal?: number;
-      /** @description Number of linked DCR expense lines */
-      expenseCount?: number;
       /** @description Linking of the DCR's expenses into the month claim (always attempted, independent of autoExpenseOnDcrSubmit). null on a same-key retry; absent from older APIs */
       dcrExpenses?: components['schemas']['DcrExpenseLink'] | null;
     };
