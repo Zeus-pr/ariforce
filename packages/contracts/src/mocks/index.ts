@@ -800,10 +800,9 @@ function fieldHandlers(baseUrl: string) {
           field: 'tourPlanItemId',
           reason: 'TOUR_PLAN_ITEM_MISMATCH',
         });
-      if (b.data.date > today() && !b.data.tourPlanItemId)
-        return validation('DCR date is in the future');
       if (isLocked(b.data.date))
         return dcrError(409, 'DAY_LOCKED', 'Day locked; request a correction');
+      if (dateNotToday(b.data.date)) return dcrDateNotToday(b.data.date);
       let d: (typeof dcrs)[number] | undefined;
       if (b.data.id) {
         d = dcrs.find((x) => x.id === b.data.id && x.userId === fx.me.id);
@@ -905,6 +904,7 @@ function fieldHandlers(baseUrl: string) {
         });
       if (b.data.version !== d.version) return dcrError(409, 'VERSION_CONFLICT', 'Stale version');
       if (isLocked(d.date)) return dcrError(409, 'DAY_LOCKED', 'Day locked');
+      if (dateNotToday(d.date)) return dcrDateNotToday(d.date);
       const noPres = d.calls.flatMap((c, i) =>
         c.outletKind === 'doctor' && c.productsDetailed.length && !c.presentationOpenedAt
           ? [{ i, id: c.id }]
@@ -1027,6 +1027,18 @@ function fieldHandlers(baseUrl: string) {
   /** Day lock: 00:00 IST the next day; unlocked 48 h after an approved correction or a rejection. */
   const corrections = new Map<string, string>();
   const unlocked = new Map<string, number>();
+  // Mirrors the API rule (dcr-date.ts): today only; a past day only while unlocked; never future.
+  const dateNotToday = (date: string) =>
+    date !== today() && !(date < today() && (unlocked.get(date) ?? 0) > Date.now());
+  const dcrDateNotToday = (date: string) =>
+    dcrError(
+      422,
+      'DCR_DATE_NOT_TODAY',
+      date > today()
+        ? 'A DCR can only be filled for today; future days are not allowed'
+        : 'A DCR can only be filled for today; past days need an approved unlock',
+      { date, today: today() },
+    );
   const lockAt = (date: string) =>
     new Date(Date.parse(`${date}T00:00:00+05:30`) + 86_400_000).toISOString();
   // Directors' days never lock (no manager to unlock them).
@@ -1640,9 +1652,9 @@ function fieldHandlers(baseUrl: string) {
       if (prior?.submittedBy)
         return dcrError(409, 'ALREADY_SUBMITTED', 'Submitted DCRs are read-only');
       if (!b.success) return validation('Invalid DCR', z.treeifyError(b.error));
-      if (b.data.date > today()) return validation('DCR date is in the future');
       let d = submittedOf(b.data.date) ?? draftsOf(b.data.date)[0];
       if (isLocked(b.data.date)) return conflict('Day locked; request a correction');
+      if (dateNotToday(b.data.date)) return dcrDateNotToday(b.data.date);
       if (d && b.data.version && b.data.version !== d.version) return conflict('Stale version');
       const wt = fx.workTypes.find((w) => w.id === b.data.workTypeId);
       if (!wt) return validation('Unknown work type');
