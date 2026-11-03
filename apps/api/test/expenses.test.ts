@@ -369,7 +369,7 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
       let cursor: string | null = null;
       let pages = 0;
       do {
-        const r = await http()
+        const r: request.Response = await http()
           .get(`/v1/expense-claims?limit=1${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`)
           .set(as(who));
         expect(r.status).toBe(200);
