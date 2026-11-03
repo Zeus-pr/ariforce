@@ -11,5 +11,6 @@ import { InviteMailer, TeamService } from './team.service';
   imports: [KpisModule],
   controllers: [TeamProfileController, TeamController, SignupController],
   providers: [TeamService, InviteMailer, SignupService, TeamProfileService],
+  exports: [TeamService],
 })
 export class TeamModule {}

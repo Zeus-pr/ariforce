@@ -1,5 +1,10 @@
 import { Controller, Get, Param, Query, Res, StreamableFile } from '@nestjs/common';
-import { TeamOutletQuery, TeamPerformanceQuery, TeamProfileExportQuery } from '@ariforce/contracts';
+import {
+  TeamMemberActivityQuery,
+  TeamOutletQuery,
+  TeamPerformanceQuery,
+  TeamProfileExportQuery,
+} from '@ariforce/contracts';
 import type { Response } from 'express';
 import type * as z from 'zod';
 import { CurrentPrincipal, RequirePermissions } from '../auth/decorators';
@@ -20,6 +25,16 @@ export class TeamProfileController {
   @RequirePermissions('me:read')
   profile(@CurrentPrincipal() p: Principal, @Param('userId') id: string) {
     return this.svc.profile(p, id);
+  }
+
+  @Get('activity')
+  @RequirePermissions('me:read')
+  activity(
+    @CurrentPrincipal() p: Principal,
+    @Param('userId') id: string,
+    @Query(new ZodPipe(TeamMemberActivityQuery)) q: z.output<typeof TeamMemberActivityQuery>,
+  ) {
+    return this.svc.activity(p, id, q);
   }
 
   @Get('performance')

@@ -118,7 +118,7 @@ describe('buildTrail', () => {
 });
 
 describe('ApprovalsService.canDecide (same rules as decide)', () => {
-  const svc = new ApprovalsService({} as never, {} as never, {} as never, {} as never);
+  const svc = new ApprovalsService({} as never, {} as never, {} as never, {} as never, {} as never);
   svc.register('expense', async () => undefined, { levels: 2, permission: 'expenses:approve' });
   const P = (
     userId: string,

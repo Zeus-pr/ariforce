@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import {
+  ACTIVITY_MAX_DAYS,
   calendarWorkingDates,
+  type TeamMemberActivity,
   hierarchyRank,
   KPI_KEYS,
   MIN_MANAGER_RANK,
@@ -14,8 +16,8 @@ import {
   type TeamPerformance,
   type TeamProfile,
 } from '@ariforce/contracts';
-import type { Tx } from '@ariforce/db';
-import { sql, type SQL } from 'drizzle-orm';
+import { geoCaptures, type Tx } from '@ariforce/db';
+import { and, asc, eq, sql, type SQL } from 'drizzle-orm';
 import type * as z from 'zod';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
@@ -28,6 +30,8 @@ import { approvedLeaveDays } from '../leave/leave.util';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { TeamService, type Person } from './team.service';
 import { dayReportSql, submittedReportSql } from '../dcr/day-report';
+import { capDate, toCheckIn } from '../field/checkins.service';
+import { primaryRole } from '../expenses/approval-trail';
 
 type Gran = z.infer<typeof PerformanceGranularity>;
 type Range = { granularity?: Gran; from?: string; to?: string };
@@ -203,6 +207,232 @@ export class TeamProfileService {
         exceptions: p.permissions.includes('field:read')
           ? await profileExceptions(tx, userId, today)
           : null,
+        canSeeExpenses,
+      };
+    });
+  }
+
+  /**
+   * Employee 360 activity (#128): today by default, any range up to ACTIVITY_MAX_DAYS. Same guard
+   * as profile() (target()), same attendance rules as the profile today block. A fixed number of
+   * queries whatever the range length; detail (calls + check-ins) only for a single day.
+   */
+  activity(p: Principal, userId: string, q: { from?: string; to?: string }) {
+    return this.tenant.run(p, async (tx): Promise<TeamMemberActivity> => {
+      const { t, canSeeExpenses } = await this.target(tx, p, userId);
+      const s = await companySettings(tx, p);
+      const today = localDate(new Date(), s.timezone);
+      const from = q.from ?? q.to ?? today;
+      const to = q.to ?? from;
+      if (from > to)
+        throw err(422, 'VALIDATION', 'from must be on or before to', { field: 'from' });
+      if (to > today) throw err(422, 'VALIDATION', 'to cannot be after today', { field: 'to' });
+      const n = Math.round((ms(to) - ms(from)) / DAY) + 1;
+      if (n > ACTIVITY_MAX_DAYS)
+        throw err(422, 'RANGE_TOO_LONG', `At most ${ACTIVITY_MAX_DAYS} days`, {
+          maxDays: ACTIVITY_MAX_DAYS,
+        });
+      const tz = s.timezone;
+      const day = sql`(captured_at at time zone ${tz})::date`;
+      const caps = await rows<{
+        d: string;
+        pin: Date | string | null;
+        pout: Date | string | null;
+        n: string;
+      }>(
+        tx,
+        sql`select to_char(${day}, 'YYYY-MM-DD') as d,
+                   min(captured_at) filter (where kind = 'punch_in') as pin,
+                   max(captured_at) filter (where kind = 'punch_out') as pout,
+                   count(*) as n
+            from geo_captures where user_id = ${userId}
+              and ${day} between ${from}::date and ${to}::date
+            group by 1`,
+      );
+      const leaves = await approvedLeaveDays(tx, [userId], from, to);
+      const reports = await rows<{
+        id: string;
+        date: string;
+        status: string;
+        updated_at: Date | string;
+        work_type_id: string;
+        wt_name: string;
+        kind: string;
+        details: Record<string, unknown> | null;
+        calls: string;
+        exp: string | null;
+      }>(
+        tx,
+        sql`select r.id, to_char(r.date, 'YYYY-MM-DD') as date, r.status::text as status, r.updated_at,
+                   r.work_type_id, wt.name as wt_name, wt.kind::text as kind, r.details,
+                   (select count(*) from dcr_calls c where c.dcr_id = r.id and c.deleted_at is null) as calls,
+                   (select sum(l.amount) from expense_lines l
+                     where l.dcr_id = r.id and l.origin = 'dcr' and l.deleted_at is null) as exp
+            from dcrs r join work_types wt on wt.id = r.work_type_id
+            where r.user_id = ${userId} and r.deleted_at is null
+              and r.date between ${from}::date and ${to}::date`,
+      );
+      const callDays = await rows<{ d: string; n: string }>(
+        tx,
+        sql`select to_char(c.date, 'YYYY-MM-DD') as d, count(*) as n from dcr_calls c
+            join dcrs r on r.id = c.dcr_id and r.deleted_at is null and r.status <> 'rejected'
+            where c.user_id = ${userId} and c.deleted_at is null
+              and c.date between ${from}::date and ${to}::date group by 1`,
+      );
+      const plans = await rows<{ f: string; t: string }>(
+        tx,
+        sql`select to_char(from_date, 'YYYY-MM-DD') as f, to_char(to_date, 'YYYY-MM-DD') as t
+            from tour_plan_items where user_id = ${userId} and status = 'approved'
+              and deleted_at is null and from_date <= ${to}::date and to_date >= ${from}::date`,
+      );
+      const [claim] = canSeeExpenses
+        ? await rows<{ total: string | null }>(
+            tx,
+            sql`select sum(total) as total from expense_claims where user_id = ${userId}
+                and deleted_at is null
+                and month between date_trunc('month', ${from}::date)::date and ${to}::date`,
+          )
+        : [];
+
+      // Day report = the same pick as dayReportSql (non-rejected, submitted first, newest), else
+      // the newest rejected one so a rejected day still shows.
+      const rank = (r: { status: string }) =>
+        r.status === 'rejected' ? 2 : r.status === 'draft' ? 1 : 0;
+      const pick = new Map<string, (typeof reports)[number]>();
+      for (const r of [...reports].sort(
+        (a, b) =>
+          rank(a) - rank(b) ||
+          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime() ||
+          (a.id < b.id ? 1 : -1),
+      ))
+        if (!pick.has(r.date)) pick.set(r.date, r);
+      const ts = (v: Date | string | null | undefined) => (v ? new Date(v).toISOString() : null);
+      const str = (v: unknown) => (typeof v === 'string' ? v : null);
+      const days: TeamMemberActivity['days'] = [];
+      for (let d = from; d <= to; d = addDays(d, 1)) {
+        const c = caps.find((x) => x.d === d);
+        const lv = leaves.find((x) => x.date === d);
+        const r = pick.get(d);
+        const live = r && r.status !== 'rejected' ? r : undefined;
+        const attendance: TeamMemberActivity['days'][number]['attendance'] = c?.pin
+          ? c.pout
+            ? 'present'
+            : 'incomplete'
+          : lv || live?.kind === 'leave'
+            ? 'leave'
+            : live?.kind === 'holiday'
+              ? 'holiday'
+              : calendarWorkingDates(d, d).length
+                ? 'absent'
+                : 'weekly_off';
+        const det = r?.details ?? {};
+        days.push({
+          date: d,
+          attendance,
+          punchInAt: ts(c?.pin),
+          punchOutAt: ts(c?.pout),
+          leave: lv ? { requestId: lv.requestId, typeCode: lv.typeCode, half: lv.half } : null,
+          planned: plans.some((x) => x.f <= d && x.t >= d),
+          dcr: r
+            ? {
+                id: r.id,
+                status: r.status as 'draft',
+                workTypeId: r.work_type_id,
+                workTypeName: r.wt_name,
+                callCount: num(r.calls),
+                startTime: str(det.startTime),
+                endTime: str(det.endTime),
+                durationMin: typeof det.durationMin === 'number' ? det.durationMin : null,
+                expenseTotal: num(r.exp),
+              }
+            : null,
+          calls: num(callDays.find((x) => x.d === d)?.n),
+          checkIns: num(c?.n),
+        });
+      }
+      const count = (a: string) => days.filter((x) => x.attendance === a).length;
+      const dcrCount = (st: string) => days.filter((x) => x.dcr?.status === st).length;
+      const r2 = (x: number) => Math.round(x * 100) / 100;
+      const totals: TeamMemberActivity['totals'] = {
+        days: days.length,
+        present: count('present'),
+        absent: count('absent'),
+        leave: count('leave'),
+        holiday: count('holiday'),
+        weeklyOff: count('weekly_off'),
+        incomplete: count('incomplete'),
+        dcr: {
+          draft: dcrCount('draft'),
+          submitted: dcrCount('submitted'),
+          approved: dcrCount('approved'),
+          rejected: dcrCount('rejected'),
+          locked: dcrCount('locked'),
+          missing: days.filter(
+            (x) => !x.dcr && ['present', 'absent', 'incomplete'].includes(x.attendance),
+          ).length,
+        },
+        calls: days.reduce((a, x) => a + x.calls, 0),
+        checkIns: days.reduce((a, x) => a + x.checkIns, 0),
+        plannedDays: days.filter((x) => x.planned).length,
+        dcrExpenseTotal: r2(days.reduce((a, x) => a + (x.dcr?.expenseTotal ?? 0), 0)),
+        claimTotal: r2(num(claim?.total)),
+      };
+
+      let detail: TeamMemberActivity['detail'] = null;
+      if (from === to) {
+        const calls = await rows<{
+          id: string;
+          dcr_id: string;
+          outlet_kind: string;
+          outlet_id: string;
+          geo_capture_id: string | null;
+          called_at: Date | string | null;
+          joint_work_user_ids: string[] | null;
+          outlet_name: string | null;
+        }>(
+          tx,
+          sql`select c.id, c.dcr_id, c.outlet_kind::text as outlet_kind, c.outlet_id, c.geo_capture_id,
+                     coalesce(c.called_at, c.created_at) as called_at, c.joint_work_user_ids,
+                     coalesce(d.name, ch.name, st.name) as outlet_name
+              from dcr_calls c
+              join dcrs r on r.id = c.dcr_id and r.deleted_at is null
+              left join doctors d on c.outlet_kind = 'doctor' and d.id = c.outlet_id
+              left join chemists ch on c.outlet_kind = 'chemist' and ch.id = c.outlet_id
+              left join stockists st on c.outlet_kind = 'stockist' and st.id = c.outlet_id
+              where c.user_id = ${userId} and c.date = ${from}::date and c.deleted_at is null
+              order by c.called_at nulls last, c.id`,
+        );
+        const gps = await tx
+          .select()
+          .from(geoCaptures)
+          .where(and(eq(geoCaptures.userId, userId), sql`${capDate(tz)} = ${from}::date`))
+          .orderBy(asc(geoCaptures.capturedAt));
+        detail = {
+          calls: calls.map((c) => ({
+            id: c.id,
+            dcrId: c.dcr_id,
+            outletKind: c.outlet_kind as 'doctor',
+            outletId: c.outlet_id,
+            checkInId: c.geo_capture_id,
+            calledAt: ts(c.called_at)!,
+            jointWorkUserIds: c.joint_work_user_ids ?? [],
+            outletName: c.outlet_name,
+          })),
+          checkIns: gps.map((g) => toCheckIn(g, tz)),
+        };
+      }
+      return {
+        member: {
+          id: t.id,
+          name: t.name,
+          role: primaryRole(t.roles) as TeamMemberActivity['member']['role'],
+        },
+        from,
+        to,
+        today,
+        days,
+        totals,
+        detail,
         canSeeExpenses,
       };
     });
