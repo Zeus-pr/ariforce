@@ -126,20 +126,20 @@ kept as is and listed. Re-runnable.
 
 ## Meeting sub-types, DCR expenses, end time and places (contract 2026-11-03, server pending)
 
-- Meeting details carry `meetingType`: `cycle_meeting` (Cycle Meeting) or `review_meeting`
-  (Review Meeting), on DCR and TP alike. Before this, the meeting "type" was the free-text
-  `title`. Old rows are never rewritten destructively: the data fix
-  `packages/db/scripts/data-fixes/<date>-meeting-type-backfill.sql` (dry-run default) sets
-  `meetingType` only where the title clearly says "cycle" or "review"; everything else stays
-  `meetingType: null` and displays its legacy title (`meetingDisplay`). Reads tolerate legacy
-  values; writes reject anything else with 422 MEETING_TYPE_INVALID.
+- Meeting sub-type = `details.title`, one of "Cycle Meeting" / "Review Meeting" on write (DCR
+  and TP); anything else is 422 MEETING_TYPE_INVALID. Before this, title was free text. Old rows
+  are never rewritten destructively: the data fix
+  `packages/db/scripts/data-fixes/<date>-meeting-title-normalise.sql` (dry-run default) only
+  rewrites titles that clearly say "cycle" or "review" to the exact label (old text kept in the
+  audit/notes); everything else displays its legacy title. Reads tolerate legacy values.
 - Meeting, training and admin work (office) get `endTime`; the server derives `durationMin`
-  (end - start, same day, 1-720). end <= start -> 422 END_TIME_NOT_AFTER_START. Older clients
+  (end - start, same day, 1-720). end <= start -> 422 END_TIME_NOT_AFTER_START, more than 12 h -> 422 DURATION_TOO_LONG.
+  Admin work: startTime becomes required whenever endTime is sent. Older clients
   that send only `durationMin` keep working until endTime becomes required.
 - Meeting and admin work get optional `fromPlace` / `toPlace` (no TA/DA rule reads them yet, so
   nothing justifies making them mandatory). Training: no places.
 - Any work type can carry `expenses[]` (travel, hotel, food, other). At submit they are copied
-  into the month claim as `origin: dcr` lines (`dcrId`, `dcrExpenseItemId`), replacing that DCR's
+  into the month claim as `origin: dcr` lines (`dcrId`), replacing all of that DCR's
   earlier dcr lines, so a resubmit never duplicates. Same rules as the TA/DA auto-draft: only a
   draft/rejected claim is written (created if missing); a submitted/approved/paid claim is left
   alone (`dcrExpenses.status skipped, reason claim_locked`), the DCR keeps the items and the user

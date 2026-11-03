@@ -96,9 +96,6 @@ export const ExpenseLine = z
       description:
         "Where the line came from: manual, ta_da (TA/DA auto-draft), dcr (an expense item on the day's DCR; show 'from DCR', dcrId is that DCR). Absent from older APIs: derive from source. dcr lines have source auto and are never touched by a TA/DA re-run",
     }),
-    dcrExpenseItemId: Id.nullable().optional().meta({
-      description: 'DcrExpenseItem.id this line was copied from (origin dcr), else null',
-    }),
     allowancePlaceId: Id.nullable().meta({ description: 'Fare-chart place used for TA (#39)' }),
     autoTrigger: z.enum(['allowances_run', 'dcr_submit']).nullable().default(null).meta({
       description:

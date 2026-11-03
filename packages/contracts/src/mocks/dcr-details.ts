@@ -1,8 +1,9 @@
 import { HttpResponse } from 'msw';
 import {
   DCR_EXPENSE_CATEGORIES,
-  MEETING_TYPE_LABELS,
+  DCR_MAX_DURATION_MIN,
   MEETING_TYPES,
+  hhmmToMinutes,
   deriveDurationMinutes,
   type DcrDetails,
 } from '../schemas/dcr-parts';
@@ -17,12 +18,7 @@ const rec = (v: unknown): Record<string, unknown> | null =>
 export function checkDcrDetailsRaw(details: unknown) {
   const d = rec(details);
   if (!d) return null;
-  // The mock tolerates an absent meetingType (older web builds); the server requires it on writes.
-  if (
-    d.kind === 'meeting' &&
-    d.meetingType != null &&
-    !(MEETING_TYPES as readonly unknown[]).includes(d.meetingType)
-  )
+  if (d.kind === 'meeting' && !(MEETING_TYPES as readonly unknown[]).includes(d.title))
     return err('MEETING_TYPE_INVALID', 'Meeting type must be Cycle Meeting or Review Meeting', {
       allowed: MEETING_TYPES,
     });
@@ -32,6 +28,10 @@ export function checkDcrDetailsRaw(details: unknown) {
     return err('END_TIME_NOT_AFTER_START', 'End time must be after the start time', {
       startTime: start,
       endTime: end,
+    });
+  if (end && start && hhmmToMinutes(end) - hhmmToMinutes(start) > DCR_MAX_DURATION_MIN)
+    return err('DURATION_TOO_LONG', 'A session can be at most 12 hours', {
+      max: DCR_MAX_DURATION_MIN,
     });
   return null;
 }
@@ -49,12 +49,9 @@ export function checkDcrExpensesRaw(expenses: unknown) {
   return null;
 }
 
-/** Server-side normalisation: derived durationMin, title from the meeting type. */
+/** Server-side normalisation: derived durationMin. */
 export function normaliseDcrDetails<T extends DcrDetails | null | undefined>(d: T): T {
   if (!d || d.kind === 'leave') return d;
   const derived = deriveDurationMinutes(d.startTime, d.endTime);
-  const out = { ...d, ...(derived ? { durationMin: derived } : {}) };
-  if (out.kind === 'meeting' && out.meetingType && !out.title)
-    out.title = MEETING_TYPE_LABELS[out.meetingType];
-  return out as T;
+  return (derived ? { ...d, durationMin: derived } : d) as T;
 }

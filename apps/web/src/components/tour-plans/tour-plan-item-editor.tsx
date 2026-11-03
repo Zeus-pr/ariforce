@@ -80,11 +80,11 @@ function flowFromItem(date: string, item: TpItem | null): FlowState {
   );
   if (details?.kind === 'meeting' || details?.kind === 'training') {
     state.meeting = {
-      title: details.title ?? '',
+      title: details.title,
       mode: details.mode,
       location: details.location ?? '',
       startTime: details.startTime,
-      durationMin: String(details.durationMin ?? ''),
+      durationMin: String(details.durationMin),
       attendees: details.attendees ?? '',
       remarks: details.remarks ?? '',
       trainer: details.kind === 'training' ? (details.trainer ?? '') : '',
@@ -95,7 +95,7 @@ function flowFromItem(date: string, item: TpItem | null): FlowState {
       taskType: details.taskType,
       description: details.description,
       startTime: details.startTime ?? '',
-      durationMin: String(details.durationMin ?? ''),
+      durationMin: String(details.durationMin),
       remarks: details.remarks ?? '',
     };
   }

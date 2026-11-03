@@ -23,21 +23,13 @@ const HHmm = z
 const Duration = z.int().min(1).max(720).meta({ description: 'Minutes, 1-720' });
 const Remarks = z.string().trim().max(1000).nullable().optional();
 
-/** Meeting sub-types (DCR and TP). Exactly these two; labels below are the display text. */
-export const MEETING_TYPES = ['cycle_meeting', 'review_meeting'] as const;
-export const MeetingType = z.enum(MEETING_TYPES).meta({
-  id: 'MeetingType',
-  description:
-    'cycle_meeting = "Cycle Meeting", review_meeting = "Review Meeting". Any other value on write: 422 MEETING_TYPE_INVALID',
-});
-export type MeetingType = z.infer<typeof MeetingType>;
-export const MEETING_TYPE_LABELS: Record<MeetingType, string> = {
-  cycle_meeting: 'Cycle Meeting',
-  review_meeting: 'Review Meeting',
-};
-/** Display text for a meeting: the sub-type label, else the legacy free-text title. */
-export const meetingDisplay = (d: { meetingType?: MeetingType | null; title?: string | null }) =>
-  d.meetingType ? MEETING_TYPE_LABELS[d.meetingType] : d.title?.trim() || 'Meeting (legacy)';
+/** Meeting sub-types (DCR and TP): the meeting details.title must be one of these on write. */
+export const MEETING_TYPES = ['Cycle Meeting', 'Review Meeting'] as const;
+export type MeetingTypeLabel = (typeof MEETING_TYPES)[number];
+export const isMeetingType = (v: string): v is MeetingTypeLabel =>
+  (MEETING_TYPES as readonly string[]).includes(v);
+/** Longest derived session (minutes); longer -> 422 DURATION_TOO_LONG. Same as durationMin max. */
+export const DCR_MAX_DURATION_MIN = 720;
 
 /** HH:mm -> minutes after 00:00. */
 export const hhmmToMinutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
@@ -90,13 +82,9 @@ export const DcrMeetingDetails = z
   .object({
     kind: z.literal('meeting'),
     ...meetingShape,
-    meetingType: MeetingType.nullable().optional().meta({
+    title: meetingShape.title.meta({
       description:
-        'Required on new writes (DCR and TP); null only on legacy rows not mapped by the data fix (display the legacy title)',
-    }),
-    title: meetingShape.title.optional().meta({
-      description:
-        'Legacy free-text meeting name. Optional on input; the server sets it to the meetingType label when omitted, so responses always carry it',
+        'Meeting sub-type: "Cycle Meeting" or "Review Meeting" on write (else 422 MEETING_TYPE_INVALID). Legacy rows may hold other free text; reads return it unchanged',
     }),
     ...placesShape,
   })
@@ -118,7 +106,7 @@ export const DcrOfficeDetails = z
     startTime: HHmm.nullable().optional(),
     endTime: EndTime.meta({
       description:
-        'Local end time HH:mm (IST); only with startTime, after it (422 END_TIME_NOT_AFTER_START). Derives durationMin',
+        'Local end time HH:mm (IST). startTime is required together with endTime (else 422 END_TIME_NOT_AFTER_START); end after start, at most 12 h (DURATION_TOO_LONG). Derives durationMin',
     }),
     durationMin: Duration.optional().meta({
       description:
@@ -205,20 +193,12 @@ export const DCR_EXPENSE_MAX_ITEMS = 20;
 export const DCR_EXPENSE_CATEGORIES = ['travel', 'hotel', 'food', 'other'] as const;
 export const DcrExpenseItem = z
   .object({
-    id: Id.meta({
-      description:
-        'Client-generated uuid, stable across resubmits; the claim line is matched on it (idempotent link)',
-    }),
     category: ExpenseCategory.meta({
       description:
         'One of travel, hotel, food, other. allowance and mileage stay with TA/DA: 422 DCR_EXPENSE_CATEGORY_INVALID',
     }),
     amount: z.number().positive().max(10_000_000).multipleOf(0.01).meta({ description: 'Rupees' }),
     note: z.string().trim().max(500).nullable().optional(),
-    receiptRef: z.string().trim().max(120).nullable().optional().meta({
-      description:
-        'Free-text bill / receipt number. Receipt files are attached to the linked claim line (expense attachments)',
-    }),
   })
   .meta({ id: 'DcrExpenseItem' });
 export type DcrExpenseItem = z.infer<typeof DcrExpenseItem>;
@@ -229,7 +209,7 @@ export const DcrExpenseLink = z
   .object({
     status: z.enum(['linked', 'skipped', 'error']).meta({
       description:
-        "linked = the DCR's lines were written (replacing earlier DCR-sourced lines of this DCR); skipped = nothing written (reason); error = linking failed, the submit still succeeded",
+        "linked = the DCR's lines were written (all earlier origin-dcr lines with this dcrId are replaced, so a resubmit never duplicates); skipped = nothing written (reason); error = linking failed, the submit still succeeded",
     }),
     reason: z.enum(['claim_locked', 'no_expenses']).nullable().meta({
       description:

@@ -309,7 +309,7 @@ export const DcrDraftPut = z
     calls: z.array(DcrCallInput).max(60).default([]),
     expenses: DcrExpenses.optional().meta({
       description:
-        'Day expenses (any work type), replaces the saved list. Omit to keep it. Categories travel/hotel/food/other (else 422 DCR_EXPENSE_CATEGORY_INVALID); item ids unique (422 VALIDATION)',
+        'Day expenses (any work type), replaces the saved list. Omit to keep it. Categories travel/hotel/food/other (else 422 DCR_EXPENSE_CATEGORY_INVALID). Receipt files go on the linked claim line',
     }),
     version: z.int().min(1).optional().meta({ description: 'Row version from the last read' }),
   })
