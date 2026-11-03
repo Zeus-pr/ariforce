@@ -25,6 +25,7 @@ import { isFieldRole } from '@/lib/roles';
 import { useRole } from '@/components/shell/role-context';
 import { CheckInMap, MapLegend } from './check-in-map';
 import { dateLabel, kindLabel, timeIST, todayIST } from './format';
+import { cachedGet } from '@/lib/query';
 
 /** Kolkata North centroid from the demo fixtures; used only when the browser gives no fix in mock mode. */
 const DEMO_FIX = { lat: 22.6, lng: 88.4 };
@@ -125,9 +126,11 @@ function AttendanceDayView({ today }: { today: string }) {
       ];
       const results = await Promise.all(
         Array.from({ length: Math.ceil(ids.length / 100) }, (_, i) =>
-          api.GET('/v1/doctors', {
-            params: { query: { ids: ids.slice(i * 100, (i + 1) * 100).join(','), limit: 100 } },
-          }),
+          cachedGet(['doctors', 'ids', ids.slice(i * 100, (i + 1) * 100).join(',')], () =>
+            api.GET('/v1/doctors', {
+              params: { query: { ids: ids.slice(i * 100, (i + 1) * 100).join(','), limit: 100 } },
+            }),
+          ),
         ),
       );
       if (!live) return;
@@ -359,7 +362,9 @@ function TodayPanel({
     setDoctorsError(null);
     try {
       await apiReady();
-      const r = await api.GET('/v1/doctors', { params: { query: { limit: 100, sort: 'name' } } });
+      const r = await cachedGet(['doctors', 'first-page'], () =>
+        api.GET('/v1/doctors', { params: { query: { limit: 100, sort: 'name' } } }),
+      );
       if (!r.data) throw new Error(toApiError(r).message || 'Could not load doctors.');
       setDoctors(r.data.items);
     } catch (cause) {

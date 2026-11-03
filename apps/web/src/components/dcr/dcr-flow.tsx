@@ -59,6 +59,7 @@ import {
   SfcPanel,
 } from './dcr-sections';
 import { SearchSelect, type SelectOption } from './search-select';
+import { cachedGet } from '@/lib/query';
 
 const noop = () => () => {};
 const nowHHmm = () =>
@@ -474,7 +475,9 @@ function Flow({
               const params = { query: { ids: batch.join(','), limit: 100 } };
               const r =
                 kind === 'doctor'
-                  ? await api.GET('/v1/doctors', { params })
+                  ? await cachedGet(['doctors', 'ids', batch.join(',')], () =>
+                      api.GET('/v1/doctors', { params }),
+                    )
                   : kind === 'chemist'
                     ? await api.GET('/v1/chemists', { params })
                     : await api.GET('/v1/stockists', { params });

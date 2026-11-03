@@ -45,6 +45,7 @@ import {
   type RcpaDraft,
 } from './pob-rcpa';
 import { ProductImg } from '@/components/media/product-img';
+import { cachedGet } from '@/lib/query';
 
 /** What the call form needs from a product. */
 type PickProduct = {
@@ -108,7 +109,9 @@ function DcrDay({ today }: { today: string }) {
       await apiReady();
       const [w, d, p, ch, st] = await Promise.all([
         api.GET('/v1/work-types', { params: { query: { limit: 100 } } }),
-        api.GET('/v1/doctors', { params: { query: { limit: 100, sort: 'name' } } }),
+        cachedGet(['doctors', 'first-page'], () =>
+          api.GET('/v1/doctors', { params: { query: { limit: 100, sort: 'name' } } }),
+        ),
         api.GET('/v1/products', { params: { query: { limit: 200 } } }),
         api.GET('/v1/chemists', { params: { query: { limit: 100 } } }),
         api.GET('/v1/stockists', { params: { query: { limit: 100 } } }),

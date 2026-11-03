@@ -44,6 +44,7 @@ import { DcrHistory } from './dcr-history';
 import { DcrMonthCalendar } from './month-calendar';
 import { DcrStatusSections } from './status-sections';
 import { Reveal } from './dcr-card-parts';
+import { cachedGet } from '@/lib/query';
 
 /**
  * DCR page: Calendar (month grid + status lists + in-place report) | History.
@@ -316,11 +317,11 @@ function CalendarPanel({
       for (let i = 0; i < doctors.length; i += 100) {
         const batch = doctors.slice(i, i + 100);
         jobs.push(() =>
-          api
-            .GET('/v1/doctors', { params: { query: { ids: batch.join(','), limit: 100 } } })
-            .then((r) => {
-              r.data?.items.forEach((d) => found.set(d.id, d.name));
-            }),
+          cachedGet(['doctors', 'ids', batch.join(',')], () =>
+            api.GET('/v1/doctors', { params: { query: { ids: batch.join(','), limit: 100 } } }),
+          ).then((r) => {
+            r.data?.items.forEach((d) => found.set(d.id, d.name));
+          }),
         );
       }
       for (const kind of ['chemist', 'stockist'] as const) {
