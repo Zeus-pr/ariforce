@@ -82,7 +82,7 @@ export const ProdEnv = z.object({
   CLIENT_IP_MODE: z
     .enum(['cloudflare', 'railway', 'socket'], 'must be cloudflare, railway or socket')
     .optional(),
-  EXPENSE_APPROVAL_LEVELS: z.enum(['1', '2'], 'must be 1 or 2').optional(),
+  EXPENSE_APPROVAL_LEVELS: z.enum(['1', '2', '3'], 'must be 1, 2 or 3').optional(),
   INVITE_RETURN_LINK: z
     .string()
     .refine((v) => v !== 'true', 'must not be true in production (leaks invite links)')

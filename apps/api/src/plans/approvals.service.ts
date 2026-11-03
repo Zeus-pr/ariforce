@@ -109,6 +109,12 @@ export interface EntityOptions {
    * and payload.approverIds lists them. None: request() throws 422 NO_APPROVER.
    */
   route?: 'manager' | 'permission_holders';
+  /**
+   * The last of `levels` is always the company's Director, whatever the manager chain above the
+   * previous level looks like (manager, their manager, then Director). Skipped when the previous
+   * approver or the decider already is the Director.
+   */
+  finalDirector?: boolean;
   onStep?: StepHook;
   /** Runs before any approve (every step, every route); throw to block (e.g. DCR_NOT_APPROVED). */
   beforeApprove?: (
@@ -735,6 +741,16 @@ export class ApprovalsService {
     return rows.rows.map((r) => r.id);
   }
 
+  /** The company's Director (oldest active one if several; any Director can decide). */
+  async directorId(tx: Tx): Promise<string | null> {
+    const rows = await tx.execute<{ id: string }>(sql`select u.id
+      from users u join user_roles ur on ur.user_id = u.id join roles r on r.id = ur.role_id
+      where u.deleted_at is null and u.status = 'active' and r.deleted_at is null
+        and r.key = 'director'
+      order by u.created_at, u.id limit 1`);
+    return rows.rows[0]?.id ?? null;
+  }
+
   async byId(tx: Tx, id: string): Promise<Approval> {
     const [r] = await tx.select().from(approvalRequests).where(eq(approvalRequests.id, id));
     return (await this.toDto(tx, [r!]))[0]!;
@@ -1241,12 +1257,24 @@ export class ApprovalsService {
         // A decider above the current approver (their manager or higher, e.g. the director) who
         // approves early covers the next level too: finish here instead of queueing a step for
         // someone at or below the decider (no duplicate or stuck step with skipped ranks).
-        const deciderCoversNext =
-          !!up?.managerId &&
+        const covers = (id: string | null | undefined) =>
+          !!id &&
           p.userId !== cur.approverUserId &&
-          (p.teamUserIds === null || p.teamUserIds.includes(up.managerId));
-        if (up?.managerId && up.managerId !== req.requestedBy && !deciderCoversNext) {
-          const next = req.currentStep + 1;
+          (p.teamUserIds === null || p.teamUserIds.includes(id));
+        let next = req.currentStep + 1;
+        let nextApprover: string | null | undefined =
+          opt.finalDirector && next === levels ? await this.directorId(tx) : up?.managerId;
+        // Director-final routes: a manager-rung decider who covers the next rung skips to the Director.
+        if (opt.finalDirector && next < levels && covers(nextApprover)) {
+          next = levels;
+          nextApprover = await this.directorId(tx);
+        }
+        if (
+          nextApprover &&
+          nextApprover !== req.requestedBy &&
+          nextApprover !== cur.approverUserId &&
+          !covers(nextApprover)
+        ) {
           await tx
             .update(approvalSteps)
             .set({ decision: 'approved', decidedBy: p.userId, decidedAt: new Date(), comment })
@@ -1256,13 +1284,13 @@ export class ApprovalsService {
             companyId: p.companyId,
             requestId: id,
             stepNo: next,
-            approverUserId: up.managerId,
+            approverUserId: nextApprover,
           });
           await tx
             .update(approvalRequests)
             .set({ currentStep: next })
             .where(eq(approvalRequests.id, id));
-          await opt.onStep?.(tx, p, req, next, up.managerId);
+          await opt.onStep?.(tx, p, req, next, nextApprover);
           await this.audit.record(tx, p, 'approval.step_approved', {
             entityType: req.entityType,
             entityId: req.entityId,

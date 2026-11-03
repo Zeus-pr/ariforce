@@ -1,16 +1,20 @@
 'use client';
 
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import type { Dcr } from '@ariforce/contracts';
+import { Button } from '@ariforce/ui/components/button';
 import { Skeleton } from '@ariforce/ui/components/skeleton';
+import { toast } from '@ariforce/ui/components/sonner';
+import { RejectDialog } from '@/components/approvals/reject-dialog';
 import { dateLabel, timeIST } from '@/components/attendance/format';
 import { useRole } from '@/components/shell/role-context';
 import { api, apiReady } from '@/lib/api';
 import { failureMessage } from '@/lib/dcr/errors';
 import { draftsOf, expensesOf } from '@/lib/dcr/expenses';
-import { money } from '@/lib/expenses/model';
+import { can, money } from '@/lib/expenses/model';
 import { useTeamPeople } from '@/lib/team/people';
 import { calls as callsLabel, dcrSummary } from './dcr-card-parts';
 import { DcrExpenses } from './dcr-expenses';
@@ -33,7 +37,7 @@ const noop = () => {};
 
 /** Someone's report, read-only, opened from the team list: key facts first, then the day's work. */
 export function TeamDcrDetail({ id }: { id: string }) {
-  const { role } = useRole();
+  const { role, user } = useRole();
   const people = useTeamPeople(role);
   const q = useQuery({
     queryKey: ['dcr', id],
@@ -77,6 +81,9 @@ export function TeamDcrDetail({ id }: { id: string }) {
               {dateLabel(d.date)} · {STATUS[d.status] ?? d.status}
             </p>
           </header>
+          {d.status === 'submitted' && d.userId !== user?.id && can(role, 'dcr:review') && (
+            <ReviewBar id={d.id} onDone={() => void q.refetch()} />
+          )}
           <ReportFacts d={d} nameOf={nameOf} />
           <WorkDone d={d} />
           <DcrExpenses
@@ -228,5 +235,55 @@ function WorkDone({ d }: { d: Dcr }) {
         </ul>
       )}
     </section>
+  );
+}
+
+const REASON_MAX = 500;
+
+/**
+ * Approve or reject a submitted report (POST /v1/dcrs/{id}/decision, dcr:review). Who may act is
+ * decided by the server: the owner's reporting line, the whole company for the Director.
+ */
+function ReviewBar({ id, onDone }: { id: string; onDone: () => void }) {
+  const qc = useQueryClient();
+  const [rejecting, setRejecting] = useState(false);
+  const decide = useMutation({
+    mutationFn: async (b: { decision: 'approve' } | { decision: 'reject'; comment: string }) => {
+      await apiReady();
+      const r = await api.POST('/v1/dcrs/{id}/decision', { params: { path: { id } }, body: b });
+      if (!r.data) throw new Error(failureMessage(r, 'Could not save the decision.'));
+      return b.decision;
+    },
+    onSuccess: (decision) => {
+      toast.success(decision === 'approve' ? 'Report approved' : 'Report rejected');
+      setRejecting(false);
+      void qc.invalidateQueries({ queryKey: ['dcr'] });
+      void qc.invalidateQueries({ queryKey: ['approvals-org'] });
+      onDone();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-testid="dcr-review">
+      <Button disabled={decide.isPending} onClick={() => decide.mutate({ decision: 'approve' })}>
+        Approve
+      </Button>
+      <Button variant="outline" disabled={decide.isPending} onClick={() => setRejecting(true)}>
+        Reject
+      </Button>
+      <RejectDialog
+        open={rejecting}
+        title="Reject this report?"
+        description="The rep can file a new report for the day. Say what to fix."
+        busy={decide.isPending}
+        onOpenChange={setRejecting}
+        onConfirm={(reason) => {
+          const comment = reason.trim();
+          if (comment.length > REASON_MAX)
+            return toast.error(`Keep the reason under ${REASON_MAX} characters.`);
+          decide.mutate({ decision: 'reject', comment });
+        }}
+      />
+    </div>
   );
 }

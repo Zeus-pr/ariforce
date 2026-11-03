@@ -253,11 +253,6 @@ export function ExpensesView() {
             : scope === 'team'
               ? 'Nothing to approve.'
               : 'Nothing to pay.'}
-          {scope === 'mine' && mayWrite && (
-            <Button className="bg-brand-600 hover:bg-brand-700" onClick={() => setCreating(true)}>
-              <Plus aria-hidden /> New expense
-            </Button>
-          )}
         </div>
       ) : (
         <>

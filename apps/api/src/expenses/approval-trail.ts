@@ -42,6 +42,7 @@ export function buildTrail(
   req: TrailRequest | null,
   steps: TrailStep[],
   users: Map<string, TrailUser>,
+  finalApproverId: string | null = null,
 ): { approvalTrail: ExpenseApprovalLevel[]; currentApprover: ExpenseApprover | null } {
   if (!req) return { approvalTrail: [], currentApprover: null };
   const ref = (id: string | null): ExpenseApprover | null => {
@@ -74,7 +75,13 @@ export function buildTrail(
     // No step row: projected while pending, otherwise the request finished before this level.
     let projected: string | null = null;
     if (req.state === 'pending' && prevApprover) {
-      const m: string | null = users.get(prevApprover)?.managerId ?? null;
+      // finalApproverId: the last level is that person (the Director), not the next manager.
+      const m: string | null =
+        finalApproverId && level === totalLevels && level >= 3
+          ? prevApprover === finalApproverId
+            ? null
+            : finalApproverId
+          : (users.get(prevApprover)?.managerId ?? null);
       if (m && m !== req.requestedBy) projected = m;
     }
     out.push({
