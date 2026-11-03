@@ -26,7 +26,7 @@ async function get(query: Record<string, string>) {
 }
 
 /** Headline + breakdown for one month, and a headline trend over the last six months. */
-export function usePerf(role: Role, month: string | null, kpis: readonly string[]) {
+export function usePerf(role: Role, month: string | null, kpis: readonly string[], refresh = 0) {
   const [state, setState] = useState<{
     head: Row | null;
     rows: Row[];
@@ -80,7 +80,7 @@ export function usePerf(role: Role, month: string | null, kpis: readonly string[
     return () => {
       live = false;
     };
-  }, [role, month, key]);
+  }, [role, month, key, refresh]);
   return state;
 }
 

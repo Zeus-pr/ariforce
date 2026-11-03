@@ -137,7 +137,11 @@ export class SalesService {
         throw err(422, 'VALIDATION', 'A period may cover at most 36 months', { field: 'toMonth' });
       const each = b.spread === 'total' ? r2(b.value / months.length) : b.value;
       const quantity =
-        b.quantity === null ? null : b.spread === 'total' ? Math.round(b.quantity / months.length) : b.quantity;
+        b.quantity === null
+          ? null
+          : b.spread === 'total'
+            ? Math.round(b.quantity / months.length)
+            : b.quantity;
       if (!b.overwrite) {
         const taken = await tx
           .select({ month: salesTargets.month })
@@ -148,10 +152,7 @@ export class SalesService {
               eq(salesTargets.kind, b.kind),
               isNull(salesTargets.productId),
               isNull(salesTargets.deletedAt),
-              inArray(
-                salesTargets.month,
-                months.map(monthStartOf),
-              ),
+              inArray(salesTargets.month, months.map(monthStartOf)),
             ),
           );
         if (taken.length)

@@ -55,14 +55,22 @@ function ratio(
     : null;
   return { kpi, value, numerator: n, denominator: d, unit, target };
 }
-const count = (kpi: KpiKey, v: number, unit: Metric['unit'] = 'count'): Metric => ({
+const count = (
+  kpi: KpiKey,
+  v: number,
+  unit: Metric['unit'] = 'count',
+  target: number | null = null,
+): Metric => ({
   kpi,
   value: v,
   numerator: v,
   denominator: null,
   unit,
-  target: null,
+  target,
 });
+
+/** Target amount of the period, or null while no target is set (a 0 target would read as "no goal"). */
+const amount = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 
 /** Months (first day, YYYY-MM-01) overlapping [from, to]. */
 function months(from: string, to: string) {
@@ -329,7 +337,13 @@ export class KpisService {
         unit: 'percent',
         target: null,
       }),
-      primary_sales_value: () => count('primary_sales_value', num(data?.primary_actual), 'inr'),
+      primary_sales_value: () =>
+        count(
+          'primary_sales_value',
+          num(data?.primary_actual),
+          'inr',
+          amount(data?.primary_target),
+        ),
       primary_achievement_pct: () =>
         ratio(
           'primary_achievement_pct',
@@ -339,7 +353,12 @@ export class KpisService {
           100,
         ),
       secondary_sales_value: () =>
-        count('secondary_sales_value', num(data?.secondary_actual), 'inr'),
+        count(
+          'secondary_sales_value',
+          num(data?.secondary_actual),
+          'inr',
+          amount(data?.secondary_target),
+        ),
       secondary_achievement_pct: () =>
         ratio(
           'secondary_achievement_pct',
