@@ -1,6 +1,7 @@
 import type { Tx } from '@ariforce/db';
 import { sql } from 'drizzle-orm';
 import { err } from '../field/checkins.service';
+import { submittedReportSql } from '../dcr/day-report';
 
 /** Approved leave on a date (weekly offs excluded), from the kpi_user_leave_day view (#51). */
 export interface LeaveDay {
@@ -75,4 +76,56 @@ export function assertNotOnLeave(
     throw err(422, 'LEAVE_DAY_BLOCKED', 'You are on approved leave on these dates', {
       dates: [...bad].sort(),
     });
+}
+
+/**
+ * Serialises "approve leave" against "submit a DCR" for one user (transaction-scoped advisory lock).
+ * Both sides take it before their check (leave approval: no submitted DCR on the leave dates; DCR
+ * submit: no approved leave on the day), so neither can commit past the other's check.
+ */
+export async function lockDcrLeave(tx: Tx, userId: string) {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`ariforce:dcr-leave:${userId}`}, 0))`,
+  );
+}
+
+export interface LeaveDcrConflict {
+  dates: string[];
+  dcrIds: string[];
+}
+
+/** Submitted/approved DCRs on the leave's dates -> the 409 details (sorted, unique), or null. */
+export function leaveDcrConflict(rows: { id: string; date: string }[]): LeaveDcrConflict | null {
+  if (!rows.length) return null;
+  return {
+    dates: [...new Set(rows.map((r) => r.date))].sort(),
+    dcrIds: [...new Set(rows.map((r) => r.id))].sort(),
+  };
+}
+
+/**
+ * Leave approval guard (Sharanya 2026-10-28: block approval until the DCR is sorted out): every date
+ * from fromDate to toDate (half days included) must have no live submitted/approved DCR of the user.
+ * Drafts never block. Throws 409 LEAVE_DCR_CONFLICT { dates, dcrIds }. Takes lockDcrLeave first.
+ */
+export async function assertNoSubmittedDcr(
+  tx: Tx,
+  userId: string,
+  fromDate: string,
+  toDate: string,
+) {
+  await lockDcrLeave(tx, userId);
+  const r = await tx.execute<{ id: string; date: string }>(sql`
+    select d.id, to_char(d.date, 'YYYY-MM-DD') as date from dcrs d
+    where d.user_id = ${userId} and ${submittedReportSql('d')}
+      and d.date between ${fromDate}::date and ${toDate}::date
+    order by d.date, d.id`);
+  const c = leaveDcrConflict(r.rows);
+  if (c)
+    throw err(
+      409,
+      'LEAVE_DCR_CONFLICT',
+      'A submitted DCR exists on these leave dates; sort the DCR out (correction) before approving',
+      c,
+    );
 }

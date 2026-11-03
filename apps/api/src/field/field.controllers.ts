@@ -31,6 +31,7 @@ import { ZodPipe } from '../common/zod.pipe';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { CheckInsService, capDate, err, toCheckIn, type CheckInQuery } from './checkins.service';
 import { MAX_RANGE_DAYS, companySettings, dateRange, localDate } from './field.util';
+import { isSubmittedReport } from '../dcr/day-report';
 
 @Controller({ path: 'check-ins', version: '1' })
 export class CheckInsController {
@@ -118,7 +119,8 @@ export class AttendanceController {
               ),
             )
         : [];
-      // Leave/holiday come from the day's DCR work type, else the approved tour plan's first session.
+      // Leave/holiday come from the day's submitted DCR work type (drafts ignored), else the approved
+      // tour plan's first session.
       const dayRows = ids.length
         ? await tx
             .select({
@@ -134,6 +136,7 @@ export class AttendanceController {
                 inArray(dcrs.userId, ids),
                 sql`${dcrs.date} between ${from} and ${to}`,
                 sql`${dcrs.deletedAt} is null`,
+                isSubmittedReport(dcrs),
               ),
             )
         : [];

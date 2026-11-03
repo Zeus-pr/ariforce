@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { TenantService } from '../common/tenant.service';
 import { JobsRunner } from '../jobs/jobs.runner';
 import { JobsService } from '../jobs/jobs.service';
+import { ExceptionRecheck } from '../jobs/exception-recheck';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 
@@ -9,7 +10,7 @@ import { NotificationsService } from './notifications.service';
 @Global()
 @Module({
   controllers: [NotificationsController],
-  providers: [TenantService, JobsService, JobsRunner, NotificationsService],
-  exports: [JobsService, JobsRunner, NotificationsService],
+  providers: [TenantService, JobsService, JobsRunner, NotificationsService, ExceptionRecheck],
+  exports: [JobsService, JobsRunner, NotificationsService, ExceptionRecheck],
 })
 export class NotificationsModule {}

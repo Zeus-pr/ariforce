@@ -246,7 +246,11 @@ export function OrgTree({
                     {ROLE_SHORT[e.role]}
                   </Badge>
                   {e.invited && (
-                    <Badge variant="outline" className="font-normal text-muted-foreground" data-testid="node-no-login">
+                    <Badge
+                      variant="outline"
+                      className="font-normal text-muted-foreground"
+                      data-testid="node-no-login"
+                    >
                       No login yet
                     </Badge>
                   )}

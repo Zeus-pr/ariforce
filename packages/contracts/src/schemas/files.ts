@@ -7,6 +7,7 @@ export const FILE_PURPOSES = [
   'expense_receipt',
   'avatar',
   'import_source',
+  'product_image',
 ] as const;
 export const FilePurpose = z.enum(FILE_PURPOSES).meta({ id: 'FilePurpose' });
 export const ALLOWED_CONTENT_TYPES = [
@@ -23,6 +24,10 @@ export const IMPORT_CONTENT_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ] as const;
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+/** `product_image` (product picture, attached via PUT /v1/products/{id}/image). */
+export const PRODUCT_IMAGE_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export type ProductImageContentType = (typeof PRODUCT_IMAGE_CONTENT_TYPES)[number];
+export const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 export const UploadUrlRequest = z
   .object({
@@ -41,6 +46,16 @@ export const UploadUrlRequest = z
       path: ['contentType'],
     },
   )
+  .refine(
+    (r) =>
+      r.purpose !== 'product_image' ||
+      (PRODUCT_IMAGE_CONTENT_TYPES as readonly string[]).includes(r.contentType),
+    { message: 'product_image needs image/jpeg, image/png or image/webp', path: ['contentType'] },
+  )
+  .refine((r) => r.purpose !== 'product_image' || r.sizeBytes <= PRODUCT_IMAGE_MAX_BYTES, {
+    message: 'product_image is at most 5 MB',
+    path: ['sizeBytes'],
+  })
   .meta({ id: 'UploadUrlRequest' });
 export type UploadUrlRequest = z.infer<typeof UploadUrlRequest>;
 

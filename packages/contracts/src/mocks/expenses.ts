@@ -147,7 +147,14 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
         rejectedAt: null,
         paidAt: null,
         paymentRef: null,
+        dcrRejectedDates: [],
         version: 1,
+        approvalTrail: [],
+        totalLevels: 2,
+        currentApprover: null,
+        canDecide: false,
+        canPay: false,
+        paidBy: null,
       };
       claims.push(c);
       return HttpResponse.json(out(c), { status: 201 });
@@ -173,6 +180,8 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
         claimId: f.c.id,
         source: 'manual' as const,
         allowancePlaceId: null,
+        autoTrigger: null,
+        dcrRejectedAt: null,
         attachments: [],
         version: 1,
       };
@@ -310,7 +319,13 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
           day.da = rate.daAmount;
           day.ta = rate.taFixed;
           const base = { date, notes: null, mileageKm: null, dcrId: day.dcrId, tourPlanId: null };
-          const auto = { claimId: f.c.id, source: 'auto' as const, allowancePlaceId: null };
+          const auto = {
+            claimId: f.c.id,
+            source: 'auto' as const,
+            allowancePlaceId: null,
+            autoTrigger: 'allowances_run' as const,
+            dcrRejectedAt: null,
+          };
           if (day.da)
             lines.push({
               ...base,
@@ -406,7 +421,13 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
       if (c.status !== 'approved') return e(409, 'CONFLICT', `Claim is ${c.status}`);
       const b = ExpensePay.safeParse(await request.json().catch(() => null));
       if (!b.success) return e(422, 'VALIDATION', 'paymentRef required');
-      Object.assign(c, { status: 'paid', paidAt: now(), paymentRef: b.data.paymentRef });
+      Object.assign(c, {
+        status: 'paid',
+        paidAt: now(),
+        paymentRef: b.data.paymentRef,
+        paidBy: { id: g.p.id, name: g.p.name },
+        canPay: false,
+      });
       return HttpResponse.json(out(c));
     }),
     http.get(`${B}/expense-claims/:id/reconciliation`, ({ request, params }) => {

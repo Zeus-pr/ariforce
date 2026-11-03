@@ -64,15 +64,18 @@ export type Person = {
   rank: number;
 };
 
+/** An invite email held until the transaction that issued the invite has committed. */
+export type PendingInvite = { to: string; name: string; token: string; expiresAt: Date };
+
 /**
  * Invite email (item F): sends the set-password link through MailService (Resend, or a log line
- * when RESEND_API_KEY is unset). Logs never contain the token or link. Sent fire-and-forget from
- * inside the transaction: a send failure never blocks the invite (admins can resend / copy link).
+ * when RESEND_API_KEY is unset). Logs never contain the token or link. Sent fire-and-forget only
+ * after the transaction commits: a send failure never blocks the invite (admins can resend / copy link).
  */
 @Injectable()
 export class InviteMailer {
   constructor(private readonly mail: MailService) {}
-  send(to: string, name: string, token: string, expiresAt: Date) {
+  send({ to, name, token, expiresAt }: PendingInvite) {
     const base = process.env.WEB_ORIGIN?.split(',')[0]?.trim() || 'http://localhost:3000';
     void this.mail.invite(to, name, `${base}/invite?token=${encodeURIComponent(token)}`, expiresAt);
   }
@@ -335,7 +338,28 @@ export class TeamService {
     return r.id;
   }
 
-  private async issueInvite(tx: Tx, p: Principal, userId: string) {
+  /**
+   * Runs fn in the tenant transaction and sends the invite emails it queued only after the commit,
+   * so a rolled-back invite never emails a dead link. Sends are fire-and-forget (never fail the
+   * request) and log kind + recipient only.
+   */
+  private async runThenMail<T>(
+    p: Principal,
+    fn: (tx: Tx, outbox: PendingInvite[]) => Promise<T>,
+  ): Promise<T> {
+    const outbox: PendingInvite[] = [];
+    const out = await this.tenant.run(p, (tx) => fn(tx, outbox));
+    for (const m of outbox) {
+      try {
+        this.mailer.send(m);
+      } catch (e) {
+        this.log.error(`invite mail failed: ${(e as Error).name}`);
+      }
+    }
+    return out;
+  }
+
+  private async issueInvite(tx: Tx, p: Principal, userId: string, outbox: PendingInvite[]) {
     await tx
       .update(userInvites)
       .set({ revokedAt: new Date() })
@@ -367,7 +391,7 @@ export class TeamService {
       .select({ name: users.name, email: users.email })
       .from(users)
       .where(eq(users.id, userId));
-    if (who?.email) this.mailer.send(who.email, who.name, token, expiresAt);
+    if (who?.email) outbox.push({ to: who.email, name: who.name, token, expiresAt });
     const base = process.env.WEB_ORIGIN?.split(',')[0] ?? 'http://localhost:3000';
     return {
       id: inv!.id,
@@ -381,7 +405,7 @@ export class TeamService {
   }
 
   create(p: Principal, b: z.infer<typeof EmployeeCreate>) {
-    return this.tenant.run(p, async (tx) => {
+    return this.runThenMail(p, async (tx, outbox) => {
       const admin = isAdmin(p);
       if (!admin && hierarchyRank(p.roles) < MIN_MANAGER_RANK)
         throw err(403, 'FORBIDDEN', 'Only ABM and above can add employees');
@@ -434,7 +458,7 @@ export class TeamService {
         entityId: u!.id,
         after: { ...b },
       });
-      const invite = await this.issueInvite(tx, p, u!.id);
+      const invite = await this.issueInvite(tx, p, u!.id, outbox);
       const all2 = await this.people(tx);
       const [employee] = await this.nodes(tx, all2, [[all2.get(u!.id)!, 1]]);
       return { employee: employee!, invite };
@@ -536,7 +560,7 @@ export class TeamService {
   }
 
   update(p: Principal, id: string, b: z.infer<typeof EmployeeUpdate>) {
-    return this.tenant.run(p, async (tx) => {
+    return this.runThenMail(p, async (tx, outbox) => {
       const admin = isAdmin(p);
       const all = await this.people(tx);
       const t = await this.assertManageable(tx, p, all, id);
@@ -680,7 +704,7 @@ export class TeamService {
         },
       );
       // A pending invite follows the new email (old link revoked, new one sent).
-      if (emailChanged && t.status === 'invited') await this.issueInvite(tx, p, id);
+      if (emailChanged && t.status === 'invited') await this.issueInvite(tx, p, id, outbox);
       await this.repointApprovals(tx, p, t, mgrAfter, newRank, statusAfter);
       // #79: deactivation or a role change signs the user out everywhere.
       const statusOff = b.status !== undefined && b.status !== t.status && b.status !== 'active';
@@ -765,7 +789,7 @@ export class TeamService {
   }
 
   reinvite(p: Principal, id: string) {
-    return this.tenant.run(p, async (tx) => {
+    return this.runThenMail(p, async (tx, outbox) => {
       const all = await this.people(tx);
       const t = await this.assertManageable(tx, p, all, id);
       if (t.hasLogin || t.status === 'suspended')
@@ -783,7 +807,7 @@ export class TeamService {
           .update(users)
           .set({ status: 'invited', updatedAt: new Date() })
           .where(eq(users.id, id));
-      return this.issueInvite(tx, p, id);
+      return this.issueInvite(tx, p, id, outbox);
     });
   }
 

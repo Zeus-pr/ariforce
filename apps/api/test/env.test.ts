@@ -27,6 +27,12 @@ describe('env validation (#80)', () => {
     expect(envProblems(good)).toEqual([]);
     expect(() => validateEnv(good)).not.toThrow();
   });
+  it('accepts railway client IP mode and rejects unknown modes', () => {
+    expect(envProblems({ ...good, CLIENT_IP_MODE: 'railway' })).toEqual([]);
+    expect(envProblems({ ...good, CLIENT_IP_MODE: 'unknown' })).toEqual([
+      'CLIENT_IP_MODE: must be cloudflare, railway or socket',
+    ]);
+  });
   it('missing variables are listed by name', () => {
     const p = envProblems({ NODE_ENV: 'production' });
     for (const n of [

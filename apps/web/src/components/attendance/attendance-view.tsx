@@ -2,12 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { toast } from '@ariforce/ui/components/sonner';
-import type { AttendanceDay, CheckIn, CheckInCreate, ConsentState, Doctor } from '@ariforce/contracts';
+import type {
+  AttendanceDay,
+  CheckIn,
+  CheckInCreate,
+  ConsentState,
+  Doctor,
+} from '@ariforce/contracts';
 import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ariforce/ui/components/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@ariforce/ui/components/select';
 import { api, apiReady, MOCKING, toApiError } from '@/lib/api';
 import { isFieldRole } from '@/lib/roles';
 import { useRole } from '@/components/shell/role-context';
@@ -17,12 +29,25 @@ import { dateLabel, kindLabel, timeIST, todayIST } from './format';
 /** Kolkata North centroid from the demo fixtures; used only when the browser gives no fix in mock mode. */
 const DEMO_FIX = { lat: 22.6, lng: 88.4 };
 
-type Fix = { location: { lat: number; lng: number }; accuracyM: number; capturedAt: string; isMock: boolean; demo: boolean };
+type Fix = {
+  location: { lat: number; lng: number };
+  accuracyM: number;
+  capturedAt: string;
+  isMock: boolean;
+  demo: boolean;
+};
 
 function getFix(): Promise<Fix> {
-  const demo = (): Fix => ({ location: DEMO_FIX, accuracyM: 25, capturedAt: new Date().toISOString(), isMock: false, demo: true });
+  const demo = (): Fix => ({
+    location: DEMO_FIX,
+    accuracyM: 25,
+    capturedAt: new Date().toISOString(),
+    isMock: false,
+    demo: true,
+  });
   return new Promise((resolve, reject) => {
-    if (!('geolocation' in navigator)) return MOCKING ? resolve(demo()) : reject(new Error('This browser has no location access.'));
+    if (!('geolocation' in navigator))
+      return MOCKING ? resolve(demo()) : reject(new Error('This browser has no location access.'));
     navigator.geolocation.getCurrentPosition(
       (p) =>
         resolve({
@@ -62,7 +87,8 @@ function AttendanceDayView({ today }: { today: string }) {
   const [checkIns, setCheckIns] = useState<CheckIn[] | null>(null);
   const [days, setDays] = useState<AttendanceDay[] | null>(null);
   const [consent, setConsent] = useState<ConsentState | null>(null);
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [doctorNames, setDoctorNames] = useState<Map<string, string>>(new Map());
+  const [doctorNamesError, setDoctorNamesError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -84,36 +110,77 @@ function AttendanceDayView({ today }: { today: string }) {
   }, [load]);
 
   useEffect(() => {
+    if (!checkIns?.length) {
+      setDoctorNames(new Map());
+      setDoctorNamesError(null);
+      return;
+    }
+    let live = true;
     void (async () => {
       await apiReady();
-      const [cs, d] = await Promise.all([
-        api.GET('/v1/me/consent'),
-        api.GET('/v1/doctors', { params: { query: { limit: 100, sort: 'name' } } }),
-      ]);
-      if (cs.data) setConsent(cs.data);
-      if (d.data) setDoctors(d.data.items);
-    })().catch(() => {});
-  }, []);
+      const ids = [
+        ...new Set(
+          checkIns.flatMap((c) => (c.outletId && c.outletKind === 'doctor' ? [c.outletId] : [])),
+        ),
+      ];
+      const results = await Promise.all(
+        Array.from({ length: Math.ceil(ids.length / 100) }, (_, i) =>
+          api.GET('/v1/doctors', {
+            params: { query: { ids: ids.slice(i * 100, (i + 1) * 100).join(','), limit: 100 } },
+          }),
+        ),
+      );
+      if (!live) return;
+      const names = new Map<string, string>();
+      const failed = results.find((result) => result.error);
+      for (const result of results) {
+        if (result.data) result.data.items.forEach((doctor) => names.set(doctor.id, doctor.name));
+      }
+      setDoctorNames(names);
+      setDoctorNamesError(failed ? toApiError(failed).message : null);
+    })().catch(() => {
+      if (live) {
+        setDoctorNames(new Map());
+        setDoctorNamesError('Could not load doctor names for check-ins.');
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [checkIns]);
 
-  const doctorName = useMemo(() => new Map(doctors.map((d) => [d.id, d.name])), [doctors]);
+  useEffect(() => {
+    if (!field) return;
+    void apiReady()
+      .then(() => api.GET('/v1/me/consent'))
+      .then((r) => {
+        if (r.data) setConsent(r.data);
+      })
+      .catch(() => {});
+  }, [field]);
+
   const placeOf = useCallback(
-    (c: CheckIn) => (c.outletId ? (doctorName.get(c.outletId) ?? `${c.outletKind} visit`) : kindLabel(c.kind)),
-    [doctorName],
+    (c: CheckIn) =>
+      c.outletId ? (doctorNames.get(c.outletId) ?? `${c.outletKind} visit`) : kindLabel(c.kind),
+    [doctorNames],
   );
 
   const points = checkIns ?? [];
-  const sorted = useMemo(() => [...points].sort((a, b) => a.capturedAt.localeCompare(b.capturedAt)), [points]);
+  const sorted = useMemo(
+    () => [...points].sort((a, b) => a.capturedAt.localeCompare(b.capturedAt)),
+    [points],
+  );
 
   return (
     <div className="flex flex-col gap-6">
-      {field && date === today && (
-        <TodayPanel consent={consent} checkIns={points} doctors={doctors} onDone={load} />
-      )}
+      {field && date === today && <TodayPanel consent={consent} checkIns={points} onDone={load} />}
 
       <section className="flex flex-col gap-3" aria-labelledby="att-day">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 id="att-day" className="text-base font-semibold">{dateLabel(date)}</h2>
+            <h2 id="att-day" className="text-base font-semibold">
+              {dateLabel(date)}
+            </h2>
             <p className="text-sm text-muted-foreground">
               GPS is captured only at punch in, each visit and punch out. No tracking in between.
             </p>
@@ -132,7 +199,11 @@ function AttendanceDayView({ today }: { today: string }) {
           </div>
         </div>
 
-        {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+        {error && (
+          <p className="text-sm text-destructive" role="alert">
+            {error}
+          </p>
+        )}
 
         <CheckInMap
           points={points}
@@ -158,9 +229,17 @@ function AttendanceDayView({ today }: { today: string }) {
             </thead>
             <tbody>
               {checkIns === null ? (
-                <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">Loading…</td></tr>
+                <tr>
+                  <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                    Loading…
+                  </td>
+                </tr>
               ) : sorted.length === 0 ? (
-                <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">No check-ins on this day.</td></tr>
+                <tr>
+                  <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                    No check-ins on this day.
+                  </td>
+                </tr>
               ) : (
                 sorted.map((c) => (
                   <tr
@@ -173,7 +252,9 @@ function AttendanceDayView({ today }: { today: string }) {
                     <td className="px-3 py-2 tabular-nums">{timeIST(c.capturedAt)}</td>
                     <td className="px-3 py-2">{kindLabel(c.kind)}</td>
                     <td className="px-3 py-2">{c.outletId ? placeOf(c) : '—'}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">±{Math.round(c.accuracyM)} m</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      ±{Math.round(c.accuracyM)} m
+                    </td>
                     <td className="px-3 py-2">
                       {c.inFence === null ? (
                         <span className="text-muted-foreground">n/a</span>
@@ -184,7 +265,11 @@ function AttendanceDayView({ today }: { today: string }) {
                           Outside{c.distanceM !== null ? ` · ${Math.round(c.distanceM)} m` : ''}
                         </Badge>
                       )}
-                      {c.isMock && <Badge variant="destructive" className="ml-2">Mock GPS</Badge>}
+                      {c.isMock && (
+                        <Badge variant="destructive" className="ml-2">
+                          Mock GPS
+                        </Badge>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -192,10 +277,17 @@ function AttendanceDayView({ today }: { today: string }) {
             </tbody>
           </table>
         </div>
+        {doctorNamesError && (
+          <p className="text-sm text-destructive" role="alert">
+            {doctorNamesError}
+          </p>
+        )}
       </section>
 
       <section className="flex flex-col gap-3" aria-labelledby="att-days">
-        <h2 id="att-days" className="text-base font-semibold">Day summary</h2>
+        <h2 id="att-days" className="text-base font-semibold">
+          Day summary
+        </h2>
         <div className="overflow-x-auto rounded-lg border" data-testid="att-days">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-muted-foreground">
@@ -209,16 +301,28 @@ function AttendanceDayView({ today }: { today: string }) {
             </thead>
             <tbody>
               {(days ?? []).length === 0 ? (
-                <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">{days ? 'Nobody has punched in on this day.' : 'Loading…'}</td></tr>
+                <tr>
+                  <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                    {days ? 'Nobody has punched in on this day.' : 'Loading…'}
+                  </td>
+                </tr>
               ) : (
                 days!.map((d) => (
                   <tr key={`${d.userId}${d.date}`} className="border-t" data-testid="att-day-row">
                     <td className="px-3 py-2 font-medium">{d.userName}</td>
                     <td className="px-3 py-2">
-                      <span className={`rounded px-1.5 py-0.5 text-xs font-medium capitalize ${STATUS_TONE[d.status]}`}>{d.status}</span>
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-xs font-medium capitalize ${STATUS_TONE[d.status]}`}
+                      >
+                        {d.status}
+                      </span>
                     </td>
-                    <td className="px-3 py-2 tabular-nums">{d.punchIn ? timeIST(d.punchIn.capturedAt) : '—'}</td>
-                    <td className="px-3 py-2 tabular-nums">{d.punchOut ? timeIST(d.punchOut.capturedAt) : '—'}</td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {d.punchIn ? timeIST(d.punchIn.capturedAt) : '—'}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {d.punchOut ? timeIST(d.punchOut.capturedAt) : '—'}
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums">{d.visits}</td>
                   </tr>
                 ))
@@ -234,19 +338,36 @@ function AttendanceDayView({ today }: { today: string }) {
 function TodayPanel({
   consent,
   checkIns,
-  doctors,
   onDone,
 }: {
   consent: ConsentState | null;
   checkIns: CheckIn[];
-  doctors: Doctor[];
   onDone: () => Promise<unknown>;
 }) {
   const [busy, setBusy] = useState<CheckIn['kind'] | null>(null);
   const [doctorId, setDoctorId] = useState<string>('');
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(false);
+  const [doctorsError, setDoctorsError] = useState<string | null>(null);
   const hasIn = checkIns.some((c) => c.kind === 'punch_in');
   const hasOut = checkIns.some((c) => c.kind === 'punch_out');
   const blocked = consent ? !consent.canCheckIn : false;
+
+  async function loadDoctors() {
+    if (doctors.length || doctorsLoading) return;
+    setDoctorsLoading(true);
+    setDoctorsError(null);
+    try {
+      await apiReady();
+      const r = await api.GET('/v1/doctors', { params: { query: { limit: 100, sort: 'name' } } });
+      if (!r.data) throw new Error(toApiError(r).message || 'Could not load doctors.');
+      setDoctors(r.data.items);
+    } catch (cause) {
+      setDoctorsError(cause instanceof Error ? cause.message : 'Could not load doctors.');
+    } finally {
+      setDoctorsLoading(false);
+    }
+  }
 
   async function submit(kind: CheckIn['kind']) {
     setBusy(kind);
@@ -275,15 +396,28 @@ function TodayPanel({
 
   const state = !hasIn ? 'Not punched in' : hasOut ? 'Day closed' : 'On the field';
   return (
-    <section aria-labelledby="att-today" className="af-enter rounded-lg border p-4" data-testid="att-today">
+    <section
+      aria-labelledby="att-today"
+      className="af-enter rounded-lg border p-4"
+      data-testid="att-today"
+    >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="att-today" className="text-base font-semibold">Today</h2>
-        <p className="text-sm text-muted-foreground" data-testid="att-state">{state}</p>
+        <h2 id="att-today" className="text-base font-semibold">
+          Today
+        </h2>
+        <p className="text-sm text-muted-foreground" data-testid="att-state">
+          {state}
+        </p>
       </div>
       {blocked ? (
         <p className="mt-3 text-sm">
           Location consent is needed before you can check in.{' '}
-          <a className="underline underline-offset-4" href={consent!.noticeUrl} target="_blank" rel="noreferrer">
+          <a
+            className="underline underline-offset-4"
+            href={consent!.noticeUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
             Read the notice
           </a>
           .
@@ -299,21 +433,46 @@ function TodayPanel({
             <>
               <div className="flex flex-col gap-1.5 sm:w-72">
                 <Label htmlFor="att-doctor">Visit</Label>
-                <Select value={doctorId} onValueChange={setDoctorId}>
+                <Select
+                  value={doctorId}
+                  onValueChange={setDoctorId}
+                  onOpenChange={(open) => {
+                    if (open) void loadDoctors();
+                  }}
+                >
                   <SelectTrigger id="att-doctor" data-testid="visit-doctor" className="w-full">
                     <SelectValue placeholder="Choose a doctor" />
                   </SelectTrigger>
                   <SelectContent>
                     {doctors.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {doctorsLoading && (
+                  <p className="text-xs text-muted-foreground">Loading doctors…</p>
+                )}
+                {doctorsError && (
+                  <p className="text-xs text-destructive" role="alert">
+                    {doctorsError}
+                  </p>
+                )}
               </div>
-              <Button onClick={() => submit('visit')} disabled={!doctorId || !!busy} data-testid="check-in-visit">
+              <Button
+                onClick={() => submit('visit')}
+                disabled={!doctorId || !!busy}
+                data-testid="check-in-visit"
+              >
                 {busy === 'visit' ? 'Getting location…' : 'Check in'}
               </Button>
-              <Button variant="outline" onClick={() => submit('punch_out')} disabled={!!busy} data-testid="punch-out">
+              <Button
+                variant="outline"
+                onClick={() => submit('punch_out')}
+                disabled={!!busy}
+                data-testid="punch-out"
+              >
                 {busy === 'punch_out' ? 'Getting location…' : 'Punch out'}
               </Button>
             </>
@@ -321,7 +480,9 @@ function TodayPanel({
         </div>
       )}
       {MOCKING && (
-        <p className="mt-3 text-xs text-muted-foreground">Mock mode: if the browser gives no location, a demo point in Kolkata North is used.</p>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Mock mode: if the browser gives no location, a demo point in Kolkata North is used.
+        </p>
       )}
     </section>
   );

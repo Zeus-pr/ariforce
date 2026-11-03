@@ -7,6 +7,7 @@ import type { Principal } from '../auth/principal';
 import { TenantService } from '../common/tenant.service';
 import { JobsRunner } from '../jobs/jobs.runner';
 import { JobsService } from '../jobs/jobs.service';
+import { AUTO_APPROVE_REASON } from '../plans/auto-approve';
 import { render, type NotifyData } from './templates';
 
 export interface NotifyEvent {
@@ -36,23 +37,27 @@ export class NotificationsService {
     runner: JobsRunner,
   ) {
     runner.register('notify', ({ tx, companyId, payload }) =>
-      this.deliver(tx, companyId!, payload as unknown as NotifyEvent & { actorId: string }),
+      this.deliver(tx, companyId!, payload as unknown as NotifyEvent & { actorId: string | null }),
     );
   }
 
   /**
    * Called inside the business transaction. Savepoint: a failure here is logged and swallowed so the
-   * business change still commits. Self-notifications are skipped.
+   * business change still commits. Self-notifications are skipped, except for the system principal
+   * (director auto-approvals): then the director is told, actorId is null and data.autoApproved true.
    */
   async notify(tx: Tx, p: Principal, ev: NotifyEvent) {
-    if (!ev.recipientId || ev.recipientId === p.userId) return;
+    if (!ev.recipientId || (!p.system && ev.recipientId === p.userId)) return;
+    const e: NotifyEvent = p.system
+      ? { ...ev, data: { ...(ev.data ?? {}), autoApproved: true, reason: AUTO_APPROVE_REASON } }
+      : ev;
     try {
       await tx.transaction((sp) =>
         this.jobs.enqueue(
           sp,
           p.companyId,
           'notify',
-          { ...ev, actorId: p.userId },
+          { ...e, actorId: p.system ? null : p.userId },
           { dedupeKey: `${ev.recipientId}:${ev.dedupeKey}` },
         ),
       );
@@ -61,14 +66,64 @@ export class NotificationsService {
     }
   }
 
+  /** notify() once per recipient (deduped; null / self skipped as in notify()). */
+  async notifyMany(
+    tx: Tx,
+    p: Principal,
+    ev: Omit<NotifyEvent, 'recipientId'>,
+    recipientIds: (string | null | undefined)[],
+  ) {
+    for (const r of new Set(recipientIds)) await this.notify(tx, p, { ...ev, recipientId: r });
+  }
+
+  /**
+   * Reviewers of `userId`: the manager chain upward (max 6 levels), active, holding `perm` through a
+   * role. Never throws: a failure is logged and nobody is returned.
+   */
+  async reviewerChain(tx: Tx, userId: string, perm: string): Promise<string[]> {
+    try {
+      return await tx.transaction(async (sp) => {
+        const r = await sp.execute<{ id: string }>(sql`with recursive up(id, depth) as (
+            select manager_id, 1 from users where id = ${userId} and manager_id is not null
+            union all
+            select u.manager_id, up.depth + 1 from up join users u on u.id = up.id
+            where u.manager_id is not null and up.depth < 6)
+          select up.id from up join users u on u.id = up.id
+          where u.deleted_at is null and u.status = 'active' and exists (
+            select 1 from user_roles ur join roles r on r.id = ur.role_id
+            where ur.user_id = up.id and r.deleted_at is null and ${perm} = any(r.permissions))
+          order by up.depth`);
+        return r.rows.map((x) => x.id);
+      });
+    } catch (e) {
+      this.log.error(`reviewerChain failed: ${(e as Error).message}`);
+      return [];
+    }
+  }
+
+  /**
+   * For events about an action that failed and rolled back (expense.blocked): a separate tenant
+   * transaction after the failure. Best effort; never throws.
+   */
+  async afterRollback(p: Principal, fn: (tx: Tx) => Promise<void>) {
+    try {
+      await this.tenant.run(p, fn);
+    } catch (e) {
+      this.log.error(`afterRollback notify failed: ${(e as Error).message}`);
+    }
+  }
+
   /** Job handler: render + insert (idempotent via the (user_id, dedupe_key) unique index). */
-  private async deliver(tx: Tx, companyId: string, ev: NotifyEvent & { actorId: string }) {
+  private async deliver(tx: Tx, companyId: string, ev: NotifyEvent & { actorId: string | null }) {
     if (!NOTIFICATION_TYPES.includes(ev.type)) throw new Error(`Unknown type ${String(ev.type)}`);
-    const [actor] = await tx
-      .select({ name: users.name })
-      .from(users)
-      .where(eq(users.id, ev.actorId));
-    const data: NotifyData = { ...(ev.data ?? {}), actorName: actor?.name };
+    const [actor] = ev.actorId
+      ? await tx.select({ name: users.name }).from(users).where(eq(users.id, ev.actorId))
+      : [{ name: 'AriForce' }];
+    const data: NotifyData = {
+      ...(ev.data ?? {}),
+      actorId: ev.actorId ?? null,
+      actorName: actor?.name,
+    };
     const { title, body } = render(ev.type, data);
     await tx
       .insert(notifications)

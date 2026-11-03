@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { T, U } from '@ariforce/db';
 import { bearerFor, insertStaff } from './support';
@@ -26,6 +27,7 @@ while (new Date(`${monday}T00:00:00Z`).getUTCDay() !== 1) monday = addDay(monday
  */
 describe.skipIf(!OWNER || !APP)('hierarchy with skipped ranks (real API)', () => {
   let app: INestApplication;
+  let owner: Pool;
   const http = () => request(app.getHttpServer());
   const tok: Record<string, string> = {};
   const id: Record<string, string> = {};
@@ -49,8 +51,18 @@ describe.skipIf(!OWNER || !APP)('hierarchy with skipped ranks (real API)', () =>
     const r = await http().get(`/v1/leave/requests/${leaveId}`).set(as('director'));
     return r.body;
   };
+  const approvedDcr = async (userId: string, date: string) => {
+    await owner.query(
+      `insert into dcrs (id, company_id, user_id, date, work_type_id, status)
+       select gen_random_uuid(), u.company_id, u.id, $2, wt.id, 'approved'
+       from users u join work_types wt on wt.company_id = u.company_id
+       where u.id = $1 and wt.counts_as_field_day limit 1`,
+      [userId, date],
+    );
+  };
 
   beforeAll(async () => {
+    owner = new Pool({ connectionString: OWNER });
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = configureApp(mod.createNestApplication({ bodyParser: false }));
     await app.init();
@@ -67,13 +79,16 @@ describe.skipIf(!OWNER || !APP)('hierarchy with skipped ranks (real API)', () =>
     await add('bmx', 'business_manager', id.rbm!, [T.hq]); // skips ABM
     await add('abmd', 'area_business_manager', U.director, [T.area]); // skips RBM too
     await add('bmd', 'business_manager', id.abmd!, [T.hq]);
-    const s = await http()
+    const s = await http().get('/v1/leave/types').set(as('director'));
+    expect(s.status, JSON.stringify(s.body)).toBe(200);
+    const settings = await http()
       .put('/v1/leave/settings')
       .set(as('director'))
       .send({ maxFutureDays: 731, approvalLevels: 2, backdateDays: 14, weeklyOffDays: [0] });
-    expect(s.status, JSON.stringify(s.body)).toBe(200);
+    expect(settings.status, JSON.stringify(settings.body)).toBe(200);
   });
   afterAll(async () => {
+    await owner?.end();
     await app?.close();
   });
 
@@ -125,6 +140,7 @@ describe.skipIf(!OWNER || !APP)('hierarchy with skipped ranks (real API)', () =>
     const claim = async (who: string) => {
       const c = await http().post('/v1/expense-claims').set(as(who)).send({ month: M2 });
       expect(c.status, JSON.stringify(c.body)).toBe(201);
+      await approvedDcr(id[who]!, `${M2}-03`);
       await http()
         .post(`/v1/expense-claims/${c.body.id}/lines`)
         .set(as(who))

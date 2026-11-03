@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { FilesModule } from '../files/files.module';
 import { PlansModule } from '../plans/plans.module';
 import { DoctorsController } from './doctors.controller';
 import { DoctorsService } from './doctors.service';
@@ -9,7 +10,7 @@ import { MastersService } from './masters.service';
 import { TerritoryLinksService } from './territory-links.service';
 
 @Module({
-  imports: [PlansModule],
+  imports: [PlansModule, FilesModule],
   controllers: [DoctorsController, ImportsController, ...MASTER_CONTROLLERS],
   providers: [MastersService, ImportsService, DoctorsService, TerritoryLinksService],
   exports: [MastersService],

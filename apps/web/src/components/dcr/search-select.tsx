@@ -3,7 +3,16 @@
 import { useRef } from 'react';
 import { Combobox } from '@ariforce/ui/components/combobox';
 
-export type SelectOption = { id: string; label: string; hint?: string | null; group?: string; badge?: string | null; indent?: boolean; meta?: string };
+export type SelectOption = {
+  id: string;
+  label: string;
+  hint?: string | null;
+  group?: string;
+  badge?: string | null;
+  indent?: boolean;
+  meta?: string;
+  imageUrl?: string | null;
+};
 
 /**
  * DCR adapter over the packages/ui Combobox (searchable dropdown) for long lists: territories,
@@ -56,7 +65,14 @@ export function SearchSelect({
       <Combobox
         id={id}
         aria-label={label}
-        options={options.map((o) => ({ value: o.id, label: o.label, hint: o.hint, group: o.group, badge: o.badge, indent: o.indent }))}
+        options={options.map((o) => ({
+          value: o.id,
+          label: o.label,
+          hint: o.hint,
+          group: o.group,
+          badge: o.badge,
+          indent: o.indent,
+        }))}
         value={value}
         onValueChange={(v) => {
           changed.current = true;

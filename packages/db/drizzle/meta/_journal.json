@@ -309,6 +309,76 @@
       "when": 1793270000000,
       "tag": "0043_dcr_redesign",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793290000000,
+      "tag": "0044_manager_field_write",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1793300000000,
+      "tag": "0045_dcr_multi_draft",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1793310000000,
+      "tag": "0046_kpi_submitted_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1793320000000,
+      "tag": "0047_product_image",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1793330000000,
+      "tag": "0048_dcr_pob_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1793340000000,
+      "tag": "0049_dcr_review_perms",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1793340100000,
+      "tag": "0050_tour_plan_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1793340200000,
+      "tag": "0051_dcr_unlock_perms",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1793340300000,
+      "tag": "0052_expense_auto_draft",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1793340400000,
+      "tag": "0053_login_otp",
+      "breakpoints": true
     }
   ]
 }

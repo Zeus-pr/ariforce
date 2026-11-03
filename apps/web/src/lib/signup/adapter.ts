@@ -100,7 +100,9 @@ export function messageFor(status: number, code?: string, serverMessage?: string
     case AUTH_STATE_CODES.suspended:
       return SUSPENDED_MESSAGE;
     case 'ROLE_RETIRED':
-      return status === 403 ? 'Your role does not have access to this portal.' : ROLE_RETIRED_MESSAGE;
+      return status === 403
+        ? 'Your role does not have access to this portal.'
+        : ROLE_RETIRED_MESSAGE;
     case 'TERRITORY_LEVEL_INVALID':
       return TERRITORY_LEVEL_MESSAGE;
   }

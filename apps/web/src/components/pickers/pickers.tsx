@@ -2,7 +2,13 @@
 
 import { useCallback, useMemo } from 'react';
 import { Label } from '@ariforce/ui/components/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ariforce/ui/components/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@ariforce/ui/components/select';
 import { useLookups } from '@/components/masters/lookups';
 import { sortForPicker, territoryLabel, workTerritories } from '@/lib/territories';
 import { MOCKING, api, apiReady, toApiError } from '@/lib/api';
@@ -10,45 +16,109 @@ import { AsyncPicker, type PickOption, type PickPage } from './async-picker';
 
 export type OutletKind = 'doctor' | 'chemist' | 'stockist';
 const PAGE = MOCKING ? 2 : 25;
-export const APPROVAL_LABEL: Record<string, string> = { pending: 'Awaiting approval', approved: 'Approved', rejected: 'Rejected' };
+export const APPROVAL_LABEL: Record<string, string> = {
+  pending: 'Awaiting approval',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
 const ALL = '__all';
 
-type Row = { id: string; name: string; city?: string | null; territoryId?: string | null; approvalStatus?: string };
+type Row = {
+  id: string;
+  name: string;
+  city?: string | null;
+  territoryId?: string | null;
+  approvalStatus?: string;
+};
 
-async function outletPage(kind: OutletKind, q: string, territoryId: string | undefined, cursor: string | undefined, territoryName: (id?: string | null) => string | undefined, rejectDisabled: boolean): Promise<PickPage> {
+async function outletPage(
+  kind: OutletKind,
+  q: string,
+  territoryId: string | undefined,
+  cursor: string | undefined,
+  territoryName: (id?: string | null) => string | undefined,
+  rejectDisabled: boolean,
+): Promise<PickPage> {
   await apiReady();
-  const query = { limit: PAGE, sort: 'name' as const, ...(q ? { q } : {}), ...(territoryId ? { territoryId } : {}), ...(cursor ? { cursor } : {}) };
+  const query = {
+    limit: PAGE,
+    sort: 'name' as const,
+    ...(q ? { q } : {}),
+    ...(territoryId ? { territoryId } : {}),
+    ...(cursor ? { cursor } : {}),
+  };
   const r =
-    kind === 'doctor' ? await api.GET('/v1/doctors', { params: { query } })
-    : kind === 'chemist' ? await api.GET('/v1/chemists', { params: { query } })
-    : await api.GET('/v1/stockists', { params: { query } });
-  if (!r.data) return { items: [], nextCursor: null, error: toApiError(r).message || 'Could not load the list.' };
+    kind === 'doctor'
+      ? await api.GET('/v1/doctors', { params: { query } })
+      : kind === 'chemist'
+        ? await api.GET('/v1/chemists', { params: { query } })
+        : await api.GET('/v1/stockists', { params: { query } });
+  if (!r.data)
+    return {
+      items: [],
+      nextCursor: null,
+      error: toApiError(r).message || 'Could not load the list.',
+    };
   const items = (r.data.items as Row[]).map((x): PickOption => ({
     id: x.id,
     name: x.name,
     hint: [x.city, territoryName(x.territoryId)].filter(Boolean).join(' · ') || null,
-    badge: kind === 'doctor' && x.approvalStatus && x.approvalStatus !== 'approved' ? APPROVAL_LABEL[x.approvalStatus] : null,
-    disabledReason: rejectDisabled && x.approvalStatus === 'rejected' ? 'Rejected by your manager; cannot be reported' : null,
+    badge:
+      kind === 'doctor' && x.approvalStatus && x.approvalStatus !== 'approved'
+        ? APPROVAL_LABEL[x.approvalStatus]
+        : null,
+    disabledReason:
+      rejectDisabled && x.approvalStatus === 'rejected'
+        ? 'Rejected by your manager; cannot be reported'
+        : null,
   }));
   return { items, nextCursor: r.data.nextCursor ?? null };
 }
 
 /** HQ/territory filter: the territories in the caller's scope (already scoped by the API). */
-export function TerritoryFilter({ value, onChange, testId, label = 'Region / HQ', allLabel = 'All my territories' }: { value: string; onChange: (v: string) => void; testId: string; label?: string; allLabel?: string }) {
+export function TerritoryFilter({
+  value,
+  onChange,
+  testId,
+  label = 'Region / HQ',
+  allLabel = 'All my territories',
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  testId: string;
+  label?: string;
+  allLabel?: string;
+}) {
   const { territories, byId } = useLookups();
   // HQs and their level 'territory' rows sit together ("Arambagh · Durgapur HQ"); higher levels first.
   const sorted = useMemo(() => {
-    const top = territories.filter((t) => t.level !== 'headquarter' && t.level !== 'territory').sort((a, b) => a.path.split('.').length - b.path.split('.').length || a.name.localeCompare(b.name));
-    return [...top, ...sortForPicker(territories.filter((t) => t.level === 'headquarter' || t.level === 'territory'))];
+    const top = territories
+      .filter((t) => t.level !== 'headquarter' && t.level !== 'territory')
+      .sort(
+        (a, b) =>
+          a.path.split('.').length - b.path.split('.').length || a.name.localeCompare(b.name),
+      );
+    return [
+      ...top,
+      ...sortForPicker(
+        territories.filter((t) => t.level === 'headquarter' || t.level === 'territory'),
+      ),
+    ];
   }, [territories]);
   return (
     <div className="flex flex-col gap-1.5">
       <Label>{label}</Label>
       <Select value={value || ALL} onValueChange={(v) => onChange(v === ALL ? '' : v)}>
-        <SelectTrigger className="w-full" aria-label={label} data-testid={testId}><SelectValue /></SelectTrigger>
+        <SelectTrigger className="w-full" aria-label={label} data-testid={testId}>
+          <SelectValue />
+        </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>{allLabel}</SelectItem>
-          {sorted.map((t) => <SelectItem key={t.id} value={t.id}>{territoryLabel(t, byId)}</SelectItem>)}
+          {sorted.map((t) => (
+            <SelectItem key={t.id} value={t.id}>
+              {territoryLabel(t, byId)}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
     </div>
@@ -56,7 +126,16 @@ export function TerritoryFilter({ value, onChange, testId, label = 'Region / HQ'
 }
 
 /** Searchable, server-paged doctor/chemist/stockist picker filtered by territory (incl. descendants). */
-export function OutletPicker({ kind, territoryId, value, onChange, multiple, labels, testId, forReporting = false }: {
+export function OutletPicker({
+  kind,
+  territoryId,
+  value,
+  onChange,
+  multiple,
+  labels,
+  testId,
+  forReporting = false,
+}: {
   kind: OutletKind;
   territoryId?: string;
   value: string[];
@@ -69,7 +148,11 @@ export function OutletPicker({ kind, territoryId, value, onChange, multiple, lab
 }) {
   const { byId } = useLookups();
   const tn = useCallback((id?: string | null) => (id ? byId.get(id) : undefined), [byId]);
-  const fetchPage = useCallback((q: string, cursor?: string) => outletPage(kind, q, territoryId || undefined, cursor, tn, forReporting), [kind, territoryId, tn, forReporting]);
+  const fetchPage = useCallback(
+    (q: string, cursor?: string) =>
+      outletPage(kind, q, territoryId || undefined, cursor, tn, forReporting),
+    [kind, territoryId, tn, forReporting],
+  );
   const noun = kind === 'doctor' ? 'doctors' : kind === 'chemist' ? 'chemists' : 'stockists';
   return (
     <AsyncPicker
@@ -87,20 +170,67 @@ export function OutletPicker({ kind, territoryId, value, onChange, multiple, lab
 }
 
 /** Searchable territory picker (server search on /v1/territories, scoped to the caller). */
-export function TerritoryPicker({ value, onChange, testId, leavesOnly = true }: { value: string; onChange: (id: string) => void; testId: string; leavesOnly?: boolean }) {
+export function TerritoryPicker({
+  value,
+  onChange,
+  testId,
+  leavesOnly = true,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  testId: string;
+  leavesOnly?: boolean;
+}) {
   const { territories, byId } = useLookups();
   // Leaves of the people hierarchy plus level 'territory' rows: an HQ stays pickable when it has territories under it.
-  const leafIds = useMemo(() => new Set(workTerritories(territories).map((t) => t.id)), [territories]);
-  const fetchPage = useCallback(async (q: string, cursor?: string): Promise<PickPage> => {
-    await apiReady();
-    const r = await api.GET('/v1/territories', { params: { query: { limit: PAGE * 4, sort: 'name', ...(q ? { q } : {}), ...(cursor ? { cursor } : {}) } } });
-    if (!r.data) return { items: [], nextCursor: null, error: toApiError(r).message || 'Could not load territories.' };
-    const items = r.data.items
-      .filter((t) => !leavesOnly || leafIds.size === 0 || leafIds.has(t.id))
-      .map((t) => ({ id: t.id, name: t.name, hint: t.parentId ? (t.level === 'territory' ? `Territory in ${byId.get(t.parentId) ?? 'an HQ'}` : byId.get(t.parentId) ?? null) : null }));
-    return { items, nextCursor: r.data.nextCursor ?? null };
-  }, [leavesOnly, leafIds, byId]);
+  const leafIds = useMemo(
+    () => new Set(workTerritories(territories).map((t) => t.id)),
+    [territories],
+  );
+  const fetchPage = useCallback(
+    async (q: string, cursor?: string): Promise<PickPage> => {
+      await apiReady();
+      const r = await api.GET('/v1/territories', {
+        params: {
+          query: {
+            limit: PAGE * 4,
+            sort: 'name',
+            ...(q ? { q } : {}),
+            ...(cursor ? { cursor } : {}),
+          },
+        },
+      });
+      if (!r.data)
+        return {
+          items: [],
+          nextCursor: null,
+          error: toApiError(r).message || 'Could not load territories.',
+        };
+      const items = r.data.items
+        .filter((t) => !leavesOnly || leafIds.size === 0 || leafIds.has(t.id))
+        .map((t) => ({
+          id: t.id,
+          name: t.name,
+          hint: t.parentId
+            ? t.level === 'territory'
+              ? `Territory in ${byId.get(t.parentId) ?? 'an HQ'}`
+              : (byId.get(t.parentId) ?? null)
+            : null,
+        }));
+      return { items, nextCursor: r.data.nextCursor ?? null };
+    },
+    [leavesOnly, leafIds, byId],
+  );
   return (
-    <AsyncPicker label="Territories" fetchPage={fetchPage} value={value ? [value] : []} onChange={(ids) => onChange(ids[0] ?? '')} labels={byId} testId={testId} deps={[leafIds.size]} emptyText="No territories match. Ask your administrator if yours is missing." />
+    <AsyncPicker
+      label="Territories"
+      fetchPage={fetchPage}
+      value={value ? [value] : []}
+      onChange={(ids) => onChange(ids[0] ?? '')}
+      labels={byId}
+      testId={testId}
+      deps={[leafIds.size]}
+      emptyText="No territories match. Ask your administrator if yours is missing."
+    />
   );
 }

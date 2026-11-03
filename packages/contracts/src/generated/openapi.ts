@@ -183,7 +183,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Presigned R2 PUT URL (10 min). Upload directly to R2, then save fileKey on the record. */
+    /**
+     * Presigned R2 PUT URL (10 min). Upload directly to R2, then save fileKey on the record.
+     * @description purpose product_image: image/jpeg, image/png or image/webp, at most 5 MB, needs products:prices; attach with PUT /v1/products/{id}/image. import_source needs imports:write. expense_receipt is refused (use the claim attachment routes).
+     */
     post: operations['createUploadUrl'];
     delete?: never;
     options?: never;
@@ -840,6 +843,82 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/tour-plans/items': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Tour plan items: mine=true for your own (newest first); else the team queue
+     * @description Without mine=true: items of your reporting line, never your own (approvals:decide or field:read, else 403), ordered by from. Use status=pending for the approval queue.
+     */
+    get: operations['listTourPlanItems'];
+    /** Create (no id) or edit your draft/rejected item; the result is a draft */
+    put: operations['upsertTourPlanItem'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/tour-plans/items/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** One item (owner, or the reporting line with approvals:decide/field:read) */
+    get: operations['getTourPlanItem'];
+    put?: never;
+    post?: never;
+    /** Delete your draft/rejected item */
+    delete: operations['deleteTourPlanItem'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/tour-plans/items/{id}/submit': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Send your draft/rejected item for approval (status pending)
+     * @description Creates one approval request routed to your reporting manager (anyone above with approvals:decide may decide; never yourself). Director (no manager): approved at submit by the system in the same transaction (status approved, decidedBy null, Approval.autoApproved true; audit approval.auto_approved, reason 'auto-approved, no manager').
+     */
+    post: operations['submitTourPlanItem'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/tour-plans/items/{id}/decision': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Approve or reject a pending item (approvals:decide, reporting line, never your own) */
+    post: operations['decideTourPlanItem'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/tour-plans/standard': {
     parameters: {
       query?: never;
@@ -903,6 +982,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** @description Each submission is one approval request to your reporting manager. Director (no manager): approved at submit by the system in the same transaction (status approved, decidedBy null, Approval.autoApproved true; audit approval.auto_approved, reason 'auto-approved, no manager'). */
     post: operations['submitTourPlan'];
     delete?: never;
     options?: never;
@@ -935,7 +1015,10 @@ export interface paths {
       cookie?: never;
     };
     get: operations['listDcrs'];
-    /** Create or update the caller's DCR for a date (idempotent on date + call clientIds) */
+    /**
+     * Create or update the caller's DCR for a date (idempotent on date + call clientIds)
+     * @description Director: submit sets status approved at once (approvedBy null, autoApproved true; audit dcr.auto_approved) and the day never locks (neverLocks true).
+     */
     put: operations['upsertDcr'];
     post?: never;
     delete?: never;
@@ -973,7 +1056,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Ask your manager to reopen a locked day (gap #8) */
+    /**
+     * Ask the company's directors to reopen a locked day (gap #8)
+     * @description Routed to every active user holding dcr_unlock:decide (the directors), not your manager; any one of them decides, all of them see it in to_decide. One director: approverId is that director; several: approverId null (shared queue). Never routed to yourself. Earlier pending requests (manager-routed) stay as they are: directors already see and decide them.
+     */
     post: operations['requestDcrCorrection'];
     delete?: never;
     options?: never;
@@ -1083,6 +1169,26 @@ export interface paths {
     put?: never;
     /** Submit a draft: full re-check, freezes one TA/DA snapshot per HQ route; read-only after */
     post: operations['submitDcr'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/dcrs/{id}/decision': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Approve or reject a submitted DCR (dcr:review); reject needs a comment (stored as rejectionReason)
+     * @description Scope as approvals: the DCR owner must be in your team; never your own. approve sets approvedAt/approvedBy. reject sets status rejected, rejectedAt, rejectedBy, rejectionReason; the row is kept as history, excluded from every count, and the rep may file and submit a new report for that day for 48 h, even past the lock. The queue is GET /v1/dcrs?status=submitted. Audited (dcr.approve / dcr.reject). On reject, the day's auto TA/DA lines are removed from the rep's draft/rejected month claim and any remaining line of that day (manual lines, or any line on a submitted/approved/paid claim) gets dcrRejectedAt (claim.dcrRejectedDates; approver flag dcr_rejected_lines); audited as expense.dcr_rejected_cleanup.
+     */
+    post: operations['decideDcr'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1508,7 +1614,10 @@ export interface paths {
     /** Own requests; with leave:approve also your reporting line */
     get: operations['listLeaveRequests'];
     put?: never;
-    /** Apply for leave; starts the approval chain */
+    /**
+     * Apply for leave; starts the approval chain
+     * @description Approval goes to your reporting manager. Director (no manager): approved at submit by the system in the same transaction (status approved, decidedBy null, Approval.autoApproved true; audit approval.auto_approved, reason 'auto-approved, no manager').
+     */
     post: operations['applyLeave'];
     delete?: never;
     options?: never;
@@ -1928,7 +2037,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Owner, draft or rejected claim: compute DA/TA per DCR day of the month from the rate card and fare chart and replace the auto lines (dryRun: preview only). Manual lines are never touched. */
+    /**
+     * Owner, draft or rejected claim: compute DA/TA per DCR day of the month from the rate card and fare chart and replace the auto lines (dryRun: preview only). Manual lines are never touched.
+     * @description Only submitted or approved DCRs pay: draft days are listed with issue dcr_not_submitted, days whose only reports are rejected with dcr_rejected (no lines). Km: the place asked for, else the DCR's frozen SFC snapshot (round trip), else the previous or only fare-chart place.
+     */
     post: operations['draftExpenseAllowances'];
     delete?: never;
     options?: never;
@@ -1945,7 +2057,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Draft or rejected -> submitted; opens an approval request (subjectType expense) to your reporting manager, then up the chain (EXPENSE_APPROVAL_LEVELS, default 2) */
+    /**
+     * Draft or rejected -> submitted; opens an approval request (subjectType expense) to your reporting manager, then up the chain (EXPENSE_APPROVAL_LEVELS, default 2)
+     * @description Director (no manager): approved at submit by the system (status approved, decidedBy null, decisionComment 'auto-approved, no manager'). The DCR gate still applies first: every line date needs an approved DCR (a director's DCRs are approved at their submit); otherwise the submit itself fails with 409 DCR_NOT_APPROVED and nothing changes (the claim stays draft/rejected).
+     */
     post: operations['submitExpenseClaim'];
     delete?: never;
     options?: never;
@@ -2194,6 +2309,100 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/me/exceptions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Your own exceptions (missing DCR, TP not submitted, ...); no field:read
+     * @description Same filters, order and page as GET /v1/exceptions, limited to rows where userId = you; userId and assignedToMe are ignored. Any signed-in user.
+     */
+    get: operations['listMyExceptions'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/me/attention': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Home badges in one call: waiting approvals by type, unread, exceptions, own requests
+     * @description Replaces the separate count calls on the home screen. Own data; team parts need a team plus dcr:review (dcrReview) or field:read (exceptions.team), else null.
+     */
+    get: operations['getMyAttention'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/me/today': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Today card: punch status, today's tour plan, today's DCR */
+    get: operations['getMyToday'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/me/planned-doctors': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Doctors planned for a day: the monthly plan visits, then the TP item territories */
+    get: operations['listMyPlannedDoctors'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/me/kpis': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Month-to-date home KPIs (HOME_KPIS) from the KPI engine; self or team
+     * @description from = the 1st of the month, to = today (or the month end for a past month). Same definitions and response as GET /v1/kpis (rollup self or team) without reports:read. team: your reporting line incl. you; 403 without a team.
+     */
+    get: operations['getMyKpis'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/exceptions/summary': {
     parameters: {
       query?: never;
@@ -2388,6 +2597,32 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/products/{id}/image': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Attach an uploaded picture (upload-url purpose product_image, then PUT the bytes to R2). Replaces any current picture.
+     * @description The fileKey must be the caller company product_image key. The object is checked in R2: it must exist, be at most 5 MB, be image/jpeg|png|webp and its first bytes must match that type (a rejected upload is deleted). Bumps the product version/updatedAt, so GET /v1/products?updatedSince picks it up.
+     *
+     *     Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
+     */
+    put: operations['setProductImage'];
+    post?: never;
+    /**
+     * Remove the product picture (idempotent). The R2 object is kept for audit.
+     * @description Requires: masters:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
+     */
+    delete: operations['clearProductImage'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/admin/products/{id}/price-history': {
     parameters: {
       query?: never;
@@ -2445,7 +2680,12 @@ export interface components {
     };
     /** @enum {string} */
     FilePurpose:
-      'doctor_photo' | 'visit_attachment' | 'expense_receipt' | 'avatar' | 'import_source';
+      | 'doctor_photo'
+      | 'visit_attachment'
+      | 'expense_receipt'
+      | 'avatar'
+      | 'import_source'
+      | 'product_image';
     DownloadUrlRequest: {
       fileKey: string;
     };
@@ -2795,6 +3035,152 @@ export interface components {
     };
     /** @enum {string} */
     ApprovalStatus: 'draft' | 'submitted' | 'approved' | 'rejected' | 'recalled';
+    /** @enum {string} */
+    TourPlanItemStatus: 'draft' | 'pending' | 'approved' | 'rejected';
+    TourPlanItemUpsert: {
+      /**
+       * Format: uuid
+       * @description Omit to create; else your draft or rejected item
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id?: string;
+      /** @description Row version from the last read (updates) */
+      version?: number;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+      plan: components['schemas']['TourPlanItemPlan'];
+    };
+    TourPlanItemPlan: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      /** @default [] */
+      territoryIds: string[];
+      /** @default [] */
+      workWithUserIds: string[];
+      /**
+       * @description One route per HQ of the day (as DCR sfcRoutes); fully checked at DCR submit
+       * @default []
+       */
+      sfcRoutes: components['schemas']['DcrSfcRouteChoice'][];
+      /**
+       * @description Meeting/training/office details; kind must match the work type's detailsKind. Never leave
+       * @default null
+       */
+      details: components['schemas']['DcrDetails'] | null;
+    };
+    DcrSfcRouteChoice: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      sfcRouteId: string;
+    };
+    /** @description Non-field day details; kind must match the work type (DcrWorkTypeOption.detailsKind) */
+    DcrDetails:
+      | components['schemas']['DcrMeetingDetails']
+      | components['schemas']['DcrTrainingDetails']
+      | components['schemas']['DcrOfficeDetails']
+      | components['schemas']['DcrLeaveDetails'];
+    DcrMeetingDetails: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'meeting';
+      /** @description Meeting / training type or name */
+      title: string;
+      /** @enum {string} */
+      mode: 'in_person' | 'online';
+      /** @description Free text; required when mode = in_person (link or text when online) */
+      location?: string | null;
+      /**
+       * @description Local time HH:mm (IST)
+       * @example 10:30
+       */
+      startTime: string;
+      /** @description Minutes, 1-720 */
+      durationMin: number;
+      /** @description Free text */
+      attendees?: string | null;
+      remarks?: string | null;
+    };
+    DcrTrainingDetails: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'training';
+      /** @description Meeting / training type or name */
+      title: string;
+      /** @enum {string} */
+      mode: 'in_person' | 'online';
+      /** @description Free text; required when mode = in_person (link or text when online) */
+      location?: string | null;
+      /**
+       * @description Local time HH:mm (IST)
+       * @example 10:30
+       */
+      startTime: string;
+      /** @description Minutes, 1-720 */
+      durationMin: number;
+      /** @description Free text */
+      attendees?: string | null;
+      remarks?: string | null;
+      /** @description Free text */
+      trainer?: string | null;
+    };
+    /** @description Admin / office work */
+    DcrOfficeDetails: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'office';
+      taskType: string;
+      description: string;
+      startTime?: string | null;
+      /** @description Minutes, 1-720 */
+      durationMin: number;
+      remarks?: string | null;
+    };
+    DcrLeaveDetails: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      kind: 'leave';
+      /**
+       * Format: uuid
+       * @description Your leave request covering the date (pending or approved)
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      leaveRequestId: string;
+    };
+    TourPlanItemDecision: {
+      /** @enum {string} */
+      decision: 'approve' | 'reject';
+      /** @description Required (1-500) to reject: else 422 REJECTION_REASON_REQUIRED */
+      comment?: string;
+    };
     StandardTourPlanUpsert: {
       days: components['schemas']['StandardTourPlanDay'][];
       version?: number;
@@ -2900,11 +3286,13 @@ export interface components {
       pob: components['schemas']['PobLine'][];
       rcpa?: components['schemas']['RcpaLine'][];
       remarks: string | null;
+      /** @description See DcrCall.presentationOpenedAt; omit or null on drafts */
+      presentationOpenedAt?: string | null;
       /**
        * Format: date-time
-       * @description ISO-8601 timestamp (UTC)
+       * @description Ignored: the server sets calledAt when the call is first saved
        */
-      calledAt: string;
+      calledAt?: string;
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -2932,7 +3320,7 @@ export interface components {
       productId: string;
       quantity: number;
     };
-    /** @description Personal order booking line (chemist and stockist calls only, #40) */
+    /** @description Personal order booking line: chemist and stockist calls only (doctor calls: 422 VALIDATION, details.reason POB_NOT_ALLOWED_FOR_DOCTOR); one line per product per call */
     PobLine: {
       /**
        * Format: uuid
@@ -2942,7 +3330,7 @@ export interface components {
       productId: string;
       quantity: number;
       stockistId?: string | null;
-      /** @description INR = quantity × product PTR, computed by the server (null when the product has no PTR). Ignored on input. */
+      /** @description INR = quantity × product PTS (price to stockist), computed by the server when the line is saved and kept as saved (null when the product has no PTS). Ignored on input. */
       value?: number | null;
     };
     /** @description Retail chemist prescription audit line (chemist calls, #40) */
@@ -2999,109 +3387,22 @@ export interface components {
       sfcRoutes?: components['schemas']['DcrSfcRouteChoice'][];
       details?: components['schemas']['DcrDetails'] | null;
       deviationReason?: string | null;
+      /** @description The approved TourPlanItem this day is filed from. The date must lie in its from..to and it must be yours and approved, else 422 VALIDATION (details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date in the range may be drafted (submit still opens on the day). Omitted: the server links the approved item covering the date, if any. No deviation reason is ever required */
+      tourPlanItemId?: string | null;
       calls?: components['schemas']['DcrCallInput'][];
       /** @description Row version from the last read */
       version?: number;
     };
     /** @enum {string} */
     DcrBand: 'hq' | 'ex_hq' | 'outstation';
-    DcrSfcRouteChoice: {
-      /**
-       * Format: uuid
-       * @description UUIDv7 identifier
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      hqTerritoryId: string;
-      /**
-       * Format: uuid
-       * @description UUIDv7 identifier
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      sfcRouteId: string;
-    };
-    /** @description Non-field day details; kind must match the work type (DcrWorkTypeOption.detailsKind) */
-    DcrDetails:
-      | components['schemas']['DcrMeetingDetails']
-      | components['schemas']['DcrTrainingDetails']
-      | components['schemas']['DcrOfficeDetails']
-      | components['schemas']['DcrLeaveDetails'];
-    DcrMeetingDetails: {
-      /**
-       * @description discriminator enum property added by openapi-typescript
-       * @enum {string}
-       */
-      kind: 'meeting';
-      /** @description Meeting / training type or name */
-      title: string;
-      /** @enum {string} */
-      mode: 'in_person' | 'online';
-      /** @description Free text; required when mode = in_person (link or text when online) */
-      location?: string | null;
-      /**
-       * @description Local time HH:mm (IST)
-       * @example 10:30
-       */
-      startTime: string;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
-      /** @description Free text */
-      attendees?: string | null;
-      remarks?: string | null;
-    };
-    DcrTrainingDetails: {
-      /**
-       * @description discriminator enum property added by openapi-typescript
-       * @enum {string}
-       */
-      kind: 'training';
-      /** @description Meeting / training type or name */
-      title: string;
-      /** @enum {string} */
-      mode: 'in_person' | 'online';
-      /** @description Free text; required when mode = in_person (link or text when online) */
-      location?: string | null;
-      /**
-       * @description Local time HH:mm (IST)
-       * @example 10:30
-       */
-      startTime: string;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
-      /** @description Free text */
-      attendees?: string | null;
-      remarks?: string | null;
-      /** @description Free text */
-      trainer?: string | null;
-    };
-    /** @description Admin / office work */
-    DcrOfficeDetails: {
-      /**
-       * @description discriminator enum property added by openapi-typescript
-       * @enum {string}
-       */
-      kind: 'office';
-      taskType: string;
-      description: string;
-      startTime?: string | null;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
-      remarks?: string | null;
-    };
-    DcrLeaveDetails: {
-      /**
-       * @description discriminator enum property added by openapi-typescript
-       * @enum {string}
-       */
-      kind: 'leave';
-      /**
-       * Format: uuid
-       * @description Your leave request covering the date (pending or approved)
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      leaveRequestId: string;
-    };
     DcrSubmit: {
       version: number;
+    };
+    DcrDecision: {
+      /** @enum {string} */
+      decision: 'approve' | 'reject';
+      /** @description Required (1-500 chars) to reject; stored as Dcr.rejectionReason */
+      comment?: string;
     };
     ManagerAssign: {
       /**
@@ -3581,6 +3882,12 @@ export interface components {
       /** @description ProductPricesBulkRow[]; each row is validated on its own */
       rows: unknown[];
     };
+    ProductImageSet: {
+      /** @description fileKey from POST /v1/files/upload-url with purpose product_image, after the PUT */
+      fileKey: string;
+      /** @description Current product version; mismatch = 409 VERSION_CONFLICT */
+      version?: number;
+    };
     Health: {
       /** @constant */
       status: 'ok';
@@ -3686,7 +3993,9 @@ export interface components {
       | 'leave:approve'
       | 'products:prices'
       | 'sfc:read'
-      | 'sfc:write';
+      | 'sfc:write'
+      | 'dcr:review'
+      | 'dcr_unlock:decide';
     RoleList: {
       items: components['schemas']['Role'][];
     };
@@ -4274,6 +4583,11 @@ export interface components {
       /** @description Company SKU code, unique per company */
       code: string;
       name: string;
+      /**
+       * @description Name without strength numbers, derived from name (e.g. 'ARIPIX 10' -> 'ARIPIX'); several SKUs can share one. Use for doctor detailing pickers.
+       * @example ARIPIX
+       */
+      readonly displayName: string;
       brand: string | null;
       composition: string | null;
       /** @example 10 x 10 tablets */
@@ -4288,6 +4602,16 @@ export interface components {
       /** @description Can be given as a physician sample */
       isSample: boolean;
       active: boolean;
+      /**
+       * @description R2 key of the product picture (upload purpose product_image); null = none
+       * @default null
+       */
+      imageFileKey: string | null;
+      /**
+       * @description Presigned GET for the picture (valid >= 30 min, <= 60 min); null if none or storage is off. Re-fetch the product for a fresh URL.
+       * @default null
+       */
+      imageUrl: string | null;
     };
     WorkTypePage: {
       items: components['schemas']['WorkType'][];
@@ -4888,6 +5212,66 @@ export interface components {
       rejectedBy: components['schemas']['UserRef'] | null;
       rejectedAt: string | null;
     };
+    TourPlanItemList: {
+      items: components['schemas']['TourPlanItem'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+    };
+    TourPlanItem: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      userName: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description from..to inclusive, at most 31 days
+       */
+      to: string;
+      status: components['schemas']['TourPlanItemStatus'];
+      /** @description Set while rejected */
+      rejectionReason: string | null;
+      plan: components['schemas']['TourPlanItemPlanOutput'];
+      /** @description Days in from..to with a counted DCR of the owner (submitted/approved; rejected don't count) */
+      filedDates: string[];
+      version: number;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      submittedAt: string | null;
+      decidedAt: string | null;
+      decidedBy: string | null;
+    };
     StandardTourPlan: {
       /**
        * Format: uuid
@@ -5006,21 +5390,48 @@ export interface components {
       workTypeId: string;
       territoryIds: string[];
       tourPlanId: string | null;
+      /** @description Approved TourPlanItem this report was filed from */
+      tourPlanItemId?: string | null;
       /** @description Required when worked differs from the approved TP (#22) */
       deviationReason: string | null;
       /**
-       * @description Locked after the day-lock cut-off (#23)
+       * @description draft/submitted show 'locked' after the day-lock cut-off (#23). approved/rejected (manager review) always show as such.
        * @enum {string}
        */
-      status: 'draft' | 'submitted' | 'locked';
+      status: 'draft' | 'submitted' | 'locked' | 'approved' | 'rejected';
+      /**
+       * @description Manager review: pending = submitted, not reviewed yet; null for drafts
+       * @default null
+       */
+      reviewStatus: ('pending' | 'approved' | 'rejected') | null;
+      /** @default null */
+      approvedAt: string | null;
+      /**
+       * @description Reviewer; null with approvedAt set = approved by the system (autoApproved)
+       * @default null
+       */
+      approvedBy: string | null;
+      /** @description True when the system approved it at submit: the filer is a director (no manager). Audited dcr.auto_approved with reason 'auto-approved, no manager' */
+      autoApproved?: boolean;
+      /** @description True for a director: the day never locks (no 00:00 IST lock, no unlock request needed); status never becomes locked */
+      neverLocks?: boolean;
+      /** @default null */
+      rejectedAt: string | null;
+      /** @default null */
+      rejectedBy: string | null;
+      /**
+       * @description Why the manager rejected it. A rejected DCR is kept for history, counts nowhere, and reopens its day for 48 h (unlockedUntil).
+       * @default null
+       */
+      rejectionReason: string | null;
       calls: components['schemas']['DcrCall'][];
       submittedAt: string | null;
       /**
        * Format: date-time
-       * @description Day-lock cut-off: end of the day + companies.dcr_lock_after_hours (company time zone)
+       * @description Day-lock cut-off: 00:00 Asia/Kolkata on the next day (submit by 23:59 IST the same day)
        */
       lockAt: string;
-      /** @description Set while an approved correction request keeps a locked day editable (48 h) */
+      /** @description Set while an approved correction request or a manager rejection keeps a locked day editable (48 h from the decision) */
       unlockedUntil: string | null;
       /**
        * @description Field-day band (from the work type); null for non-field days
@@ -5067,10 +5478,15 @@ export interface components {
       rcpa: components['schemas']['RcpaLineOutput'][];
       remarks: string | null;
       /**
-       * Format: date-time
-       * @description ISO-8601 timestamp (UTC)
+       * @description When the product presentation was shown to the doctor (client time). Drafts may omit it; submit requires it on every doctor call with productsDetailed (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED).
+       * @default null
        */
-      calledAt: string;
+      presentationOpenedAt: string | null;
+      /**
+       * Format: date-time
+       * @description Server time when the call (clientId) was first saved to a DCR; never changes on re-save. Client values are ignored.
+       */
+      readonly calledAt: string;
     };
     DcrSfcRoute: {
       /**
@@ -5168,6 +5584,8 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       subjectId: string;
+      /** @description True when the caller can decide this request now (pending, not their own, approvals:decide plus the type permission: dcr_unlock:decide for dcr_unlock, expenses:approve for expense; in line above the current approver) */
+      canDecide?: boolean;
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -5175,7 +5593,7 @@ export interface components {
        */
       requestedBy: string;
       requestedByName: string;
-      /** @description Reporting manager; null = any authorised manager */
+      /** @description Reporting manager; null = any authorised manager. dcr_unlock: the company director (dcr_unlock:decide holder) when there is exactly one; null when several share the queue */
       approverId: string | null;
       /** @enum {string} */
       status: 'pending' | 'approved' | 'rejected' | 'cancelled';
@@ -5190,6 +5608,10 @@ export interface components {
       decidedBy: string | null;
       /** @description The reason of the rejecting step; null unless status is rejected */
       rejectionReason?: string | null;
+      /** @description True when the system approved it at submit (the requester is a director, no manager): decidedBy null, comment 'auto-approved, no manager' */
+      autoApproved?: boolean;
+      /** @description Approver warnings. dcr_rejected_lines: an expense claim has lines on days whose DCR was rejected (see claim.dcrRejectedDates); approving such a claim is blocked with 409 DCR_NOT_APPROVED */
+      flags?: 'dcr_rejected_lines'[];
     };
     DcrOptions: {
       /**
@@ -5210,6 +5632,57 @@ export interface components {
        * @default []
        */
       drafts: components['schemas']['Dcr'][];
+      /**
+       * @description Your manager-rejected reports for the date, newest first (history; rejectionReason set)
+       * @default []
+       */
+      rejected: components['schemas']['Dcr'][];
+      /**
+       * @description Your latest dcr_unlock (correction) request for this date, or null; drives the 'Unlock requested' state
+       * @default null
+       */
+      unlockRequest: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        /** @enum {string} */
+        status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+        /**
+         * Format: date-time
+         * @description ISO-8601 timestamp (UTC)
+         */
+        requestedAt: string;
+      } | null;
+      /**
+       * @description Approved tour plan cards (independent of the query date), by from. Shown until no pending day is today or later (i.e. hidden once the last pending day locks at 00:00 IST)
+       * @default []
+       */
+      tourPlanDrafts: components['schemas']['DcrTourPlanDraft'][];
+      /**
+       * @description Doctor detailing picker: products[] grouped by displayName (strength stripped), A-Z; store productId in productsDetailed
+       * @default []
+       */
+      detailProducts: components['schemas']['DcrDetailProduct'][];
+      /**
+       * @description Active products for the call pickers, by name (imageUrl presigned, >= 30 min)
+       * @default []
+       */
+      products: components['schemas']['DcrProductOption'][];
+      /**
+       * @description Company setting: the server drafts TA/DA expense lines on DCR submit (submit response expenseDraft). Clients switch off client-side drafting when true; absent (older API) = false
+       * @default false
+       */
+      autoExpenseOnDcrSubmit: boolean;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      lockAt?: string;
+      unlockedUntil?: string | null;
+      locked?: boolean;
     };
     DcrWorkTypeOption: {
       /**
@@ -5228,6 +5701,123 @@ export interface components {
       usesSfc: boolean;
       /** @description Required details.kind on submit; null = no details */
       detailsKind: ('meeting' | 'training' | 'office' | 'leave') | null;
+    };
+    DcrTourPlanDraft: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      userName: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description from..to inclusive, at most 31 days
+       */
+      to: string;
+      status: components['schemas']['TourPlanItemStatus'];
+      /** @description Set while rejected */
+      rejectionReason: string | null;
+      plan: components['schemas']['TourPlanItemPlanOutput'];
+      /** @description Days in from..to with a counted DCR of the owner (submitted/approved; rejected don't count) */
+      filedDates: string[];
+      version: number;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      submittedAt: string | null;
+      decidedAt: string | null;
+      decidedBy: string | null;
+      /** @description Unfiled days from today (IST) on; the card is listed only while this is non-empty */
+      pendingDates: string[];
+      /** @description pendingDates that already have a DCR draft */
+      draftDates: string[];
+      /** @description Days that can be submitted now (today only). Future pendingDates accept drafts (with tourPlanItemId) but not submit */
+      fileableDates: string[];
+    };
+    DcrDetailProduct: {
+      /** @example ARIPIX */
+      displayName: string;
+      /**
+       * Format: uuid
+       * @description SKU to store in productsDetailed for this entry: the first SKU (A-Z by name) that has a picture, else the first SKU
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      /** @description All active SKUs (strengths) of this displayName, A-Z by name */
+      productIds: string[];
+      /** @description productId's composition */
+      composition: string | null;
+      imageFileKey: string | null;
+      /** @description productId's picture (presigned), or null */
+      imageUrl: string | null;
+    };
+    DcrProductOption: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      divisionId: string;
+      /** @description Company SKU code, unique per company */
+      code: string;
+      name: string;
+      /**
+       * @description Name without strength numbers, derived from name (e.g. 'ARIPIX 10' -> 'ARIPIX'); several SKUs can share one. Use for doctor detailing pickers.
+       * @example ARIPIX
+       */
+      readonly displayName: string;
+      brand: string | null;
+      composition: string | null;
+      /** @example 10 x 10 tablets */
+      packSize: string | null;
+      form: ('tablet' | 'capsule' | 'syrup' | 'injection' | 'cream' | 'drops' | 'other') | null;
+      /** @description MRP in INR */
+      mrp: number | null;
+      /** @description Price to stockist, INR */
+      pts: number | null;
+      /** @description Can be given as a physician sample */
+      isSample: boolean;
+      /**
+       * @description R2 key of the product picture (upload purpose product_image); null = none
+       * @default null
+       */
+      imageFileKey: string | null;
+      /**
+       * @description Presigned GET for the picture (valid >= 30 min, <= 60 min); null if none or storage is off. Re-fetch the product for a fresh URL.
+       * @default null
+       */
+      imageUrl: string | null;
     };
     DcrHqOptionList: {
       items: components['schemas']['DcrHqOption'][];
@@ -5306,6 +5896,158 @@ export interface components {
       version: number;
       /** @description own = the filer's route; hq = HQ fallback (filer has no live route on that HQ) */
       source?: components['schemas']['DcrSfcSource'];
+    };
+    DcrSubmitResult: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Tombstone: set when soft-deleted */
+      deletedAt: string | null;
+      /** @description Row version, incremented on every update (optimistic concurrency) */
+      version: number;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      territoryIds: string[];
+      tourPlanId: string | null;
+      /** @description Approved TourPlanItem this report was filed from */
+      tourPlanItemId?: string | null;
+      /** @description Required when worked differs from the approved TP (#22) */
+      deviationReason: string | null;
+      /**
+       * @description draft/submitted show 'locked' after the day-lock cut-off (#23). approved/rejected (manager review) always show as such.
+       * @enum {string}
+       */
+      status: 'draft' | 'submitted' | 'locked' | 'approved' | 'rejected';
+      /**
+       * @description Manager review: pending = submitted, not reviewed yet; null for drafts
+       * @default null
+       */
+      reviewStatus: ('pending' | 'approved' | 'rejected') | null;
+      /** @default null */
+      approvedAt: string | null;
+      /**
+       * @description Reviewer; null with approvedAt set = approved by the system (autoApproved)
+       * @default null
+       */
+      approvedBy: string | null;
+      /** @description True when the system approved it at submit: the filer is a director (no manager). Audited dcr.auto_approved with reason 'auto-approved, no manager' */
+      autoApproved?: boolean;
+      /** @description True for a director: the day never locks (no 00:00 IST lock, no unlock request needed); status never becomes locked */
+      neverLocks?: boolean;
+      /** @default null */
+      rejectedAt: string | null;
+      /** @default null */
+      rejectedBy: string | null;
+      /**
+       * @description Why the manager rejected it. A rejected DCR is kept for history, counts nowhere, and reopens its day for 48 h (unlockedUntil).
+       * @default null
+       */
+      rejectionReason: string | null;
+      calls: components['schemas']['DcrCall'][];
+      submittedAt: string | null;
+      /**
+       * Format: date-time
+       * @description Day-lock cut-off: 00:00 Asia/Kolkata on the next day (submit by 23:59 IST the same day)
+       */
+      lockAt: string;
+      /** @description Set while an approved correction request or a manager rejection keeps a locked day editable (48 h from the decision) */
+      unlockedUntil: string | null;
+      /**
+       * @description Field-day band (from the work type); null for non-field days
+       * @default null
+       */
+      band: components['schemas']['DcrBand'] | null;
+      /** @default null */
+      details: components['schemas']['DcrDetailsOutput'] | null;
+      /**
+       * @description Day-level Work With (anyone)
+       * @default []
+       */
+      workWithUserIds: string[];
+      /**
+       * @description One chosen SFC route per HQ of the day; snapshots set at submit
+       * @default []
+       */
+      sfcRoutes: components['schemas']['DcrSfcRoute'][];
+      /** @default null */
+      submittedBy: string | null;
+      /** @description Live calls on this DCR (GET /v1/dcrs list only) */
+      callCount?: number;
+      /**
+       * @description Server TA/DA auto-draft outcome; null when the company setting autoExpenseOnDcrSubmit is off or on an idempotent retry. Clients: non-null means the server drafted (do not draft client-side)
+       * @default null
+       */
+      expenseDraft: components['schemas']['ExpenseAutoDraft'] | null;
+    };
+    ExpenseAutoDraft: {
+      /**
+       * @description drafted = the day's auto lines were (re)written; skipped = nothing written (see reason); error = the TA/DA engine failed, nothing written, the DCR submit still succeeded
+       * @enum {string}
+       */
+      status: 'drafted' | 'skipped' | 'error';
+      /** @description Set when skipped: claim_locked (the month claim is submitted/approved/paid), manual_line_exists (a manual allowance/mileage line on the day), no_allowance (work type pays no TA/DA or nothing computed) */
+      reason: ('claim_locked' | 'manual_line_exists' | 'no_allowance') | null;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      dcrId: string;
+      claimId: string | null;
+      claimStatus: components['schemas']['ExpenseStatus'] | null;
+      /** @description True when the month claim was created now */
+      claimCreated: boolean;
+      lines: number;
+      da: number;
+      ta: number;
+      km: number;
+      /** @description Engine problems on the day (no_rate, place_required, ...); lines may still be drafted */
+      issues: (
+        'no_rate' | 'place_required' | 'manual_line_exists' | 'dcr_not_submitted' | 'dcr_rejected'
+      )[];
+      error: {
+        code: string;
+        message: string;
+      } | null;
     };
     ApprovalPage: {
       items: components['schemas']['Approval'][];
@@ -5756,11 +6498,21 @@ export interface components {
       type: components['schemas']['NotificationType'];
       title: string;
       body: string;
-      /** @description Deep link target type */
+      /** @description Deep link target type. dcr: entityId = DCR id; tour_plan_item: entityId = item id; tour_plan: plan id; approval_request (dcr_unlock.*): the request id, data.date = the day */
       entityType:
-        ('leave_request' | 'expense_claim' | 'tour_plan' | 'doctor' | 'approval_request') | null;
+        | (
+            | 'leave_request'
+            | 'expense_claim'
+            | 'tour_plan'
+            | 'tour_plan_item'
+            | 'doctor'
+            | 'dcr'
+            | 'approval_request'
+          )
+        | null;
       /** @description Deep link target id */
       entityId: string | null;
+      /** @description Event data. Always: actorId (null = system), actorName. Auto-approvals: autoApproved true, reason. dcr.*: date. dcr_unlock.*: date, approvalId. tour_plan.* (item): from, to, approvalId. expense.blocked: claimId, dates, dcrIds, dcrStatus, ownerId */
       data: {
         [key: string]: unknown;
       } | null;
@@ -5782,10 +6534,17 @@ export interface components {
       | 'expense.rejected'
       | 'expense.paid'
       | 'exceptions.digest'
+      | 'expense.blocked'
+      | 'tour_plan.submitted'
       | 'tour_plan.approved'
       | 'tour_plan.rejected'
       | 'doctor.approved'
       | 'doctor.rejected'
+      | 'dcr.submitted'
+      | 'dcr.approved'
+      | 'dcr.rejected'
+      | 'dcr_unlock.submitted'
+      | 'dcr_unlock.approved'
       | 'dcr_unlock.rejected';
     UnreadCount: {
       count: number;
@@ -5990,8 +6749,54 @@ export interface components {
       rejectedAt: string | null;
       paidAt: string | null;
       paymentRef: string | null;
+      /**
+       * @description Dates of live lines whose DCR was rejected (lines[].dcrRejectedAt set); approvers see the flag dcr_rejected_lines on the Approval
+       * @default []
+       */
+      dcrRejectedDates: string[];
       version: number;
+      /**
+       * @description Per-level history of the current approval request, level 1..totalLevels (empty while draft/never submitted)
+       * @default []
+       */
+      approvalTrail: components['schemas']['ExpenseApprovalLevel'][];
+      /** @description Configured approval levels (EXPENSE_APPROVAL_LEVELS) */
+      totalLevels: number;
+      /** @description Approver of the level awaiting a decision; null unless submitted (or shared queue) */
+      currentApprover: components['schemas']['ExpenseApprover'] | null;
+      /** @description The caller may approve/reject now (same rules as POST /decision; DCR gate not pre-checked) */
+      canDecide: boolean;
+      /** @description The caller may mark it paid now (POST /pay) */
+      canPay: boolean;
+      /** @description Who marked it paid; null unless paid */
+      paidBy: components['schemas']['UserRef'] | null;
       lineCount: number;
+    };
+    ExpenseApprovalLevel: {
+      level: number;
+      /** @description Assigned approver of this level (projected up the manager chain for levels not reached yet); null when skipped, shared queue or auto-approved */
+      approver: components['schemas']['ExpenseApprover'] | null;
+      /** @description Who actually decided (may be above the assigned approver); null if undecided or system */
+      decidedBy: components['schemas']['ExpenseApprover'] | null;
+      /** @enum {string} */
+      status: 'pending' | 'approved' | 'rejected' | 'skipped';
+      /** @description True for the level awaiting a decision now */
+      current: boolean;
+      decidedAt: string | null;
+      comment: string | null;
+      /** @description comment when status is rejected */
+      rejectionReason: string | null;
+    };
+    /** @description User ref with their most senior role key */
+    ExpenseApprover: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      role: string | null;
     };
     ExpenseClaim: {
       /**
@@ -6032,7 +6837,27 @@ export interface components {
       rejectedAt: string | null;
       paidAt: string | null;
       paymentRef: string | null;
+      /**
+       * @description Dates of live lines whose DCR was rejected (lines[].dcrRejectedAt set); approvers see the flag dcr_rejected_lines on the Approval
+       * @default []
+       */
+      dcrRejectedDates: string[];
       version: number;
+      /**
+       * @description Per-level history of the current approval request, level 1..totalLevels (empty while draft/never submitted)
+       * @default []
+       */
+      approvalTrail: components['schemas']['ExpenseApprovalLevel'][];
+      /** @description Configured approval levels (EXPENSE_APPROVAL_LEVELS) */
+      totalLevels: number;
+      /** @description Approver of the level awaiting a decision; null unless submitted (or shared queue) */
+      currentApprover: components['schemas']['ExpenseApprover'] | null;
+      /** @description The caller may approve/reject now (same rules as POST /decision; DCR gate not pre-checked) */
+      canDecide: boolean;
+      /** @description The caller may mark it paid now (POST /pay) */
+      canPay: boolean;
+      /** @description Who marked it paid; null unless paid */
+      paidBy: components['schemas']['UserRef'] | null;
     };
     ExpenseLine: {
       /**
@@ -6065,6 +6890,16 @@ export interface components {
       source: 'manual' | 'auto';
       /** @description Fare-chart place used for TA (#39) */
       allowancePlaceId: string | null;
+      /**
+       * @description What wrote an auto line (POST .../allowances or DCR submit); null on manual lines
+       * @default null
+       */
+      autoTrigger: ('allowances_run' | 'dcr_submit') | null;
+      /**
+       * @description Set when the day's DCR was rejected after this line was added (the line stays on a submitted/approved/paid claim; auto lines on draft/rejected claims are removed instead)
+       * @default null
+       */
+      dcrRejectedAt: string | null;
       attachments: components['schemas']['ExpenseAttachment'][];
       version: number;
     };
@@ -6300,7 +7135,9 @@ export interface components {
       km: number | null;
       da: number;
       ta: number;
-      issues: ('no_rate' | 'place_required' | 'manual_line_exists' | 'dcr_not_submitted')[];
+      issues: (
+        'no_rate' | 'place_required' | 'manual_line_exists' | 'dcr_not_submitted' | 'dcr_rejected'
+      )[];
     };
     ExpenseReconciliation: {
       /**
@@ -6466,6 +7303,8 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       subjectId: string;
+      /** @description True when the caller can decide this request now (pending, not their own, approvals:decide plus the type permission: dcr_unlock:decide for dcr_unlock, expenses:approve for expense; in line above the current approver) */
+      canDecide?: boolean;
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -6473,7 +7312,7 @@ export interface components {
        */
       requestedBy: string;
       requestedByName: string;
-      /** @description Reporting manager; null = any authorised manager */
+      /** @description Reporting manager; null = any authorised manager. dcr_unlock: the company director (dcr_unlock:decide holder) when there is exactly one; null when several share the queue */
       approverId: string | null;
       /** @enum {string} */
       status: 'pending' | 'approved' | 'rejected' | 'cancelled';
@@ -6488,6 +7327,10 @@ export interface components {
       decidedBy: string | null;
       /** @description The reason of the rejecting step; null unless status is rejected */
       rejectionReason?: string | null;
+      /** @description True when the system approved it at submit (the requester is a director, no manager): decidedBy null, comment 'auto-approved, no manager' */
+      autoApproved?: boolean;
+      /** @description Approver warnings. dcr_rejected_lines: an expense claim has lines on days whose DCR was rejected (see claim.dcrRejectedDates); approving such a claim is blocked with 409 DCR_NOT_APPROVED */
+      flags?: 'dcr_rejected_lines'[];
       /** @description Full subject details for the requester, an assigned approver (any step) or a caller with read access to the subject; otherwise null */
       subject: components['schemas']['ApprovalSubject'] | null;
     };
@@ -6729,6 +7572,137 @@ export interface components {
       id: string;
       name: string;
     };
+    MeAttention: {
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      notifications: {
+        unread: number;
+      };
+      /** @description Waiting for you: pending requests whose current step names you, or a shared queue listing you (dcr_unlock to directors). Never your own requests. All six keys always present */
+      approvals: {
+        total: number;
+        byType: {
+          [key: string]: number;
+        };
+      };
+      /** @description Team DCRs submitted and not yet reviewed (needs dcr:review); null without it */
+      dcrReview: {
+        pending: number;
+      } | null;
+      exceptions: {
+        /** @description Your own open exceptions (high = severity high) */
+        mine: {
+          open: number;
+          high: number;
+        };
+        /** @description Open exceptions of your team, excluding yours (needs field:read); else null */
+        team: {
+          open: number;
+          high: number;
+        } | null;
+      };
+      /** @description Requests you raised that are still pending / were rejected recently */
+      myRequests: {
+        pending: number;
+        unlockPending: number;
+        rejectedLast7Days: number;
+      };
+      myDcr: {
+        /** @description Your draft DCRs not yet submitted */
+        draftsOpen: number;
+        /** @description Your rejected DCRs to fix and resubmit */
+        rejectedOpen: number;
+      };
+    };
+    MeToday: {
+      /**
+       * Format: date
+       * @description Today in the company's timezone
+       */
+      date: string;
+      timezone: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      punch: {
+        status: components['schemas']['PunchStatus'];
+        inAt: string | null;
+        outAt: string | null;
+      };
+      tourPlan: {
+        /** @description Approved tour plan item covering today, if any */
+        itemId: string | null;
+        workTypeId: string | null;
+        workTypeName: string | null;
+        territoryIds: string[];
+        monthPlanId: string | null;
+        monthPlanStatus: string | null;
+        /** @description Doctor visits planned today (monthly plan) */
+        plannedVisits: number;
+      };
+      /** @description Today's DCR (latest non-deleted), null when none yet */
+      dcr: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        /** @enum {string} */
+        status: 'draft' | 'submitted' | 'approved' | 'rejected';
+        calls: number;
+        /**
+         * Format: date-time
+         * @description ISO-8601 timestamp (UTC)
+         */
+        lockAt: string;
+        locked: boolean;
+        neverLocks: boolean;
+      } | null;
+    };
+    /** @enum {string} */
+    PunchStatus: 'not_in' | 'in' | 'out';
+    PlannedDoctors: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      tourPlanId: string | null;
+      tpItemId: string | null;
+      /** @description tour_plan first, then by name; max 500 */
+      items: components['schemas']['PlannedDoctor'][];
+    };
+    PlannedDoctor: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      doctorId: string;
+      name: string;
+      specialtyId: string | null;
+      categoryId: string | null;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      /**
+       * @description tour_plan: a planned visit for the date in the month's plan; tp_item_territory: a doctor in a territory of the approved tour plan item for the date
+       * @enum {string}
+       */
+      source: 'tour_plan' | 'tp_item_territory';
+      /** @description Called on that date in your DCR */
+      visited: boolean;
+      lastCallDate: string | null;
+    };
     ExceptionSummary: {
       /**
        * Format: date
@@ -6807,7 +7781,12 @@ export interface components {
       id: string;
       code: string;
       name: string;
+      /** @description Name without strength numbers (derived from name), e.g. ARIPIX */
+      readonly displayName: string;
       brand: string | null;
+      composition: string | null;
+      /** @example 10 x 10 tablets */
+      packSize: string | null;
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -6834,6 +7813,16 @@ export interface components {
         name: string;
       } | null;
       pricesUpdatedAt: string | null;
+      /**
+       * @description R2 key of the product picture (upload purpose product_image); null = none
+       * @default null
+       */
+      imageFileKey: string | null;
+      /**
+       * @description Presigned GET for the picture (valid >= 30 min, <= 60 min); null if none or storage is off. Re-fetch the product for a fresh URL.
+       * @default null
+       */
+      imageUrl: string | null;
       version: number;
     };
     ProductPricesBulkResponse: {
@@ -6955,61 +7944,41 @@ export interface components {
       plannedChemistIds: string[];
       notes?: string | null;
     };
-    StandardTourPlanDayOutput: {
-      week: number;
-      weekday: number;
-      entries: components['schemas']['TourPlanEntryOutput'][];
-    };
-    DetailedProductOutput: {
+    TourPlanItemPlanOutput: {
       /**
        * Format: uuid
        * @description UUIDv7 identifier
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
-      productId: string;
-      /** @description Detailing sequence */
-      order: number;
-      feedback?: ('positive' | 'neutral' | 'negative') | null;
+      workTypeId: string;
+      /** @default [] */
+      territoryIds: string[];
+      /** @default [] */
+      workWithUserIds: string[];
+      /**
+       * @description One route per HQ of the day (as DCR sfcRoutes); fully checked at DCR submit
+       * @default []
+       */
+      sfcRoutes: components['schemas']['DcrSfcRouteChoiceOutput'][];
+      /**
+       * @description Meeting/training/office details; kind must match the work type's detailsKind. Never leave
+       * @default null
+       */
+      details: components['schemas']['DcrDetailsOutput'] | null;
     };
-    SampleGivenOutput: {
+    DcrSfcRouteChoiceOutput: {
       /**
        * Format: uuid
        * @description UUIDv7 identifier
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
-      productId: string;
-      quantity: number;
-    };
-    /** @description Personal order booking line (chemist and stockist calls only, #40) */
-    PobLineOutput: {
+      hqTerritoryId: string;
       /**
        * Format: uuid
        * @description UUIDv7 identifier
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
-      productId: string;
-      quantity: number;
-      stockistId?: string | null;
-      /** @description INR = quantity × product PTR, computed by the server (null when the product has no PTR). Ignored on input. */
-      value?: number | null;
-    };
-    /** @description Retail chemist prescription audit line (chemist calls, #40) */
-    RcpaLineOutput: {
-      /**
-       * Format: uuid
-       * @description Our product; anchors the molecule being audited
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      productId: string;
-      /** @description Null/absent = this line counts our own brand */
-      competitorBrand?: string | null;
-      competitorCompany?: string | null;
-      /** @description Units sold/seen at the chemist */
-      quantity: number;
-      /** @description Prescription (Rx) count, if captured */
-      prescriptions?: number | null;
-      /** @description Prescribing doctor, in your scope */
-      doctorId?: string | null;
+      sfcRouteId: string;
     };
     /** @description Non-field day details; kind must match the work type (DcrWorkTypeOption.detailsKind) */
     DcrDetailsOutput:
@@ -7091,6 +8060,62 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       leaveRequestId: string;
+    };
+    StandardTourPlanDayOutput: {
+      week: number;
+      weekday: number;
+      entries: components['schemas']['TourPlanEntryOutput'][];
+    };
+    DetailedProductOutput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      /** @description Detailing sequence */
+      order: number;
+      feedback?: ('positive' | 'neutral' | 'negative') | null;
+    };
+    SampleGivenOutput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      quantity: number;
+    };
+    /** @description Personal order booking line: chemist and stockist calls only (doctor calls: 422 VALIDATION, details.reason POB_NOT_ALLOWED_FOR_DOCTOR); one line per product per call */
+    PobLineOutput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      quantity: number;
+      stockistId?: string | null;
+      /** @description INR = quantity × product PTS (price to stockist), computed by the server when the line is saved and kept as saved (null when the product has no PTS). Ignored on input. */
+      value?: number | null;
+    };
+    /** @description Retail chemist prescription audit line (chemist calls, #40) */
+    RcpaLineOutput: {
+      /**
+       * Format: uuid
+       * @description Our product; anchors the molecule being audited
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      /** @description Null/absent = this line counts our own brand */
+      competitorBrand?: string | null;
+      competitorCompany?: string | null;
+      /** @description Units sold/seen at the chemist */
+      quantity: number;
+      /** @description Prescription (Rx) count, if captured */
+      prescriptions?: number | null;
+      /** @description Prescribing doctor, in your scope */
+      doctorId?: string | null;
     };
     SfcSettingsOutput: {
       /** @description TA per km (INR) used to compute SFC amounts on write */
@@ -7558,7 +8583,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      /** @description FORBIDDEN (product_image needs products:prices; import_source needs imports:write) */
       403: {
         headers: {
           [name: string]: unknown;
@@ -7891,7 +8916,7 @@ export interface operations {
         specialtyId?: string;
         categoryId?: string;
         approvalStatus?: 'pending' | 'approved' | 'rejected';
-        /** @description Batch fetch: comma-separated doctor ids (max 100). Only doctors you can read are returned; others are silently absent. Pass limit=100 to get all in one page. */
+        /** @description Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page. */
         ids?: string;
       };
       header?: never;
@@ -8311,6 +9336,8 @@ export interface operations {
         territoryId?: string;
         /** @description Only rows linked to this territory (level `territory`, exact match), or `none` for rows not linked to any territory */
         localTerritoryId?: string | 'none';
+        /** @description Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page. */
+        ids?: string;
       };
       header?: never;
       path?: never;
@@ -8667,6 +9694,8 @@ export interface operations {
         includeTotal?: 'true' | 'false';
         /** @description Only rows in this territory or any descendant (within the caller scope) */
         territoryId?: string;
+        /** @description Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page. */
+        ids?: string;
       };
       header?: never;
       path?: never;
@@ -10599,6 +11628,366 @@ export interface operations {
       };
     };
   };
+  listTourPlanItems: {
+    parameters: {
+      query?: {
+        /** @description true: the caller's items (newest first). Else the team's items, never your own (approvals:decide or field:read), oldest from first */
+        mine?: 'true' | 'false';
+        status?: components['schemas']['TourPlanItemStatus'];
+        limit?: number;
+        cursor?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlanItemList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Team list without approvals:decide or field:read */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  upsertTourPlanItem: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['TourPlanItemUpsert'];
+      };
+    };
+    responses: {
+      /** @description Saved (status draft) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlanItem'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not your item */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description No such item */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TP_LOCKED (pending/approved) or VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION: to < from, more than 31 days, unknown/inactive or leave/holiday work type, details.kind mismatch, unknown or out-of-scope territories/users/SFC routes */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getTourPlanItem: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlanItem'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteTourPlanItem: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not your item */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TP_LOCKED (pending/approved) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  submitTourPlanItem: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Pending */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlanItem'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not your item */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TP_LOCKED, or TP_OVERLAP (details.items): overlaps your pending/approved item */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TP_IN_PAST: from is before today (IST); or VALIDATION as for PUT */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  decideTourPlanItem: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['TourPlanItemDecision'];
+      };
+    };
+    responses: {
+      /** @description Decided */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TourPlanItem'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Your own item, missing approvals:decide, or APPROVAL_NOT_YOUR_STEP */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found or outside your team */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description CONFLICT: not pending */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description REJECTION_REASON_REQUIRED */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   getStandardTourPlan: {
     parameters: {
       query?: {
@@ -10938,7 +12327,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty. */
+      /** @description EMPTY_PLAN: the plan has no day with an entry. Any other day (past, weekly off, leave, unplanned) may be empty */
       422: {
         headers: {
           [name: string]: unknown;
@@ -11010,8 +12399,8 @@ export interface operations {
         userId?: string;
         /** @description Territory incl. descendants */
         territoryId?: string;
-        status?: 'draft' | 'submitted' | 'locked';
-        /** @description true: only the caller's own DCRs (ignores userId) */
+        status?: 'draft' | 'submitted' | 'locked' | 'approved' | 'rejected';
+        /** @description true: only the caller's own DCRs (ignores userId). Otherwise callers with dcr:review see their team (approvals hierarchy, incl. themselves); everyone else sees only their own */
         mine?: 'true' | 'false';
       };
       header?: never;
@@ -11199,6 +12588,15 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
+      /** @description NO_APPROVER (details.permission dcr_unlock:decide): nobody else in the company can decide unlock requests; ask an admin to assign the director role */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
     };
   };
   getDcrOptions: {
@@ -11294,6 +12692,7 @@ export interface operations {
       query?: {
         q?: string;
         limit?: number;
+        ids?: string;
       };
       header?: never;
       path?: never;
@@ -11490,13 +12889,13 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Submitted (also returned for a retry with the same key) */
+      /** @description Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Audited as expense.auto_drafted. Director (no manager): the report is approved at submit by the system (status approved, approvedBy null, autoApproved true; audit dcr.auto_approved) before the expense auto-draft, and the day never locks (no DAY_LOCKED, no unlock request). */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['Dcr'];
+          'application/json': components['schemas']['DcrSubmitResult'];
         };
       };
       /** @description Not signed in */
@@ -11535,7 +12934,79 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description VALIDATION, SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND */
+      /** @description VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  decideDcr: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DcrDecision'];
+      };
+    };
+    responses: {
+      /** @description Decided */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Dcr'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (your own DCR, or no dcr:review) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found (or outside your team) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description NOT_PENDING_REVIEW (not submitted; details.status) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (comment 1-500 chars required to reject) */
       422: {
         headers: {
           [name: string]: unknown;
@@ -12976,7 +14447,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Pending request */
+      /** @description Pending request (director: approved) */
       201: {
         headers: {
           [name: string]: unknown;
@@ -14858,7 +16329,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Submitted */
+      /** @description Submitted (director: approved) */
       200: {
         headers: {
           [name: string]: unknown;
@@ -14894,7 +16365,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description EXPENSE_NOT_EDITABLE */
+      /** @description EXPENSE_NOT_EDITABLE; DCR_NOT_APPROVED (director only, details.dates / dcrIds / dcrStatus): a line date has no approved DCR */
       409: {
         headers: {
           [name: string]: unknown;
@@ -14966,7 +16437,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Not submitted / already decided */
+      /** @description Not submitted / already decided; or DCR_NOT_APPROVED on approve: details {dates[], dcrIds[], dcrStatus{date: draft|submitted|rejected|missing}} (every line date needs an approved DCR of the owner) */
       409: {
         headers: {
           [name: string]: unknown;
@@ -15632,7 +17103,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Own request, or requester not below you in the reporting line */
+      /** @description Own request, or requester not below you in the reporting line; APPROVAL_PERMISSION_REQUIRED (details.permission): dcr_unlock requests need dcr_unlock:decide (director only), expense needs expenses:approve */
       403: {
         headers: {
           [name: string]: unknown;
@@ -15650,7 +17121,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Already decided; LEAVE_DCR_CONFLICT when the final approval of a leave hits a submitted DCR (details.dates, details.dcrIds) */
+      /** @description DCR_NOT_APPROVED (expense approve; details {dates[], dcrIds[], dcrStatus}). Already decided; LEAVE_DCR_CONFLICT when the final approval of a leave hits a submitted DCR (details.dates, details.dcrIds) */
       409: {
         headers: {
           [name: string]: unknown;
@@ -15720,6 +17191,244 @@ export interface operations {
         };
       };
       /** @description Invalid filters */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listMyExceptions: {
+    parameters: {
+      query?: {
+        status?: string;
+        severity?: string;
+        ruleCode?: string;
+        userId?: string;
+        assignedToMe?: 'true' | 'false';
+        /** @description periodDate >= from */
+        from?: string;
+        /** @description periodDate <= to */
+        to?: string;
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ExceptionPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Invalid filters */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getMyAttention: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Counts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['MeAttention'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getMyToday: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Today */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['MeToday'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listMyPlannedDoctors: {
+    parameters: {
+      query?: {
+        /** @description Default: today (company timezone) */
+        date?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Planned doctors */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PlannedDoctors'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Invalid date */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getMyKpis: {
+    parameters: {
+      query?: {
+        /** @description self: you; team: your whole reporting line incl. you (403 without a team) */
+        scope?: 'self' | 'team';
+        /** @description Default: this month, from the 1st to today */
+        month?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Report */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['KpiReport'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description No team, or a future month */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Invalid query */
       422: {
         headers: {
           [name: string]: unknown;
@@ -16399,6 +18108,137 @@ export interface operations {
       };
       /** @description VALIDATION (rows missing, empty or more than 300) */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  setProductImage: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ProductImageSet'];
+      };
+    };
+    responses: {
+      /** @description Saved (row with imageFileKey and a fresh imageUrl) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminProduct'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs products:prices) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description PRODUCT_NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT (only when version is sent) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION; error.details.reason = IMAGE_KEY_INVALID (not a product_image key of your company), UPLOAD_MISSING (PUT the bytes first), UPLOAD_TOO_LARGE (> 5 MB), UPLOAD_TYPE_INVALID or UPLOAD_FORMAT_INVALID */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Storage not configured */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  clearProductImage: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cleared (imageFileKey and imageUrl null) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminProduct'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs products:prices) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description PRODUCT_NOT_FOUND */
+      404: {
         headers: {
           [name: string]: unknown;
         };

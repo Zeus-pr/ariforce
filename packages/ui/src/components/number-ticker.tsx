@@ -13,7 +13,14 @@ type Props = ComponentPropsWithoutRef<'span'> & {
   suffix?: string;
 };
 
-export function NumberTicker({ value, decimalPlaces = 0, durationMs = 900, suffix = '', className, ...props }: Props) {
+export function NumberTicker({
+  value,
+  decimalPlaces = 0,
+  durationMs = 900,
+  suffix = '',
+  className,
+  ...props
+}: Props) {
   const ref = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
