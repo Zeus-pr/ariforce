@@ -37,6 +37,21 @@ const noop = () => {};
 
 /** Someone's report, read-only, opened from the team list: key facts first, then the day's work. */
 export function TeamDcrDetail({ id }: { id: string }) {
+  return (
+    <>
+      <Link
+        href="/dcr?tab=team"
+        className="flex items-center gap-1.5 self-start text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" aria-hidden /> Team DCRs
+      </Link>
+      <DcrReportBody id={id} />
+    </>
+  );
+}
+
+/** The report with Approve / Reject (reason) in place; `inline` is the compact form used on the Approvals page. */
+export function DcrReportBody({ id, inline = false }: { id: string; inline?: boolean }) {
   const { role, user } = useRole();
   const people = useTeamPeople(role);
   const q = useQuery({
@@ -52,12 +67,6 @@ export function TeamDcrDetail({ id }: { id: string }) {
   const nameOf = (uid: string) => people.data?.byId.get(uid)?.name;
   return (
     <>
-      <Link
-        href="/dcr?tab=team"
-        className="flex items-center gap-1.5 self-start text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" aria-hidden /> Team DCRs
-      </Link>
       {q.error ? (
         <div role="alert" className="flex flex-col items-start gap-2 rounded-xl border p-4 text-sm">
           <p className="text-destructive">{(q.error as Error).message}</p>
@@ -74,9 +83,13 @@ export function TeamDcrDetail({ id }: { id: string }) {
       ) : (
         <>
           <header className="flex flex-col gap-1">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {nameOf(d.userId) ?? 'Team member'}
-            </h1>
+            {inline ? (
+              <h3 className="font-semibold">{nameOf(d.userId) ?? 'Team member'}</h3>
+            ) : (
+              <h1 className="text-2xl font-semibold tracking-tight">
+                {nameOf(d.userId) ?? 'Team member'}
+              </h1>
+            )}
             <p className="text-sm text-muted-foreground">
               {dateLabel(d.date)} · {STATUS[d.status] ?? d.status}
             </p>

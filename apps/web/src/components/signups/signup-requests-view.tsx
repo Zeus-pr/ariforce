@@ -202,6 +202,62 @@ export function SignupRequestsView() {
   );
 }
 
+/** One pending request with Approve / Reject in place (used by the Approvals page, no page change). */
+export function SignupInline({ id, onDecided }: { id: string; onDecided?: () => void }) {
+  const session = useSession();
+  const role = session?.role as Role | undefined;
+  const [req, setReq] = useState<SignupRequest | null | undefined>(undefined);
+  const [acting, setActing] = useState<'approve' | 'reject' | null>(null);
+  useEffect(() => {
+    if (!role) return;
+    let live = true;
+    signupAdapter
+      .list(role, 'pending')
+      .then((l) => live && setReq(l.find((r) => r.id === id) ?? null))
+      .catch(() => live && setReq(null));
+    return () => {
+      live = false;
+    };
+  }, [role, id]);
+  if (!role || req === undefined) return <p className="text-muted-foreground">Loading…</p>;
+  if (!req)
+    return <p className="text-muted-foreground">This request is already decided or not visible.</p>;
+  const done: Done = (r, verb) => {
+    setActing(null);
+    setReq(null);
+    toast.success(`${r.name}: ${verb}.`);
+    onDecided?.();
+  };
+  return (
+    <div className="flex flex-col gap-3" data-testid="signup-inline">
+      <div>
+        <p className="font-medium">{req.name}</p>
+        <p className="text-muted-foreground">
+          {req.email}
+          {req.phone ? ` · ${req.phone}` : ''}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Asked for {ROLE_LABEL[req.requestedRole]} · {fmt(req.createdAt)}
+        </p>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={() => setActing('approve')}>
+          Approve
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setActing('reject')}>
+          Reject
+        </Button>
+      </div>
+      {acting === 'approve' && (
+        <ApproveDialog viewer={role} req={req} onClose={() => setActing(null)} onDone={done} />
+      )}
+      {acting === 'reject' && (
+        <RejectDialog req={req} onClose={() => setActing(null)} onDone={done} />
+      )}
+    </div>
+  );
+}
+
 function useDecide(onDone: Done) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

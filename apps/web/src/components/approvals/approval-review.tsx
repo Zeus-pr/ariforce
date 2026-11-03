@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { Approval, ApprovalDetail, ApprovalSubject } from '@ariforce/contracts';
 import { Badge } from '@ariforce/ui/components/badge';
@@ -8,6 +7,8 @@ import { Button } from '@ariforce/ui/components/button';
 import { api, apiReady } from '@/lib/api';
 import { openReceipt } from '@/lib/expenses/upload';
 import { getTerritories } from '@/lib/query';
+import { DcrReportBody } from '@/components/dcr/team-dcr-detail';
+import { SignupInline } from '@/components/signups/signup-requests-view';
 
 /**
  * Read-only view of what an approval decides on. Primary source: GET /v1/approvals/{id} (ApprovalDetail,
@@ -51,24 +52,15 @@ export function ApprovalReview({ approval }: { approval: Approval }) {
       ) : t === 'doctor' ? (
         <DoctorReview a={approval} />
       ) : t === 'dcr' ? (
-        <OpenLink href={`/dcr/reports/${approval.subjectId}`} label="Open report" a={approval} />
+        <div className="flex flex-col gap-4">
+          <DcrReportBody id={approval.subjectId} inline />
+        </div>
       ) : t === 'signup' ? (
-        <OpenLink href="/sign-up-requests" label="Open sign-up requests" a={approval} />
+        <SignupInline id={approval.subjectId} />
       ) : (
         <p>{approval.summary}</p>
       )}
     </div>
-  );
-}
-
-function OpenLink({ a, href, label }: { a: Approval; href: string; label: string }) {
-  return (
-    <p className="flex flex-wrap items-baseline justify-between gap-2">
-      <span>{a.summary}</span>
-      <Link href={href} className="font-medium text-primary underline-offset-4 hover:underline">
-        {label}
-      </Link>
-    </p>
   );
 }
 

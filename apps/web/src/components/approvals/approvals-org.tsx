@@ -13,6 +13,7 @@ import { ROLE_SHORT } from '@/lib/roles';
 import { RANGE_LABEL, rangeOf, type RangeKey } from '@/lib/team/range';
 import { todayIST } from '@/components/attendance/format';
 import { ApprovalReview } from './approval-review';
+import { DecisionBar } from './decision-bar';
 import { SUBJECT_LABEL } from './approvals-queue';
 
 type Status = Approval['status'] | 'all';
@@ -192,6 +193,9 @@ export function OrgApprovals() {
               {open === a.id && (
                 <div className="flex flex-col gap-3 border-t px-4 py-4">
                   <ApprovalTrail claim={asTrail(a)} />
+                  {a.canDecide && a.subjectType !== 'dcr' && a.subjectType !== 'signup' && (
+                    <DecisionBar approval={a} />
+                  )}
                   <ApprovalReview approval={a} />
                 </div>
               )}
