@@ -99,11 +99,12 @@ export function DcrReportBody({
               </h1>
             )}
             <p className="text-sm text-muted-foreground">
-              {dateLabel(d.date)} · {STATUS[d.status] ?? d.status}
+              {dateLabel(d.date)} ·{' '}
+              {d.reviewStatus === 'pending' ? STATUS.submitted : (STATUS[d.status] ?? d.status)}
             </p>
           </header>
           {!readOnly &&
-            d.status === 'submitted' &&
+            d.reviewStatus === 'pending' &&
             d.userId !== user?.id &&
             can(role, 'dcr:review') && <ReviewBar id={d.id} onDone={() => void q.refetch()} />}
           <ReportFacts d={d} nameOf={nameOf} />
@@ -266,7 +267,8 @@ const REASON_MAX = 500;
  * Approve or reject a submitted report (POST /v1/dcrs/{id}/decision, dcr:review). Who may act is
  * decided by the server: the owner's reporting line, the whole company for the Director.
  */
-function ReviewBar({ id, onDone }: { id: string; onDone: () => void }) {
+/** Approve / Reject (reason) for a submitted report; the server only blocks the submitter, not a past day. */
+export function ReviewBar({ id, onDone }: { id: string; onDone: () => void }) {
   const qc = useQueryClient();
   const [rejecting, setRejecting] = useState(false);
   const decide = useMutation({

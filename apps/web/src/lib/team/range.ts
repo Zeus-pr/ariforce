@@ -15,6 +15,8 @@ const add = (ymd: string, days: number) => {
   return d.toISOString().slice(0, 10);
 };
 
+export { add as addDays };
+
 /** `today` is the IST date. Weeks start on Monday. */
 export function rangeOf(key: RangeKey, today: string): { from: string; to: string } {
   switch (key) {
