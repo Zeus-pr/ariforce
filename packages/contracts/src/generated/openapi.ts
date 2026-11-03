@@ -12431,7 +12431,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown or inactive products, a check-in that is not your visit to that outlet, RCPA on a non-chemist call (details.rcpaOutletCallIds), duplicate POB products or RCPA brands in a call (details.duplicatePob / duplicateRcpa), or an out-of-scope stockistId / RCPA doctorId */
+      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today). Validation failed: DEVIATION_REASON_REQUIRED, calls on a non-field day, unknown or inactive products, a check-in that is not your visit to that outlet, RCPA on a non-chemist call (details.rcpaOutletCallIds), duplicate POB products or RCPA brands in a call (details.duplicatePob / duplicateRcpa), or an out-of-scope stockistId / RCPA doctorId */
       422: {
         headers: {
           [name: string]: unknown;
@@ -12803,7 +12803,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds) */
+      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today), VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds) */
       422: {
         headers: {
           [name: string]: unknown;
@@ -12878,7 +12878,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND */
+      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND */
       422: {
         headers: {
           [name: string]: unknown;

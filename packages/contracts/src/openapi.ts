@@ -1010,7 +1010,7 @@ function buildDocument(): OpenApiDocument {
               'DAY_LOCKED (request a correction), VERSION_CONFLICT, ALREADY_SUBMITTED, DAY_ALREADY_SUBMITTED (details.existingId)',
             ),
             '422': err(
-              'Validation failed: DEVIATION_REASON_REQUIRED, future date, calls on a non-field day, unknown or inactive products, a check-in that is not your visit to that outlet, RCPA on a non-chemist call (details.rcpaOutletCallIds), duplicate POB products or RCPA brands in a call (details.duplicatePob / duplicateRcpa), or an out-of-scope stockistId / RCPA doctorId',
+              'DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today). Validation failed: DEVIATION_REASON_REQUIRED, calls on a non-field day, unknown or inactive products, a check-in that is not your visit to that outlet, RCPA on a non-chemist call (details.rcpaOutletCallIds), duplicate POB products or RCPA brands in a call (details.duplicatePob / duplicateRcpa), or an out-of-scope stockistId / RCPA doctorId',
             ),
           },
         }),
@@ -1106,7 +1106,7 @@ function buildDocument(): OpenApiDocument {
               'ALREADY_SUBMITTED (this DCR is not a draft), DAY_ALREADY_SUBMITTED (the date has a submitted report; details.existingId), DAY_LOCKED, VERSION_CONFLICT',
             ),
             '422': err(
-              'VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds)',
+              'DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today), VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds)',
             ),
           },
         }),
@@ -1130,7 +1130,7 @@ function buildDocument(): OpenApiDocument {
               'ALREADY_SUBMITTED (other key), DAY_ALREADY_SUBMITTED (another report of the date is submitted; details.existingId), IDEMPOTENCY_CONFLICT (key used on another DCR), VERSION_CONFLICT, DAY_LOCKED',
             ),
             '422': err(
-              'VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND',
+              'DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND',
             ),
           },
         }),

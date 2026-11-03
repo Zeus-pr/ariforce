@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { assertDcrDateWritable } from './dcr-date';
 import {
   DCR_UNLOCK_HOURS,
   type Dcr,
@@ -620,8 +621,6 @@ export class DcrService {
   upsert(p: Principal, b: Upsert) {
     return this.tenant.run(p, async (tx) => {
       const s = await companySettings(tx, p);
-      if (b.date > localDate(new Date(), s.timezone))
-        throw err(422, 'VALIDATION', 'DCR date is in the future');
       // Multi-draft (0045): the legacy upsert edits the day report (submitted, else latest draft)
       // and no longer revives soft-deleted rows.
       const cur = dayReport(
@@ -636,6 +635,8 @@ export class DcrService {
         throw err(409, 'DAY_LOCKED', 'This day is locked; request a correction', {
           lockAt: li.lockAt.toISOString(),
         });
+      // Then today only (IST); a past day only while unlocked (dcr-date.ts).
+      assertDcrDateWritable(b.date, { unlocked: !!li.unlockedUntil });
       if (cur?.submitIdempotencyKey)
         throw err(409, 'ALREADY_SUBMITTED', 'Submitted DCRs are read-only; request a correction');
       if (cur && b.version && b.version !== cur.version)
