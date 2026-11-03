@@ -1851,6 +1851,37 @@ function fieldHandlers(baseUrl: string) {
         a.requestedBy !== fx.me.id &&
         fx.me.permissions.includes('approvals:decide') &&
         (a.subjectType !== 'dcr_unlock' || fx.me.permissions.includes('dcr_unlock:decide'));
+      const scope = url.searchParams.get('scope');
+      if (scope === 'org' && !fx.me.permissions.includes('approvals:decide'))
+        return HttpResponse.json(
+          { error: { code: 'FORBIDDEN', message: 'scope=org needs approvals:decide' } },
+          { status: 403 },
+        );
+      if (url.searchParams.get('include') && scope !== 'org')
+        return validation('include needs scope=org', {});
+      if (scope === 'org' && !mine) {
+        const uid = url.searchParams.get('userId');
+        const st = url.searchParams.get('status');
+        const ty = url.searchParams.get('subjectType');
+        const from = url.searchParams.get('from');
+        const to = url.searchParams.get('to');
+        const org = approvals
+          .filter((a) => !uid || a.requestedBy === uid)
+          .filter((a) => !st || a.status === st)
+          .filter((a) => !ty || a.subjectType === ty)
+          .filter((a) => !from || a.createdAt.slice(0, 10) >= from)
+          .filter((a) => !to || a.createdAt.slice(0, 10) <= to)
+          .map((a) => ({
+            ...a,
+            canDecide: can(a),
+            requestedByRole: null,
+            level: a.status === 'pending' ? 1 : null,
+            totalLevels: 1,
+            currentApprover: null,
+            trail: [],
+          }));
+        return list(Approval, org, url);
+      }
       const rows = (
         mine === 'to_decide'
           ? approvals.filter(can)

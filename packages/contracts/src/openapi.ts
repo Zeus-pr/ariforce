@@ -1,4 +1,10 @@
 import {
+  AuditLogPage,
+  AuditLogQuery,
+  TeamMemberActivity,
+  TeamMemberActivityQuery,
+} from './schemas/director';
+import {
   DcrDraftPut,
   DcrHqOptionList,
   DcrOptions,
@@ -1220,8 +1226,14 @@ function buildDocument(): OpenApiDocument {
         get: op({
           tags: ['Approvals'],
           operationId: 'listApprovals',
+          description:
+            'Default: your own requests and those of your reporting line (unchanged). scope=org: every request of your subtree in any state (Director: the whole company) with requestedByRole, level, totalLevels, currentApprover and trail; filters status, subjectType, userId, from/to; include=dcr,signup merges DCR reviews and signup requests into the same page (ordered createdAt desc, id).',
           requestParams: { query: ApprovalListQuery },
-          responses: { '200': { description: 'Page', ...json(page(Approval, 'ApprovalPage')) } },
+          responses: {
+            '200': { description: 'Page', ...json(page(Approval, 'ApprovalPage')) },
+            '403': err('FORBIDDEN: scope=org without approvals:decide'),
+            '422': err('VALIDATION (bad cursor, include without scope=org, from after to)'),
+          },
         }),
       },
       '/v1/team': {
@@ -1356,6 +1368,40 @@ function buildDocument(): OpenApiDocument {
               'FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always',
             ),
             '404': err('Not in your subtree (or not a hierarchy user)'),
+          },
+        }),
+      },
+      '/v1/team/members/{userId}/activity': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'getTeamMemberActivity',
+          summary:
+            'Employee 360 activity of yourself or someone below you (Director: everyone): today by default, or any range up to 93 days',
+          description:
+            'Per day: attendance (same rules as the profile today block), approved TP coverage, the day DCR (status, work type, calls, start/end/duration, DCR expense total), call and GPS check-in counts; range totals; for a single day (from = to) also the calls and check-ins themselves. Same visibility as GET /v1/team/members/{userId}/profile (ABM+ with reports:read over their subtree, Director everyone; non-hierarchy roles 403). Batched: a fixed number of queries per request, independent of range length.',
+          requestParams: { path: z.object({ userId: Id }), query: TeamMemberActivityQuery },
+          responses: {
+            '200': { description: 'Activity', ...json(TeamMemberActivity) },
+            '403': err('FORBIDDEN: same rules as the profile'),
+            '404': err('Not in your subtree (or not a hierarchy user)'),
+            '422': err(
+              'VALIDATION (from after to, to after today) or RANGE_TOO_LONG (more than 93 days; details.maxDays)',
+            ),
+          },
+        }),
+      },
+      '/v1/audit-log': {
+        get: op({
+          tags: ['Audit'],
+          operationId: 'listAuditLog',
+          summary: 'Audit log of your company, newest first (audit:read: Director, System Admin)',
+          description:
+            "Filters: actorUserId, action (exact, or prefix ending in '.'), entityType (+ entityId), from/to (IST dates, inclusive). Cursor paging (limit default 50, max 200), ordered at desc, id desc. before/after are returned with sensitive keys (token, secret, otp, password, hash, authorization, cookie, api key, private key, signature) replaced by '[redacted]' at any depth. Reading is not itself audited.",
+          requestParams: { query: AuditLogQuery },
+          responses: {
+            '200': { description: 'Page', ...json(AuditLogPage) },
+            '403': err('FORBIDDEN: missing audit:read'),
+            '422': err('VALIDATION (bad cursor, from after to, entityId without entityType)'),
           },
         }),
       },
@@ -1644,12 +1690,13 @@ function buildDocument(): OpenApiDocument {
           tags: ['Expenses'],
           operationId: 'listExpenseClaims',
           summary:
-            'Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide',
+            'Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide; scope=team: every claim of your subtree (drafts too; Director: company)',
           description:
             'Without limit and cursor: all matching claims, response { items } exactly as before. With limit and/or cursor: one page (limit default 50, max 200), ordered month desc, user name, id, and the response adds limit, total and nextCursor (null on the last page). Invalid cursor: 422 VALIDATION.',
           requestParams: { query: ExpenseClaimListQuery },
           responses: {
             '200': { description: 'Claims', ...json(ExpenseClaimList) },
+            '403': err('FORBIDDEN: scope=team without expenses:approve'),
             '422': err('VALIDATION (bad limit or cursor)'),
           },
         }),

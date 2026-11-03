@@ -1264,6 +1264,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Default: your own requests and those of your reporting line (unchanged). scope=org: every request of your subtree in any state (Director: the whole company) with requestedByRole, level, totalLevels, currentApprover and trail; filters status, subjectType, userId, from/to; include=dcr,signup merges DCR reviews and signup requests into the same page (ordered createdAt desc, id). */
     get: operations['listApprovals'];
     put?: never;
     post?: never;
@@ -1418,6 +1419,46 @@ export interface paths {
     };
     /** Profile of yourself or someone below you (ABM+; Director: everyone) */
     get: operations['getTeamMemberProfile'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/team/members/{userId}/activity': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Employee 360 activity of yourself or someone below you (Director: everyone): today by default, or any range up to 93 days
+     * @description Per day: attendance (same rules as the profile today block), approved TP coverage, the day DCR (status, work type, calls, start/end/duration, DCR expense total), call and GPS check-in counts; range totals; for a single day (from = to) also the calls and check-ins themselves. Same visibility as GET /v1/team/members/{userId}/profile (ABM+ with reports:read over their subtree, Director everyone; non-hierarchy roles 403). Batched: a fixed number of queries per request, independent of range length.
+     */
+    get: operations['getTeamMemberActivity'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/audit-log': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Audit log of your company, newest first (audit:read: Director, System Admin)
+     * @description Filters: actorUserId, action (exact, or prefix ending in '.'), entityType (+ entityId), from/to (IST dates, inclusive). Cursor paging (limit default 50, max 200), ordered at desc, id desc. before/after are returned with sensitive keys (token, secret, otp, password, hash, authorization, cookie, api key, private key, signature) replaced by '[redacted]' at any depth. Reading is not itself audited.
+     */
+    get: operations['listAuditLog'];
     put?: never;
     post?: never;
     delete?: never;
@@ -1778,7 +1819,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide
+     * Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide; scope=team: every claim of your subtree (drafts too; Director: company)
      * @description Without limit and cursor: all matching claims, response { items } exactly as before. With limit and/or cursor: one page (limit default 50, max 200), ordered month desc, user name, id, and the response adds limit, total and nextCursor (null on the last page). Invalid cursor: 422 VALIDATION.
      */
     get: operations['listExpenseClaims'];
@@ -5661,7 +5702,10 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       companyId: string;
-      /** @enum {string} */
+      /**
+       * @description Engine types; 'dcr' (DCR review, subjectId = DCR id) and 'signup' (signup request) are only returned when asked for with include=dcr / include=signup
+       * @enum {string}
+       */
       subjectType:
         | 'tour_plan'
         | 'doctor'
@@ -5670,7 +5714,9 @@ export interface components {
         | 'dcr_unlock'
         | 'leave'
         | 'device'
-        | 'expense';
+        | 'expense'
+        | 'dcr'
+        | 'signup';
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -5705,6 +5751,42 @@ export interface components {
       autoApproved?: boolean;
       /** @description Approver warnings. dcr_rejected_lines: an expense claim has lines on days whose DCR was rejected (see claim.dcrRejectedDates); approving such a claim is blocked with 409 DCR_NOT_APPROVED */
       flags?: 'dcr_rejected_lines'[];
+      /** @description Requester's most senior role key */
+      requestedByRole?: components['schemas']['RoleKey'] | null;
+      /** @description Level awaiting a decision (1-based); null once decided */
+      level?: number | null;
+      /** @description Configured levels for this type; null where the type has a single decision */
+      totalLevels?: number | null;
+      /** @description Approver of the level awaiting a decision; null when decided or shared queue */
+      currentApprover?: components['schemas']['ExpenseApprover'] | null;
+      /** @description Per-level history (same shape as ExpenseClaim.approvalTrail): who, when, status, comment/reason. Present on scope=org reads */
+      trail?: components['schemas']['ExpenseApprovalLevel'][];
+    };
+    /** @description User ref with their most senior role key */
+    ExpenseApprover: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      role: string | null;
+    };
+    ExpenseApprovalLevel: {
+      level: number;
+      /** @description Assigned approver of this level (projected up the manager chain for levels not reached yet); null when skipped, shared queue or auto-approved */
+      approver: components['schemas']['ExpenseApprover'] | null;
+      /** @description Who actually decided (may be above the assigned approver); null if undecided or system */
+      decidedBy: components['schemas']['ExpenseApprover'] | null;
+      /** @enum {string} */
+      status: 'pending' | 'approved' | 'rejected' | 'skipped';
+      /** @description True for the level awaiting a decision now */
+      current: boolean;
+      decidedAt: string | null;
+      comment: string | null;
+      /** @description comment when status is rejected */
+      rejectionReason: string | null;
     };
     DcrOptions: {
       /**
@@ -6414,6 +6496,192 @@ export interface components {
         count: number;
       }[];
     };
+    TeamMemberActivity: {
+      member: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+        role: components['schemas']['RoleKey'] | null;
+      };
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+      /**
+       * Format: date
+       * @description Company-local (IST) today
+       */
+      today: string;
+      /** @description One row per date, oldest first */
+      days: components['schemas']['ActivityDay'][];
+      totals: components['schemas']['ActivityTotals'];
+      /** @description Only for a single-day range (from = to), else null */
+      detail: {
+        /** @description Calls of the day, by calledAt */
+        calls: components['schemas']['ActivityCall'][];
+        /** @description GPS captures of the day, by capturedAt */
+        checkIns: components['schemas']['CheckIn'][];
+      } | null;
+      /** @description Same rule as TeamProfile.canSeeExpenses */
+      canSeeExpenses: boolean;
+    };
+    ActivityDay: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      attendance: components['schemas']['ProfileAttendanceStatus'];
+      punchInAt: string | null;
+      punchOutAt: string | null;
+      leave: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        requestId: string;
+        typeCode: string;
+        half: ('am' | 'pm') | null;
+      } | null;
+      /** @description An approved tour-plan item covers the day */
+      planned: boolean;
+      /** @description The submitted/approved report of the day, else the newest draft; null if none */
+      dcr: components['schemas']['ActivityDcr'] | null;
+      calls: number;
+      /** @description GPS captures (punch in/out and visits) */
+      checkIns: number;
+    };
+    ActivityDcr: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /** @enum {string} */
+      status: 'draft' | 'submitted' | 'locked' | 'approved' | 'rejected';
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      workTypeName: string;
+      callCount: number;
+      /** @description details.startTime (HH:mm) when set */
+      startTime: string | null;
+      endTime: string | null;
+      durationMin: number | null;
+      /** @description Live origin-dcr claim lines of this DCR */
+      expenseTotal: number;
+    };
+    ActivityTotals: {
+      days: number;
+      present: number;
+      absent: number;
+      leave: number;
+      holiday: number;
+      weeklyOff: number;
+      incomplete: number;
+      dcr: {
+        draft: number;
+        submitted: number;
+        approved: number;
+        rejected: number;
+        locked: number;
+        /** @description Working days (not leave/holiday/off) without a DCR */
+        missing: number;
+      };
+      calls: number;
+      checkIns: number;
+      plannedDays: number;
+      /** @description Sum of ActivityDcr.expenseTotal */
+      dcrExpenseTotal: number;
+      /** @description Totals of the person’s expense claims for the months touching the range (any status, not soft-deleted); 0 without expense visibility */
+      claimTotal: number;
+    };
+    ActivityCall: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      outletKind: components['schemas']['OutletKind'];
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      outletId: string;
+      /** @description Visit check-in (GPS) for this call */
+      checkInId: string | null;
+      /**
+       * Format: date-time
+       * @description Server time when the call (clientId) was first saved to a DCR; never changes on re-save. Client values are ignored.
+       */
+      readonly calledAt: string;
+      jointWorkUserIds: string[];
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      dcrId: string;
+      outletName: string | null;
+    };
+    AuditLogPage: {
+      items: components['schemas']['AuditLogEntry'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    AuditLogEntry: {
+      /** @description audit_log.id (bigint as string) */
+      id: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      at: string;
+      /** @description null for system actions */
+      actor: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+        role: components['schemas']['RoleKey'] | null;
+      } | null;
+      action: string;
+      entityType: string | null;
+      entityId: string | null;
+      /** @description Row JSON with sensitive keys redacted */
+      before: unknown | null;
+      /** @description Row JSON with sensitive keys redacted */
+      after: unknown | null;
+      ip: string | null;
+      userAgent: string | null;
+      requestId: string | null;
+    };
     TeamPerformance: {
       /**
        * Format: uuid
@@ -6905,33 +7173,9 @@ export interface components {
       canPay: boolean;
       /** @description Who marked it paid; null unless paid */
       paidBy: components['schemas']['UserRef'] | null;
+      /** @description Claim owner's most senior role key */
+      userRole?: components['schemas']['RoleKey'] | null;
       lineCount: number;
-    };
-    ExpenseApprovalLevel: {
-      level: number;
-      /** @description Assigned approver of this level (projected up the manager chain for levels not reached yet); null when skipped, shared queue or auto-approved */
-      approver: components['schemas']['ExpenseApprover'] | null;
-      /** @description Who actually decided (may be above the assigned approver); null if undecided or system */
-      decidedBy: components['schemas']['ExpenseApprover'] | null;
-      /** @enum {string} */
-      status: 'pending' | 'approved' | 'rejected' | 'skipped';
-      /** @description True for the level awaiting a decision now */
-      current: boolean;
-      decidedAt: string | null;
-      comment: string | null;
-      /** @description comment when status is rejected */
-      rejectionReason: string | null;
-    };
-    /** @description User ref with their most senior role key */
-    ExpenseApprover: {
-      /**
-       * Format: uuid
-       * @description UUIDv7 identifier
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      id: string;
-      name: string;
-      role: string | null;
     };
     ExpenseClaim: {
       /**
@@ -6993,6 +7237,8 @@ export interface components {
       canPay: boolean;
       /** @description Who marked it paid; null unless paid */
       paidBy: components['schemas']['UserRef'] | null;
+      /** @description Claim owner's most senior role key */
+      userRole?: components['schemas']['RoleKey'] | null;
     };
     ExpenseLine: {
       /**
@@ -7427,7 +7673,10 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       companyId: string;
-      /** @enum {string} */
+      /**
+       * @description Engine types; 'dcr' (DCR review, subjectId = DCR id) and 'signup' (signup request) are only returned when asked for with include=dcr / include=signup
+       * @enum {string}
+       */
       subjectType:
         | 'tour_plan'
         | 'doctor'
@@ -7436,7 +7685,9 @@ export interface components {
         | 'dcr_unlock'
         | 'leave'
         | 'device'
-        | 'expense';
+        | 'expense'
+        | 'dcr'
+        | 'signup';
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -7471,6 +7722,16 @@ export interface components {
       autoApproved?: boolean;
       /** @description Approver warnings. dcr_rejected_lines: an expense claim has lines on days whose DCR was rejected (see claim.dcrRejectedDates); approving such a claim is blocked with 409 DCR_NOT_APPROVED */
       flags?: 'dcr_rejected_lines'[];
+      /** @description Requester's most senior role key */
+      requestedByRole?: components['schemas']['RoleKey'] | null;
+      /** @description Level awaiting a decision (1-based); null once decided */
+      level?: number | null;
+      /** @description Configured levels for this type; null where the type has a single decision */
+      totalLevels?: number | null;
+      /** @description Approver of the level awaiting a decision; null when decided or shared queue */
+      currentApprover?: components['schemas']['ExpenseApprover'] | null;
+      /** @description Per-level history (same shape as ExpenseClaim.approvalTrail): who, when, status, comment/reason. Present on scope=org reads */
+      trail?: components['schemas']['ExpenseApprovalLevel'][];
       /** @description Full subject details for the requester, an assigned approver (any step) or a caller with read access to the subject; otherwise null */
       subject: components['schemas']['ApprovalSubject'] | null;
     };
@@ -13440,9 +13701,21 @@ export interface operations {
           | 'dcr_unlock'
           | 'leave'
           | 'device'
-          | 'expense';
+          | 'expense'
+          | 'dcr'
+          | 'signup';
         /** @description to_decide = pending requests from your reporting line that you may decide (never your own); requested = yours */
         mine?: 'to_decide' | 'requested';
+        /** @description org: every request of your reporting subtree in any state (Director: the whole company), with trail/level fields. Needs approvals:decide (else 403). Ignored with mine */
+        scope?: 'org';
+        /** @description Requester; must be you or in your subtree */
+        userId?: string;
+        /** @description Created on/after this IST date */
+        from?: string;
+        /** @description Created on/before this IST date */
+        to?: string;
+        /** @description Comma list of non-engine items to merge in: dcr (DCR reviews: submitted/approved/rejected DCRs, needs dcr:review) and signup (signup requests, same visibility as GET /v1/signup-requests). Only with scope=org */
+        include?: string;
       };
       header?: never;
       path?: never;
@@ -13468,8 +13741,17 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      /** @description FORBIDDEN: scope=org without approvals:decide */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (bad cursor, include without scope=org, from after to) */
+      422: {
         headers: {
           [name: string]: unknown;
         };
@@ -13961,6 +14243,132 @@ export interface operations {
       };
       /** @description Not in your subtree (or not a hierarchy user) */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getTeamMemberActivity: {
+    parameters: {
+      query?: {
+        /** @description Default: today (IST) */
+        from?: string;
+        /** @description Default: from. Inclusive; at most 93 days (else 422 RANGE_TOO_LONG); not after today (IST) */
+        to?: string;
+      };
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Activity */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamMemberActivity'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN: same rules as the profile */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not in your subtree (or not a hierarchy user) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (from after to, to after today) or RANGE_TOO_LONG (more than 93 days; details.maxDays) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listAuditLog: {
+    parameters: {
+      query?: {
+        /** @description Who did it */
+        actorUserId?: string;
+        /** @description Exact action (e.g. 'dcr.submit'), or a prefix ending in '.' (e.g. 'dcr.') */
+        action?: string;
+        entityType?: string;
+        /** @description Needs entityType */
+        entityId?: string;
+        /** @description IST date, inclusive */
+        from?: string;
+        /** @description IST date, inclusive */
+        to?: string;
+        limit?: number;
+        /** @description Opaque, from nextCursor */
+        cursor?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuditLogPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN: missing audit:read */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (bad cursor, from after to, entityId without entityType) */
+      422: {
         headers: {
           [name: string]: unknown;
         };
@@ -15175,6 +15583,8 @@ export interface operations {
         month?: string;
         userId?: string;
         status?: components['schemas']['ExpenseStatus'];
+        /** @description team: every claim of your reporting subtree in any status, drafts included (Director: the whole company). Needs expenses:approve (else 403). Combine with userId/status/month and limit/cursor */
+        scope?: 'team';
         /** @description Opt-in paging (default 50 once cursor is sent). Without limit and cursor every readable claim is returned, as before */
         limit?: number;
         /** @description Opaque cursor from `nextCursor` */
@@ -15204,7 +15614,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      /** @description FORBIDDEN: scope=team without expenses:approve */
       403: {
         headers: {
           [name: string]: unknown;
