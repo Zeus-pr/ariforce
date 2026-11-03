@@ -17,6 +17,15 @@ import { TpSfcReview } from '@/components/approvals/sfc-review';
 import { SfcSection } from '@/components/dcr/sfc-section';
 import { useBottomSpace } from '@/components/floating-tab-bar';
 import { Icon } from '@/components/icon';
+import { DcrExpenseChip, ExpenseItems } from './expense-items';
+import {
+  DCR_V2_FIELDS,
+  expenseBodyExtras,
+  expenseOutcome,
+  expenseOutcomeText,
+  expensesFromDcr,
+  readPlaces,
+} from '@/lib/dcr/v2-adapter';
 import { SelectSheet } from '@/components/masters/select-sheet';
 import { KeyboardAwareScrollView } from '@/components/scroll';
 import { TextField } from '@/components/text-field';
@@ -320,6 +329,7 @@ export function DcrForm({
         src.sfcRoutes.map((x) => [x.hqTerritoryId, x.sfcRouteId]),
       );
       if (d) next.calls = callsFromDcr(d, names.current);
+      if (d) next.expenses = expensesFromDcr(d);
       const det = src.details;
       if (det?.kind === 'meeting' || det?.kind === 'training')
         next.meeting = {
@@ -327,20 +337,24 @@ export function DcrForm({
           mode: det.mode,
           location: det.location ?? '',
           startTime: det.startTime,
-          endTime: plusMinutes(det.startTime, det.durationMin),
+          endTime:
+            (det as { endTime?: string | null }).endTime ??
+            plusMinutes(det.startTime, det.durationMin),
           durationMin: String(det.durationMin),
           attendees: det.kind === 'meeting' ? (det.attendees ?? '') : '',
-          remarks: det.remarks ?? '',
           trainer: det.kind === 'training' ? (det.trainer ?? '') : '',
+          ...readPlaces(det),
         };
       if (det?.kind === 'office')
         next.office = {
           taskType: det.taskType,
           description: det.description,
           startTime: det.startTime ?? '',
-          endTime: det.startTime ? plusMinutes(det.startTime, det.durationMin) : '',
+          endTime:
+            (det as { endTime?: string | null }).endTime ??
+            (det.startTime ? plusMinutes(det.startTime, det.durationMin) : ''),
           durationMin: String(det.durationMin),
-          remarks: det.remarks ?? '',
+          ...readPlaces(det),
         };
       if (det?.kind === 'leave') next.leaveRequestId = det.leaveRequestId;
       next.deviationReason = src.deviationReason ?? '';
@@ -558,8 +572,12 @@ export function DcrForm({
           id: saved.id,
           version: saved.version,
           key: submitKey.current,
+          ...expenseBodyExtras(sEff.expenses),
         });
         setDcr(submitted);
+        // Server links DCR expenses to the claim; we only read its outcome (v2-adapter).
+        const added = expenseOutcome(submitted);
+        const addedText = expenseOutcomeText(added);
         // Day's expense draft with TA/DA: the server's (expenseDraft) when it drafts, else ours.
         const note = autoDraftNote(submitted.expenseDraft);
         if (!submitted.expenseDraft)
@@ -568,9 +586,23 @@ export function DcrForm({
           );
         Alert.alert(
           'Submitted',
-          `Report for ${dateLabel(s.date)} submitted.${note ? `\n\n${note}` : ''}`,
+          `Report for ${dateLabel(s.date)} submitted.${note ? `\n\n${note}` : ''}${
+            addedText ? `\n\n${addedText}` : ''
+          }`,
+          added?.kind === 'linked'
+            ? [
+                { text: 'Done', onPress: () => router.back() },
+                {
+                  text: 'View claim',
+                  onPress: () => {
+                    router.back();
+                    router.push({ pathname: '/expenses/[id]', params: { id: added.claimId } });
+                  },
+                },
+              ]
+            : undefined,
         );
-        router.back();
+        if (added?.kind !== 'linked') router.back();
       } catch (e) {
         // Same as web dcr-flow.tsx: keep the key only when no answer came back (the submit may
         // have gone through, and a retry with the same key is safe); any API answer drops it.
@@ -1135,6 +1167,20 @@ export function DcrForm({
             }}
             onChange={(office) => update({ office })}
           />
+        ) : null}
+
+        {DCR_V2_FIELDS && !isTp && s.workOn ? (
+          readOnly ? (
+            dcr && dcr.status !== 'draft' ? (
+              <DcrExpenseChip dcr={dcr} />
+            ) : null
+          ) : (
+            <ExpenseItems
+              value={s.expenses ?? []}
+              readOnly={readOnly}
+              onChange={(expenses) => update({ expenses })}
+            />
+          )
         ) : null}
 
         {s.workOn?.branch === 'leave' ? (

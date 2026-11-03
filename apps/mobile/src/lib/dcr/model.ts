@@ -4,6 +4,7 @@
  * Admin work and Leave (by detailsKind), plus any other work type as-is (e.g. Holiday).
  */
 import type { Dcr, DcrBand, DcrDetails, DcrDraftPut, DcrSfcMatch } from '@ariforce/contracts';
+import { expenseBodyExtras, withV2, type DcrExpenseItem } from './v2-adapter';
 import { bandOf, categoryFitsBand, sfcCategoryOf } from './bands';
 import type { ApiError } from '../api';
 import { tpCaps } from '../tp/caps';
@@ -188,6 +189,8 @@ export type MeetingForm = {
   attendees: string;
   remarks: string;
   trainer: string;
+  fromPlace: string;
+  toPlace: string;
 };
 export type OfficeForm = {
   taskType: string;
@@ -196,6 +199,8 @@ export type OfficeForm = {
   endTime: string;
   durationMin: string;
   remarks: string;
+  fromPlace: string;
+  toPlace: string;
 };
 export const emptyMeeting = (): MeetingForm => ({
   title: '',
@@ -207,6 +212,8 @@ export const emptyMeeting = (): MeetingForm => ({
   attendees: '',
   remarks: '',
   trainer: '',
+  fromPlace: '',
+  toPlace: '',
 });
 export const emptyOffice = (): OfficeForm => ({
   taskType: '',
@@ -215,6 +222,8 @@ export const emptyOffice = (): OfficeForm => ({
   endTime: '',
   durationMin: '',
   remarks: '',
+  fromPlace: '',
+  toPlace: '',
 });
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -245,6 +254,8 @@ export type FlowState = {
   deviationReason: string;
   /** Approved tour plan item this day is filed from (sent once the TP API is live). */
   tourPlanItemId?: string | null;
+  /** Optional expenses for the day (DCR only); flow into the month's claim on submit. */
+  expenses?: DcrExpenseItem[];
 };
 
 const toMin = (hhmm: string) =>
@@ -293,21 +304,27 @@ export function detailsOf(s: FlowState): DcrDetails | null {
       attendees: t(m.attendees),
       remarks: t(m.remarks),
     };
-    return b === 'meeting'
-      ? { kind: 'meeting', ...base }
-      : { kind: 'training', ...base, trainer: t(m.trainer) };
+    return withV2(
+      b === 'meeting'
+        ? { kind: 'meeting', ...base }
+        : { kind: 'training', ...base, trainer: t(m.trainer) },
+      m,
+    );
   }
   if (b === 'office') {
     const o = s.office;
     if (!o.taskType.trim() || !o.description.trim() || !minutes(o.durationMin)) return null;
-    return {
-      kind: 'office',
-      taskType: o.taskType.trim(),
-      description: o.description.trim(),
-      startTime: HHMM.test(o.startTime) ? o.startTime : null,
-      durationMin: minutes(o.durationMin)!,
-      remarks: t(o.remarks),
-    };
+    return withV2(
+      {
+        kind: 'office',
+        taskType: o.taskType.trim(),
+        description: o.description.trim(),
+        startTime: HHMM.test(o.startTime) ? o.startTime : null,
+        durationMin: minutes(o.durationMin)!,
+        remarks: t(o.remarks),
+      },
+      o,
+    );
   }
   if (b === 'leave')
     return s.leaveRequestId ? { kind: 'leave', leaveRequestId: s.leaveRequestId } : null;
@@ -457,6 +474,7 @@ export function draftBody(
           ...(sendsCalledAt() ? { calledAt: isoOf(s.date, c.time) } : {}),
         }))
       : [],
+    ...expenseBodyExtras(s.expenses),
     ...(saved ? { id: saved.id, version: saved.version } : {}),
   };
 }
@@ -511,6 +529,14 @@ export function dcrErrorMessage(e: ApiError): string {
       return 'You already submitted a report for this day. This draft can’t be saved or submitted; you can delete it.';
     case 'NOT_FOUND':
       return 'This draft no longer exists. It may have been deleted on another device.';
+    case 'MEETING_TYPE_INVALID':
+      return 'Choose Cycle Meeting or Review Meeting.';
+    case 'END_TIME_NOT_AFTER_START':
+      return 'Check the times: the end time must be after the start time.';
+    case 'DURATION_TOO_LONG':
+      return 'A session can be at most 12 hours. Check the start and end times.';
+    case 'DCR_EXPENSE_CATEGORY_INVALID':
+      return 'Pick Travel, Hotel, Food or Other for each expense.';
     case 'DEVIATION_REASON_REQUIRED':
       return 'Say why the day differs from your approved tour plan.';
     default:

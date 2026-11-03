@@ -5,6 +5,7 @@ import { SelectSheet } from '@/components/masters/select-sheet';
 import { TextField } from '@/components/text-field';
 import type { FlowState } from '@/lib/dcr/model';
 import { dcrStyles, Field } from './field';
+import { PlaceFields } from './place-fields';
 import { TimeRange } from './time-range';
 
 const ADMIN_TASKS = [
@@ -47,6 +48,7 @@ export function OfficeEditor({
         error={errors.description?.[0]}
         maxLength={1000}
       />
+      <PlaceFields value={value} readOnly={readOnly} onChange={onChange} />
       <TimeRange
         value={value}
         readOnly={readOnly}

@@ -31,6 +31,7 @@ import {
   useClaim,
   useLineMutations,
   useRecon,
+  isDcrLine,
 } from '@/lib/expenses';
 import { formatINR } from '@/lib/money';
 import { colors, fonts, layout, radius, spacing } from '@/theme';
@@ -59,7 +60,7 @@ export default function ClaimScreen() {
     for (const l of claim?.lines ?? []) map.set(l.date, [...(map.get(l.date) ?? []), l]);
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [claim]);
-  const auto = (claim?.lines ?? []).filter((l) => l.source === 'auto');
+  const auto = (claim?.lines ?? []).filter((l) => l.source === 'auto' && !isDcrLine(l));
   const autoTotal = auto.reduce((s, l) => s + l.amount, 0);
 
   // Approve is blocked when a claimed day lacks an approved DCR (server also returns DCR_NOT_APPROVED).
@@ -111,7 +112,9 @@ export default function ClaimScreen() {
     );
 
   const edit = (l: Line) =>
-    router.push({ pathname: '/expenses/new', params: { claimId: claim.id, lineId: l.id } });
+    isDcrLine(l)
+      ? undefined
+      : router.push({ pathname: '/expenses/new', params: { claimId: claim.id, lineId: l.id } });
 
   return (
     <View style={styles.flex}>
@@ -192,13 +195,18 @@ export default function ClaimScreen() {
               {lines.map((l) => (
                 <Pressable
                   key={l.id}
-                  disabled={!editable}
+                  disabled={!editable || isDcrLine(l)}
                   onPress={() => edit(l)}
                   style={styles.item}
-                  accessibilityRole={editable ? 'button' : undefined}
+                  accessibilityRole={editable && !isDcrLine(l) ? 'button' : undefined}
                 >
                   <View style={styles.flex}>
                     <AppText variant="body">{CATEGORY_LABEL[l.category]}</AppText>
+                    {isDcrLine(l) ? (
+                      <AppText variant="small" style={styles.muted}>
+                        From DCR
+                      </AppText>
+                    ) : null}
                     {l.attachments.length ? (
                       <View style={styles.row}>
                         {l.attachments.map((a, i) => (
@@ -328,6 +336,7 @@ function Bar({ bottom, children }: { bottom: number; children: React.ReactNode }
 }
 
 const styles = StyleSheet.create({
+  muted: { color: colors.muted },
   flex: { flex: 1 },
   content: { padding: layout.gutter, gap: spacing.md },
   pad: { padding: spacing.lg, gap: spacing.sm },

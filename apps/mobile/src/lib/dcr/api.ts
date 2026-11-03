@@ -1,6 +1,7 @@
 /**
  * Live DCR API hooks (web dcr-workspace + dcr-flow). Same endpoints and query shapes.
  */
+import type { DcrExpenseLink } from './v2-adapter';
 import type { Dcr } from '@ariforce/contracts';
 import {
   keepPreviousData,
@@ -149,11 +150,30 @@ export function useSaveDraft() {
 export function useSubmitDcr() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, version, key }: { id: string; version: number; key: string }) =>
-      apiFetch<Dcr & { expenseDraft?: ExpenseAutoDraft | null }>(`/v1/dcrs/${id}/submit`, {
+    mutationFn: async ({
+      id,
+      version,
+      key,
+      ...extras
+    }: {
+      id: string;
+      version: number;
+      key: string;
+      /** v2-adapter extras (only when EXPO_PUBLIC_DCR_V2_FIELDS=1). */
+      expenses?: { category: string; amount: number; note: string | null }[];
+    }) =>
+      apiFetch<
+        Dcr & {
+          expenseDraft?: ExpenseAutoDraft | null;
+          expenseClaimId?: string | null;
+          expenseTotal?: number | null;
+          expenseCount?: number | null;
+          dcrExpenses?: DcrExpenseLink | null;
+        }
+      >(`/v1/dcrs/${id}/submit`, {
         method: 'POST',
         headers: { 'idempotency-key': key },
-        body: { version },
+        body: { version, ...extras },
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: dcrKey });

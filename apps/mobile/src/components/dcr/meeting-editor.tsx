@@ -5,6 +5,7 @@ import { SelectSheet } from '@/components/masters/select-sheet';
 import { TextField } from '@/components/text-field';
 import type { FlowState } from '@/lib/dcr/model';
 import { dcrStyles, Field } from './field';
+import { PlaceFields } from './place-fields';
 import { TimeRange } from './time-range';
 
 /** Meeting has exactly two types (stored as the DCR/TP details `title`). */
@@ -60,6 +61,9 @@ export function MeetingEditor({
         error={errors.location?.[0]}
         maxLength={200}
       />
+      {kind === 'meeting' ? (
+        <PlaceFields value={value} readOnly={readOnly} onChange={onChange} />
+      ) : null}
       <TimeRange
         value={value}
         readOnly={readOnly}
