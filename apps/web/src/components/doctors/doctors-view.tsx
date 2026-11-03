@@ -15,7 +15,7 @@ import { RejectionNote } from '@/components/approvals/rejection-note';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import type { Doctor } from '@ariforce/contracts';
+import type { Dcr, Doctor } from '@ariforce/contracts';
 import { Badge } from '@ariforce/ui/components/badge';
 import { Card, CardDescription, CardHeader, CardTitle } from '@ariforce/ui/components/card';
 import { cn } from '@ariforce/ui/lib/utils';
@@ -159,16 +159,40 @@ function Doctor360({ id }: { id: string }) {
       await apiReady();
       const today = todayYmd();
       const from = addDays(today, -HISTORY_DAYS);
+      // Check-ins are filtered on the server by doctor (outletKind + outletId). /v1/dcrs has no doctor
+      // filter yet (blocked on API), so DCRs are paged through in full instead of stopping at 200.
+      const allDcrs = async () => {
+        const items: Dcr[] = [];
+        let cursor: string | undefined;
+        for (let i = 0; i < 20; i++) {
+          const r = await api.GET('/v1/dcrs', {
+            params: { query: { from, to: today, limit: 200, ...(cursor ? { cursor } : {}) } },
+          });
+          items.push(...(r.data?.items ?? []));
+          cursor = r.data?.nextCursor ?? undefined;
+          if (!cursor) break;
+        }
+        return items;
+      };
       const [one, dcrs, ci] = await Promise.all([
         api.GET('/v1/doctors/{id}', { params: { path: { id } } }),
-        api.GET('/v1/dcrs', { params: { query: { from, to: today, limit: 200 } } }),
+        allDcrs(),
         api.GET('/v1/check-ins', {
-          params: { query: { from, to: today, kind: 'visit', limit: 200 } },
+          params: {
+            query: {
+              from,
+              to: today,
+              kind: 'visit',
+              outletKind: 'doctor',
+              outletId: id,
+              limit: 200,
+            },
+          },
         }),
       ]);
       if (!live) return;
       setDoc(one.data ?? null);
-      setReal(visitsFrom(id, dcrs.data?.items ?? [], ci.data?.items ?? []));
+      setReal(visitsFrom(id, dcrs, ci.data?.items ?? []));
     })().catch(() => {});
     return () => {
       live = false;
