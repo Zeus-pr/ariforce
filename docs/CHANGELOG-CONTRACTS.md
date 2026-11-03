@@ -30,6 +30,10 @@ and in responses, so current clients and the current API keep working.
   allowance/mileage -> 422 `DCR_EXPENSE_CATEGORY_INVALID` (details.index, details.allowed).
 - `DcrSubmit.expenses` (optional; replaces the saved list before submit) and submit response
   `expenseClaimId`, `expenseTotal`, `expenseCount` (optional). Clients never create claim lines.
+- `Dcr` read shapes (detail, list items, submit response) gain `expenseClaimId` (uuid|null),
+  `expenseTotal`, `expenseCount` (optional; from the claim's live origin-dcr lines of that DCR;
+  null/0/0 when none), so a reopened report can show "Added to expenses" with a claim link.
+- `durationMin` may still be sent next to `endTime`; it is ignored and derived.
 - Category mapping: DCR categories are a subset of the existing `ExpenseCategory` enum, mapped
   1:1 by value (travel, hotel, food, other); no mapping table.
 - Training details have no places; extra keys (fromPlace/toPlace) are stripped (accepted and
