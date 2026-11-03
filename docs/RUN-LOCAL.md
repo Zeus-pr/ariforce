@@ -88,6 +88,9 @@ Names and purpose only. Source: `apps/api/src/config/env.ts` (validated at boot 
 | `BETTER_AUTH_SECRET`       | yes  | better-auth signing secret, at least 32 characters                                                                         |
 | `BETTER_AUTH_URL`          | yes  | Public API base URL; https in production (`http://localhost:4000` locally)                                                 |
 | `WEB_ORIGIN`               | yes  | Comma-separated web origins for CORS and auth; https in production (default `http://localhost:3000,http://localhost:3200`) |
+| `SESSION_MAX_AGE_SECONDS`  | no   | Hard session cap from sign-in, no sliding (default `64800` = 18 h)                                                         |
+| `AUTH_COOKIE_SAMESITE`     | no   | `lax` (default), `strict` or `none` (`none` forces Secure; needed for two `*.up.railway.app` hosts)                        |
+| `AUTH_COOKIE_DOMAIN`       | no   | Bare parent domain to share the auth cookie (e.g. `x.com` for `app.x.com` + `api.x.com`)                                   |
 | `TRUST_PROXY`              | yes  | Express `trust proxy` setting (default `loopback`)                                                                         |
 | `R2_ACCOUNT_ID`            | yes  | Cloudflare R2 account for presigned uploads (`docs/STORAGE.md`)                                                            |
 | `R2_ACCESS_KEY_ID`         | yes  | R2 access key id                                                                                                           |
@@ -178,6 +181,8 @@ pnpm -F @ariforce/api admin:create-first --company arighna \
   a mix with `127.0.0.1`.
 - **Mobile/CLI:** the sign-in response header `set-auth-token` carries a bearer token; send it as
   `Authorization: Bearer <token>`.
+- **Session lifetime:** hard 18 h cap from sign-in, no sliding, same for cookie and bearer
+  (`SESSION_MAX_AGE_SECONDS`; cookie `AUTH_COOKIE_SAMESITE` / `AUTH_COOKIE_DOMAIN`; see `docs/SECURITY.md`).
 
 ## 6. Web app, mock or real
 

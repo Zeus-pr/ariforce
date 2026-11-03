@@ -18,6 +18,8 @@ script aborts if id and slug do not match). Each script prints before/after chec
 
 | 8 | `2026-10-28-sfc-category-normalise.sql` | Dry run unless `-v apply=1` | SFC category -> `ex`/`hq`/`os`: EX (31) + EX HQ (6) -> ex; HQ (6) -> hq; OS (1) + OUT EX HQ (1) -> os. Only normalises; `EX / OS` (2) and `MEETING` (16) are kept as is by decision and listed. Re-runnable (second apply changes 0). No DB CHECK: the category rule is app-level |
 
+| 9 | `2026-11-03-session-18h-cap.sql` | Dry run unless `-v apply=1` | Caps existing `auth_session.expires_at` at `created_at + 18 h` (PR 88). Signs out anyone signed in more than 18 h ago. Not company-scoped (no slug/company_id). Run after PR 88 deploys |
+
 Order for 6-7: apply migration 0042 first, then 6, then 7 (dry run first each time). Test-run on a
 local DB with fake data only.
 
