@@ -63,6 +63,8 @@ const emptyFlow = (date: string): FlowState => ({
   office: emptyOffice(),
   leaveRequestId: '',
   deviationReason: '',
+  expenses: [],
+  expensesSent: false,
 });
 const itemDetails = (item: TpItem | null): DcrDetails | null =>
   isDetails(item?.plan.details) ? item.plan.details : null;

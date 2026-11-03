@@ -7,6 +7,7 @@ import type { Dcr, DcrBand, DcrDetails, DcrDraftPut, DcrSfcMatch } from '@arifor
 import { bandOf, categoryFitsBand, sfcCategoryOf } from './bands';
 import type { ApiError } from '@/lib/api';
 import { dcrDateNotTodayMessage } from './date-rule';
+import { expenseProblems, itemsOf, type DcrExpenseItem, type ExpenseDraft } from './expenses';
 
 export type WorkTypeOption = {
   id: string;
@@ -233,6 +234,10 @@ export type FlowState = {
   leaveRequestId: string;
   /** Why the day differs from the approved tour plan; asked for when submit says DEVIATION_REASON_REQUIRED. */
   deviationReason: string;
+  /** Optional day expenses (any work type). */
+  expenses: ExpenseDraft[];
+  /** The saved report had expenses, so an empty list must be sent to clear them. */
+  expensesSent: boolean;
 };
 
 const minutes = (v: string) => {
@@ -282,6 +287,8 @@ export function problems(s: FlowState): { key: string; text: string }[] {
   const add = (key: string, text: string) => p.push({ key, text });
   const b = s.workOn?.branch;
   if (!s.workOn) add('workOn', 'Choose what you worked on.');
+  const exp = expenseProblems(s.expenses);
+  if (exp) add('expenses', exp);
   if (b === 'field') {
     if (!s.workTypeId) add('band', 'Choose the band: HQ, EX or OS.');
     else if (!s.territoryIds.length) add('territory', 'Choose the territory you worked.');
@@ -338,7 +345,7 @@ export function problems(s: FlowState): { key: string; text: string }[] {
 export function draftBody(
   s: FlowState,
   saved?: { id: string; version: number } | null,
-): DcrDraftPut {
+): DcrDraftPut & { expenses?: DcrExpenseItem[] } {
   const field = s.workOn?.branch === 'field';
   const routes =
     field && s.sfc.state === 'ok'
@@ -388,6 +395,9 @@ export function draftBody(
             calledAt: isoOf(s.date, c.time),
           }))
       : [],
+    // Contract #121: omitted = keep the saved list. Left out when there never were any, so an API
+    // without DCR expenses yet sees the same body as before.
+    ...(s.expenses.length || s.expensesSent ? { expenses: itemsOf(s.expenses) } : {}),
     ...(saved ? { id: saved.id, version: saved.version } : {}),
   };
 }
