@@ -48,6 +48,7 @@ import { nameRejecters, rejectionFields } from '../common/rejection';
 import { keyExt, sniffMatches } from './files.util';
 import { computeAllowances } from '../allowances/allowances.engine';
 import { isDayReport } from '../dcr/day-report';
+import { companySettings, localDate } from '../field/field.util';
 import { loadStatements } from './statement.data';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 
@@ -617,7 +618,7 @@ export class ExpensesService implements OnModuleInit {
   /** Creates your claim for the month, or returns the existing one (created = false). */
   create(p: Principal, month: string) {
     return this.tenant.run(p, async (tx) => {
-      const today = new Date().toISOString().slice(0, 7);
+      const today = localDate(new Date(), (await companySettings(tx, p)).timezone).slice(0, 7);
       if (month > today) throw err(422, 'VALIDATION', 'Cannot claim for a future month');
       const [cur] = await tx
         .select()
@@ -646,7 +647,7 @@ export class ExpensesService implements OnModuleInit {
     const m = c.month.slice(0, 7);
     if (l.date.slice(0, 7) !== m)
       throw err(422, 'VALIDATION', `date must be in ${m}`, { field: 'date' });
-    if (l.date > new Date().toISOString().slice(0, 10))
+    if (l.date > localDate(new Date(), (await companySettings(tx, p)).timezone))
       throw err(422, 'VALIDATION', 'date cannot be in the future', { field: 'date' });
     if (l.dcrId) {
       const [d] = await tx
@@ -783,7 +784,7 @@ export class ExpensesService implements OnModuleInit {
   draftAllowances(p: Principal, id: string, req: AllowanceDraftRequest) {
     return this.tenant.run(p, async (tx) => {
       const c = await this.ownEditable(tx, p, id);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localDate(new Date(), (await companySettings(tx, p)).timezone);
       const r = await computeAllowances(tx, c, req, today);
       if (req.dryRun) return { dryRun: true, days: r.days, totals: r.totals, claim: null };
       const now = new Date();
