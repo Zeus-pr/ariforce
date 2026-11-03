@@ -35,6 +35,7 @@ import { cn } from '@ariforce/ui/lib/utils';
 import { OutletPicker } from '@/components/pickers/pickers';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
 import { useRole } from '@/components/shell/role-context';
+import { PersonPicker } from '@/components/team/person-picker';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { approvalDecisionMessage, saveMessage } from '@/lib/leave/model';
 import { thrownMessage } from '@/lib/dcr/errors';
@@ -128,9 +129,12 @@ export function TourPlansView() {
 }
 
 function Planner({ initialMonth }: { initialMonth: string }) {
-  const { role } = useRole();
+  const { role, user } = useRole();
   const { byId } = useLookups();
   const [month, setMonth] = useState(initialMonth);
+  /** Someone else's plan (approvers only): read-only. '' = mine. */
+  const [person, setPerson] = useState('');
+  const other = !!person && person !== user?.id;
   // Deep link from a notification: /tour-plans?plan=<id> opens that plan's month.
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('plan');
@@ -157,9 +161,11 @@ function Planner({ initialMonth }: { initialMonth: string }) {
   const load = useCallback(async () => {
     setPlan(undefined);
     await apiReady();
-    const r = await api.GET('/v1/tour-plans/{month}', { params: { path: { month } } });
+    const r = await api.GET('/v1/tour-plans/{month}', {
+      params: { path: { month }, ...(other ? { query: { userId: person } } : {}) },
+    });
     setPlan(r.data ?? null);
-  }, [month]);
+  }, [month, other, person]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -256,6 +262,8 @@ function Planner({ initialMonth }: { initialMonth: string }) {
   }, [doctorIds, chemistIds]);
   const tpByDate = useMemo(() => {
     const map = new Map<string, TpItem[]>();
+    // My own plan items only: not shown on someone else's calendar.
+    if (other) return map;
     for (const item of tpItems) {
       for (const date of datesInRange(item.from, item.to)) {
         if (!date.startsWith(month)) continue;
@@ -263,7 +271,7 @@ function Planner({ initialMonth }: { initialMonth: string }) {
       }
     }
     return map;
-  }, [tpItems, month]);
+  }, [tpItems, month, other]);
   // Required dates come from the server (GET /v1/tour-plans/{month}/calendar): today (IST) onward and
   // not a weekly off. If that endpoint is unavailable, apply the same rule on the client.
   const fallback = { todayIST: istDate(), weeklyOffDays: DEFAULT_WEEKLY_OFF_DAYS };
@@ -292,7 +300,8 @@ function Planner({ initialMonth }: { initialMonth: string }) {
   useEffect(() => setPicked(null), [month, plan?.version, plan?.status]);
   const selected = picked ?? new Set(submittable);
   const chosen = submittable.filter((d) => selected.has(d));
-  const canSubmit = !!plan && !monthBlocked && hasPlannedDay(plan.days) && chosen.length > 0;
+  const canSubmit =
+    !!plan && !monthBlocked && !other && hasPlannedDay(plan.days) && chosen.length > 0;
   const subById = useMemo(() => new Map((plan?.submissions ?? []).map((x) => [x.id, x])), [plan]);
   const rejectionOf = (d: string) => {
     const day = byDate.get(d);
@@ -309,7 +318,7 @@ function Planner({ initialMonth }: { initialMonth: string }) {
           ? 'Past'
           : 'Not required';
   // Next-month window only: outside that month the calendar is view-only (empty days greyed).
-  const editable = !!plan && !monthBlocked;
+  const editable = !!plan && !monthBlocked && !other;
 
   async function start(fromMonth?: string) {
     if (monthBlocked) {
@@ -397,7 +406,7 @@ function Planner({ initialMonth }: { initialMonth: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {role && isApprover(role) && (
+      {role && isApprover(role) && !other && (
         <>
           <TourPlanItemApprovals />
           <ApprovalsPanel key={approvalsKey} onDecided={load} />
@@ -405,6 +414,16 @@ function Planner({ initialMonth }: { initialMonth: string }) {
       )}
 
       <section className="flex flex-col gap-4" aria-labelledby="tp-month">
+        {role && isApprover(role) && (
+          <div className="w-full sm:w-72">
+            <PersonPicker
+              value={person || user?.id || ''}
+              onChange={setPerson}
+              allowEveryone={false}
+              testId="tp-person"
+            />
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-1">
             <Button
@@ -532,12 +551,14 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                 data-testid="tp-empty"
               >
                 <p className="font-medium">No plan for {monthLabel(month)} yet.</p>
-                <p className="text-sm text-muted-foreground">
-                  {monthBlocked
-                    ? 'You can browse other months, but only the next calendar month can be planned (until the 22nd at 12:00 AM IST).'
-                    : 'Start from your standard tour plan, or copy last month and adjust.'}
-                </p>
-                {!monthBlocked && (
+                {!other && (
+                  <p className="text-sm text-muted-foreground">
+                    {monthBlocked
+                      ? 'You can browse other months, but only the next calendar month can be planned (until the 22nd at 12:00 AM IST).'
+                      : 'Start from your standard tour plan, or copy last month and adjust.'}
+                  </p>
+                )}
+                {!monthBlocked && !other && (
                   <div className="flex flex-wrap gap-2">
                     <Button onClick={() => start()} disabled={busy} data-testid="tp-start">
                       Start from standard plan
@@ -750,7 +771,7 @@ function Planner({ initialMonth }: { initialMonth: string }) {
       <TourPlanItemEditor
         date={selectedTpDate ?? selectedTp?.from ?? null}
         item={selectedTp}
-        readOnly={monthBlocked}
+        readOnly={monthBlocked || other}
         onClose={() => {
           setSelectedTp(null);
           setSelectedTpDate(null);
