@@ -118,7 +118,9 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
       `insert into products (id, company_id, division_id, code, name, ptr) values ($1, $2, $3, $4, $5, 5)`,
       [randomUUID(), A, div, `DP${RUN}`, `DCR product ${RUN}`],
     );
-    const full = DcrOptions.parse((await http().get(`/v1/dcrs/options?date=${today}`).set(as())).body);
+    const full = DcrOptions.parse(
+      (await http().get(`/v1/dcrs/options?date=${today}`).set(as())).body,
+    );
     const r = await http().get('/v1/dcrs/products').set(as());
     expect(r.status).toBe(200);
     expect(r.headers['cache-control']).toBe('private, max-age=60');
@@ -126,7 +128,9 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
     expect(r.headers.etag).toBe(b.etag);
     expect(b.products).toEqual(full.products);
     expect(b.detailProducts).toEqual(full.detailProducts);
-    const again = await http().get('/v1/dcrs/products').set({ ...as(), 'if-none-match': b.etag });
+    const again = await http()
+      .get('/v1/dcrs/products')
+      .set({ ...as(), 'if-none-match': b.etag });
     expect(again.status).toBe(304);
     expect(again.text ?? '').toBe('');
     const first = b.products[0]!;

@@ -10,7 +10,6 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
-
 ## perf/dcr-products-endpoint (2026-11-03): DCR products on their own endpoint (additive)
 
 - New: `GET /v1/dcrs/products` (`field:read`) -> `DcrProducts { products: DcrProductOption[], detailProducts: DcrDetailProduct[], etag }`.

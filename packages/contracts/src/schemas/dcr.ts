@@ -115,7 +115,8 @@ export const DcrProductsQuery = z
 export const DcrProducts = z
   .object({
     products: z.array(DcrProductOption).meta({
-      description: 'Active products for the call pickers, A-Z by name (imageUrl presigned, >= 30 min)',
+      description:
+        'Active products for the call pickers, A-Z by name (imageUrl presigned, >= 30 min)',
     }),
     detailProducts: z.array(DcrDetailProduct).meta({
       description:
