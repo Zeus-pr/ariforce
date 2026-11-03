@@ -483,6 +483,12 @@ export function dcrErrorMessage(e: ApiError): string {
       return 'This draft no longer exists. It may have been deleted on another device.';
     case 'DEVIATION_REASON_REQUIRED':
       return 'Say why the day differs from your approved tour plan.';
+    case 'MEETING_TYPE_INVALID':
+      return 'Choose the meeting type: Cycle Meeting or Review Meeting.';
+    case 'END_TIME_NOT_AFTER_START':
+      return 'The end time must be after the start time.';
+    case 'DURATION_TOO_LONG':
+      return 'A session can be at most 12 hours. Check the start and end time.';
     default:
       return e.message || 'Could not save. Try again.';
   }
