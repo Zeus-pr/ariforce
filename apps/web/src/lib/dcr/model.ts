@@ -7,6 +7,7 @@ import type { Dcr, DcrBand, DcrDetails, DcrDraftPut, DcrSfcMatch } from '@arifor
 import { bandOf, categoryFitsBand, sfcCategoryOf } from './bands';
 import type { ApiError } from '@/lib/api';
 import { dcrDateNotTodayMessage } from './date-rule';
+import { spanMin, endTimeProblem, type DetailsExtra } from './times';
 
 export type WorkTypeOption = {
   id: string;
@@ -177,34 +178,49 @@ export type MeetingForm = {
   mode: 'in_person' | 'online';
   location: string;
   startTime: string;
+  endTime: string;
+  /** Derived from start and end; never typed in. */
   durationMin: string;
   attendees: string;
   remarks: string;
   trainer: string;
+  /** Meeting only. */
+  fromPlace: string;
+  toPlace: string;
 };
 export type OfficeForm = {
   taskType: string;
   description: string;
   startTime: string;
+  endTime: string;
+  /** Derived from start and end; never typed in. */
   durationMin: string;
   remarks: string;
+  fromPlace: string;
+  toPlace: string;
 };
 export const emptyMeeting = (): MeetingForm => ({
   title: '',
   mode: 'in_person',
   location: '',
   startTime: '',
+  endTime: '',
   durationMin: '',
   attendees: '',
   remarks: '',
   trainer: '',
+  fromPlace: '',
+  toPlace: '',
 });
 export const emptyOffice = (): OfficeForm => ({
   taskType: '',
   description: '',
   startTime: '',
+  endTime: '',
   durationMin: '',
   remarks: '',
+  fromPlace: '',
+  toPlace: '',
 });
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -240,40 +256,61 @@ const minutes = (v: string) => {
   return Number.isInteger(n) && n >= 1 && n <= 720 ? n : null;
 };
 
-export function detailsOf(s: FlowState): DcrDetails | null {
+export function detailsOf(s: FlowState): (DcrDetails & DetailsExtra) | null {
   const b = s.workOn?.branch;
   const t = (v: string) => v.trim() || null;
   if (b === 'meeting' || b === 'training') {
     const m = s.meeting;
-    if (!m.title.trim() || !HHMM.test(m.startTime) || !minutes(m.durationMin)) return null;
+    const span = spanMin(m.startTime, m.endTime);
+    if (!m.title.trim() || !span || !minutes(String(span))) return null;
     const base = {
       title: m.title.trim(),
       mode: m.mode,
       location: t(m.location),
       startTime: m.startTime,
-      durationMin: minutes(m.durationMin)!,
+      endTime: m.endTime,
+      durationMin: span,
       attendees: t(m.attendees),
       remarks: t(m.remarks),
     };
     return b === 'meeting'
-      ? { kind: 'meeting', ...base }
+      ? { kind: 'meeting', ...base, fromPlace: t(m.fromPlace), toPlace: t(m.toPlace) }
       : { kind: 'training', ...base, trainer: t(m.trainer) };
   }
   if (b === 'office') {
     const o = s.office;
-    if (!o.taskType.trim() || !o.description.trim() || !minutes(o.durationMin)) return null;
+    const span = spanMin(o.startTime, o.endTime);
+    if (!o.taskType.trim() || !o.description.trim() || !span || !minutes(String(span))) return null;
     return {
       kind: 'office',
       taskType: o.taskType.trim(),
       description: o.description.trim(),
-      startTime: HHMM.test(o.startTime) ? o.startTime : null,
-      durationMin: minutes(o.durationMin)!,
+      startTime: o.startTime,
+      endTime: o.endTime,
+      durationMin: span,
       remarks: t(o.remarks),
+      fromPlace: t(o.fromPlace),
+      toPlace: t(o.toPlace),
     };
   }
   if (b === 'leave')
     return s.leaveRequestId ? { kind: 'leave', leaveRequestId: s.leaveRequestId } : null;
   return null;
+}
+
+/** Start/end checks shared by meeting, training and admin work. */
+function timeProblems(
+  f: { startTime: string; endTime: string },
+  add: (key: string, text: string) => void,
+) {
+  if (!HHMM.test(f.startTime)) add('startTime', 'Enter the start time.');
+  if (!HHMM.test(f.endTime)) add('endTime', 'Enter the end time.');
+  const bad = endTimeProblem(f.startTime, f.endTime);
+  if (bad) add('endTime', bad);
+  else {
+    const span = spanMin(f.startTime, f.endTime);
+    if (span && span > 720) add('endTime', 'A session can be at most 12 hours.');
+  }
 }
 
 /** Problems that block Submit, keyed by the field they belong to. Field values are only checked on a Field day. */
@@ -322,14 +359,13 @@ export function problems(s: FlowState): { key: string; text: string }[] {
           : `Choose the ${what} type, or pick Other and type it in.`,
       );
     if (m.mode === 'in_person' && !m.location.trim()) add('location', 'Enter where it was held.');
-    if (!HHMM.test(m.startTime)) add('startTime', 'Enter the start time.');
-    if (!minutes(m.durationMin)) add('durationMin', 'Enter the duration in minutes (1 to 720).');
+    timeProblems(m, add);
   }
   if (b === 'office') {
     const o = s.office;
     if (!o.taskType.trim()) add('taskType', 'Choose the task type, or pick Other and type it in.');
     if (!o.description.trim()) add('description', 'Describe the task.');
-    if (!minutes(o.durationMin)) add('durationMin', 'Enter the duration in minutes (1 to 720).');
+    timeProblems(o, add);
   }
   if (b === 'leave' && !s.leaveRequestId)
     add('leave', 'Choose or apply for the leave that covers this date.');
@@ -447,6 +483,12 @@ export function dcrErrorMessage(e: ApiError): string {
       return 'This draft no longer exists. It may have been deleted on another device.';
     case 'DEVIATION_REASON_REQUIRED':
       return 'Say why the day differs from your approved tour plan.';
+    case 'MEETING_TYPE_INVALID':
+      return 'Choose the meeting type: Cycle Meeting or Review Meeting.';
+    case 'END_TIME_NOT_AFTER_START':
+      return 'The end time must be after the start time.';
+    case 'DURATION_TOO_LONG':
+      return 'A session can be at most 12 hours. Check the start and end time.';
     default:
       return e.message || 'Could not save. Try again.';
   }
