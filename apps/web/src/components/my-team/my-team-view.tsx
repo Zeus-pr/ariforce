@@ -39,10 +39,13 @@ export function MyTeamView() {
   }, []);
   // Real mode: search is server-side (GET /v1/users?q=, scoped to the caller), debounced, stale calls cancelled.
   const [matchIds, setMatchIds] = useState<Set<string> | null>(null);
+  /** The user search returns at most 100 matches. */
+  const [matchCapped, setMatchCapped] = useState(false);
   useEffect(() => {
     const term = q.trim();
     if (!REAL || !term) {
       setMatchIds(null);
+      setMatchCapped(false);
       return;
     }
     const ctrl = new AbortController();
@@ -51,7 +54,9 @@ export function MyTeamView() {
       const r = await api
         .GET('/v1/users', { params: { query: { q: term, limit: 100 } }, signal: ctrl.signal })
         .catch(() => null);
-      if (!ctrl.signal.aborted) setMatchIds(new Set((r?.data?.items ?? []).map((u) => u.id)));
+      if (ctrl.signal.aborted) return;
+      setMatchIds(new Set((r?.data?.items ?? []).map((u) => u.id)));
+      setMatchCapped((r?.data?.items.length ?? 0) >= 100);
     }, 250);
     return () => {
       clearTimeout(t);
@@ -209,6 +214,11 @@ export function MyTeamView() {
           </div>
         </CardHeader>
         <div className="p-2">
+          {matchCapped && (
+            <p className="px-2 pb-2 text-xs text-muted-foreground" data-testid="limit-notice">
+              Showing the first 100 matches. Narrow the search to see others.
+            </p>
+          )}
           <Tree
             rootId={tree.rootId}
             nodes={tree.nodes}

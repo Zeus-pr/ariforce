@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { api, apiReady, MOCKING } from '@/lib/api';
+import { apiReady, MOCKING } from '@/lib/api';
 import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
+import { getProducts } from '@/lib/query';
 
 /** Product id -> name. Mock mode uses the local seed of Arighna's 101 products (CONTRACT-GAPS #12). */
 export function useProductNames() {
@@ -13,8 +14,8 @@ export function useProductNames() {
     if (MOCKING) return;
     void (async () => {
       await apiReady();
-      const r = await api.GET('/v1/products', { params: { query: { limit: 200 } } });
-      setNames(new Map((r.data?.items ?? []).map((p) => [p.id, p.name])));
+      const r = await getProducts();
+      setNames(new Map((r.data ?? []).map((p) => [p.id, p.name])));
     })().catch(() => {});
   }, []);
   return names;

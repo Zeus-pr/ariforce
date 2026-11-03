@@ -26,6 +26,7 @@ import { useRole } from '@/components/shell/role-context';
 import { CheckInMap, MapLegend } from './check-in-map';
 import { dateLabel, kindLabel, timeIST, todayIST } from './format';
 import { cachedGet } from '@/lib/query';
+import { allPages } from '@/lib/paging';
 
 /** Kolkata North centroid from the demo fixtures; used only when the browser gives no fix in mock mode. */
 const DEMO_FIX = { lat: 22.6, lng: 88.4 };
@@ -96,14 +97,19 @@ function AttendanceDayView({ today }: { today: string }) {
   const load = useCallback(async () => {
     await apiReady();
     const q = { from: date, to: date, limit: 200 };
+    // Page through: a big team can have more than 200 check-ins in a day.
     const [c, a] = await Promise.all([
-      api.GET('/v1/check-ins', { params: { query: q } }),
-      api.GET('/v1/attendance', { params: { query: q } }),
+      allPages((cursor) =>
+        api.GET('/v1/check-ins', { params: { query: { ...q, ...(cursor ? { cursor } : {}) } } }),
+      ),
+      allPages((cursor) =>
+        api.GET('/v1/attendance', { params: { query: { ...q, ...(cursor ? { cursor } : {}) } } }),
+      ),
     ]);
     if (c.error || a.error) return setError(toApiError(c.error ? c : a).message);
     setError(null);
-    setCheckIns(c.data.items);
-    setDays(a.data.items);
+    setCheckIns(c.data?.items ?? []);
+    setDays(a.data?.items ?? []);
   }, [date]);
 
   useEffect(() => {
