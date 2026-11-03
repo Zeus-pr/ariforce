@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronUp, FilePen, History, Plus, RotateCw } from 'lucide-react';
+import { ChevronUp, FilePen, History, Plus, RotateCw, Users } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -42,6 +42,9 @@ import { failureMessage, thrownMessage } from '@/lib/dcr/errors';
 import { normaliseWorkTypes, type HqOption, type WorkTypeOption } from '@/lib/dcr/model';
 import { DcrFlow, type FlowController } from './dcr-flow';
 import { DcrHistory } from './dcr-history';
+import { TeamDcrReports } from './team-dcr-reports';
+import { useRole } from '@/components/shell/role-context';
+import { isApprover } from '@/lib/roles';
 import { DcrMonthCalendar } from './month-calendar';
 import { DcrStatusSections } from './status-sections';
 import { Reveal } from './dcr-card-parts';
@@ -86,7 +89,7 @@ export function DcrWorkspace() {
   return <Workspace today={today} />;
 }
 
-type Tab = 'calendar' | 'history';
+type Tab = 'calendar' | 'history' | 'team';
 
 function Workspace({ today }: { today: string }) {
   const [workTypes, setWorkTypes] = useState<WorkTypeOption[]>([]);
@@ -94,8 +97,14 @@ function Workspace({ today }: { today: string }) {
   const [approvedTpDrafts, setApprovedTpDrafts] = useState<ApprovedTpDraft[]>([]);
   const [link] = useState(() => new URLSearchParams(window.location.search));
   const viewId = link.get('view');
+  const { role } = useRole();
+  const seesTeam = isApprover(role);
   const [tab, setTab] = useState<Tab>(
-    link.get('tab') === 'history' || viewId ? 'history' : 'calendar',
+    link.get('tab') === 'history' || viewId
+      ? 'history'
+      : link.get('tab') === 'team' && seesTeam
+        ? 'team'
+        : 'calendar',
   );
   const [justSubmitted, setJustSubmitted] = useState<Dcr | null>(null);
 
@@ -134,7 +143,7 @@ function Workspace({ today }: { today: string }) {
     setTab(t);
     const u = new URL(window.location.href);
     for (const k of ['tab', 'view', 'draft', 'new', 'date']) u.searchParams.delete(k);
-    if (t === 'history') u.searchParams.set('tab', 'history');
+    if (t !== 'calendar') u.searchParams.set('tab', t);
     window.history.replaceState(window.history.state, '', u);
   };
   const onSubmitted = (d: Dcr) => {
@@ -151,6 +160,11 @@ function Workspace({ today }: { today: string }) {
         <TabsTrigger value="history" className="px-3" data-testid="dcr-tab-history">
           <History aria-hidden /> History
         </TabsTrigger>
+        {seesTeam && (
+          <TabsTrigger value="team" className="px-3" data-testid="dcr-tab-team">
+            <Users aria-hidden /> Team
+          </TabsTrigger>
+        )}
       </TabsList>
       <TabsContent value="calendar" forceMount className="data-[state=inactive]:hidden">
         <CalendarPanel
@@ -171,6 +185,11 @@ function Workspace({ today }: { today: string }) {
           viewId={viewId}
         />
       </TabsContent>
+      {seesTeam && tab === 'team' && (
+        <TabsContent value="team">
+          <TeamDcrReports today={today} wtName={wtName} />
+        </TabsContent>
+      )}
     </Tabs>
   );
 }
