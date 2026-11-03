@@ -6,6 +6,7 @@ import { rollupFor } from '@/components/dashboard/rollup';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { addMonths } from '@/lib/period';
 import { isApprover, type Role } from '@/lib/roles';
+import { getTerritories } from '@/lib/query';
 
 export type Row = KpiReport['rows'][number];
 export type Metric = Row['metrics'][number];
@@ -47,8 +48,8 @@ export function usePerf(role: Role, month: string | null, kpis: readonly string[
         let root: string | undefined;
         if (by === 'byTerritory') {
           await apiReady();
-          const t = await api.GET('/v1/territories', { params: { query: { limit: 200 } } });
-          root = t.data?.items.find((x) => x.parentId === null)?.id;
+          const t = await getTerritories();
+          root = t.find((x) => x.parentId === null && !x.deletedAt)?.id;
         }
         const [head, rows, ...trend] = await Promise.all([
           get({ month, rollup, kpis: key }),

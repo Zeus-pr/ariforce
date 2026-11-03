@@ -23,6 +23,7 @@ import { formatKpi, HEADLINE, KPI_META, TEAM_COLUMNS } from '@/components/dashbo
 import { ExportMenu } from '@/components/export/export-menu';
 import { api, apiReady } from '@/lib/api';
 import { monthLabel, thisMonth } from '@/lib/period';
+import { getMe, getTerritories } from '@/lib/query';
 
 const TeamCoverageChart = dynamic(() => import('./team-charts').then((m) => m.TeamCoverageChart), {
   ssr: false,
@@ -70,16 +71,13 @@ export function TeamView() {
   useEffect(() => {
     void (async () => {
       await apiReady();
-      const [ter, me] = await Promise.all([
-        api.GET('/v1/territories', { params: { query: { limit: 200 } } }),
-        api.GET('/v1/me'),
-      ]);
-      const list = ter.data?.items ?? [];
+      const [ter, me] = await Promise.all([getTerritories(), getMe().catch(() => null)]);
+      const list = ter.filter((x) => !x.deletedAt);
       setTree(list);
       // Start at the caller's own territory; a Director (or anyone without one) starts at the top.
-      const own = me.data?.territoryIds.find((id) => list.some((x) => x.id === id));
+      const own = me?.territoryIds.find((id) => list.some((x) => x.id === id));
       const root = list.find((x) => x.parentId === null);
-      setHome(me.data?.roles.includes('director') || !own ? (root?.id ?? null) : own);
+      setHome(me?.roles.includes('director') || !own ? (root?.id ?? null) : own);
     })().catch(() => {});
   }, []);
 

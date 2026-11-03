@@ -53,6 +53,7 @@ import {
   tpOpenMonth,
 } from '@/lib/tour-plans/cutoff';
 import { fetchMyTourPlanItems, type TpItem } from '@/lib/tour-plans/items';
+import { cachedGet } from '@/lib/query';
 
 type Day = TourPlan['days'][number];
 type Entry = Day['entries'][number];
@@ -224,7 +225,9 @@ function Planner({ initialMonth }: { initialMonth: string }) {
       const [doctors, chemists] = await Promise.all([
         Promise.all(
           chunks(doctorIds).map((ids) =>
-            api.GET('/v1/doctors', { params: { query: { ids: ids.join(','), limit: 100 } } }),
+            cachedGet(['doctors', 'ids', ids.join(',')], () =>
+              api.GET('/v1/doctors', { params: { query: { ids: ids.join(','), limit: 100 } } }),
+            ),
           ),
         ),
         Promise.all(

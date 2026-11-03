@@ -3,6 +3,7 @@
 import type { DoctorCategory, Specialty, Territory } from '@ariforce/contracts';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { api, apiReady } from '@/lib/api';
+import { getTerritories } from '@/lib/query';
 
 export type Lookups = {
   territories: Territory[];
@@ -29,17 +30,7 @@ export function LookupsProvider({ children }: { children: React.ReactNode }) {
     void (async () => {
       await apiReady();
       const q = { params: { query: { limit: 200 } } };
-      const allTerritories = async () => {
-        const items = [];
-        let cursor: string | undefined;
-        for (let i = 0; i < 50; i++) {
-          const r = await api.GET('/v1/territories', { params: { query: { limit: 200, cursor } } });
-          items.push(...(r.data?.items ?? []));
-          cursor = r.data?.nextCursor ?? undefined;
-          if (!cursor) break;
-        }
-        return { data: { items } };
-      };
+      const allTerritories = async () => ({ data: { items: await getTerritories() } });
       const [t, s, c] = await Promise.all([
         allTerritories(),
         api.GET('/v1/specialties', q),
