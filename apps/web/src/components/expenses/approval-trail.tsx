@@ -21,6 +21,8 @@ export type TrailClaim = {
   paidBy?: { id: string; name: string } | null;
   approvalTrail?: ExpenseApprovalLevel[] | null;
   totalLevels?: number | null;
+  /** false for approvals that end at the last level (no Paid step). */
+  paid?: boolean;
 };
 
 const DEFAULT_LEVELS = 2;
@@ -97,6 +99,7 @@ export function trailSteps(c: TrailClaim): Step[] {
       note,
     });
   }
+  if (c.paid === false) return steps;
   steps.push({
     key: 'paid',
     label: 'Paid',

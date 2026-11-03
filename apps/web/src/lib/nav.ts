@@ -1,6 +1,7 @@
 import { DEFAULT_ROLE_PERMISSIONS } from '@ariforce/contracts';
 import type { LucideIcon } from 'lucide-react';
 import {
+  CheckCheck,
   UserCog,
   UserPlus,
   CalendarRange,
@@ -180,6 +181,14 @@ export const NAV: NavItem[] = [
     href: '/my-team',
     icon: Network,
     roles: APPROVERS,
+    section: 'admin',
+  },
+  {
+    slug: 'approvals',
+    title: 'Approvals',
+    href: '/approvals',
+    icon: CheckCheck,
+    roles: ROLES.filter((r) => (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('approvals:decide')),
     section: 'admin',
   },
   {
