@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { UserRef, DateOnly, Id, Month, Timestamp } from './common';
+import { RoleKey } from './roles';
 
 /** Expense claims (#52): one claim per user per month, lines with receipts in R2. */
 /** `allowance` = daily allowance (DA), usually drafted by TA/DA auto-calc (#39). */
@@ -186,6 +187,9 @@ export const ExpenseClaim = z
     }),
     canPay: z.boolean().meta({ description: 'The caller may mark it paid now (POST /pay)' }),
     paidBy: UserRef.nullable().meta({ description: 'Who marked it paid; null unless paid' }),
+    userRole: RoleKey.nullable().optional().meta({
+      description: "Claim owner's most senior role key",
+    }),
   })
   .meta({ id: 'ExpenseClaim' });
 export type ExpenseClaim = z.infer<typeof ExpenseClaim>;
@@ -210,6 +214,10 @@ export const ExpenseClaimListQuery = z
     month: Month.optional(),
     userId: Id.optional(),
     status: ExpenseStatus.optional(),
+    scope: z.enum(['team']).optional().meta({
+      description:
+        'team: every claim of your reporting subtree in any status, drafts included (Director: the whole company). Needs expenses:approve (else 403). Combine with userId/status/month and limit/cursor',
+    }),
     limit: z.coerce.number().int().min(1).max(200).optional().meta({
       description:
         'Opt-in paging (default 50 once cursor is sent). Without limit and cursor every readable claim is returned, as before',

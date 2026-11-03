@@ -8557,6 +8557,7 @@
           "Approvals"
         ],
         "operationId": "listApprovals",
+        "description": "Default: your own requests and those of your reporting line (unchanged). scope=org: every request of your subtree in any state (Director: the whole company) with requestedByRole, level, totalLevels, currentApprover and trail; filters status, subjectType, userId, from/to; include=dcr,signup merges DCR reviews and signup requests into the same page (ordered createdAt desc, id).",
         "parameters": [
           {
             "in": "query",
@@ -8650,8 +8651,11 @@
                 "dcr_unlock",
                 "leave",
                 "device",
-                "expense"
-              ]
+                "expense",
+                "dcr",
+                "signup"
+              ],
+              "description": "Engine types; 'dcr' (DCR review, subjectId = DCR id) and 'signup' (signup request) are only returned when asked for with include=dcr / include=signup"
             }
           },
           {
@@ -8666,6 +8670,62 @@
               ]
             },
             "description": "to_decide = pending requests from your reporting line that you may decide (never your own); requested = yours"
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "description": "org: every request of your reporting subtree in any state (Director: the whole company), with trail/level fields. Needs approvals:decide (else 403). Ignored with mine",
+              "type": "string",
+              "enum": [
+                "org"
+              ]
+            },
+            "description": "org: every request of your reporting subtree in any state (Director: the whole company), with trail/level fields. Needs approvals:decide (else 403). Ignored with mine"
+          },
+          {
+            "in": "query",
+            "name": "userId",
+            "schema": {
+              "description": "Requester; must be you or in your subtree",
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "description": "Requester; must be you or in your subtree"
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "Created on/after this IST date",
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "description": "Created on/after this IST date"
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "Created on/before this IST date",
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "description": "Created on/before this IST date"
+          },
+          {
+            "in": "query",
+            "name": "include",
+            "schema": {
+              "description": "Comma list of non-engine items to merge in: dcr (DCR reviews: submitted/approved/rejected DCRs, needs dcr:review) and signup (signup requests, same visibility as GET /v1/signup-requests). Only with scope=org",
+              "type": "string",
+              "pattern": "^(dcr|signup)(,(dcr|signup))?$"
+            },
+            "description": "Comma list of non-engine items to merge in: dcr (DCR reviews: submitted/approved/rejected DCRs, needs dcr:review) and signup (signup requests, same visibility as GET /v1/signup-requests). Only with scope=org"
           }
         ],
         "responses": {
@@ -8690,7 +8750,17 @@
             }
           },
           "403": {
-            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "description": "FORBIDDEN: scope=org without approvals:decide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION (bad cursor, include without scope=org, from after to)",
             "content": {
               "application/json": {
                 "schema": {
@@ -9330,6 +9400,254 @@
           },
           "404": {
             "description": "Not in your subtree (or not a hierarchy user)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/team/members/{userId}/activity": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Team"
+        ],
+        "operationId": "getTeamMemberActivity",
+        "summary": "Employee 360 activity of yourself or someone below you (Director: everyone): today by default, or any range up to 93 days",
+        "description": "Per day: attendance (same rules as the profile today block), approved TP coverage, the day DCR (status, work type, calls, start/end/duration, DCR expense total), call and GPS check-in counts; range totals; for a single day (from = to) also the calls and check-ins themselves. Same visibility as GET /v1/team/members/{userId}/profile (ABM+ with reports:read over their subtree, Director everyone; non-hierarchy roles 403). Batched: a fixed number of queries per request, independent of range length.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "Default: today (IST)",
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "description": "Default: today (IST)"
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "Default: from. Inclusive; at most 93 days (else 422 RANGE_TOO_LONG); not after today (IST)",
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "description": "Default: from. Inclusive; at most 93 days (else 422 RANGE_TOO_LONG); not after today (IST)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Activity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamMemberActivity"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: same rules as the profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not in your subtree (or not a hierarchy user)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION (from after to, to after today) or RANGE_TOO_LONG (more than 93 days; details.maxDays)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/audit-log": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Audit"
+        ],
+        "operationId": "listAuditLog",
+        "summary": "Audit log of your company, newest first (audit:read: Director, System Admin)",
+        "description": "Filters: actorUserId, action (exact, or prefix ending in '.'), entityType (+ entityId), from/to (IST dates, inclusive). Cursor paging (limit default 50, max 200), ordered at desc, id desc. before/after are returned with sensitive keys (token, secret, otp, password, hash, authorization, cookie, api key, private key, signature) replaced by '[redacted]' at any depth. Reading is not itself audited.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "actorUserId",
+            "schema": {
+              "description": "Who did it",
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "description": "Who did it"
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "schema": {
+              "description": "Exact action (e.g. 'dcr.submit'), or a prefix ending in '.' (e.g. 'dcr.')",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "description": "Exact action (e.g. 'dcr.submit'), or a prefix ending in '.' (e.g. 'dcr.')"
+          },
+          {
+            "in": "query",
+            "name": "entityType",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            }
+          },
+          {
+            "in": "query",
+            "name": "entityId",
+            "schema": {
+              "description": "Needs entityType",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "description": "Needs entityType"
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "IST date, inclusive",
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "description": "IST date, inclusive"
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "IST date, inclusive",
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "description": "IST date, inclusive"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "Opaque, from nextCursor",
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Opaque, from nextCursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditLogPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: missing audit:read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION (bad cursor, from after to, entityId without entityType)",
             "content": {
               "application/json": {
                 "schema": {
@@ -11207,7 +11525,7 @@
           "Expenses"
         ],
         "operationId": "listExpenseClaims",
-        "summary": "Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide",
+        "summary": "Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide; scope=team: every claim of your subtree (drafts too; Director: company)",
         "description": "Without limit and cursor: all matching claims, response { items } exactly as before. With limit and/or cursor: one page (limit default 50, max 200), ordered month desc, user name, id, and the response adds limit, total and nextCursor (null on the last page). Invalid cursor: 422 VALIDATION.",
         "parameters": [
           {
@@ -11237,6 +11555,18 @@
             "schema": {
               "$ref": "#/components/schemas/ExpenseStatus"
             }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "description": "team: every claim of your reporting subtree in any status, drafts included (Director: the whole company). Needs expenses:approve (else 403). Combine with userId/status/month and limit/cursor",
+              "type": "string",
+              "enum": [
+                "team"
+              ]
+            },
+            "description": "team: every claim of your reporting subtree in any status, drafts included (Director: the whole company). Needs expenses:approve (else 403). Combine with userId/status/month and limit/cursor"
           },
           {
             "in": "query",
@@ -11282,7 +11612,7 @@
             }
           },
           "403": {
-            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "description": "FORBIDDEN: scope=team without expenses:approve",
             "content": {
               "application/json": {
                 "schema": {
@@ -26278,8 +26608,11 @@
               "dcr_unlock",
               "leave",
               "device",
-              "expense"
-            ]
+              "expense",
+              "dcr",
+              "signup"
+            ],
+            "description": "Engine types; 'dcr' (DCR review, subjectId = DCR id) and 'signup' (signup request) are only returned when asked for with include=dcr / include=signup"
           },
           "subjectId": {
             "type": "string",
@@ -26388,6 +26721,61 @@
                 "dcr_rejected_lines"
               ]
             }
+          },
+          "requestedByRole": {
+            "description": "Requester's most senior role key",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "level": {
+            "description": "Level awaiting a decision (1-based); null once decided",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "totalLevels": {
+            "description": "Configured levels for this type; null where the type has a single decision",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "currentApprover": {
+            "description": "Approver of the level awaiting a decision; null when decided or shared queue",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpenseApprover"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trail": {
+            "description": "Per-level history (same shape as ExpenseClaim.approvalTrail): who, when, status, comment/reason. Present on scope=org reads",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExpenseApprovalLevel"
+            }
           }
         },
         "required": [
@@ -26404,6 +26792,116 @@
           "createdAt",
           "decidedAt",
           "decidedBy"
+        ],
+        "additionalProperties": false
+      },
+      "ExpenseApprover": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role"
+        ],
+        "additionalProperties": false,
+        "description": "User ref with their most senior role key"
+      },
+      "ExpenseApprovalLevel": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "approver": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpenseApprover"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Assigned approver of this level (projected up the manager chain for levels not reached yet); null when skipped, shared queue or auto-approved"
+          },
+          "decidedBy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpenseApprover"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who actually decided (may be above the assigned approver); null if undecided or system"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "skipped"
+            ]
+          },
+          "current": {
+            "type": "boolean",
+            "description": "True for the level awaiting a decision now"
+          },
+          "decidedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rejectionReason": {
+            "description": "comment when status is rejected",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "level",
+          "approver",
+          "decidedBy",
+          "status",
+          "current",
+          "decidedAt",
+          "comment",
+          "rejectionReason"
         ],
         "additionalProperties": false
       },
@@ -28896,6 +29394,671 @@
         ],
         "additionalProperties": false
       },
+      "TeamMemberActivity": {
+        "type": "object",
+        "properties": {
+          "member": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              "name": {
+                "type": "string"
+              },
+              "role": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RoleKey"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "role"
+            ],
+            "additionalProperties": false
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Calendar date (YYYY-MM-DD, IST)"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Calendar date (YYYY-MM-DD, IST)"
+          },
+          "today": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Company-local (IST) today"
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityDay"
+            },
+            "description": "One row per date, oldest first"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ActivityTotals"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "calls": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ActivityCall"
+                    },
+                    "description": "Calls of the day, by calledAt"
+                  },
+                  "checkIns": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/CheckIn"
+                    },
+                    "description": "GPS captures of the day, by capturedAt"
+                  }
+                },
+                "required": [
+                  "calls",
+                  "checkIns"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only for a single-day range (from = to), else null"
+          },
+          "canSeeExpenses": {
+            "type": "boolean",
+            "description": "Same rule as TeamProfile.canSeeExpenses"
+          }
+        },
+        "required": [
+          "member",
+          "from",
+          "to",
+          "today",
+          "days",
+          "totals",
+          "detail",
+          "canSeeExpenses"
+        ],
+        "additionalProperties": false
+      },
+      "ActivityDay": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Calendar date (YYYY-MM-DD, IST)"
+          },
+          "attendance": {
+            "$ref": "#/components/schemas/ProfileAttendanceStatus"
+          },
+          "punchInAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "punchOutAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "description": "ISO-8601 timestamp (UTC)"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "leave": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "requestId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUIDv7 identifier",
+                    "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                  },
+                  "typeCode": {
+                    "type": "string"
+                  },
+                  "half": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "am",
+                          "pm"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "requestId",
+                  "typeCode",
+                  "half"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "planned": {
+            "type": "boolean",
+            "description": "An approved tour-plan item covers the day"
+          },
+          "dcr": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActivityDcr"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The submitted/approved report of the day, else the newest draft; null if none"
+          },
+          "calls": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "checkIns": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "GPS captures (punch in/out and visits)"
+          }
+        },
+        "required": [
+          "date",
+          "attendance",
+          "punchInAt",
+          "punchOutAt",
+          "leave",
+          "planned",
+          "dcr",
+          "calls",
+          "checkIns"
+        ],
+        "additionalProperties": false
+      },
+      "ActivityDcr": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "submitted",
+              "locked",
+              "approved",
+              "rejected"
+            ]
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "workTypeName": {
+            "type": "string"
+          },
+          "callCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "startTime": {
+            "description": "details.startTime (HH:mm) when set",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "endTime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "durationMin": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expenseTotal": {
+            "type": "number",
+            "description": "Live origin-dcr claim lines of this DCR"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "workTypeId",
+          "workTypeName",
+          "callCount",
+          "startTime",
+          "endTime",
+          "durationMin",
+          "expenseTotal"
+        ],
+        "additionalProperties": false
+      },
+      "ActivityTotals": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "present": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "absent": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "leave": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "holiday": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "weeklyOff": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "incomplete": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "dcr": {
+            "type": "object",
+            "properties": {
+              "draft": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "submitted": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "approved": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "rejected": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "locked": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "missing": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Working days (not leave/holiday/off) without a DCR"
+              }
+            },
+            "required": [
+              "draft",
+              "submitted",
+              "approved",
+              "rejected",
+              "locked",
+              "missing"
+            ],
+            "additionalProperties": false
+          },
+          "calls": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "checkIns": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "plannedDays": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "dcrExpenseTotal": {
+            "type": "number",
+            "description": "Sum of ActivityDcr.expenseTotal"
+          },
+          "claimTotal": {
+            "type": "number",
+            "description": "Totals of the person’s expense claims for the months touching the range (any status, not soft-deleted); 0 without expense visibility"
+          }
+        },
+        "required": [
+          "days",
+          "present",
+          "absent",
+          "leave",
+          "holiday",
+          "weeklyOff",
+          "incomplete",
+          "dcr",
+          "calls",
+          "checkIns",
+          "plannedDays",
+          "dcrExpenseTotal",
+          "claimTotal"
+        ],
+        "additionalProperties": false
+      },
+      "ActivityCall": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "outletKind": {
+            "$ref": "#/components/schemas/OutletKind"
+          },
+          "outletId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "checkInId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Visit check-in (GPS) for this call"
+          },
+          "calledAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "Server time when the call (clientId) was first saved to a DCR; never changes on re-save. Client values are ignored.",
+            "readOnly": true
+          },
+          "jointWorkUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "dcrId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "outletName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "outletKind",
+          "outletId",
+          "checkInId",
+          "calledAt",
+          "jointWorkUserIds",
+          "dcrId",
+          "outletName"
+        ],
+        "additionalProperties": false
+      },
+      "AuditLogPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditLogEntry"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "serverTime": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "ISO-8601 timestamp (UTC)"
+          },
+          "total": {
+            "description": "Rows matching the filters; present when includeTotal=true",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "serverTime"
+        ],
+        "additionalProperties": false
+      },
+      "AuditLogEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "audit_log.id (bigint as string)"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "ISO-8601 timestamp (UTC)"
+          },
+          "actor": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUIDv7 identifier",
+                    "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/RoleKey"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "role"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null for system actions"
+          },
+          "action": {
+            "type": "string"
+          },
+          "entityType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entityId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "before": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Row JSON with sensitive keys redacted"
+          },
+          "after": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Row JSON with sensitive keys redacted"
+          },
+          "ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "userAgent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requestId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "actor",
+          "action",
+          "entityType",
+          "entityId",
+          "before",
+          "after",
+          "ip",
+          "userAgent",
+          "requestId"
+        ],
+        "additionalProperties": false
+      },
       "TeamPerformance": {
         "type": "object",
         "properties": {
@@ -30478,6 +31641,17 @@
             ],
             "description": "Who marked it paid; null unless paid"
           },
+          "userRole": {
+            "description": "Claim owner's most senior role key",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "lineCount": {
             "type": "integer",
             "minimum": -9007199254740991,
@@ -30514,116 +31688,6 @@
           "lineCount"
         ],
         "additionalProperties": false
-      },
-      "ExpenseApprovalLevel": {
-        "type": "object",
-        "properties": {
-          "level": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "approver": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ExpenseApprover"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Assigned approver of this level (projected up the manager chain for levels not reached yet); null when skipped, shared queue or auto-approved"
-          },
-          "decidedBy": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ExpenseApprover"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Who actually decided (may be above the assigned approver); null if undecided or system"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "approved",
-              "rejected",
-              "skipped"
-            ]
-          },
-          "current": {
-            "type": "boolean",
-            "description": "True for the level awaiting a decision now"
-          },
-          "decidedAt": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time",
-                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-                "description": "ISO-8601 timestamp (UTC)"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "comment": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "rejectionReason": {
-            "description": "comment when status is rejected",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "level",
-          "approver",
-          "decidedBy",
-          "status",
-          "current",
-          "decidedAt",
-          "comment",
-          "rejectionReason"
-        ],
-        "additionalProperties": false
-      },
-      "ExpenseApprover": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUIDv7 identifier",
-            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
-          },
-          "name": {
-            "type": "string"
-          },
-          "role": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "role"
-        ],
-        "additionalProperties": false,
-        "description": "User ref with their most senior role key"
       },
       "ExpenseClaim": {
         "type": "object",
@@ -30850,6 +31914,17 @@
               }
             ],
             "description": "Who marked it paid; null unless paid"
+          },
+          "userRole": {
+            "description": "Claim owner's most senior role key",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -32320,8 +33395,11 @@
               "dcr_unlock",
               "leave",
               "device",
-              "expense"
-            ]
+              "expense",
+              "dcr",
+              "signup"
+            ],
+            "description": "Engine types; 'dcr' (DCR review, subjectId = DCR id) and 'signup' (signup request) are only returned when asked for with include=dcr / include=signup"
           },
           "subjectId": {
             "type": "string",
@@ -32429,6 +33507,61 @@
               "enum": [
                 "dcr_rejected_lines"
               ]
+            }
+          },
+          "requestedByRole": {
+            "description": "Requester's most senior role key",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "level": {
+            "description": "Level awaiting a decision (1-based); null once decided",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "totalLevels": {
+            "description": "Configured levels for this type; null where the type has a single decision",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "currentApprover": {
+            "description": "Approver of the level awaiting a decision; null when decided or shared queue",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpenseApprover"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trail": {
+            "description": "Per-level history (same shape as ExpenseClaim.approvalTrail): who, when, status, comment/reason. Present on scope=org reads",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExpenseApprovalLevel"
             }
           },
           "subject": {

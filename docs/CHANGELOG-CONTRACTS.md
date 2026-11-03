@@ -10,6 +10,26 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## feat/director-visibility-contract (2026-11-04): Director "see everything", additive
+
+Contract first; server in follow-up PRs (until then the API ignores the new params). No migration.
+
+- `GET /v1/expense-claims?scope=team` (expenses:approve, else 403): every claim of the caller's
+  subtree in any status, drafts included (Director: company). Existing filters and paging apply.
+  `ExpenseClaim`/`ExpenseClaimSummary` gain optional `userRole`.
+- `GET /v1/approvals?scope=org` (approvals:decide, else 403): every request of the subtree in any
+  state (Director: company), filters `status`, `subjectType`, `userId`, `from`/`to`; opt-in
+  `include=dcr,signup` merges DCR reviews and signup requests. `Approval` gains optional
+  `requestedByRole`, `level`, `totalLevels`, `currentApprover`, `trail` (ExpenseApprovalLevel[]).
+  `Approval.subjectType` gains `dcr` and `signup`, **returned only with include** (TS clients with
+  exhaustive switches must add the two cases).
+- New `GET /v1/team/members/{userId}/activity?from&to` -> `TeamMemberActivity` (today by default;
+  range up to 93 days, 422 `RANGE_TOO_LONG`; profile visibility). Day rows, totals, and calls +
+  check-ins for a single day.
+- New `GET /v1/audit-log` (audit:read: Director, System Admin) -> `AuditLogPage`; filters
+  actorUserId, action (exact or `prefix.`), entityType/entityId, from/to; cursor paging; sensitive
+  keys in before/after redacted (`redactAudit`, `AUDIT_REDACT_KEY`).
+
 ## feat/dcr-expenses (server, no contract change)
 
 - Implements DCR expenses as specified: draft/submit persistence, idempotent link into the month

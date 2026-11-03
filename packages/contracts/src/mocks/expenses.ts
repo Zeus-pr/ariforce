@@ -105,8 +105,12 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
       const g = auth(request);
       if (g.res) return g.res;
       const q = new URL(request.url).searchParams;
+      const team = q.get('scope') === 'team';
+      if (team && !can(g.p, 'expenses:approve'))
+        return e(403, 'FORBIDDEN', 'scope=team needs expenses:approve');
+      // scope=team: drafts too; the mock has no reporting line, so it shows every claim.
       const items = claims
-        .filter((c) => visible(g.p, c))
+        .filter((c) => team || visible(g.p, c))
         .filter((c) => !q.get('month') || c.month === q.get('month'))
         .filter((c) => !q.get('status') || c.status === q.get('status'))
         .filter((c) => !q.get('userId') || c.userId === q.get('userId'))

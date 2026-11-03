@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { DcrBand, DcrDetails, DcrSfcRoute, DcrExpenses } from './dcr-parts';
 import { UserRef, DateOnly, GeoPoint, Id, Month, Syncable, Timestamp, listQuery } from './common';
 import { RoleKey } from './roles';
+import { ExpenseApprovalLevel, ExpenseApprover } from './expenses';
 
 const Capture = z.object({
   location: GeoPoint,
@@ -568,16 +569,23 @@ export const Approval = z
   .object({
     id: Id,
     companyId: Id,
-    subjectType: z.enum([
-      'tour_plan',
-      'doctor',
-      'chemist',
-      'stockist',
-      'dcr_unlock',
-      'leave',
-      'device',
-      'expense',
-    ]),
+    subjectType: z
+      .enum([
+        'tour_plan',
+        'doctor',
+        'chemist',
+        'stockist',
+        'dcr_unlock',
+        'leave',
+        'device',
+        'expense',
+        'dcr',
+        'signup',
+      ])
+      .meta({
+        description:
+          "Engine types; 'dcr' (DCR review, subjectId = DCR id) and 'signup' (signup request) are only returned when asked for with include=dcr / include=signup",
+      }),
     subjectId: Id,
     canDecide: z.boolean().optional().meta({
       description:
@@ -610,6 +618,24 @@ export const Approval = z
           'Approver warnings. dcr_rejected_lines: an expense claim has lines on days whose DCR was rejected (see claim.dcrRejectedDates); approving such a claim is blocked with 409 DCR_NOT_APPROVED',
       }),
   })
+  .extend({
+    requestedByRole: RoleKey.nullable().optional().meta({
+      description: "Requester's most senior role key",
+    }),
+    level: z.int().min(1).nullable().optional().meta({
+      description: 'Level awaiting a decision (1-based); null once decided',
+    }),
+    totalLevels: z.int().min(1).nullable().optional().meta({
+      description: 'Configured levels for this type; null where the type has a single decision',
+    }),
+    currentApprover: ExpenseApprover.nullable().optional().meta({
+      description: 'Approver of the level awaiting a decision; null when decided or shared queue',
+    }),
+    trail: z.array(ExpenseApprovalLevel).optional().meta({
+      description:
+        'Per-level history (same shape as ExpenseClaim.approvalTrail): who, when, status, comment/reason. Present on scope=org reads',
+    }),
+  })
   .meta({ id: 'Approval' });
 export type Approval = z.infer<typeof Approval>;
 export const ApprovalDecision = z
@@ -628,4 +654,19 @@ export const ApprovalListQuery = listQuery(['createdAt'] as const, {
     description:
       'to_decide = pending requests from your reporting line that you may decide (never your own); requested = yours',
   }),
+  scope: z.enum(['org']).optional().meta({
+    description:
+      'org: every request of your reporting subtree in any state (Director: the whole company), with trail/level fields. Needs approvals:decide (else 403). Ignored with mine',
+  }),
+  userId: Id.optional().meta({ description: 'Requester; must be you or in your subtree' }),
+  from: DateOnly.optional().meta({ description: 'Created on/after this IST date' }),
+  to: DateOnly.optional().meta({ description: 'Created on/before this IST date' }),
+  include: z
+    .string()
+    .regex(/^(dcr|signup)(,(dcr|signup))?$/)
+    .optional()
+    .meta({
+      description:
+        'Comma list of non-engine items to merge in: dcr (DCR reviews: submitted/approved/rejected DCRs, needs dcr:review) and signup (signup requests, same visibility as GET /v1/signup-requests). Only with scope=org',
+    }),
 }).meta({ description: 'Visible: your own requests and those of your reporting line' });
