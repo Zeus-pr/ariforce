@@ -12,7 +12,9 @@ export default function DcrClassicPage() {
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-2xl font-semibold tracking-tight">Daily call report (classic form)</h1>
-        <Link href="/dcr" className="text-sm text-primary underline-offset-4 hover:underline">Open the new DCR</Link>
+        <Link href="/dcr" className="text-sm text-primary underline-offset-4 hover:underline">
+          Open the new DCR
+        </Link>
       </div>
       <DcrView />
     </div>

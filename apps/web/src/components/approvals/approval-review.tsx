@@ -29,7 +29,11 @@ export function ApprovalReview({ approval }: { approval: Approval }) {
   }, [approval.id]);
   const s = detail?.subject ?? null;
   return (
-    <div className="mt-2 rounded-md border bg-muted/40 p-3 text-sm" data-testid="approval-review" data-type={t}>
+    <div
+      className="mt-2 rounded-md border bg-muted/40 p-3 text-sm"
+      data-testid="approval-review"
+      data-type={t}
+    >
       {detail === undefined ? (
         <Loading />
       ) : s ? (
@@ -60,7 +64,14 @@ function SubjectView({ a, s }: { a: Approval; s: ApprovalSubject }) {
         <dl className="grid gap-1">
           <Row k="Submitted by" v={a.requestedByName} />
           <Row k="Type" v={<span data-testid="review-leave-type">{lv.typeName}</span>} />
-          <Row k="Dates" v={lv.fromDate === lv.toDate ? dayLabel(lv.fromDate) : `${dayLabel(lv.fromDate)} – ${dayLabel(lv.toDate)}`} />
+          <Row
+            k="Dates"
+            v={
+              lv.fromDate === lv.toDate
+                ? dayLabel(lv.fromDate)
+                : `${dayLabel(lv.fromDate)} – ${dayLabel(lv.toDate)}`
+            }
+          />
           <Row k="Days" v={`${lv.days}${lv.half ? ` (${lv.half})` : ''}`} />
           <Row k="Reason" v={lv.reason || '—'} />
           <Row
@@ -82,7 +93,12 @@ function SubjectView({ a, s }: { a: Approval; s: ApprovalSubject }) {
             <ul className="grid gap-0.5">
               {s.overlaps.map((o) => (
                 <li key={`${o.userId}-${o.fromDate}`}>
-                  {o.userName} <span className="text-muted-foreground">{o.typeCode}, {dayLabel(o.fromDate)}{o.toDate !== o.fromDate ? ` – ${dayLabel(o.toDate)}` : ''}, {o.status === 'approved' ? 'Approved' : 'Pending'}</span>
+                  {o.userName}{' '}
+                  <span className="text-muted-foreground">
+                    {o.typeCode}, {dayLabel(o.fromDate)}
+                    {o.toDate !== o.fromDate ? ` – ${dayLabel(o.toDate)}` : ''},{' '}
+                    {o.status === 'approved' ? 'Approved' : 'Pending'}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -103,7 +119,11 @@ function SubjectView({ a, s }: { a: Approval; s: ApprovalSubject }) {
         </dl>
         <ul className="max-h-80 divide-y overflow-y-auto overscroll-contain rounded-md border bg-background">
           {c.lines.map((l) => (
-            <li key={l.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2" data-testid="review-line">
+            <li
+              key={l.id}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2"
+              data-testid="review-line"
+            >
               <span className="w-24 text-muted-foreground">{dayLabel(l.date)}</span>
               <span className="flex-1 capitalize">
                 {l.category.replace(/_/g, ' ')}
@@ -112,7 +132,12 @@ function SubjectView({ a, s }: { a: Approval; s: ApprovalSubject }) {
               <span className="tabular-nums">{money(l.amount)}</span>
               {receipts(l.id).map((f, i, all) => (
                 <Button key={f.attachmentId} asChild size="sm" variant="outline">
-                  <a href={f.downloadUrl} target="_blank" rel="noreferrer" data-testid="review-receipt">
+                  <a
+                    href={f.downloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-testid="review-receipt"
+                  >
                     Receipt{all.length > 1 ? ` ${i + 1}` : ''}
                   </a>
                 </Button>
@@ -158,9 +183,18 @@ function SubjectView({ a, s }: { a: Approval; s: ApprovalSubject }) {
   );
 }
 
-function TourPlanDetail({ a, s }: { a: Approval; s: Extract<ApprovalSubject, { type: 'tour_plan' }> }) {
-  const sub = (s as { submission?: { submitterNote?: string | null; dates?: string[] } | null }).submission ?? null;
-  const note = sub?.submitterNote ?? (s.plan as { submitterNote?: string | null }).submitterNote ?? null;
+function TourPlanDetail({
+  a,
+  s,
+}: {
+  a: Approval;
+  s: Extract<ApprovalSubject, { type: 'tour_plan' }>;
+}) {
+  const sub =
+    (s as { submission?: { submitterNote?: string | null; dates?: string[] } | null }).submission ??
+    null;
+  const note =
+    sub?.submitterNote ?? (s.plan as { submitterNote?: string | null }).submitterNote ?? null;
   const days = s.days.filter((d) => d.entries.length > 0);
   return (
     <div className="grid gap-2">
@@ -172,11 +206,24 @@ function TourPlanDetail({ a, s }: { a: Approval; s: Extract<ApprovalSubject, { t
           k="Whole plan"
           v={
             <span data-testid="review-plan-context">
-              {s.plan.days.filter((d) => d.entries.length > 0).length} planned days, {(s.plan as { submissions?: unknown[] }).submissions?.length ?? 1} {((s.plan as { submissions?: unknown[] }).submissions?.length ?? 1) === 1 ? 'submission' : 'submissions'}
+              {s.plan.days.filter((d) => d.entries.length > 0).length} planned days,{' '}
+              {(s.plan as { submissions?: unknown[] }).submissions?.length ?? 1}{' '}
+              {((s.plan as { submissions?: unknown[] }).submissions?.length ?? 1) === 1
+                ? 'submission'
+                : 'submissions'}
             </span>
           }
         />
-        {note && <Row k="Note" v={<span data-testid="review-note" className="whitespace-pre-wrap">{note}</span>} />}
+        {note && (
+          <Row
+            k="Note"
+            v={
+              <span data-testid="review-note" className="whitespace-pre-wrap">
+                {note}
+              </span>
+            }
+          />
+        )}
       </dl>
       <ul className="max-h-80 divide-y overflow-y-auto overscroll-contain rounded-md border bg-background">
         {days.map((d) => (
@@ -186,12 +233,20 @@ function TourPlanDetail({ a, s }: { a: Approval; s: Extract<ApprovalSubject, { t
               <div key={i} className="text-muted-foreground">
                 {e.session !== 'full' && <span className="uppercase">{e.session} · </span>}
                 <span className="text-foreground">{e.workType?.name || 'Work type'}</span>
-                {e.territories.length > 0 && <> · {e.territories.map((x) => x.name || '—').join(', ')}</>}
-                {e.doctors.length > 0 && (
-                  <div data-testid="review-doctors">Doctors: {e.doctors.map((x) => x.name || '—').join(', ')}</div>
+                {e.territories.length > 0 && (
+                  <> · {e.territories.map((x) => x.name || '—').join(', ')}</>
                 )}
-                {e.chemists.length > 0 && <div>Chemists: {e.chemists.map((x) => x.name || '—').join(', ')}</div>}
-                {e.jointWorkUsers.length > 0 && <div>Joint work: {e.jointWorkUsers.map((x) => x.name).join(', ')}</div>}
+                {e.doctors.length > 0 && (
+                  <div data-testid="review-doctors">
+                    Doctors: {e.doctors.map((x) => x.name || '—').join(', ')}
+                  </div>
+                )}
+                {e.chemists.length > 0 && (
+                  <div>Chemists: {e.chemists.map((x) => x.name || '—').join(', ')}</div>
+                )}
+                {e.jointWorkUsers.length > 0 && (
+                  <div>Joint work: {e.jointWorkUsers.map((x) => x.name).join(', ')}</div>
+                )}
                 {e.notes && <div className="italic">{e.notes}</div>}
               </div>
             ))}
@@ -209,12 +264,18 @@ const Missing = ({ what }: { what: string }) => (
   </p>
 );
 const dayLabel = (d: string) =>
-  new Intl.DateTimeFormat('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(
-    new Date(`${d}T00:00:00Z`),
-  );
+  new Intl.DateTimeFormat('en-IN', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  }).format(new Date(`${d}T00:00:00Z`));
 const monthLabel = (m: string) =>
-  new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${m}-01T00:00:00Z`));
-const money = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(n);
+  new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+    new Date(`${m}-01T00:00:00Z`),
+  );
+const money = (n: number) =>
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(n);
 const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
   <div className="flex gap-2">
     <dt className="w-28 shrink-0 text-muted-foreground">{k}</dt>
@@ -222,7 +283,16 @@ const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
   </div>
 );
 
-type Leave = { typeName: string; typeCode: string; fromDate: string; toDate: string; half: string | null; days: number; reason: string | null; year: number };
+type Leave = {
+  typeName: string;
+  typeCode: string;
+  fromDate: string;
+  toDate: string;
+  half: string | null;
+  days: number;
+  reason: string | null;
+  year: number;
+};
 function LeaveReview({ a }: { a: Approval }) {
   const [lv, setLv] = useState<Leave | null | undefined>(undefined);
   const [bal, setBal] = useState<string | null>(null);
@@ -235,9 +305,16 @@ function LeaveReview({ a }: { a: Approval }) {
       if (!live) return;
       setLv(l);
       if (!l) return;
-      const b = await api.GET('/v1/leave/balances', { params: { query: { userId: a.requestedBy, year: l.year } } });
+      const b = await api.GET('/v1/leave/balances', {
+        params: { query: { userId: a.requestedBy, year: l.year } },
+      });
       const it = b.data?.items.find((x) => x.typeCode === l.typeCode);
-      if (live && it) setBal(it.unlimited || it.available === null ? 'Unlimited' : `${it.available} available, ${it.pending} pending`);
+      if (live && it)
+        setBal(
+          it.unlimited || it.available === null
+            ? 'Unlimited'
+            : `${it.available} available, ${it.pending} pending`,
+        );
     })().catch(() => {});
     return () => {
       live = false;
@@ -249,7 +326,14 @@ function LeaveReview({ a }: { a: Approval }) {
     <dl className="grid gap-1">
       <Row k="Submitted by" v={a.requestedByName} />
       <Row k="Type" v={<span data-testid="review-leave-type">{lv.typeName}</span>} />
-      <Row k="Dates" v={lv.fromDate === lv.toDate ? dayLabel(lv.fromDate) : `${dayLabel(lv.fromDate)} – ${dayLabel(lv.toDate)}`} />
+      <Row
+        k="Dates"
+        v={
+          lv.fromDate === lv.toDate
+            ? dayLabel(lv.fromDate)
+            : `${dayLabel(lv.fromDate)} – ${dayLabel(lv.toDate)}`
+        }
+      />
       <Row k="Days" v={`${lv.days}${lv.half ? ` (${lv.half})` : ''}`} />
       <Row k="Reason" v={lv.reason || '—'} />
       <Row k="Balance" v={<span data-testid="review-balance">{bal ?? '—'}</span>} />
@@ -260,7 +344,14 @@ function LeaveReview({ a }: { a: Approval }) {
 type Claim = {
   month: string;
   total: number;
-  lines: { id: string; date: string; category: string; amount: number; notes: string | null; attachments: { id: string }[] }[];
+  lines: {
+    id: string;
+    date: string;
+    category: string;
+    amount: number;
+    notes: string | null;
+    attachments: { id: string }[];
+  }[];
 };
 function ExpenseReview({ a }: { a: Approval }) {
   const [c, setC] = useState<Claim | null | undefined>(undefined);
@@ -286,7 +377,11 @@ function ExpenseReview({ a }: { a: Approval }) {
       </dl>
       <ul className="max-h-80 divide-y overflow-y-auto overscroll-contain rounded-md border bg-background">
         {c.lines.map((l) => (
-          <li key={l.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2" data-testid="review-line">
+          <li
+            key={l.id}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2"
+            data-testid="review-line"
+          >
             <span className="w-24 text-muted-foreground">{dayLabel(l.date)}</span>
             <span className="flex-1 capitalize">
               {l.category.replace(/_/g, ' ')}
@@ -294,7 +389,13 @@ function ExpenseReview({ a }: { a: Approval }) {
             </span>
             <span className="tabular-nums">{money(l.amount)}</span>
             {l.attachments.map((f, i) => (
-              <Button key={f.id} size="sm" variant="outline" onClick={() => void openReceipt(f.id)} data-testid="review-receipt">
+              <Button
+                key={f.id}
+                size="sm"
+                variant="outline"
+                onClick={() => void openReceipt(f.id)}
+                data-testid="review-receipt"
+              >
                 Receipt{l.attachments.length > 1 ? ` ${i + 1}` : ''}
               </Button>
             ))}
@@ -306,7 +407,13 @@ function ExpenseReview({ a }: { a: Approval }) {
 }
 
 type Dup = { id: string; name: string; territoryName: string; rule: string };
-type Doc = { name: string; registrationNo?: string | null; pincode?: string | null; territoryId: string; qualification?: string | null };
+type Doc = {
+  name: string;
+  registrationNo?: string | null;
+  pincode?: string | null;
+  territoryId: string;
+  qualification?: string | null;
+};
 function DoctorReview({ a }: { a: Approval }) {
   const [d, setD] = useState<Doc | null | undefined>(undefined);
   const [terr, setTerr] = useState('');
@@ -323,11 +430,19 @@ function DoctorReview({ a }: { a: Approval }) {
       const [t, m] = await Promise.all([
         api.GET('/v1/territories', { params: { query: { limit: 200 } as never } }),
         api.POST('/v1/doctors/duplicate-check', {
-          body: { name: doc.name, pincode: doc.pincode ?? null, registrationNo: doc.registrationNo ?? null },
+          body: {
+            name: doc.name,
+            pincode: doc.pincode ?? null,
+            registrationNo: doc.registrationNo ?? null,
+          },
         }),
       ]);
       if (!live) return;
-      setTerr(((t.data?.items ?? []) as { id: string; name: string }[]).find((x) => x.id === doc.territoryId)?.name ?? '');
+      setTerr(
+        ((t.data?.items ?? []) as { id: string; name: string }[]).find(
+          (x) => x.id === doc.territoryId,
+        )?.name ?? '',
+      );
       setDups(((m.data?.matches ?? []) as Dup[]).filter((x) => x.id !== a.subjectId));
     })().catch(() => {});
     return () => {
@@ -353,7 +468,11 @@ function DoctorReview({ a }: { a: Approval }) {
             {dups.map((x) => (
               <li key={x.id} className="flex flex-wrap items-center gap-2">
                 {x.name} <span className="text-muted-foreground">{x.territoryName}</span>
-                <Badge variant="outline">{x.rule === 'registration_no' ? 'Same registration no.' : 'Same name and PIN code'}</Badge>
+                <Badge variant="outline">
+                  {x.rule === 'registration_no'
+                    ? 'Same registration no.'
+                    : 'Same name and PIN code'}
+                </Badge>
               </li>
             ))}
           </ul>

@@ -14,7 +14,10 @@ for (const role of ['business_manager', 'area_business_manager']) {
     await page.locator('tbody tr').first().click();
     if (kind === 'doctors') {
       await page.getByTestId('doctor-360').waitFor();
-      check((await page.getByTestId('doctor-edit').count()) === 0, `${role} doctors: profile has no Edit`);
+      check(
+        (await page.getByTestId('doctor-edit').count()) === 0,
+        `${role} doctors: profile has no Edit`,
+      );
     } else await page.getByTestId('master-details').waitFor();
     check(
       (await page.getByRole('button', { name: /^(Save|Remove)/ }).count()) === 0,
@@ -38,10 +41,7 @@ for (const role of ['business_manager', 'area_business_manager']) {
   }
   const { ctx, page } = await open(role, '/doctors');
   await page.locator('tbody tr').first().waitFor();
-  check(
-    (await page.getByTestId('master-add').count()) === 0,
-    `${role} /doctors: no manage entry`,
-  );
+  check((await page.getByTestId('master-add').count()) === 0, `${role} /doctors: no manage entry`);
   await ctx.close();
   const r = await open(role, '/doctors/import');
   await r.page
@@ -61,7 +61,10 @@ for (const role of ['business_manager', 'area_business_manager']) {
   await page.locator('tbody tr').first().click();
   await page.getByTestId('doctor-edit').click();
   await page.getByRole('button', { name: /^Save/ }).waitFor();
-  check(await page.getByRole('button', { name: /^Save/ }).isVisible(), 'RBM: doctor Edit opens form with Save');
+  check(
+    await page.getByRole('button', { name: /^Save/ }).isVisible(),
+    'RBM: doctor Edit opens form with Save',
+  );
   await shot(page, 'rbm-doctor-edit.png');
   await ctx.close();
   const r = await open('regional_business_manager', '/doctors/import');
@@ -71,13 +74,26 @@ for (const role of ['business_manager', 'area_business_manager']) {
   for (const k of ['chemists', 'stockists']) {
     const d = await open('regional_business_manager', `/${k}`);
     await d.page.getByTestId('master-add').waitFor();
-    check((await d.page.getByRole('heading', { name: 'Masters' }).count()) === 0, `/${k}: no Masters heading`);
-    check((await d.page.getByRole('navigation', { name: 'Masters' }).count()) === 0, `/${k}: no tab strip`);
-    const active = await d.page.locator(`[data-sidebar="menu-button"][data-active="true"]`).innerText().catch(() => '');
+    check(
+      (await d.page.getByRole('heading', { name: 'Masters' }).count()) === 0,
+      `/${k}: no Masters heading`,
+    );
+    check(
+      (await d.page.getByRole('navigation', { name: 'Masters' }).count()) === 0,
+      `/${k}: no tab strip`,
+    );
+    const active = await d.page
+      .locator(`[data-sidebar="menu-button"][data-active="true"]`)
+      .innerText()
+      .catch(() => '');
     check(active.trim().toLowerCase() === k, `/${k}: sidebar highlights ${k} (${active.trim()})`);
     await d.ctx.close();
   }
-  for (const [from, to] of [['/masters/chemists?q=a', '/chemists?q=a'], ['/masters/stockists/import', '/stockists/import'], ['/masters', '/doctors']]) {
+  for (const [from, to] of [
+    ['/masters/chemists?q=a', '/chemists?q=a'],
+    ['/masters/stockists/import', '/stockists/import'],
+    ['/masters', '/doctors'],
+  ]) {
     const d = await open('regional_business_manager', from);
     const u = new URL(d.page.url());
     check(u.pathname + u.search === to, `redirect ${from} -> ${u.pathname + u.search}`);
@@ -85,12 +101,18 @@ for (const role of ['business_manager', 'area_business_manager']) {
   }
 }
 // Paying expense claims: Director and System Admin can open the To pay list; ABM and BM have no To pay tab.
-for (const [role, pays] of [['director', true], ['system_admin', true], ['area_business_manager', false], ['business_manager', false]]) {
+for (const [role, pays] of [
+  ['director', true],
+  ['system_admin', true],
+  ['area_business_manager', false],
+  ['business_manager', false],
+]) {
   const { ctx, page } = await open(role, '/expenses');
   await page.waitForTimeout(2000);
   const tab = await page.getByRole('tab', { name: 'To pay' }).count();
   // System Admin has only the To pay list, so no tab strip; it must still open /expenses.
-  const ok = role === 'system_admin' ? new URL(page.url()).pathname === '/expenses' : (tab > 0) === pays;
+  const ok =
+    role === 'system_admin' ? new URL(page.url()).pathname === '/expenses' : tab > 0 === pays;
   check(ok, `${role}: ${pays ? 'can open the To pay list' : 'no To pay tab'}`);
   await ctx.close();
 }

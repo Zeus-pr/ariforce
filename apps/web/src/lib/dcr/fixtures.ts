@@ -20,14 +20,26 @@ export type MockWorkType = {
 export const DCR_WORK_TYPES: MockWorkType[] = [
   { id: uid(1, 1), code: 'FIELD-HQ', name: 'Field work (HQ)', kind: 'field', band: 'hq' },
   { id: uid(1, 2), code: 'FIELD-EX', name: 'Field work (Ex-HQ)', kind: 'field', band: 'ex_hq' },
-  { id: uid(1, 3), code: 'FIELD-OS', name: 'Field work (Out-station)', kind: 'field', band: 'outstation' },
+  {
+    id: uid(1, 3),
+    code: 'FIELD-OS',
+    name: 'Field work (Out-station)',
+    kind: 'field',
+    band: 'outstation',
+  },
   { id: uid(1, 4), code: 'MEET', name: 'Meeting', kind: 'non_field', band: null },
   { id: uid(1, 5), code: 'TRAIN', name: 'Training', kind: 'non_field', band: null },
   { id: uid(1, 6), code: 'ADMIN', name: 'Admin work', kind: 'non_field', band: null },
   { id: uid(1, 7), code: 'LEAVE', name: 'Leave', kind: 'leave', band: null },
 ];
 
-export type MockTerritory = { id: string; code: string; name: string; level: 'headquarter' | 'territory'; parentId: string | null };
+export type MockTerritory = {
+  id: string;
+  code: string;
+  name: string;
+  level: 'headquarter' | 'territory';
+  parentId: string | null;
+};
 const DGP = uid(2, 1);
 const BNK = uid(2, 2);
 export const DCR_TERRITORIES: MockTerritory[] = [
@@ -46,26 +58,105 @@ const terrByText = (hq: string, text: string) =>
   DCR_TERRITORIES.find((t) => t.parentId === hq && t.name.toUpperCase() === text)?.id ?? hq;
 
 /** territoryId is the local territory the importer linked (localTerritoryId), or the HQ id when not linked yet. */
-export type MockOutlet = { id: string; kind: 'doctor' | 'chemist' | 'stockist'; name: string; hqId: string; territoryId: string };
+export type MockOutlet = {
+  id: string;
+  kind: 'doctor' | 'chemist' | 'stockist';
+  name: string;
+  hqId: string;
+  territoryId: string;
+};
 export const DCR_OUTLETS: MockOutlet[] = [
-  ...DGP_DOCTOR_ROWS.map(([name, t], i): MockOutlet => ({ id: uid(3, i + 1), kind: 'doctor', name, hqId: DGP, territoryId: terrByText(DGP, t) })),
-  ...DGP_CHEMIST_ROWS.map(([name, t], i): MockOutlet => ({ id: uid(4, i + 1), kind: 'chemist', name, hqId: DGP, territoryId: terrByText(DGP, t) })),
-  { id: uid(5, 1), kind: 'stockist', name: 'Durgapur Medical Agencies', hqId: DGP, territoryId: terrByText(DGP, 'DURGAPUR') },
-  { id: uid(5, 2), kind: 'stockist', name: 'City Centre Pharma Distributors', hqId: DGP, territoryId: terrByText(DGP, 'DURGAPUR') },
+  ...DGP_DOCTOR_ROWS.map(([name, t], i): MockOutlet => ({
+    id: uid(3, i + 1),
+    kind: 'doctor',
+    name,
+    hqId: DGP,
+    territoryId: terrByText(DGP, t),
+  })),
+  ...DGP_CHEMIST_ROWS.map(([name, t], i): MockOutlet => ({
+    id: uid(4, i + 1),
+    kind: 'chemist',
+    name,
+    hqId: DGP,
+    territoryId: terrByText(DGP, t),
+  })),
+  {
+    id: uid(5, 1),
+    kind: 'stockist',
+    name: 'Durgapur Medical Agencies',
+    hqId: DGP,
+    territoryId: terrByText(DGP, 'DURGAPUR'),
+  },
+  {
+    id: uid(5, 2),
+    kind: 'stockist',
+    name: 'City Centre Pharma Distributors',
+    hqId: DGP,
+    territoryId: terrByText(DGP, 'DURGAPUR'),
+  },
   // Not linked to a territory yet (localTerritoryId null): only listed under "All of <HQ>".
-  { id: uid(3, 801), kind: 'doctor', name: 'Dr. Unlinked Demo Surgeon', hqId: DGP, territoryId: DGP },
+  {
+    id: uid(3, 801),
+    kind: 'doctor',
+    name: 'Dr. Unlinked Demo Surgeon',
+    hqId: DGP,
+    territoryId: DGP,
+  },
   { id: uid(4, 801), kind: 'chemist', name: 'Unlinked Demo Pharmacy', hqId: DGP, territoryId: DGP },
-  { id: uid(3, 901), kind: 'doctor', name: 'Dr. Bankura Demo Physician', hqId: BNK, territoryId: terrByText(BNK, 'BANKURA') },
-  { id: uid(4, 901), kind: 'chemist', name: 'Bishnupur Demo Medical Hall', hqId: BNK, territoryId: terrByText(BNK, 'BISHNUPUR') },
-  { id: uid(5, 901), kind: 'stockist', name: 'Bankura Demo Distributors', hqId: BNK, territoryId: terrByText(BNK, 'BANKURA') },
+  {
+    id: uid(3, 901),
+    kind: 'doctor',
+    name: 'Dr. Bankura Demo Physician',
+    hqId: BNK,
+    territoryId: terrByText(BNK, 'BANKURA'),
+  },
+  {
+    id: uid(4, 901),
+    kind: 'chemist',
+    name: 'Bishnupur Demo Medical Hall',
+    hqId: BNK,
+    territoryId: terrByText(BNK, 'BISHNUPUR'),
+  },
+  {
+    id: uid(5, 901),
+    kind: 'stockist',
+    name: 'Bankura Demo Distributors',
+    hqId: BNK,
+    territoryId: terrByText(BNK, 'BANKURA'),
+  },
 ];
 
 export const DCR_WORK_WITH = [
-  { id: uid(6, 1), name: 'Demo ABM Durgapur', employeeCode: 'ABM-DGP-01', designation: 'Area Business Manager' },
-  { id: uid(6, 2), name: 'Demo RBM West Bengal', employeeCode: 'RBM-WB-01', designation: 'Regional Business Manager' },
-  { id: uid(6, 3), name: 'Demo BM Asansol', employeeCode: 'BM-ASN-01', designation: 'Business Manager' },
-  { id: uid(6, 4), name: 'Demo BM Bankura', employeeCode: 'BM-BNK-01', designation: 'Business Manager' },
-  { id: uid(6, 5), name: 'Demo Trainer Kolkata', employeeCode: 'TRN-KOL-01', designation: 'Sales Trainer' },
+  {
+    id: uid(6, 1),
+    name: 'Demo ABM Durgapur',
+    employeeCode: 'ABM-DGP-01',
+    designation: 'Area Business Manager',
+  },
+  {
+    id: uid(6, 2),
+    name: 'Demo RBM West Bengal',
+    employeeCode: 'RBM-WB-01',
+    designation: 'Regional Business Manager',
+  },
+  {
+    id: uid(6, 3),
+    name: 'Demo BM Asansol',
+    employeeCode: 'BM-ASN-01',
+    designation: 'Business Manager',
+  },
+  {
+    id: uid(6, 4),
+    name: 'Demo BM Bankura',
+    employeeCode: 'BM-BNK-01',
+    designation: 'Business Manager',
+  },
+  {
+    id: uid(6, 5),
+    name: 'Demo Trainer Kolkata',
+    employeeCode: 'TRN-KOL-01',
+    designation: 'Sales Trainer',
+  },
 ];
 
 /** Stable UUIDs for SFC fixture route ids (the SFC screen uses readable ids). */
@@ -74,15 +165,16 @@ export const DCR_WORK_WITH = [
  * categories ("Ex", " os ") that must match, and combined/unknown ones ("Ex / Os", "Meeting") that the
  * UI must ignore. [from, to, km, travel mode, raw category, actual fare]. Ids follow the sheet rows (100+).
  */
-export const DCR_LEGACY_SFC: Record<string, [string, string, number, string, string, boolean?][]> = {
-  'sfc-u-dgp': [
-    ['DURGAPUR', 'ASANSOL', 42, 'BIKE', 'Ex'],
-    ['DURGAPUR', 'KOLKATA', 170, 'BUS / TRAIN', ' os ', true],
-    ['DURGAPUR', 'BANKURA', 50, 'BIKE', 'Ex / Os'],
-    ['DURGAPUR', 'ASANSOL', 42, 'BIKE', 'Meeting'],
-  ],
-  'sfc-u-bnk': [['BANKURA', 'SONAMUKHI', 38, 'BIKE', 'eX']],
-};
+export const DCR_LEGACY_SFC: Record<string, [string, string, number, string, string, boolean?][]> =
+  {
+    'sfc-u-dgp': [
+      ['DURGAPUR', 'ASANSOL', 42, 'BIKE', 'Ex'],
+      ['DURGAPUR', 'KOLKATA', 170, 'BUS / TRAIN', ' os ', true],
+      ['DURGAPUR', 'BANKURA', 50, 'BIKE', 'Ex / Os'],
+      ['DURGAPUR', 'ASANSOL', 42, 'BIKE', 'Meeting'],
+    ],
+    'sfc-u-bnk': [['BANKURA', 'SONAMUKHI', 38, 'BIKE', 'eX']],
+  };
 export const LEGACY_ROW_OFFSET = 100;
 
 export const sfcRouteUuid = (sheet: string, index: number) =>

@@ -15,7 +15,13 @@ export const CHART = {
   high: 'var(--color-danger)',
   medium: 'var(--color-warning)',
   low: 'var(--color-chart-4, var(--color-muted-foreground))',
-  series: ['var(--color-chart-1)', 'var(--color-chart-2)', 'var(--color-chart-3)', 'var(--color-chart-4)', 'var(--color-chart-5)'],
+  series: [
+    'var(--color-chart-1)',
+    'var(--color-chart-2)',
+    'var(--color-chart-3)',
+    'var(--color-chart-4)',
+    'var(--color-chart-5)',
+  ],
 };
 
 export const axisProps = {
@@ -25,9 +31,24 @@ export const axisProps = {
   axisLine: false,
 } as const;
 
-export function ChartFrame({ height = 240, className, children, label }: { height?: number; className?: string; children: ReactNode; label: string }) {
+export function ChartFrame({
+  height = 240,
+  className,
+  children,
+  label,
+}: {
+  height?: number;
+  className?: string;
+  children: ReactNode;
+  label: string;
+}) {
   return (
-    <figure role="img" aria-label={label} className={cn('w-full min-w-0', className)} style={{ height }}>
+    <figure
+      role="img"
+      aria-label={label}
+      className={cn('w-full min-w-0', className)}
+      style={{ height }}
+    >
       <ResponsiveContainer width="100%" height="100%">
         {children as React.ReactElement}
       </ResponsiveContainer>
@@ -51,7 +72,9 @@ function TooltipCard({ active, payload, label, format }: TipProps) {
         <p key={String(p.dataKey)} className="flex items-center gap-1.5 tabular-nums">
           <span className="size-2 rounded-[2px]" style={{ background: p.color }} />
           <span className="text-muted-foreground">{String(p.name)}</span>
-          <span className="ml-auto pl-3 font-medium">{format ? format(Number(p.value)) : String(p.value)}</span>
+          <span className="ml-auto pl-3 font-medium">
+            {format ? format(Number(p.value)) : String(p.value)}
+          </span>
         </p>
       ))}
     </div>
@@ -59,5 +82,17 @@ function TooltipCard({ active, payload, label, format }: TipProps) {
 }
 
 export function ChartTooltip({ format }: { format?: (v: number) => string }) {
-  return <Tooltip cursor={{ fill: 'var(--color-muted)', opacity: 0.5 }} content={(p) => <TooltipCard active={p.active} label={p.label as string} payload={p.payload as TipProps['payload']} format={format} />} />;
+  return (
+    <Tooltip
+      cursor={{ fill: 'var(--color-muted)', opacity: 0.5 }}
+      content={(p) => (
+        <TooltipCard
+          active={p.active}
+          label={p.label as string}
+          payload={p.payload as TipProps['payload']}
+          format={format}
+        />
+      )}
+    />
+  );
 }

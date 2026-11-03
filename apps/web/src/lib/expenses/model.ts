@@ -36,25 +36,43 @@ export const STATUS_TONE: Record<ExpenseStatus, string> = {
   paid: 'bg-sky-100 text-sky-900',
 };
 
-export const can = (role: Role, p: Permission) => (DEFAULT_ROLE_PERMISSIONS[role] ?? []).includes(p);
+export const can = (role: Role, p: Permission) =>
+  (DEFAULT_ROLE_PERMISSIONS[role] ?? []).includes(p);
 /** Who gets the Expenses page at all. */
 export const seesExpenses = (role: Role) =>
   can(role, 'expenses:read') || can(role, 'finance:read') || canPayExpenses(role);
 export const isEditable = (s: ExpenseStatus) => s === 'draft' || s === 'rejected';
 
-const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
+const inr = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 2,
+});
 export const money = (n: number) => inr.format(n);
 export const monthLabel = (m: string) =>
-  new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${m}-01T00:00:00Z`));
+  new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+    new Date(`${m}-01T00:00:00Z`),
+  );
 export const thisMonth = () =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).format(new Date());
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+  }).format(new Date());
 export const todayIST = () =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 
 /** Accept list for the file input (types and extensions, so Safari offers HEIC and spreadsheets). */
 export const ACCEPT = [
   ...Object.keys(EXPENSE_FILE_TYPES),
-  ...Object.values(EXPENSE_FILE_TYPES).flat().map((e) => `.${e}`),
+  ...Object.values(EXPENSE_FILE_TYPES)
+    .flat()
+    .map((e) => `.${e}`),
 ].join(',');
 export const MAX_FILES = EXPENSE_MAX_FILES_PER_LINE;
 export const MAX_MB = EXPENSE_MAX_FILE_BYTES / 1024 / 1024;
@@ -70,7 +88,10 @@ export function contentTypeFor(file: { name: string; type: string }): ExpenseCon
 }
 
 /** Client-side checks before asking for an upload URL; the server checks again. */
-export function checkFile(file: { name: string; type: string; size: number }, existing: number): string | null {
+export function checkFile(
+  file: { name: string; type: string; size: number },
+  existing: number,
+): string | null {
   if (existing >= MAX_FILES) return `A line can have at most ${MAX_FILES} receipts.`;
   if (!contentTypeFor(file)) return `${file.name}: use JPG, PNG, HEIC, PDF, Excel or CSV.`;
   if (file.size > EXPENSE_MAX_FILE_BYTES) return `${file.name} is over ${MAX_MB} MB.`;

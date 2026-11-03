@@ -180,8 +180,9 @@ export class DcrService {
 
   private async lockInfoForRows(tx: Tx, s: CompanySettings, rows: DcrRow[]) {
     const pairs = [
-      ...new Map(rows.map((r) => [`${r.userId}:${r.date}`, { userId: r.userId, date: r.date }]))
-        .values(),
+      ...new Map(
+        rows.map((r) => [`${r.userId}:${r.date}`, { userId: r.userId, date: r.date }]),
+      ).values(),
     ];
     const values = sql.join(
       pairs.map((p) => sql`(${p.userId}::uuid, ${p.date}::date)`),

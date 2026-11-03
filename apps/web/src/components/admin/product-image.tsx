@@ -1,9 +1,24 @@
 'use client';
 
-import { CircleAlert, ImagePlus, LoaderCircle, Package, RefreshCw, Trash2, Upload } from 'lucide-react';
+import {
+  CircleAlert,
+  ImagePlus,
+  LoaderCircle,
+  Package,
+  RefreshCw,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@ariforce/ui/components/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@ariforce/ui/components/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@ariforce/ui/components/dialog';
 import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
 import {
@@ -17,13 +32,24 @@ import {
 } from '@/lib/products/product-image';
 
 type ImageProduct = { id: string; name: string; code: string };
-const size = (b: number) => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+const size = (b: number) =>
+  b >= 1024 * 1024
+    ? `${(b / 1024 / 1024).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(b / 1024))} KB`;
 
 /**
  * Product picture in the Product prices table: a small thumbnail, or a placeholder when there is
  * none. Editors click it to open the upload box (`onOpen`); everyone else just sees the picture.
  */
-export function ProductImageCell({ product, canEdit, onOpen }: { product: ImageProduct; canEdit: boolean; onOpen: () => void }) {
+export function ProductImageCell({
+  product,
+  canEdit,
+  onOpen,
+}: {
+  product: ImageProduct;
+  canEdit: boolean;
+  onOpen: () => void;
+}) {
   const url = productImageUrl(product);
   const face = url ? (
     <img src={url} alt="" className="size-full object-cover" loading="lazy" decoding="async" />
@@ -32,7 +58,8 @@ export function ProductImageCell({ product, canEdit, onOpen }: { product: ImageP
   ) : (
     <Package className="size-4 text-muted-foreground/70" aria-hidden />
   );
-  const box = 'flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/40';
+  const box =
+    'flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/40';
   if (!canEdit)
     return (
       <span className={box} data-testid="pp-image" data-has-image={url ? '' : undefined}>
@@ -162,7 +189,9 @@ export function ProductImageDialog({
         <DialogHeader>
           <DialogTitle>Product image</DialogTitle>
           <DialogDescription>
-            {name}{product ? ` · ${product.code}` : ''}. Reps see this picture when they pick medicines in the DCR.
+            {name}
+            {product ? ` · ${product.code}` : ''}. Reps see this picture when they pick medicines in
+            the DCR.
           </DialogDescription>
         </DialogHeader>
 
@@ -196,8 +225,15 @@ export function ProductImageDialog({
               <>
                 <img
                   src={shown}
-                  alt={preview ? `Preview of ${file?.name ?? 'the new image'}` : `Current image of ${name}`}
-                  className={cn('size-full object-contain transition-opacity duration-200', uploading && 'opacity-60')}
+                  alt={
+                    preview
+                      ? `Preview of ${file?.name ?? 'the new image'}`
+                      : `Current image of ${name}`
+                  }
+                  className={cn(
+                    'size-full object-contain transition-opacity duration-200',
+                    uploading && 'opacity-60',
+                  )}
                   data-testid="pp-image-preview"
                 />
                 {!busy && (
@@ -211,31 +247,54 @@ export function ProductImageDialog({
                 <span className="flex size-10 items-center justify-center rounded-full border bg-background shadow-xs">
                   <Upload className="size-4 text-muted-foreground" aria-hidden />
                 </span>
-                <span className="text-sm font-medium">{drag ? 'Drop to use this image' : 'Drop an image here, or click to choose'}</span>
+                <span className="text-sm font-medium">
+                  {drag ? 'Drop to use this image' : 'Drop an image here, or click to choose'}
+                </span>
                 <span className="text-xs text-muted-foreground">You can also paste an image</span>
               </span>
             )}
           </button>
 
-          <div className="flex min-h-5 items-center justify-between gap-3 text-xs text-muted-foreground" id="pp-image-hint">
+          <div
+            className="flex min-h-5 items-center justify-between gap-3 text-xs text-muted-foreground"
+            id="pp-image-hint"
+          >
             {file ? (
               <span className="min-w-0 truncate" data-testid="pp-image-file">
-                <span className="text-foreground">{file.name}</span> · {size(file.size)} · not saved yet
+                <span className="text-foreground">{file.name}</span> · {size(file.size)} · not saved
+                yet
               </span>
             ) : (
               <span>JPEG, PNG or WebP, up to {PRODUCT_IMAGE_MAX_MB} MB</span>
             )}
-            {uploading && <span className="shrink-0 tabular-nums">{Math.round(progress * 100)}%</span>}
+            {uploading && (
+              <span className="shrink-0 tabular-nums">{Math.round(progress * 100)}%</span>
+            )}
           </div>
 
           {uploading && (
-            <div className="h-1 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)} data-testid="pp-image-progress">
-              <div className="h-full origin-left bg-primary transition-transform duration-200 ease-out motion-reduce:transition-none" style={{ transform: `scaleX(${Math.max(progress, 0.04)})` }} />
+            <div
+              className="h-1 overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              aria-label="Upload progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress * 100)}
+              data-testid="pp-image-progress"
+            >
+              <div
+                className="h-full origin-left bg-primary transition-transform duration-200 ease-out motion-reduce:transition-none"
+                style={{ transform: `scaleX(${Math.max(progress, 0.04)})` }}
+              />
             </div>
           )}
 
           {error && (
-            <p role="alert" className="flex items-start gap-1.5 text-sm text-destructive" data-testid="pp-image-error">
+            <p
+              role="alert"
+              className="flex items-start gap-1.5 text-sm text-destructive"
+              data-testid="pp-image-error"
+            >
               <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
               {error}
             </p>
@@ -259,19 +318,51 @@ export function ProductImageDialog({
         <DialogFooter className="gap-2 sm:justify-between">
           {file ? (
             <>
-              <Button variant="ghost" disabled={uploading} onClick={() => { setFile(null); setError(null); }} data-testid="pp-image-discard">
+              <Button
+                variant="ghost"
+                disabled={uploading}
+                onClick={() => {
+                  setFile(null);
+                  setError(null);
+                }}
+                data-testid="pp-image-discard"
+              >
                 Discard
               </Button>
               <Button disabled={uploading} onClick={() => void save()} data-testid="pp-image-save">
-                {uploading ? <><LoaderCircle className="animate-spin" aria-hidden /> Uploading…</> : current ? 'Save new image' : 'Save image'}
+                {uploading ? (
+                  <>
+                    <LoaderCircle className="animate-spin" aria-hidden /> Uploading…
+                  </>
+                ) : current ? (
+                  'Save new image'
+                ) : (
+                  'Save image'
+                )}
               </Button>
             </>
           ) : current ? (
             <>
-              <Button variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={removing} onClick={() => void remove()} data-testid="pp-image-remove">
-                {removing ? <LoaderCircle className="animate-spin" aria-hidden /> : <Trash2 aria-hidden />} {removing ? 'Removing…' : 'Remove'}
+              <Button
+                variant="ghost"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={removing}
+                onClick={() => void remove()}
+                data-testid="pp-image-remove"
+              >
+                {removing ? (
+                  <LoaderCircle className="animate-spin" aria-hidden />
+                ) : (
+                  <Trash2 aria-hidden />
+                )}{' '}
+                {removing ? 'Removing…' : 'Remove'}
               </Button>
-              <Button variant="outline" disabled={removing} onClick={choose} data-testid="pp-image-replace">
+              <Button
+                variant="outline"
+                disabled={removing}
+                onClick={choose}
+                data-testid="pp-image-replace"
+              >
                 <RefreshCw aria-hidden /> Replace
               </Button>
             </>
