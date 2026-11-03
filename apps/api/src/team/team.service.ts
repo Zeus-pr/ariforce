@@ -33,7 +33,7 @@ import {
   type Tx,
 } from '@ariforce/db';
 import { hashPassword } from 'better-auth/crypto';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type * as z from 'zod';
 import type { Principal } from '../auth/principal';
@@ -952,6 +952,44 @@ export class TeamService {
   private assertCanApproveAtAll(p: Principal) {
     if (!isAdmin(p) && hierarchyRank(p.roles) < MIN_MANAGER_RANK)
       throw err(403, 'FORBIDDEN', 'Only system admins and ABM and above review sign-ups');
+  }
+
+  /**
+   * Signup requests the caller may see, for GET /v1/approvals?scope=org&include=signup. Same
+   * visibility as listSignups (admin or ABM+ that can decide it, never your own), any status.
+   * Runs inside the caller's TenantService.run tx. Empty (not 403) when the caller reviews none.
+   */
+  async signupsVisibleTo(
+    tx: Tx,
+    p: Principal,
+    f: {
+      status?: 'pending' | 'approved' | 'rejected';
+      userId?: string;
+      from?: string;
+      to?: string;
+    },
+  ) {
+    if (!isAdmin(p) && hierarchyRank(p.roles) < MIN_MANAGER_RANK) return [];
+    const ist = sql`(${signupRequests.createdAt} at time zone 'Asia/Kolkata')::date`;
+    const rows = await tx
+      .select({ r: signupRequests, u: users })
+      .from(signupRequests)
+      .innerJoin(users, eq(users.id, signupRequests.userId))
+      .where(
+        and(
+          isNull(signupRequests.deletedAt),
+          ne(signupRequests.userId, p.userId),
+          f.status ? eq(signupRequests.status, f.status) : undefined,
+          f.userId ? eq(signupRequests.userId, f.userId) : undefined,
+          f.from ? sql`${ist} >= ${f.from}::date` : undefined,
+          f.to ? sql`${ist} <= ${f.to}::date` : undefined,
+        ),
+      );
+    if (!rows.length) return [];
+    const all = await this.people(tx);
+    const out = [];
+    for (const row of rows) if (await this.canDecide(tx, p, all, row.r)) out.push(row);
+    return out;
   }
 
   listSignups(p: Principal, status: 'pending' | 'approved' | 'rejected') {

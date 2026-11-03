@@ -15,6 +15,7 @@ import { ExpensesModule } from './expenses/expenses.module';
 import { LeaveModule } from './leave/leave.module';
 import { AllowancesModule } from './allowances/allowances.module';
 import { SfcModule } from './sfc/sfc.module';
+import { AuditLogModule } from './audit/audit-log.module';
 import { ExceptionsModule } from './exceptions/exceptions.module';
 import { HomeModule } from './home/home.module';
 import { ProductPricesModule } from './product-prices/product-prices.module';
@@ -40,6 +41,7 @@ import { OpenApiController } from './openapi/openapi.controller';
     ProductPricesModule,
     AllowancesModule,
     SfcModule,
+    AuditLogModule,
   ],
   controllers: [HealthController, OpenApiController, MeController],
   providers: [WorkTypesCheck],

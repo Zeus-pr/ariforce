@@ -73,7 +73,13 @@ import { buildTrail, primaryRole, type TrailUser } from './approval-trail';
 
 type ExpenseTrailFields = Pick<
   ExpenseClaim,
-  'approvalTrail' | 'totalLevels' | 'currentApprover' | 'canDecide' | 'canPay' | 'paidBy'
+  | 'approvalTrail'
+  | 'totalLevels'
+  | 'currentApprover'
+  | 'canDecide'
+  | 'canPay'
+  | 'paidBy'
+  | 'userRole'
 >;
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -348,6 +354,7 @@ export class ExpensesService implements OnModuleInit {
     await load([
       ...steps.flatMap((s) => [s.approverUserId, s.decidedBy]),
       ...cs.map((c) => c.paidBy),
+      ...cs.map((c) => c.userId),
     ]);
     // Project pending requests up the manager chain (one users query per missing level).
     let frontier = reqs
@@ -386,6 +393,7 @@ export class ExpensesService implements OnModuleInit {
           c.userId !== p.userId &&
           p.permissions.includes('expenses:pay'),
         paidBy: c.paidBy ? { id: c.paidBy, name: um.get(c.paidBy)?.name ?? '' } : null,
+        userRole: (um.get(c.userId)?.role ?? null) as ExpenseClaim['userRole'],
       });
     }
     return out;
@@ -465,16 +473,27 @@ export class ExpensesService implements OnModuleInit {
       month?: string;
       userId?: string;
       status?: ExpenseStatus;
+      scope?: 'team';
       limit?: number;
       cursor?: string;
     },
   ) {
+    // scope=team (Director view): every claim of the reporting subtree in any status, drafts too;
+    // Director (teamUserIds null) = whole company. Same paging/filters as the default list.
+    if (q.scope === 'team' && !p.permissions.includes('expenses:approve'))
+      throw new ForbiddenException('scope=team needs expenses:approve');
+    const visible =
+      q.scope === 'team'
+        ? p.teamUserIds
+          ? inArray(expenseClaims.userId, p.teamUserIds)
+          : sql`true`
+        : this.readable(p);
     const paged = q.limit !== undefined || q.cursor !== undefined;
     const limit = q.limit ?? 50;
     const offset = paged ? decodeCursor(q.cursor) : 0;
     return this.tenant.run(p, async (tx) => {
       const where = and(
-        this.readable(p),
+        visible,
         isNull(expenseClaims.deletedAt),
         q.month ? eq(expenseClaims.month, monthStart(q.month)) : undefined,
         q.userId ? eq(expenseClaims.userId, q.userId) : undefined,
