@@ -98,17 +98,18 @@ export const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
 };
 export const STATUS_LABEL: Record<ExpenseStatus, string> = {
   draft: 'Draft',
-  submitted: 'Waiting for approval',
+  submitted: 'Submitted',
   approved: 'Approved',
-  rejected: 'Sent back',
+  rejected: 'Rejected',
   paid: 'Paid',
 };
+/** Draft grey, Submitted teal, Approved navy, Paid green, Rejected red (same as web). */
 export const STATUS_TONE = {
-  draft: 'blue',
-  submitted: 'orange',
-  approved: 'green',
+  draft: 'slate',
+  submitted: 'teal',
+  approved: 'navy',
   rejected: 'red',
-  paid: 'teal',
+  paid: 'green',
 } as const satisfies Record<ExpenseStatus, string>;
 export const isEditable = (s: ExpenseStatus) => s === 'draft' || s === 'rejected';
 export const MAX_FILES = EXPENSE_MAX_FILES_PER_LINE;
@@ -418,7 +419,15 @@ export function useLineMutations(claimId: string) {
       }),
     onSuccess: done,
   });
-  return { save, remove, submit, decide, refresh: done };
+  const pay = useMutation({
+    mutationFn: (paymentRef: string) =>
+      apiFetch<Claim>(`/v1/expense-claims/${claimId}/pay`, {
+        method: 'POST',
+        body: { paymentRef },
+      }),
+    onSuccess: done,
+  });
+  return { save, remove, submit, decide, pay, refresh: done };
 }
 
 export type LineInput = {
@@ -557,3 +566,25 @@ export const receiptUrl = (attachmentId: string) =>
 
 export const deleteReceipt = (attachmentId: string) =>
   apiFetch<void>(`/v1/expense-attachments/${attachmentId}`, { method: 'DELETE' });
+
+/** Last selectable day of a claim month: today if the month is current, else its last day. */
+export function lastDayOf(month: string, today: string) {
+  const end = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0))
+    .toISOString()
+    .slice(0, 10);
+  return today < end ? today : end;
+}
+
+export type ReconDay = { date: string; dcrStatus: string | null; claimed: number };
+export type Recon = {
+  byCategory: Partial<Record<ExpenseCategory, number>>;
+  days: ReconDay[];
+};
+export function useRecon(claimId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: [...key, 'recon', claimId],
+    enabled: enabled && !!claimId,
+    queryFn: ({ signal }) =>
+      apiFetch<Recon>(`/v1/expense-claims/${claimId}/reconciliation`, { signal }),
+  });
+}
