@@ -12,6 +12,9 @@ export const DCR_EXPENSE_CATEGORIES = [
   'travel',
   'hotel',
   'food',
+  'courier',
+  'mobile',
+  'team_meeting',
   'other',
 ] as const satisfies readonly ExpenseCategory[];
 export type DcrExpenseCategory = (typeof DCR_EXPENSE_CATEGORIES)[number];

@@ -194,7 +194,7 @@ export function ReportsView() {
         </p>
       ) : (
         <>
-          <dl className="grid grid-cols-2 gap-2 sm:grid-cols-6" data-testid="rep-categories">
+          <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5" data-testid="rep-categories">
             <div className="rounded-lg border p-2">
               <dt className="text-xs text-muted-foreground">Total</dt>
               <dd className="text-sm font-semibold tabular-nums" data-testid="rep-total">

@@ -190,7 +190,15 @@ export type DcrSfcRoute = z.infer<typeof DcrSfcRoute>;
 /** Expenses reported on a DCR (any work type); linked into the month claim at submit. */
 export const DCR_EXPENSE_MAX_ITEMS = 20;
 /** Categories a DCR expense may use: the expense categories minus the TA/DA-engine ones. */
-export const DCR_EXPENSE_CATEGORIES = ['travel', 'hotel', 'food', 'other'] as const;
+export const DCR_EXPENSE_CATEGORIES = [
+  'travel',
+  'hotel',
+  'food',
+  'courier',
+  'mobile',
+  'team_meeting',
+  'other',
+] as const;
 export const DcrExpenseItem = z
   .object({
     category: ExpenseCategory.meta({

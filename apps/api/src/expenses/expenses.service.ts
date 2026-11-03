@@ -7,6 +7,7 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import {
+  EXPENSE_CATEGORIES,
   EXPENSE_MAX_FILES_PER_LINE,
   type ExpenseCategory,
   type AllowanceDraftRequest,
@@ -47,6 +48,7 @@ import { nameRejecters, rejectionFields } from '../common/rejection';
 import { keyExt, sniffMatches } from './files.util';
 import { computeAllowances } from '../allowances/allowances.engine';
 import { isDayReport } from '../dcr/day-report';
+import { loadStatements } from './statement.data';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 
 type ClaimRow = typeof expenseClaims.$inferSelect;
@@ -1236,16 +1238,21 @@ export class ExpensesService implements OnModuleInit {
     });
   }
 
+  /** Per-employee monthly statements (header, day rows) for the Excel export. */
+  statements(
+    p: Principal,
+    month: string,
+    data: Awaited<ReturnType<ExpensesService['reportData']>>,
+  ) {
+    return this.tenant.run(p, (tx) => loadStatements(tx, p.companyId, month, data));
+  }
+
   async report(p: Principal, q: Parameters<ExpensesService['reportData']>[1]) {
     const data = await this.reportData(p, q);
-    const byCategory = {
-      travel: 0,
-      hotel: 0,
-      food: 0,
-      mileage: 0,
-      allowance: 0,
-      other: 0,
-    } as Record<Category, number>;
+    const byCategory = Object.fromEntries(EXPENSE_CATEGORIES.map((k) => [k, 0])) as Record<
+      Category,
+      number
+    >;
     for (const d of data)
       for (const k of Object.keys(byCategory) as Category[])
         byCategory[k] = r2(byCategory[k] + d.rec.byCategory[k]);
@@ -1285,14 +1292,10 @@ function reconcileClaim(
   const m = c.month.slice(0, 7);
   const byDate = new Map<string, LineRow[]>();
   for (const l of lines) byDate.set(l.date, [...(byDate.get(l.date) ?? []), l]);
-  const byCategory = {
-    travel: 0,
-    hotel: 0,
-    food: 0,
-    mileage: 0,
-    allowance: 0,
-    other: 0,
-  } as Record<Category, number>;
+  const byCategory = Object.fromEntries(EXPENSE_CATEGORIES.map((k) => [k, 0])) as Record<
+    Category,
+    number
+  >;
   for (const l of lines) byCategory[l.category] = r2(byCategory[l.category] + Number(l.amount));
   let unmatched = 0;
   const out = [...byDate.entries()]

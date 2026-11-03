@@ -205,7 +205,10 @@ export class ExpenseReportsController {
   ) {
     const { format, ...rest } = q;
     const data = await this.svc.reportData(p, rest);
-    const buf = format === 'xlsx' ? await toXlsx(q.month, data) : await toPdf(q.month, data);
+    const buf =
+      format === 'xlsx'
+        ? await toXlsx(q.month, data, await this.svc.statements(p, q.month, data))
+        : await toPdf(q.month, data);
     await this.svc.auditExport(p, q, data.length);
     res.setHeader(
       'content-type',

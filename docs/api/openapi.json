@@ -19496,6 +19496,10 @@
           "food",
           "mileage",
           "allowance",
+          "courier",
+          "mobile",
+          "team_meeting",
+          "additional_ta_da",
           "other"
         ]
       },
@@ -32949,6 +32953,10 @@
               "food",
               "mileage",
               "allowance",
+              "courier",
+              "mobile",
+              "team_meeting",
+              "additional_ta_da",
               "other"
             ]
           },
@@ -33077,6 +33085,10 @@
               "food",
               "mileage",
               "allowance",
+              "courier",
+              "mobile",
+              "team_meeting",
+              "additional_ta_da",
               "other"
             ]
           }
@@ -33149,6 +33161,10 @@
               "food",
               "mileage",
               "allowance",
+              "courier",
+              "mobile",
+              "team_meeting",
+              "additional_ta_da",
               "other"
             ]
           },
