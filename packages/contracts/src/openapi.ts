@@ -3,6 +3,9 @@ import {
   DcrHqOptionList,
   DcrOptions,
   DcrOptionsQuery,
+  DcrProducts,
+  DcrProductsHeaders,
+  DcrProductsQuery,
   DcrSfcMatch,
   DcrSfcMatchQuery,
   DcrSubmit,
@@ -1052,6 +1055,21 @@ function buildDocument(): OpenApiDocument {
           requestParams: { query: DcrOptionsQuery },
           responses: {
             '200': { description: 'OK', ...json(DcrOptions) },
+            '422': err('VALIDATION'),
+          },
+        }),
+      },
+      '/v1/dcrs/products': {
+        get: op({
+          tags: ['DCR'],
+          operationId: 'listDcrProducts',
+          summary: 'Active products for the DCR pickers (replaces options.products/detailProducts)',
+          description:
+            'Same items as the deprecated GET /v1/dcrs/options products/detailProducts. Response carries ETag (weak) and Cache-Control: private, max-age=60. Send If-None-Match to get 304 with no body while products and the image-URL signing window (30 min) are unchanged. ids= narrows to those active products.',
+          requestParams: { query: DcrProductsQuery, header: DcrProductsHeaders },
+          responses: {
+            '200': { description: 'OK (ETag, Cache-Control headers)', ...json(DcrProducts) },
+            '304': { description: 'Not modified (If-None-Match matched); empty body' },
             '422': err('VALIDATION'),
           },
         }),
