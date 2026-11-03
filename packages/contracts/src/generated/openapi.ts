@@ -2114,6 +2114,76 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/sales/targets': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** sales:write. All-products monthly targets per HQ for a month range */
+    get: operations['listSalesTargets'];
+    /** sales:write. Set one HQ target for a month range (spread each|total); audited (sales.targets_set) */
+    put: operations['setSalesTargets'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/sales/actuals': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** sales:write. Actual sales rows of one month */
+    get: operations['listSalesActuals'];
+    put?: never;
+    /** sales:write. Add one actual row; audited (sales.actual_added) */
+    post: operations['createSalesActual'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/sales/actuals/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** sales:write. Remove an actual row; audited (sales.actual_deleted) */
+    delete: operations['deleteSalesActual'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/sales/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** sales:write. Import targets or actuals by territory/product code (dryRun validates only) */
+    post: operations['importSales'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/expense-claims/{id}/allowances': {
     parameters: {
       query?: never;
@@ -3861,6 +3931,95 @@ export interface components {
     SfcTravelMode: 'bike' | 'bus' | 'train' | 'bus_train' | 'car' | 'other';
     /** @enum {string} */
     SfcCategory: 'ex' | 'hq' | 'os';
+    /** @enum {string} */
+    SalesKind: 'primary' | 'secondary';
+    SalesTargetSet: {
+      /**
+       * Format: uuid
+       * @description An HQ (headquarter level) territory
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      kind: components['schemas']['SalesKind'];
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      fromMonth: string;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      toMonth: string;
+      /** @description Rupees. Per month when spread = each, the total for the whole period when spread = total */
+      value: number;
+      /**
+       * @default each
+       * @enum {string}
+       */
+      spread: 'each' | 'total';
+      /** @default null */
+      quantity: number | null;
+      /**
+       * @description false: 409 TARGETS_EXIST when a month already has a target
+       * @default false
+       */
+      overwrite: boolean;
+    };
+    SalesActualCreate: {
+      /**
+       * Format: uuid
+       * @description An HQ (headquarter level) territory
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      /** @default null */
+      stockistId: string | null;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      kind: components['schemas']['SalesKind'];
+      /** @default 0 */
+      quantity: number;
+      /** @default 0 */
+      freeQuantity: number;
+      value: number;
+      /** @default false */
+      isReturn: boolean;
+    };
+    SalesImportRequest: {
+      /** @enum {string} */
+      entity: 'targets' | 'actuals';
+      /** @default true */
+      dryRun: boolean;
+      rows: components['schemas']['SalesImportRow'][];
+    };
+    SalesImportRow: {
+      territoryCode: string;
+      /** @default null */
+      productCode: string | null;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      kind: components['schemas']['SalesKind'];
+      value: number;
+      /** @default null */
+      quantity: number | null;
+      /** @default 0 */
+      freeQuantity: number;
+      /** @default false */
+      isReturn: boolean;
+    };
     AllowanceDraftRequest: {
       /** @default false */
       dryRun: boolean;
@@ -4103,6 +4262,7 @@ export interface components {
       | 'settings:write'
       | 'audit:read'
       | 'sales:read'
+      | 'sales:write'
       | 'finance:read'
       | 'expenses:write'
       | 'expenses:read'
@@ -7496,6 +7656,105 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       updatedAt: string;
+    };
+    SalesTargetList: {
+      data: components['schemas']['SalesTarget'][];
+    };
+    SalesTarget: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      territoryName: string;
+      territoryCode: string;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      kind: components['schemas']['SalesKind'];
+      /** @description Target value, rupees */
+      value: number;
+      quantity: number | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+    };
+    SalesTargetSetResult: {
+      months: number;
+      created: number;
+      updated: number;
+    };
+    SalesActualList: {
+      data: components['schemas']['SalesActual'][];
+    };
+    SalesActual: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      territoryName: string;
+      territoryCode: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      productName: string;
+      stockistId: string | null;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      kind: components['schemas']['SalesKind'];
+      quantity: number;
+      freeQuantity: number;
+      value: number;
+      isReturn: boolean;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+    };
+    SalesImportResult: {
+      dryRun: boolean;
+      totals: {
+        rows: number;
+        valid: number;
+        created: number;
+        updated: number;
+        errors: number;
+      };
+      results: components['schemas']['SalesImportRowResult'][];
+    };
+    SalesImportRowResult: {
+      /** @description 1-based position in the request */
+      row: number;
+      /** @enum {string} */
+      status: 'valid' | 'created' | 'updated' | 'error';
+      error:
+        ('unknown_territory' | 'not_headquarter' | 'unknown_product' | 'product_required') | null;
     };
     AllowanceDraftResult: {
       dryRun: boolean;
@@ -16961,6 +17220,338 @@ export interface operations {
         };
       };
       /** @description VALIDATION, SFC_HQ_NOT_ASSIGNED or SFC_ROUTE_NOT_FOUND */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listSalesTargets: {
+    parameters: {
+      query: {
+        /** @description Month (YYYY-MM) */
+        from: string;
+        /** @description Month (YYYY-MM) */
+        to: string;
+        territoryId?: string;
+        kind?: components['schemas']['SalesKind'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SalesTargetList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  setSalesTargets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['SalesTargetSet'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SalesTargetSetResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TERRITORY_NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TARGETS_EXIST (details.months; send overwrite to replace) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (not an HQ, or more than 36 months) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listSalesActuals: {
+    parameters: {
+      query: {
+        /** @description Month (YYYY-MM) */
+        month: string;
+        territoryId?: string;
+        kind?: components['schemas']['SalesKind'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SalesActualList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createSalesActual: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['SalesActualCreate'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier
+             * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+             */
+            id: string;
+          };
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TERRITORY_NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (not an HQ, unknown product, stockist not under the HQ) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteSalesActual: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Removed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier
+             * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+             */
+            id: string;
+          };
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description SALES_ACTUAL_NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  importSales: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['SalesImportRequest'];
+      };
+    };
+    responses: {
+      /** @description Per-row result */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SalesImportResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
       422: {
         headers: {
           [name: string]: unknown;

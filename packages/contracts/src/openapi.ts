@@ -146,6 +146,17 @@ import {
   SfcTablePut,
 } from './schemas/sfc';
 import {
+  SalesActualCreate,
+  SalesActualList,
+  SalesActualQuery,
+  SalesImportRequest,
+  SalesImportResult,
+  SalesTargetList,
+  SalesTargetQuery,
+  SalesTargetSet,
+  SalesTargetSetResult,
+} from './schemas/sales';
+import {
   Me,
   PasswordForgot,
   PasswordForgotAccepted,
@@ -2006,6 +2017,83 @@ function buildDocument(): OpenApiDocument {
             '404': err('NOT_FOUND'),
             '409': err('VERSION_CONFLICT (etag changed; details.etag is current)'),
             '422': err('VALIDATION, SFC_HQ_NOT_ASSIGNED or SFC_ROUTE_NOT_FOUND'),
+          },
+        }),
+      },
+      '/v1/sales/targets': {
+        get: op({
+          tags: ['Sales'],
+          operationId: 'listSalesTargets',
+          summary: 'sales:write. All-products monthly targets per HQ for a month range',
+          requestParams: { query: SalesTargetQuery },
+          responses: {
+            '200': { description: 'OK', ...json(SalesTargetList) },
+            '403': err('FORBIDDEN'),
+          },
+        }),
+        put: op({
+          tags: ['Sales'],
+          operationId: 'setSalesTargets',
+          summary:
+            'sales:write. Set one HQ target for a month range (spread each|total); audited (sales.targets_set)',
+          requestBody: json(SalesTargetSet),
+          responses: {
+            '200': { description: 'Saved', ...json(SalesTargetSetResult) },
+            '403': err('FORBIDDEN'),
+            '404': err('TERRITORY_NOT_FOUND'),
+            '409': err('TARGETS_EXIST (details.months; send overwrite to replace)'),
+            '422': err('VALIDATION (not an HQ, or more than 36 months)'),
+          },
+        }),
+      },
+      '/v1/sales/actuals': {
+        get: op({
+          tags: ['Sales'],
+          operationId: 'listSalesActuals',
+          summary: 'sales:write. Actual sales rows of one month',
+          requestParams: { query: SalesActualQuery },
+          responses: {
+            '200': { description: 'OK', ...json(SalesActualList) },
+            '403': err('FORBIDDEN'),
+          },
+        }),
+        post: op({
+          tags: ['Sales'],
+          operationId: 'createSalesActual',
+          summary: 'sales:write. Add one actual row; audited (sales.actual_added)',
+          requestBody: json(SalesActualCreate),
+          responses: {
+            '200': { description: 'Created', ...json(z.object({ id: Id })) },
+            '403': err('FORBIDDEN'),
+            '404': err('TERRITORY_NOT_FOUND'),
+            '422': err('VALIDATION (not an HQ, unknown product, stockist not under the HQ)'),
+          },
+        }),
+      },
+      '/v1/sales/actuals/{id}': {
+        delete: op({
+          tags: ['Sales'],
+          operationId: 'deleteSalesActual',
+          summary: 'sales:write. Remove an actual row; audited (sales.actual_deleted)',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'Removed', ...json(z.object({ id: Id })) },
+            '403': err('FORBIDDEN'),
+            '404': err('SALES_ACTUAL_NOT_FOUND'),
+          },
+        }),
+      },
+      '/v1/sales/import': {
+        post: op({
+          tags: ['Sales'],
+          operationId: 'importSales',
+          summary:
+            'sales:write. Import targets or actuals by territory/product code (dryRun validates only)',
+          requestBody: json(SalesImportRequest),
+          responses: {
+            '200': { description: 'Per-row result', ...json(SalesImportResult) },
+            '403': err('FORBIDDEN'),
+            '422': err('VALIDATION'),
           },
         }),
       },

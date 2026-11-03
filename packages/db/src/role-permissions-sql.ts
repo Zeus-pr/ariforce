@@ -1,12 +1,12 @@
 /**
- * Builds the latest role-permissions migration (0019 baseline, 0022 expenses, 0025 leave, 0033 product prices, 0039 SFC, 0040 expenses:pay, now 0044 manager field:write) from DEFAULT_ROLE_PERMISSIONS in
+ * Builds the latest role-permissions migration (0019 baseline, 0022 expenses, 0025 leave, 0033 product prices, 0039 SFC, 0040 expenses:pay, now 0058 sales:write) from DEFAULT_ROLE_PERMISSIONS in
  * @ariforce/contracts, the same constant the seed uses, so the SQL and the code cannot drift.
  * Regenerate: pnpm -F @ariforce/db db:role-perms   Check: pnpm -F @ariforce/db db:role-perms:check
  */
 import { DEFAULT_ROLE_PERMISSIONS, ROLE_KEYS } from '../../contracts/src/schemas/roles';
 
 /** Applied 0019 stays frozen; each permission change gets a NEW generated migration (set, not append). */
-export const ROLE_PERMISSIONS_MIGRATION = '0051_dcr_unlock_perms';
+export const ROLE_PERMISSIONS_MIGRATION = '0058_sales_write_perm';
 
 /** Sorted, de-duplicated permission list per role (the exact array written to roles.permissions). */
 export function rolePermissionMatrix(): Record<string, string[]> {
@@ -33,6 +33,7 @@ export function rolePermissionsSql(): string {
 -- SFC: sfc:read for the sales hierarchy and system_admin; sfc:write for ABM and up + system_admin.
 -- DCR review (0049): dcr:review (approve/reject submitted DCRs of the reporting line) for ABM and up + system_admin.
 -- DCR unlock/correction decisions (0051): dcr_unlock:decide for director only (not system_admin).
+-- Sales targets and actuals (0058): sales:write for director and system_admin.
 -- Masters: BM/ABM read-only; RBM and above + system_admin write. distribution_head / accountant
 -- are retired (no assignment, no sign-in); their rows keep their old sets (docs/RBAC.md).`;
   const stmts = ROLE_KEYS.map(

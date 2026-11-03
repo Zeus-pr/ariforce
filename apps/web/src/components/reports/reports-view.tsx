@@ -180,7 +180,7 @@ function KpiReport({
         meta: [
           `${monthLabel(month)} · ${exportedAt()}`,
           id === 'sales'
-            ? 'Targets implied from achievement %. KPI formulas are drafts, to confirm with Arighna.'
+            ? 'Targets as set by the Director. KPI formulas are drafts, to confirm with Arighna.'
             : 'KPI formulas are drafts, to confirm with Arighna.',
         ],
         fileName: `ariforce-${id}-${month}`,
