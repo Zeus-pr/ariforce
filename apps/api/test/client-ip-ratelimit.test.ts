@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common';
 import type { IncomingMessage } from 'node:http';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { clientIp, ipRateKey } from '../src/common/client-ip';
+import { clientIp, ipRateKey, normIp } from '../src/common/client-ip';
 import { MemoryRateLimitStore, rateLimitStore } from '../src/common/rate-limit';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
@@ -120,5 +120,24 @@ describe.skipIf(!process.env.DATABASE_URL)('rate limits over HTTP', () => {
     expect(r.status).toBe(429);
     expect(r.headers['retry-after']).toBeDefined();
     expect(r.body.error.code).toBe('RATE_LIMITED');
+  });
+});
+
+describe('normIp (IPv4-mapped IPv6)', () => {
+  it('dotted form, any case of the prefix', () => {
+    expect(normIp('::ffff:1.2.3.4')).toBe('1.2.3.4');
+    expect(normIp('::FFFF:1.2.3.4')).toBe('1.2.3.4');
+  });
+  it('hex-mapped form -> dotted IPv4', () => {
+    expect(normIp('::ffff:102:304')).toBe('1.2.3.4');
+    expect(normIp('::FFFF:C0A8:0001')).toBe('192.168.0.1');
+  });
+  it('plain IPv6 and IPv4 unchanged', () => {
+    expect(normIp('2001:db8::1')).toBe('2001:db8::1');
+    expect(normIp('10.0.0.1')).toBe('10.0.0.1');
+  });
+  it('invalid hex is not converted (rejected as an IP)', () => {
+    expect(normIp('::ffff:zz:304')).toBeNull();
+    expect(normIp('::ffff:12345:1')).toBeNull();
   });
 });

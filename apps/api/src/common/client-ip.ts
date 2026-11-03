@@ -10,11 +10,21 @@ export const clientIpMode = () => {
   return mode === 'cloudflare' || mode === 'railway' ? mode : 'socket';
 };
 
-const norm = (ip: string | undefined | null) => {
+/** IPv4-mapped IPv6 (`::ffff:1.2.3.4` or hex `::ffff:102:304`, any case) -> dotted IPv4. */
+export const normIp = (ip: string | undefined | null) => {
   if (!ip) return null;
-  const v = ip.trim().replace(/^::ffff:/, '');
+  let v = ip.trim();
+  const tail = /^::ffff:(.+)$/i.exec(v)?.[1];
+  if (tail) {
+    const [, a = '', b = ''] = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(tail) ?? [];
+    if (a && b) {
+      const [x, y] = [parseInt(a, 16), parseInt(b, 16)];
+      v = `${x >> 8}.${x & 255}.${y >> 8}.${y & 255}`;
+    } else if (isIP(tail) === 4) v = tail;
+  }
   return isIP(v) ? v : null;
 };
+const norm = normIp;
 
 /**
  * Cloudflare mode requires an origin reachable only through Cloudflare. Railway mode requires all
