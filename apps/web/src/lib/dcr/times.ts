@@ -42,16 +42,24 @@ export function endTimeProblem(start: string, end: string): string | null {
   return spanMin(start, end) ? null : 'End time must be after the start time.';
 }
 
-/** Form values for the new fields from a saved details object (old records have none). */
-export function extraFormOf(d: { startTime?: string | null; durationMin: number }): {
-  endTime: string;
-  fromPlace: string;
-  toPlace: string;
-} {
-  const x = d as typeof d & DetailsExtra;
+/**
+ * Form values for end time, duration and places from a saved details object. `durationMin` is
+ * server-derived and may be absent; the end time falls back to start + duration on records saved
+ * before end time existed, and the duration to the start/end span.
+ */
+export function extraFormOf(d: {
+  startTime?: string | null;
+  endTime?: string | null;
+  durationMin?: number | null;
+  fromPlace?: string | null;
+  toPlace?: string | null;
+}): { endTime: string; durationMin: string; fromPlace: string; toPlace: string } {
+  const endTime = d.endTime ?? (d.durationMin ? endFrom(d.startTime, d.durationMin) : '');
+  const duration = d.durationMin ?? (d.startTime ? spanMin(d.startTime, endTime) : null);
   return {
-    endTime: x.endTime ?? endFrom(d.startTime, d.durationMin),
-    fromPlace: x.fromPlace ?? '',
-    toPlace: x.toPlace ?? '',
+    endTime,
+    durationMin: duration ? String(duration) : '',
+    fromPlace: d.fromPlace ?? '',
+    toPlace: d.toPlace ?? '',
   };
 }
