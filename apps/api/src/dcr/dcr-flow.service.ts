@@ -42,6 +42,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
@@ -50,7 +51,7 @@ import { err } from '../field/checkins.service';
 import { assertDcrDateWritable } from './dcr-date';
 import { companySettings, localDate } from '../field/field.util';
 import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leave.util';
-import { StorageService } from '../files/storage.service';
+import { IMAGE_URL_WINDOW_S, StorageService } from '../files/storage.service';
 import {
   SUBMITTED_STATUSES,
   draftsNewestFirst,
@@ -134,7 +135,11 @@ export class DcrFlowService {
 
   /** Active products for the DCR pickers, with the presigned image URL (memoised local signing). */
   private async productOptions(tx: Tx, p: Principal): Promise<DcrProductOption[]> {
-    const rows = await tx
+    return this.signProducts(p, await this.productRows(tx));
+  }
+
+  private productRows(tx: Tx, ids?: string[]) {
+    return tx
       .select({
         id: products.id,
         divisionId: products.divisionId,
@@ -150,8 +155,20 @@ export class DcrFlowService {
         imageFileKey: products.imageFileKey,
       })
       .from(products)
-      .where(and(isNull(products.deletedAt), eq(products.active, true)))
+      .where(
+        and(
+          isNull(products.deletedAt),
+          eq(products.active, true),
+          ids ? inArray(products.id, ids) : undefined,
+        ),
+      )
       .orderBy(asc(sql`lower(${products.name})`), asc(products.id));
+  }
+
+  private signProducts(
+    p: Principal,
+    rows: Awaited<ReturnType<DcrFlowService['productRows']>>,
+  ): Promise<DcrProductOption[]> {
     return Promise.all(
       rows.map(async (r) => ({
         ...r,
@@ -227,7 +244,30 @@ export class DcrFlowService {
     return resolveSfcCandidates(rows, userId, hqIds, band);
   }
 
-  options(p: Principal, date: string) {
+  /**
+   * GET /v1/dcrs/products. The ETag hashes the product rows plus the image-URL signing window, so
+   * a 304 never hands back expired picture URLs. `body` is null when `ifNoneMatch` matches.
+   */
+  products(p: Principal, ids: string[] | undefined, ifNoneMatch: string | undefined) {
+    return this.tenant.run(p, async (tx) => {
+      const rows = await this.productRows(tx, ids);
+      const window = Math.floor(Date.now() / (IMAGE_URL_WINDOW_S * 1000));
+      const hash = createHash('sha256')
+        .update(JSON.stringify([window, ids ?? null, rows]))
+        .digest('base64url')
+        .slice(0, 27);
+      const etag = `W/"dp-${hash}"`;
+      const match = ifNoneMatch
+        ?.split(',')
+        .map((t) => t.trim())
+        .some((t) => t === etag || t === '*');
+      if (match) return { etag, body: null };
+      const items = await this.signProducts(p, rows);
+      return { etag, body: { products: items, detailProducts: groupDetailProducts(items), etag } };
+    });
+  }
+
+  options(p: Principal, date: string, includeProducts = true) {
     return this.tenant.run(p, async (tx) => {
       const s = await companySettings(tx, p);
       const wts = await tx
@@ -273,10 +313,13 @@ export class DcrFlowService {
         unlockRequest: await this.unlockRequest(tx, p, date),
         tourPlanDrafts: await itemCards(tx, p.userId, localDate(new Date(), s.timezone)),
         autoExpenseOnDcrSubmit: await this.autoExpense.enabled(tx, p),
-        ...(await this.productOptions(tx, p).then((products) => ({
-          products,
-          detailProducts: groupDetailProducts(products),
-        }))),
+        // Deprecated in favour of GET /v1/dcrs/products; skipped with includeProducts=false.
+        ...(includeProducts
+          ? await this.productOptions(tx, p).then((products) => ({
+              products,
+              detailProducts: groupDetailProducts(products),
+            }))
+          : { products: [], detailProducts: [] }),
       };
     });
   }
