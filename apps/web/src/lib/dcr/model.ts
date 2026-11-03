@@ -321,7 +321,13 @@ export function problems(s: FlowState): { key: string; text: string }[] {
   if (b === 'meeting' || b === 'training') {
     const m = s.meeting;
     const what = b === 'meeting' ? 'meeting' : 'training';
-    if (!m.title.trim()) add('title', `Choose the ${what} type, or pick Other and type it in.`);
+    if (!m.title.trim())
+      add(
+        'title',
+        b === 'meeting'
+          ? 'Choose the meeting type.'
+          : `Choose the ${what} type, or pick Other and type it in.`,
+      );
     if (m.mode === 'in_person' && !m.location.trim()) add('location', 'Enter where it was held.');
     if (!HHMM.test(m.startTime)) add('startTime', 'Enter the start time.');
     if (!minutes(m.durationMin)) add('durationMin', 'Enter the duration in minutes (1 to 720).');

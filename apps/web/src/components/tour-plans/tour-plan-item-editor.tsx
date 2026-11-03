@@ -296,7 +296,12 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
     const errors: Record<string, string[]> = {};
     if (showErrors && !selectedDetails) {
       if (state.workOn?.branch === 'meeting' || state.workOn?.branch === 'training') {
-        if (!state.meeting.title.trim()) errors.title = ['Choose or enter a type.'];
+        if (!state.meeting.title.trim())
+          errors.title = [
+            state.workOn.branch === 'meeting'
+              ? 'Choose the meeting type.'
+              : 'Choose or enter a type.',
+          ];
         if (state.meeting.mode === 'in_person' && !state.meeting.location.trim())
           errors.location = ['Enter the location.'];
         if (!/^[0-2]\d:[0-5]\d$/.test(state.meeting.startTime))
