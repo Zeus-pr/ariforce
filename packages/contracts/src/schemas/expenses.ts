@@ -147,13 +147,29 @@ export const ExpenseClaimSummary = ExpenseClaim.omit({ lines: true })
   .extend({ lineCount: z.int() })
   .meta({ id: 'ExpenseClaimSummary' });
 export const ExpenseClaimList = z
-  .object({ items: z.array(ExpenseClaimSummary) })
+  .object({
+    items: z.array(ExpenseClaimSummary),
+    limit: z.int().optional().meta({ description: 'Paged reads only (limit or cursor sent)' }),
+    total: z.int().min(0).optional().meta({
+      description: 'Paged reads only: claims matching the filters (all pages)',
+    }),
+    nextCursor: z.string().nullable().optional().meta({
+      description: 'Paged reads only: pass as cursor for the next page; null on the last page',
+    }),
+  })
   .meta({ id: 'ExpenseClaimList' });
-export const ExpenseClaimListQuery = z.object({
-  month: Month.optional(),
-  userId: Id.optional(),
-  status: ExpenseStatus.optional(),
-});
+export const ExpenseClaimListQuery = z
+  .object({
+    month: Month.optional(),
+    userId: Id.optional(),
+    status: ExpenseStatus.optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional().meta({
+      description:
+        'Opt-in paging (default 50 once cursor is sent). Without limit and cursor every readable claim is returned, as before',
+    }),
+    cursor: z.string().max(200).optional().meta({ description: 'Opaque cursor from `nextCursor`' }),
+  })
+  .meta({ id: 'ExpenseClaimListQuery' });
 export const ExpenseClaimCreate = z
   .object({ month: Month })
   .meta({ id: 'ExpenseClaimCreate', description: 'Creates (or returns) your claim for the month' });

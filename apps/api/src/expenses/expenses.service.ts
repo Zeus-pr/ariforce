@@ -43,6 +43,7 @@ import { nameRejecters, rejectionFields } from '../common/rejection';
 import { keyExt, sniffMatches } from './files.util';
 import { computeAllowances } from '../allowances/allowances.engine';
 import { isDayReport } from '../dcr/day-report';
+import { decodeCursor, encodeCursor } from '../masters/masters.service';
 
 type ClaimRow = typeof expenseClaims.$inferSelect;
 type LineRow = typeof expenseLines.$inferSelect;
@@ -367,22 +368,52 @@ export class ExpensesService implements OnModuleInit {
 
   // ---- claims ----
 
-  list(p: Principal, q: { month?: string; userId?: string; status?: ExpenseStatus }) {
+  /**
+   * Without limit/cursor: every readable claim (unchanged). With either: one page of `limit`
+   * (default 50, max 200) plus `limit`, `total` and `nextCursor` (opaque offset cursor).
+   */
+  list(
+    p: Principal,
+    q: {
+      month?: string;
+      userId?: string;
+      status?: ExpenseStatus;
+      limit?: number;
+      cursor?: string;
+    },
+  ) {
+    const paged = q.limit !== undefined || q.cursor !== undefined;
+    const limit = q.limit ?? 50;
+    const offset = paged ? decodeCursor(q.cursor) : 0;
     return this.tenant.run(p, async (tx) => {
-      const rows = await tx
+      const where = and(
+        this.readable(p),
+        isNull(expenseClaims.deletedAt),
+        q.month ? eq(expenseClaims.month, monthStart(q.month)) : undefined,
+        q.userId ? eq(expenseClaims.userId, q.userId) : undefined,
+        q.status ? eq(expenseClaims.status, q.status) : undefined,
+      );
+      const base = tx
         .select({ c: expenseClaims, name: users.name })
         .from(expenseClaims)
         .innerJoin(users, eq(users.id, expenseClaims.userId))
-        .where(
-          and(
-            this.readable(p),
-            isNull(expenseClaims.deletedAt),
-            q.month ? eq(expenseClaims.month, monthStart(q.month)) : undefined,
-            q.userId ? eq(expenseClaims.userId, q.userId) : undefined,
-            q.status ? eq(expenseClaims.status, q.status) : undefined,
-          ),
-        )
-        .orderBy(sql`${expenseClaims.month} desc`, asc(users.name));
+        .where(where);
+      // Paged reads add the id tie-break so pages never overlap or skip rows.
+      const rows = paged
+        ? await base
+            .orderBy(sql`${expenseClaims.month} desc`, asc(users.name), asc(expenseClaims.id))
+            .limit(limit)
+            .offset(offset)
+        : await base.orderBy(sql`${expenseClaims.month} desc`, asc(users.name));
+      const total = paged
+        ? ((
+            await tx
+              .select({ n: sql<number>`count(*)::int` })
+              .from(expenseClaims)
+              .innerJoin(users, eq(users.id, expenseClaims.userId))
+              .where(where)
+          )[0]?.n ?? 0)
+        : 0;
       const counts = rows.length
         ? await tx
             .select({ id: expenseLines.claimId, n: sql<number>`count(*)::int` })
@@ -426,6 +457,11 @@ export class ExpensesService implements OnModuleInit {
             lineCount: counts.find((x) => x.id === r.c.id)?.n ?? 0,
           })),
         ),
+        ...(paged && {
+          limit,
+          total,
+          nextCursor: offset + rows.length < total ? encodeCursor(offset + limit) : null,
+        }),
       };
     });
   }
@@ -932,76 +968,35 @@ export class ExpensesService implements OnModuleInit {
   // ---- reconciliation & reports ----
 
   private async reconcile(tx: Tx, c: ClaimRow): Promise<ExpenseReconciliation> {
-    const m = c.month.slice(0, 7);
     const lines = await tx
       .select()
       .from(expenseLines)
       .where(and(eq(expenseLines.claimId, c.id), isNull(expenseLines.deletedAt)));
-    const days = await tx
+    return reconcileClaim(c, lines, await this.monthDays(tx, [c.userId], c.month));
+  }
+
+  /** DCR day reports of these users in the claim month (one query for a whole report). */
+  private monthDays(tx: Tx, userIds: string[], month: string) {
+    const m = month.slice(0, 7);
+    return tx
       .select({
         id: dcrs.id,
         date: dcrs.date,
         status: dcrs.status,
         field: workTypes.countsAsFieldDay,
+        userId: dcrs.userId,
       })
       .from(dcrs)
       .innerJoin(workTypes, eq(workTypes.id, dcrs.workTypeId))
       .where(
         and(
-          eq(dcrs.userId, c.userId),
+          userIds.length === 1 ? eq(dcrs.userId, userIds[0]!) : inArray(dcrs.userId, userIds),
           isNull(dcrs.deletedAt),
           isDayReport(dcrs),
-          gte(dcrs.date, c.month),
+          gte(dcrs.date, month),
           lt(dcrs.date, nextMonth(m)),
         ),
       );
-    const byDate = new Map<string, LineRow[]>();
-    for (const l of lines) byDate.set(l.date, [...(byDate.get(l.date) ?? []), l]);
-    const byCategory = {
-      travel: 0,
-      hotel: 0,
-      food: 0,
-      mileage: 0,
-      allowance: 0,
-      other: 0,
-    } as Record<Category, number>;
-    for (const l of lines) byCategory[l.category] = r2(byCategory[l.category] + Number(l.amount));
-    let unmatched = 0;
-    const out = [...byDate.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, ls]) => {
-        const d = days.find((x) => x.date === date);
-        const flags: ExpenseReconciliation['days'][number]['flags'] = [];
-        if (!date.startsWith(m)) flags.push('outside_month');
-        if (!d) flags.push('no_dcr');
-        else {
-          if (d.status === 'draft') flags.push('dcr_not_submitted');
-          if (!d.field) flags.push('non_field_day');
-        }
-        if (ls.some((l) => l.dcrId && l.dcrId !== d?.id)) flags.push('dcr_link_mismatch');
-        const claimed = r2(ls.reduce((s, l) => s + Number(l.amount), 0));
-        if (flags.length) unmatched = r2(unmatched + claimed);
-        return {
-          date,
-          claimed,
-          lineCount: ls.length,
-          dcrId: d?.id ?? null,
-          dcrStatus: d?.status ?? null,
-          flags,
-        };
-      });
-    return {
-      claimId: c.id,
-      userId: c.userId,
-      month: m,
-      total: r2(lines.reduce((s, l) => s + Number(l.amount), 0)),
-      claimedDays: out.length,
-      dcrDays: days.filter((d) => d.status === 'submitted' || d.status === 'approved').length,
-      matchedDays: out.filter((d) => !d.flags.length).length,
-      unmatchedAmount: unmatched,
-      byCategory,
-      days: out,
-    };
   }
 
   reconciliation(p: Principal, id: string) {
@@ -1043,17 +1038,36 @@ export class ExpensesService implements OnModuleInit {
           ),
         )
         .orderBy(asc(users.name));
-      const claims = [];
-      for (const r of rows) {
-        const rec = await this.reconcile(tx, r.c);
-        const lines = await tx
-          .select()
-          .from(expenseLines)
-          .where(and(eq(expenseLines.claimId, r.c.id), isNull(expenseLines.deletedAt)))
-          .orderBy(asc(expenseLines.date));
-        claims.push({ rec, userName: r.name, status: r.c.status, lines });
-      }
-      return claims;
+      if (!rows.length) return [];
+      // Two queries for the whole report (was 3 per claim): all lines, all DCR days of the month.
+      const allLines = await tx
+        .select()
+        .from(expenseLines)
+        .where(
+          and(
+            inArray(
+              expenseLines.claimId,
+              rows.map((r) => r.c.id),
+            ),
+            isNull(expenseLines.deletedAt),
+          ),
+        )
+        .orderBy(asc(expenseLines.date), asc(expenseLines.id));
+      const allDays = await this.monthDays(
+        tx,
+        [...new Set(rows.map((r) => r.c.userId))],
+        monthStart(q.month),
+      );
+      return rows.map((r) => {
+        const lines = allLines.filter((l) => l.claimId === r.c.id);
+        const days = allDays.filter((d) => d.userId === r.c.userId);
+        return {
+          rec: reconcileClaim(r.c, lines, days),
+          userName: r.name,
+          status: r.c.status,
+          lines,
+        };
+      });
     });
   }
 
@@ -1090,4 +1104,65 @@ export class ExpensesService implements OnModuleInit {
       }),
     );
   }
+}
+
+/** Pure reconciliation of one claim against its user's DCR day reports of the claim month. */
+function reconcileClaim(
+  c: ClaimRow,
+  lines: LineRow[],
+  days: {
+    id: string;
+    date: string;
+    status: (typeof dcrs.$inferSelect)['status'];
+    field: boolean;
+  }[],
+): ExpenseReconciliation {
+  const m = c.month.slice(0, 7);
+  const byDate = new Map<string, LineRow[]>();
+  for (const l of lines) byDate.set(l.date, [...(byDate.get(l.date) ?? []), l]);
+  const byCategory = {
+    travel: 0,
+    hotel: 0,
+    food: 0,
+    mileage: 0,
+    allowance: 0,
+    other: 0,
+  } as Record<Category, number>;
+  for (const l of lines) byCategory[l.category] = r2(byCategory[l.category] + Number(l.amount));
+  let unmatched = 0;
+  const out = [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, ls]) => {
+      const d = days.find((x) => x.date === date);
+      const flags: ExpenseReconciliation['days'][number]['flags'] = [];
+      if (!date.startsWith(m)) flags.push('outside_month');
+      if (!d) flags.push('no_dcr');
+      else {
+        if (d.status === 'draft') flags.push('dcr_not_submitted');
+        if (!d.field) flags.push('non_field_day');
+      }
+      if (ls.some((l) => l.dcrId && l.dcrId !== d?.id)) flags.push('dcr_link_mismatch');
+      const claimed = r2(ls.reduce((s, l) => s + Number(l.amount), 0));
+      if (flags.length) unmatched = r2(unmatched + claimed);
+      return {
+        date,
+        claimed,
+        lineCount: ls.length,
+        dcrId: d?.id ?? null,
+        dcrStatus: d?.status ?? null,
+        flags,
+      };
+    });
+  return {
+    claimId: c.id,
+    userId: c.userId,
+    month: m,
+    total: r2(lines.reduce((s, l) => s + Number(l.amount), 0)),
+    claimedDays: out.length,
+    dcrDays: days.filter((d) => d.status === 'submitted' || d.status === 'approved').length,
+    matchedDays: out.filter((d) => !d.flags.length).length,
+    unmatchedAmount: unmatched,
+    byCategory,
+    days: out,
+  };
 }
