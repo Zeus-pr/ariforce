@@ -85,6 +85,24 @@ export async function ensureOutletLocked(
   return lock.body.id as string;
 }
 
+/** Visit check-in at an outlet (after ensureFieldReady + lock). Returns geo_captures id. */
+export async function ensureVisitCheckIn(
+  http: Http,
+  auth: string,
+  outletKind: 'doctor' | 'chemist' | 'stockist',
+  outletId: string,
+): Promise<string> {
+  const hdr = { authorization: auth };
+  await ensureOutletLocked(http, auth, outletKind, outletId);
+  const visit = await http()
+    .post('/v1/check-ins')
+    .set(hdr)
+    .send(geoCap({ kind: 'visit', outletKind, outletId }));
+  if (![200, 201].includes(visit.status))
+    throw new Error(`visit check-in failed: ${visit.status} ${JSON.stringify(visit.body)}`);
+  return visit.body.id as string;
+}
+
 /** First visible product; imports a division + product as the director when the seed has none. */
 export async function ensureProduct(http: Http, bm: string, director: string): Promise<string> {
   const first = await http().get('/v1/products?limit=1').set({ authorization: bm });

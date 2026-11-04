@@ -10,6 +10,16 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## feat/dcr-call-checkin (2026-11-05): per-call visit check-in gates
+
+Additive behaviour on existing `checkInId` / visit check-ins (no schema break).
+
+- Submit (legacy upsert + multi-draft submit): every field call needs `checkInId`
+  (422 `VALIDATION`, details.reason `CALL_NOT_CHECKED_IN`).
+- Newly opening Presentation requires a linked visit on the call first
+  (`CALL_NOT_CHECKED_IN`), then the existing `presentationCapture` fence rules.
+- Chemist/stockist: check-in only to submit. Doctor: check-in + presentation when products detailed.
+
 ## feat/gps-outlet-lock (2026-11-05): outlet locks + Presentation hard gate
 
 - `GeofenceSettings` gains `presentationRadiusM` (default 300) and `lockMaxAccuracyM` (default 80).

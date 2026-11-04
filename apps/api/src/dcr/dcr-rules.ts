@@ -14,6 +14,7 @@ type CallLike = {
   pob: unknown[];
   productsDetailed: unknown[];
   presentationOpenedAt?: string | null;
+  checkInId?: string | null;
 };
 const idOf = (c: CallLike) => c.clientId ?? c.id ?? null;
 
@@ -25,6 +26,18 @@ export function doctorPob(calls: CallLike[]) {
   return bad.length
     ? {
         reason: 'POB_NOT_ALLOWED_FOR_DOCTOR' as const,
+        callIndexes: bad.map((b) => b.index),
+        callIds: bad.map((b) => b.id),
+      }
+    : null;
+}
+
+/** On submit: every field call needs a visit check-in linked (geo at the outlet). */
+export function missingCheckIns(calls: CallLike[]) {
+  const bad = calls.flatMap((c, i) => (!c.checkInId ? [{ index: i, id: idOf(c) }] : []));
+  return bad.length
+    ? {
+        reason: 'CALL_NOT_CHECKED_IN' as const,
         callIndexes: bad.map((b) => b.index),
         callIds: bad.map((b) => b.id),
       }

@@ -770,6 +770,7 @@ export class DcrFlowService {
         throw err(422, 'VALIDATION', 'Field work needs at least one call', { field: 'calls' });
       if (!field && dto.calls.length)
         throw err(422, 'VALIDATION', 'Calls need a field work type', { field: 'calls' });
+      this.dcr.assertCheckIns(dto.calls);
       this.dcr.assertPresentations(dto.calls);
       const hqs = await this.resolveHqs(tx, p, cur.territoryIds);
       await this.checkWorkWith(tx, cur.workWithUserIds);

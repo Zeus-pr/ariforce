@@ -29,13 +29,17 @@ Read scope: caller + reporting line (`field:read`); `userId` outside the team �
 - `PATCH /v1/outlet-locations/{id}` — ABM→Director and system_admin only (403 for BM). Edit label/coords or deactivate.
   Append-only `geo_lock_events` + audit.
 
-## Presentation hard gate (DCR save)
+## Call check-in + Presentation (DCR)
 
-When a call **newly** sets `presentationOpenedAt`, the body must include `presentationCapture`. Server requires
-punch-in that day, an active lock, and distance ≤ `presentationRadiusM` (else `NOT_PUNCHED_IN` /
-`OUTLET_NOT_LOCKED` / `PRESENTATION_OUT_OF_FENCE`). Writes a visit `geo_capture` and stores
-`presentationLocationId` / `presentationDistanceM` / `presentationAccuracyM` on the call. Re-saves keep an
-existing presentation without re-sending GPS.
+1. **Visit check-in** (`POST /v1/check-ins` kind `visit`) at the outlet, then set `DcrCallInput.checkInId`.
+2. **Submit** requires every field call to have `checkInId` (422 `VALIDATION` / `CALL_NOT_CHECKED_IN`).
+3. **Presentation** (doctor, products detailed): when a call **newly** sets `presentationOpenedAt`, the call
+   must already have a linked visit (`checkInId` or saved `geo_capture_id`) else `CALL_NOT_CHECKED_IN`,
+   and the body must include `presentationCapture`. Server also requires punch-in that day, an active
+   lock, and distance ≤ `presentationRadiusM` (`NOT_PUNCHED_IN` / `OUTLET_NOT_LOCKED` /
+   `PRESENTATION_OUT_OF_FENCE` / `PRESENTATION_CAPTURE_REQUIRED`). Stores
+   `presentationLocationId` / `presentationDistanceM` / `presentationAccuracyM`. Re-saves keep an
+   existing presentation without re-sending GPS. Chemist/stockist: check-in only (no presentation).
 
 ## GET /v1/attendance
 

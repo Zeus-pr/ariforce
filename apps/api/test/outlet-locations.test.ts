@@ -215,7 +215,7 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
       clientId: id7(),
       outletKind: 'doctor' as const,
       outletId: docId,
-      checkInId: null,
+      checkInId: null as string | null,
       jointWorkUserIds: [],
       productsDetailed: [],
       samples: [],
@@ -231,9 +231,9 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
         .set(as('pres'))
         .send({ date: today, workTypeId, territoryIds: [T.hq], calls });
 
-    const openNoLock = await draft([draftCall({ presentationCapture: cap({}) })]);
-    expect(openNoLock.status, JSON.stringify(openNoLock.body)).toBe(422);
-    expect(openNoLock.body.error.code).toBe('OUTLET_NOT_LOCKED');
+    const noCheckIn = await draft([draftCall({ presentationCapture: cap({}) })]);
+    expect(noCheckIn.status, JSON.stringify(noCheckIn.body)).toBe(422);
+    expect(noCheckIn.body.error.code).toBe('CALL_NOT_CHECKED_IN');
 
     const lock = await http()
       .post(`/v1/outlets/doctor/${docId}/locations`)
@@ -241,12 +241,22 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
       .send(cap({ label: 'clinic' }));
     expect(lock.status, JSON.stringify(lock.body)).toBe(201);
 
-    const far = await draft([draftCall({ presentationCapture: cap({ location: FAR }) })]);
+    const visit = await http()
+      .post('/v1/check-ins')
+      .set(as('pres'))
+      .send(cap({ kind: 'visit', outletKind: 'doctor', outletId: docId }));
+    expect([200, 201]).toContain(visit.status);
+    const checkInId = visit.body.id as string;
+
+    const far = await draft([
+      draftCall({ checkInId, presentationCapture: cap({ location: FAR }) }),
+    ]);
     expect(far.status, JSON.stringify(far.body)).toBe(422);
     expect(far.body.error.code).toBe('PRESENTATION_OUT_OF_FENCE');
 
     const ok = await draft([
       draftCall({
+        checkInId,
         presentationCapture: cap({ location: { lat: 22.5705, lng: 88.36 } }),
       }),
     ]);
