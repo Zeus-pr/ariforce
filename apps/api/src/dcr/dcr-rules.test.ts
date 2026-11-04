@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DcrDecision } from '@ariforce/contracts';
-import { doctorPob, lockAtOf, missingPresentation, pobValue } from './dcr-rules';
+import { doctorPob, lockAtOf, missingCheckIns, missingPresentation, pobValue } from './dcr-rules';
 import { draftsNewestFirst, rejectedNewestFirst, reviewable, submittedOf } from './day-report';
 
 const call = (o: Partial<Parameters<typeof doctorPob>[0][number]>) => ({
@@ -25,6 +25,16 @@ describe('dcr rules', () => {
       callIds: ['d'],
     });
     expect(doctorPob([call({ outletKind: 'stockist', pob: [1] })])).toBeNull();
+  });
+  it('needs a visit check-in on every call at submit', () => {
+    expect(
+      missingCheckIns([
+        call({ clientId: 'a' }),
+        call({ clientId: 'b', checkInId: 'v1' }),
+        call({ clientId: 'c', outletKind: 'chemist' }),
+      ]),
+    ).toEqual({ reason: 'CALL_NOT_CHECKED_IN', callIndexes: [0, 2], callIds: ['a', 'c'] });
+    expect(missingCheckIns([call({ checkInId: 'v1' })])).toBeNull();
   });
   it('needs presentationOpenedAt on doctor calls with products detailed', () => {
     expect(

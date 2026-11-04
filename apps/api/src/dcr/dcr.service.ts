@@ -44,7 +44,13 @@ import { autoApproveAudit, isDirector, systemPrincipal } from '../plans/auto-app
 import { NotificationsService } from '../notifications/notifications.service';
 import { ExceptionRecheck } from '../jobs/exception-recheck';
 import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leave.util';
-import { DCR_LOCK_TZ, doctorPob, missingPresentation, pobValue } from './dcr-rules';
+import {
+  DCR_LOCK_TZ,
+  doctorPob,
+  missingCheckIns,
+  missingPresentation,
+  pobValue,
+} from './dcr-rules';
 
 type Upsert = z.infer<typeof DcrUpsert>;
 type DcrRow = typeof dcrs.$inferSelect;
@@ -644,6 +650,12 @@ export class DcrService {
     return { pts };
   }
 
+  /** Submit rule: every field call needs a linked visit check-in. */
+  assertCheckIns(calls: Parameters<typeof missingCheckIns>[0]) {
+    const miss = missingCheckIns(calls);
+    if (miss) throw err(422, 'VALIDATION', 'Check in at every call outlet before submitting', miss);
+  }
+
   /** Submit rule: doctor calls with products detailed need presentationOpenedAt. */
   assertPresentations(calls: Parameters<typeof missingPresentation>[0]) {
     const miss = missingPresentation(calls);
@@ -721,7 +733,10 @@ export class DcrService {
       // (deviationReason stays optional and is stored as given).
 
       const { pts } = await this.validateCalls(tx, p, b, cur?.id);
-      if (b.submit) this.assertPresentations(b.calls);
+      if (b.submit) {
+        this.assertCheckIns(b.calls);
+        this.assertPresentations(b.calls);
+      }
 
       const vals = {
         workTypeId: b.workTypeId,
@@ -859,6 +874,14 @@ export class DcrService {
         presentationDistanceM = null;
         presentationAccuracyM = null;
       } else if (openingNow) {
+        // Per-call visit check-in first; Presentation is a second step on that visit.
+        if (!geoCaptureId)
+          throw err(
+            422,
+            'CALL_NOT_CHECKED_IN',
+            'Check in at this outlet before opening Presentation',
+            { outletKind: c.outletKind, outletId: c.outletId },
+          );
         if (!c.presentationCapture)
           throw err(
             422,

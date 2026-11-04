@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEMO_COMPANY_ID as A, T, U } from '@ariforce/db';
 import { Dcr, DcrOptions, DcrProducts, DcrSfcMatch } from '@ariforce/contracts';
-import { insertStaff, otherHq } from './support';
+import { ensureFieldReady, ensureVisitCheckIn, insertStaff, otherHq } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 
@@ -22,6 +22,7 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
   let leaveWriter: { id: string; bearer: string } | undefined;
   let hq2: string;
   let doctorId: string;
+  let visitId: string;
   const wt: Record<string, string> = {};
   const http = () => request(app.getHttpServer());
   const as = () => ({ authorization: me.bearer });
@@ -40,7 +41,7 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
     clientId: randomUUID(),
     outletKind: 'doctor',
     outletId: doctorId,
-    checkInId: null,
+    checkInId: visitId,
     jointWorkUserIds: [],
     productsDetailed: [],
     samples: [],
@@ -66,6 +67,8 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
       [A, T.hq],
     );
     doctorId = d.rows[0].id;
+    await ensureFieldReady(http, me.bearer);
+    visitId = await ensureVisitCheckIn(http, me.bearer, 'doctor', doctorId);
     const w = await owner.query(
       `select id, code from work_types where company_id=$1 and code in ('FIELD_HQ','MEETING','LEAVE')`,
       [A],

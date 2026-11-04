@@ -12,6 +12,7 @@ import {
   createProduct,
   ensureFieldReady,
   ensureOutletLocked,
+  ensureVisitCheckIn,
   geoCap,
   insertStaff,
 } from './support';
@@ -51,9 +52,12 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
       .body.items[0].id;
     // PTS 300 → the server values the 5-unit POB at 1500 (#40: value = quantity × PTS).
     product = await createProduct(http, tok.bm!, tok.director!, { pts: 300 });
-    // Presentation hard gate: punch-in + outlet lock before doctor call with presentationOpenedAt.
+    // Call check-in + Presentation gates: punch-in, locks, visits, then submit.
     await ensureFieldReady(http, tok.bm!);
     await ensureOutletLocked(http, tok.bm!, 'doctor', doctor);
+    await ensureOutletLocked(http, tok.bm!, 'chemist', chemist);
+    const docVisit = await ensureVisitCheckIn(http, tok.bm!, 'doctor', doctor);
+    const chemVisit = await ensureVisitCheckIn(http, tok.bm!, 'chemist', chemist);
     const res = await http()
       .put('/v1/dcrs')
       .set(as('bm'))
@@ -68,7 +72,7 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
             clientId: uuidv7(),
             outletKind: 'doctor',
             outletId: doctor,
-            checkInId: null,
+            checkInId: docVisit,
             remarks: null,
             jointWorkUserIds: [],
             productsDetailed: [{ productId: product, order: 1 }],
@@ -82,7 +86,7 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
             clientId: uuidv7(),
             outletKind: 'chemist',
             outletId: chemist,
-            checkInId: null,
+            checkInId: chemVisit,
             remarks: null,
             jointWorkUserIds: [],
             productsDetailed: [],
