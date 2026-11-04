@@ -251,8 +251,7 @@ export class CheckInsService {
             ),
           )
           .limit(1);
-        if (!dcr)
-          throw err(409, 'DCR_NOT_SUBMITTED', "Submit today's DCR before punching out");
+        if (!dcr) throw err(409, 'DCR_NOT_SUBMITTED', "Submit today's DCR before punching out");
       }
 
       let territoryId: string | null;
