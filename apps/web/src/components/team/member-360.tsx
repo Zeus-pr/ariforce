@@ -38,6 +38,9 @@ const DCR: Record<string, string> = {
   approved: 'Approved',
   rejected: 'Rejected',
 };
+/** Today is still in progress, so no punch-in yet is not an absence. */
+const attOf = (d: ActivityDay, today: string) =>
+  d.date === today && d.attendance === 'absent' && !d.dcr ? 'Not in yet' : ATT[d.attendance];
 const hm = (iso: string | null) => (iso ? timeIST(iso).replace(' IST', '') : '—');
 
 /**
@@ -64,7 +67,14 @@ export function Member360({
   const act = useMemberActivity(userId, from, to, ranged && tab !== 'leave' && !tooLong);
 
   return (
-    <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-w-0 gap-4">
+    <Tabs
+      value={tab}
+      onValueChange={(v) => {
+        setTab(v as Tab);
+        setDay(null);
+      }}
+      className="min-w-0 gap-4"
+    >
       <div className="min-w-0 overflow-x-auto">
         <TabsList className="w-max">
           <TabsTrigger value="today">Today</TabsTrigger>
@@ -205,7 +215,7 @@ function WithActivity({
 /** Key numbers for a range: few, large, scannable. */
 function Totals({ items }: { items: [string, string | number][] }) {
   return (
-    <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <dl className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]">
       {items.map(([k, v]) => (
         <div key={k} className="rounded-lg border bg-card px-3 py-2">
           <dt className="text-xs text-muted-foreground">{k}</dt>
@@ -270,10 +280,12 @@ function DcrTab(p: DayProps) {
     <div className="flex flex-col gap-4">
       <Totals
         items={[
-          ['Reports', t.dcr.submitted + t.dcr.approved + t.dcr.locked + t.dcr.rejected],
+          ['Submitted', t.dcr.submitted + t.dcr.approved + t.dcr.locked],
           ['Approved', t.dcr.approved],
+          ['Rejected', t.dcr.rejected],
+          ['Drafts', t.dcr.draft],
           ['Missing', t.dcr.missing],
-          ['Calls', t.calls],
+          ['Calls (submitted)', t.calls],
         ]}
       />
       <DayRows
@@ -287,33 +299,51 @@ function DcrTab(p: DayProps) {
                     : [],
                 )
                 .join(' · ')
-            : ATT[d.attendance],
-          side: d.dcr ? DCR[d.dcr.status] : 'No report',
+            : attOf(d, p.a.today),
+          side: d.dcr ? DCR[d.dcr.status] : p.a.today === d.date ? 'Not yet' : 'No report',
         })}
       />
     </div>
   );
 }
 
+const SUBMITTED = new Set(['submitted', 'locked', 'approved']);
+
 function PlanTab(p: DayProps) {
   const t = p.a.totals;
-  const reported = p.a.days.filter((d) => d.dcr && d.dcr.status !== 'draft').length;
-  const both = p.a.days.filter((d) => d.planned && d.dcr && d.dcr.status !== 'draft').length;
+  const done = (d: ActivityDay) => !!d.dcr && SUBMITTED.has(d.dcr.status);
+  const off = (d: ActivityDay) => ['leave', 'holiday', 'weekly_off'].includes(d.attendance);
+  const missed = p.a.days.filter((d) => d.planned && !done(d) && !off(d) && d.date !== p.a.today);
   return (
     <div className="flex flex-col gap-4">
       <Totals
         items={[
           ['Planned days', t.plannedDays],
-          ['Reported days', reported],
-          ['Planned and reported', both],
-          ['Not planned', p.a.days.filter((d) => !d.planned && d.dcr).length],
+          ['Reported days', p.a.days.filter(done).length],
+          ['Planned and reported', p.a.days.filter((d) => d.planned && done(d)).length],
+          ['Planned, not reported', missed.length],
+          ['Reported, not planned', p.a.days.filter((d) => !d.planned && done(d)).length],
         ]}
       />
       <DayRows
         {...p}
         render={(d) => ({
-          main: `${d.planned ? 'Planned' : 'Not planned'} · ${d.dcr ? `${d.dcr.workTypeName}, ${d.dcr.callCount} calls` : 'no report'}`,
-          side: d.planned && d.dcr ? 'Done' : d.planned ? 'Missed' : d.dcr ? 'Unplanned' : '—',
+          main: `${d.planned ? 'Planned' : 'Not planned'} · ${
+            d.dcr
+              ? `${d.dcr.workTypeName}, ${d.dcr.callCount} call${d.dcr.callCount === 1 ? '' : 's'} (${DCR[d.dcr.status]})`
+              : 'no report'
+          }`,
+          side: !d.planned
+            ? done(d)
+              ? 'Unplanned'
+              : '—'
+            : done(d)
+              ? 'Done'
+              : off(d)
+                ? ATT[d.attendance]
+                : d.date === p.a.today
+                  ? 'In progress'
+                  : 'Missed',
         })}
       />
     </div>
@@ -340,7 +370,7 @@ function AttendanceTab(p: DayProps) {
             : d.leave
               ? `${d.leave.typeCode}${d.leave.half ? ` (${d.leave.half.toUpperCase()})` : ''}`
               : '—',
-          side: ATT[d.attendance],
+          side: attOf(d, p.a.today),
         })}
       />
     </div>
@@ -361,17 +391,16 @@ function DayDetail({ userId, date }: { userId: string; date: string }) {
     return <Failed message={(q.error as Error).message} retry={() => void q.refetch()} />;
   if (!q.data) return <Loading />;
   const d = q.data.days[0];
-  const calls = q.data.detail?.calls ?? [];
   const points = q.data.detail?.checkIns ?? [];
   if (!d) return <Empty>Nothing on this day.</Empty>;
   return (
     <div className="flex flex-col gap-4">
       <Totals
         items={[
-          ['Attendance', ATT[d.attendance]],
+          ['Attendance', attOf(d, q.data.today)],
           ['Punch in / out', d.punchInAt ? `${hm(d.punchInAt)} – ${hm(d.punchOutAt)}` : '—'],
           ['Report', d.dcr ? DCR[d.dcr.status]! : 'None'],
-          ['Calls', d.calls],
+          ['Calls', d.dcr ? d.dcr.callCount : d.calls],
         ]}
       />
       {d.dcr && <DcrReportBody id={d.dcr.id} inline readOnly />}
@@ -385,26 +414,60 @@ function DayDetail({ userId, date }: { userId: string; date: string }) {
           label={`GPS points on ${dateLabel(date)}`}
         />
       )}
-      {calls.length > 0 ? (
-        <ul className="divide-y rounded-lg border bg-card text-sm" aria-label="Calls">
-          {calls.map((c) => (
-            <li key={c.id} className="flex items-baseline justify-between gap-3 px-4 py-2">
-              <span className="min-w-0 truncate">
-                {c.outletName ?? c.outletKind}
-                <span className="ml-2 text-muted-foreground capitalize">{c.outletKind}</span>
-              </span>
-              <span className="shrink-0 tabular-nums text-muted-foreground">{hm(c.calledAt)}</span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        !d.dcr && <Empty>No calls on this day.</Empty>
-      )}
+      {!d.dcr && <Empty>No report on this day.</Empty>}
     </div>
   );
 }
 
 type Claim = TrailClaim & { id: string; month: string; total: number };
+
+const CAT: Record<string, string> = {
+  travel: 'Travel',
+  hotel: 'Hotel',
+  food: 'Food',
+  other: 'Other',
+  allowance: 'Allowance',
+  mileage: 'Mileage',
+};
+
+/** Every live line on the month claim, with where it came from and a rejected-day flag. */
+function ClaimLines({ id }: { id: string }) {
+  const q = useQuery({
+    queryKey: ['member-claim', id],
+    queryFn: async () => {
+      await apiReady();
+      const r = await api.GET('/v1/expense-claims/{id}', { params: { path: { id } } });
+      if (!r.data) throw new Error(failureMessage(r, 'Could not load the claim lines.'));
+      return r.data.lines;
+    },
+  });
+  if (q.error)
+    return <Failed message={(q.error as Error).message} retry={() => void q.refetch()} />;
+  if (!q.data) return <Loading />;
+  if (!q.data.length) return <p className="mb-3 text-muted-foreground">No lines on this claim.</p>;
+  const from = (o?: string) => (o === 'dcr' ? 'From report' : o === 'ta_da' ? 'TA/DA' : 'Manual');
+  return (
+    <ul className="mb-3 divide-y rounded-md border bg-background" aria-label="Claim lines">
+      {[...q.data]
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map((l) => (
+          <li key={l.id} className="flex items-baseline justify-between gap-3 px-3 py-2">
+            <span className="min-w-0">
+              <span className="block">
+                {dateLabel(l.date)} · {CAT[l.category] ?? l.category}
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {from(l.origin)}
+                {l.notes ? ` · ${l.notes}` : ''}
+                {l.dcrRejectedAt ? ' · report rejected' : ''}
+              </span>
+            </span>
+            <span className="shrink-0 tabular-nums">{money(l.amount)}</span>
+          </li>
+        ))}
+    </ul>
+  );
+}
 
 function ExpensesTab({ userId, from, to }: { userId: string; from: string; to: string }) {
   const months = monthsIn(from, to);
@@ -442,10 +505,10 @@ function ExpensesTab({ userId, from, to }: { userId: string; from: string; to: s
     <div className="flex flex-col gap-4">
       <Totals
         items={[
-          ['Reported on reports', money(sum(reported.filter((x) => x.dcr.status !== 'rejected')))],
+          ['Declared on reports', money(sum(reported.filter((x) => x.dcr.status !== 'rejected')))],
           ['On rejected reports', money(sum(reported.filter((x) => x.dcr.status === 'rejected')))],
           ['Claims', q.data.length],
-          ['Claimed total', money(total)],
+          ['Month claim totals', money(total)],
         ]}
       />
       {reported.length > 0 && (
@@ -497,6 +560,7 @@ function ExpensesTab({ userId, from, to }: { userId: string; from: string; to: s
             </button>
             {open === c.id && (
               <div className="border-t px-4 py-4">
+                <ClaimLines id={c.id} />
                 <ApprovalTrail claim={c} />
                 <Link
                   href={`/expenses/${c.id}`}
