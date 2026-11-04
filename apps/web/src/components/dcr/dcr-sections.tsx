@@ -362,6 +362,8 @@ export function CallCard({
   scope,
   names,
   products,
+  detailProducts = products,
+  skuToDetail,
   productsError = null,
   onProductsRetry,
   readOnly,
@@ -375,6 +377,10 @@ export function CallCard({
   /** Names of the day's HQs and territories by id. */
   names: Map<string, string>;
   products: SelectOption[];
+  /** Doctor-detailing options: one per product name (no strength). Defaults to `products`. */
+  detailProducts?: SelectOption[];
+  /** SKU id -> the detailProducts id that represents it, so saved calls resolve. */
+  skuToDetail?: Map<string, string>;
   productsError?: string | null;
   onProductsRetry?: () => void;
   readOnly: boolean;
@@ -397,8 +403,9 @@ export function CallCard({
   const labels = new Map(call.outletId ? [[call.outletId, call.outletName]] : []);
   const productOpts: Opt[] = products.map((p) => ({ id: p.id, name: p.label }));
   const [presentationOpen, setPresentationOpen] = useState(false);
-  const detailedProducts = call.productIds
-    .map((id) => products.find((p) => p.id === id))
+  const detailIds = [...new Set(call.productIds.map((id) => skuToDetail?.get(id) ?? id))];
+  const detailedProducts = detailIds
+    .map((id) => detailProducts.find((p) => p.id === id))
     .filter((product): product is SelectOption => !!product);
   // Chemist POB may name a supplying stockist — load stockists for the day's HQs.
   const stockistsQ = useCustomers('stockist', scope, names, true);
@@ -497,12 +504,12 @@ export function CallCard({
             </span>
             <SearchSelect
               label="Products"
-              options={products}
+              options={detailProducts}
               error={productsError}
               onRetry={onProductsRetry}
               emptyText="No active products yet. Ask your administrator."
-              labels={new Map(call.productIds.map((id) => [id, 'Saved product']))}
-              value={call.productIds}
+              labels={new Map(detailIds.map((id) => [id, 'Saved product']))}
+              value={detailIds}
               onChange={(ids) => onChange({ productIds: ids, presentationOpenedAt: null })}
               multiple
               placeholder="Choose products"

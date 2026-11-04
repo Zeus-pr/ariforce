@@ -204,6 +204,8 @@ function Flow({
   const [peopleQ, setPeopleQ] = useState('');
   const [peopleError, setPeopleError] = useState<string | null>(null);
   const [products, setProducts] = useState<SelectOption[]>([]);
+  const [detailProducts, setDetailProducts] = useState<SelectOption[]>([]);
+  const [skuToDetail, setSkuToDetail] = useState<Map<string, string>>(new Map());
   const [productsError, setProductsError] = useState<string | null>(null);
   const [productsTick, setProductsTick] = useState(0);
   const [askDeviation, setAskDeviation] = useState(false);
@@ -441,16 +443,32 @@ function Flow({
       const r = { ...p, data: p.data && { items: p.data } };
       if (!live) return;
       if (!r.data) return setProductsError(failureMessage(r, 'Could not load products.'));
+      const active = r.data.items.filter((p) => p.active);
       setProducts(
-        r.data.items
-          .filter((p) => p.active)
-          .map((p) => ({
-            id: p.id,
-            label: p.name,
-            hint: p.composition,
-            imageUrl: productImageUrl(p),
-          })),
+        active.map((p) => ({
+          id: p.id,
+          label: p.name,
+          hint: p.composition,
+          imageUrl: productImageUrl(p),
+        })),
       );
+      // Doctor detailing lists one entry per product name (strength stripped); the SKU with a picture represents it.
+      const groups = new Map<string, typeof active>();
+      for (const p of active) groups.set(p.displayName, [...(groups.get(p.displayName) ?? []), p]);
+      const alias = new Map<string, string>();
+      const opts: SelectOption[] = [];
+      for (const [name, skus] of groups) {
+        const primary = skus.find((p) => productImageUrl(p)) ?? skus[0]!;
+        for (const k of skus) alias.set(k.id, primary.id);
+        opts.push({
+          id: primary.id,
+          label: name,
+          hint: primary.composition,
+          imageUrl: productImageUrl(primary),
+        });
+      }
+      setDetailProducts(opts.sort((a, b) => a.label.localeCompare(b.label)));
+      setSkuToDetail(alias);
     })().catch((e: unknown) => live && setProductsError(thrownMessage(e)));
     return () => {
       live = false;
@@ -1203,6 +1221,8 @@ function Flow({
                   scope={customerScope}
                   names={placeNames}
                   products={products}
+                  detailProducts={detailProducts}
+                  skuToDetail={skuToDetail}
                   productsError={productsError}
                   onProductsRetry={() => setProductsTick((n) => n + 1)}
                   readOnly={readOnly}
