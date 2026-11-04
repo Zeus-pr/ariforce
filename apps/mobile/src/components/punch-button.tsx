@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
+  interpolate,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -12,19 +13,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import { AppText } from './app-text';
 import { Icon } from './icon';
-import { PULSE } from './skeleton';
 import { colors, radius, spacing } from '@/theme';
 
 const DEPTH = 6; // height of the 3D edge, dp
 const FACE_H = 56;
-const SHIMMER_W = 72;
 
 /**
- * Chunky 3D "pushable" button: a darker edge sits under the face; pressing sinks the face onto
- * the edge. Emerald = Punch In, vibrant red = Punch Out.
+ * Chunky 3D "pushable" button. Emerald = Punch In, red = Punch Out.
  *
- * While GPS/API is in flight (`loading`): keep the face pressed, swap copy to “Getting location…”,
- * and run a soft indeterminate shimmer (no spinner — app convention). Reduced motion: static label only.
+ * Loading (GPS wait): face stays pressed; GPS icon breathes; two soft sonar rings expand
+ * from the icon; full-width indeterminate track runs under the label. No spinner (app rule).
  */
 export function PunchButton({
   punchedIn,
@@ -39,37 +37,61 @@ export function PunchButton({
 }) {
   const reduced = useReducedMotion();
   const sink = useSharedValue(0);
-  const shimmer = useSharedValue(0);
+  const wave = useSharedValue(0);
+  const faceW = useSharedValue(0);
   const tone = punchedIn
     ? { face: colors.punchOut, edge: colors.punchOutEdge }
     : { face: colors.punchIn, edge: colors.punchInEdge };
   const idleLabel = punchedIn ? 'Punch Out' : 'Punch In';
-  const label = loading ? 'Getting location…' : idleLabel;
+  const label = loading ? 'Locating…' : idleLabel;
   const inactive = !!(disabled || loading);
 
   useEffect(() => {
     if (loading) {
-      sink.value = withTiming(1, { duration: reduced ? 0 : 120 });
+      sink.value = withTiming(1, { duration: reduced ? 0 : 100 });
       if (!reduced) {
-        shimmer.value = 0;
-        shimmer.value = withRepeat(
-          withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.quad) }),
+        wave.value = 0;
+        wave.value = withRepeat(
+          withTiming(1, { duration: 1600, easing: Easing.out(Easing.cubic) }),
           -1,
           false,
         );
       }
       return;
     }
-    cancelAnimation(shimmer);
-    shimmer.value = 0;
-    if (!reduced) sink.value = withTiming(0, { duration: 140 });
-    else sink.value = 0;
-  }, [loading, reduced, sink, shimmer]);
+    cancelAnimation(wave);
+    wave.value = 0;
+    sink.value = reduced ? 0 : withTiming(0, { duration: 140 });
+  }, [loading, reduced, sink, wave]);
 
   const faceStyle = useAnimatedStyle(() => ({ transform: [{ translateY: sink.value * DEPTH }] }));
-  const shimmerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -SHIMMER_W + shimmer.value * (320 + SHIMMER_W) }],
-  }));
+
+  const ringA = useAnimatedStyle(() => {
+    const t = wave.value;
+    return {
+      opacity: interpolate(t, [0, 0.15, 1], [0.55, 0.35, 0]),
+      transform: [{ scale: interpolate(t, [0, 1], [0.55, 2.4]) }],
+    };
+  });
+  const ringB = useAnimatedStyle(() => {
+    const t = (wave.value + 0.5) % 1;
+    return {
+      opacity: interpolate(t, [0, 0.15, 1], [0.45, 0.28, 0]),
+      transform: [{ scale: interpolate(t, [0, 1], [0.55, 2.4]) }],
+    };
+  });
+  const iconPulse = useAnimatedStyle(() => {
+    const s = interpolate(wave.value, [0, 0.5, 1], [1, 1.12, 1]);
+    return { transform: [{ scale: reduced || !loading ? 1 : s }] };
+  });
+  const trackFill = useAnimatedStyle(() => {
+    const w = Math.max(faceW.value, 1);
+    const thumb = Math.max(56, w * 0.28);
+    return {
+      width: thumb,
+      transform: [{ translateX: interpolate(wave.value, [0, 1], [-thumb, w]) }],
+    };
+  });
 
   const press = (down: boolean) => {
     if (inactive) return;
@@ -95,25 +117,42 @@ export function PunchButton({
     >
       <View style={styles.wrap}>
         <View style={[styles.edge, { backgroundColor: tone.edge }]} />
-        <Animated.View style={[styles.face, { backgroundColor: tone.face }, faceStyle]}>
+        <Animated.View
+          style={[styles.face, { backgroundColor: tone.face }, faceStyle]}
+          onLayout={(e) => {
+            faceW.value = e.nativeEvent.layout.width;
+          }}
+        >
           <View style={styles.shine} />
-          {loading && !reduced ? (
-            <Animated.View
-              pointerEvents="none"
-              style={[styles.shimmer, shimmerStyle]}
-              accessibilityElementsHidden
-            />
-          ) : null}
-          <Animated.View style={[styles.content, loading && !reduced ? PULSE : null]}>
-            <Icon
-              name={loading ? 'crosshairs-gps' : punchedIn ? 'logout-variant' : 'login-variant'}
-              size={24}
-              color={colors.onNavy}
-            />
+          <View style={styles.content}>
+            <View style={styles.iconWrap}>
+              {loading && !reduced ? (
+                <>
+                  <Animated.View style={[styles.ring, ringA]} />
+                  <Animated.View style={[styles.ring, ringB]} />
+                </>
+              ) : null}
+              <Animated.View style={iconPulse}>
+                <Icon
+                  name={loading ? 'crosshairs-gps' : punchedIn ? 'logout-variant' : 'login-variant'}
+                  size={24}
+                  color={colors.onNavy}
+                />
+              </Animated.View>
+            </View>
             <AppText variant="button" style={styles.label}>
               {label}
             </AppText>
-          </Animated.View>
+          </View>
+          {loading ? (
+            <View style={styles.track} accessibilityElementsHidden>
+              {!reduced ? (
+                <Animated.View style={[styles.trackThumb, trackFill]} />
+              ) : (
+                <View style={[styles.trackThumb, styles.trackThumbStatic]} />
+              )}
+            </View>
+          ) : null}
         </Animated.View>
       </View>
     </Pressable>
@@ -135,7 +174,6 @@ const styles = StyleSheet.create({
     height: FACE_H,
     borderRadius: radius.lg,
     borderCurve: 'continuous',
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -145,8 +183,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
+    zIndex: 1,
   },
-  // Soft top highlight gives the face its raised, glossy look.
+  iconWrap: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ring: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.85)',
+  },
   shine: {
     position: 'absolute',
     top: 0,
@@ -155,14 +207,24 @@ const styles = StyleSheet.create({
     height: FACE_H / 2,
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
-  // Indeterminate “work is happening” sweep while GPS resolves (unknown duration).
-  shimmer: {
+  /** Full-bleed indeterminate track under the label — always spans the button. */
+  track: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    overflow: 'hidden',
+  },
+  trackThumb: {
     position: 'absolute',
     top: 0,
     bottom: 0,
-    width: SHIMMER_W,
-    backgroundColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 2,
   },
+  trackThumbStatic: { left: '30%', width: '40%', opacity: 0.75 },
   label: { color: colors.onNavy, fontSize: 18, letterSpacing: 0.3 },
   dim: { opacity: 0.55 },
 });

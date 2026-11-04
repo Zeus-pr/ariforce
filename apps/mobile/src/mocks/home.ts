@@ -3,13 +3,15 @@
  * PLACEHOLDER DATA. NOT FROM THE API.
  * ============================================================================================
  * Everything on the home screen except the signed-in user's name, company and role comes from
- * this file. Nothing is sent anywhere: punch in / punch out is local state only, and the GPS
- * line is a stub (no location is read). The screen shows a "Sample data" label while
- * HOME_IS_PLACEHOLDER is true.
+ * this file. Punch in/out on Home is live (lib/field); the canopy daily-target strip and most
+ * cards below are still mock until wired.
  *
  * Wiring later: replace getHomeMock() with one TanStack Query hook per block, keyed by user and
  * date. Suggested sources (all existing AriForce features):
  *   attendance   punch in/out with GPS                         ['attendance', date]
+ *   dailyTarget  planned calls today (tour plan / STP) vs done (DCR visits / check-ins)
+ *                total = planned outlets for the day; done = distinct outlets checked in / called
+ *                cluster / stp = territory / STP labels from the plan
  *   todayPlan    today's tour plan day (work type, area, work-with)  ['tour-plan', date]
  *   dcrToday     today's DCR status                             ['dcr', date]
  *   attention    exceptions for me (EXCEPTION_RULE_CODES)       ['exceptions', 'me']

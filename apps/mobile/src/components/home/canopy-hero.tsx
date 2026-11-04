@@ -2,7 +2,6 @@ import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { AppText } from '../app-text';
-import { Chip } from '../chip';
 import { Icon } from '../icon';
 import { PunchButton } from '../punch-button';
 import { dutyFromCheckIns, fieldErrorMessage, listTodayCheckIns, punch } from '@/lib/field';
@@ -13,19 +12,18 @@ import { colors, fonts, layout, radius, spacing } from '@/theme';
 /**
  * Stitch Field Command canopy: identity, date, Punch In / Punch Out, daily target.
  * Punch uses real GPS + POST /v1/check-ins (mobile owns capture).
+ * dailyTarget is still mock (see mocks/home.ts) until tour-plan + DCR calls are wired.
  */
 export function CanopyHero({
   name,
   role,
   now,
   data,
-  sample,
 }: {
   name: string;
   role: string;
   now: Date;
   data: Pick<HomeData, 'attendance' | 'dailyTarget'>;
-  sample?: boolean;
 }) {
   const [onDuty, setOnDuty] = useState(false);
   const [since, setSince] = useState<Date | null>(null);
@@ -114,7 +112,6 @@ export function CanopyHero({
           <AppText variant="small" style={styles.onCanopyMuted}>
             Today
           </AppText>
-          {sample ? <Chip label="Sample" tone="orange" /> : null}
         </View>
       </View>
 
