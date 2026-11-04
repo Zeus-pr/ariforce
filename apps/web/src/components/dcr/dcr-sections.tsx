@@ -401,7 +401,7 @@ export function CallCard({
   const onQuery = useCallback((q: string) => setQ(q), [setQ]);
   const noun = KIND_LABEL[call.kind];
   const labels = new Map(call.outletId ? [[call.outletId, call.outletName]] : []);
-  const productOpts: Opt[] = products.map((p) => ({ id: p.id, name: p.label }));
+  const productOpts: Opt[] = products.map((p) => ({ id: p.id, name: p.label, pts: p.pts }));
   const [presentationOpen, setPresentationOpen] = useState(false);
   const detailIds = [...new Set(call.productIds.map((id) => skuToDetail?.get(id) ?? id))];
   const detailedProducts = detailIds

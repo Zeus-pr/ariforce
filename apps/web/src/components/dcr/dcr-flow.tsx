@@ -450,6 +450,7 @@ function Flow({
           label: p.name,
           hint: p.composition,
           imageUrl: productImageUrl(p),
+          pts: p.pts,
         })),
       );
       // Doctor detailing lists one entry per product name (strength stripped); the SKU with a picture represents it.
