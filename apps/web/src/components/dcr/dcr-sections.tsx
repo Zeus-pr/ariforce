@@ -1,7 +1,15 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { CalendarPlus, Lock, MapPin, RotateCw, Trash2 } from 'lucide-react';
+import {
+  CalendarPlus,
+  CheckCircle2,
+  Lock,
+  MapPin,
+  Presentation,
+  RotateCw,
+  Trash2,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import type { Dcr } from '@ariforce/contracts';
@@ -403,6 +411,7 @@ export function CallCard({
   const labels = new Map(call.outletId ? [[call.outletId, call.outletName]] : []);
   const productOpts: Opt[] = products.map((p) => ({ id: p.id, name: p.label, pts: p.pts }));
   const [presentationOpen, setPresentationOpen] = useState(false);
+  const presentationOpened = !!call.presentationOpenedAt;
   const detailIds = [...new Set(call.productIds.map((id) => skuToDetail?.get(id) ?? id))];
   const detailedProducts = detailIds
     .map((id) => detailProducts.find((p) => p.id === id))
@@ -518,26 +527,32 @@ export function CallCard({
             />
           </div>
           {detailedProducts.length > 0 && (
-            <div
-              className="flex flex-wrap items-center gap-2"
-              data-testid="dcr-presentation-controls"
-            >
-              <span
-                className={`rounded-md px-2 py-1 text-xs font-medium ${call.presentationOpenedAt ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning-text'}`}
-                data-testid="dcr-presentation-status"
-              >
-                {call.presentationOpenedAt ? 'Presentation opened' : 'Presentation not opened'}
-              </span>
+            <div className="flex flex-col gap-2" data-testid="dcr-presentation-controls">
               <Button
                 type="button"
-                variant="outline"
+                size="lg"
+                variant={presentationOpened ? 'outline' : 'default'}
+                aria-pressed={presentationOpened}
+                className={cn(
+                  'h-11 w-full justify-center gap-2 font-semibold shadow-xs sm:max-w-sm',
+                  presentationOpened &&
+                    'border-success/35 bg-success-soft text-success hover:bg-success-soft/80 hover:text-success',
+                )}
                 onClick={() => {
                   setPresentationOpen(true);
                   if (!readOnly) onChange({ presentationOpenedAt: new Date().toISOString() });
                 }}
                 data-testid="dcr-presentation-start"
+                data-state={presentationOpened ? 'opened' : 'idle'}
               >
-                Start presentation
+                {presentationOpened ? (
+                  <CheckCircle2 className="size-4 shrink-0" aria-hidden />
+                ) : (
+                  <Presentation className="size-4 shrink-0" aria-hidden />
+                )}
+                <span data-testid="dcr-presentation-status">
+                  {presentationOpened ? 'Presentation opened' : 'Start presentation'}
+                </span>
               </Button>
               <ProductPresentation
                 products={detailedProducts}
