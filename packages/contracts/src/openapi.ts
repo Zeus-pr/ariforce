@@ -113,6 +113,9 @@ import {
   DcrUpsert,
   FieldListQuery,
   GeofenceSettings,
+  OutletLocation,
+  OutletLocationCreate,
+  OutletLocationPatch,
   TourPlan,
   TourPlanCalendar,
   StandardTourPlan,
@@ -822,6 +825,59 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '200': { description: 'Saved', ...json(GeofenceSettings) },
             '409': err('Version conflict'),
+          },
+        }),
+      },
+      '/v1/outlets/{kind}/{id}/locations': {
+        get: op({
+          tags: ['Field'],
+          operationId: 'listOutletLocations',
+          summary: 'Active locked locations for a doctor / chemist / stockist',
+          requestParams: {
+            path: z.object({ kind: z.enum(['doctor', 'chemist', 'stockist']), id: Id }),
+          },
+          responses: {
+            '200': {
+              description: 'OK',
+              ...json(
+                z
+                  .object({ items: z.array(OutletLocation), serverTime: z.iso.datetime() })
+                  .meta({ id: 'OutletLocationList' }),
+              ),
+            },
+            '404': err('Outlet not found or outside your territories'),
+          },
+        }),
+        post: op({
+          tags: ['Field'],
+          operationId: 'createOutletLocation',
+          summary:
+            'First-time lock (or add another doctor practice). Chemist/stockist: one active only. Idempotent on clientId.',
+          requestParams: {
+            path: z.object({ kind: z.enum(['doctor', 'chemist', 'stockist']), id: Id }),
+          },
+          requestBody: json(OutletLocationCreate),
+          responses: {
+            '201': { description: 'Locked', ...json(OutletLocation) },
+            '200': { description: 'Replay', ...json(OutletLocation) },
+            '409': err('LOCATION_EXISTS (chem/stockist) or IDEMPOTENCY_CONFLICT'),
+            '412': err('DEVICE_NOT_ACTIVE or CONSENT_REQUIRED'),
+            '422': err('LOW_ACCURACY / MOCK_LOCATION / invalid label'),
+          },
+        }),
+      },
+      '/v1/outlet-locations/{id}': {
+        patch: op({
+          tags: ['Field'],
+          operationId: 'patchOutletLocation',
+          summary: 'ABM→Director (and system_admin) edit / deactivate a locked location',
+          requestParams: { path: IdParam },
+          requestBody: json(OutletLocationPatch),
+          responses: {
+            '200': { description: 'Updated', ...json(OutletLocation) },
+            '403': err('BM cannot edit'),
+            '404': err('Not found'),
+            '409': err('VERSION_CONFLICT or LOCATION_EXISTS'),
           },
         }),
       },

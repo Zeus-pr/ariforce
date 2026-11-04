@@ -9,11 +9,13 @@ import {
 } from '@ariforce/contracts';
 import {
   chemists,
+  consentRecords,
   dcrCallProducts,
   dcrCallRcpa,
   dcrCalls,
   dcrs,
   dcrSfcRoutes,
+  devices,
   expenseLines,
   doctors,
   geoCaptures,
@@ -33,8 +35,9 @@ import { dayStates, loadSubs } from '../plans/tp-submissions';
 import { SUBMITTED_STATUSES, dayReport, isDaySubmittedViolation } from './day-report';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
-import { CheckInsService, err } from '../field/checkins.service';
-import { companySettings, type CompanySettings } from '../field/field.util';
+import { CheckInsService, capDate, err } from '../field/checkins.service';
+import { companySettings, localDate, type CompanySettings } from '../field/field.util';
+import { OutletLocationsService } from '../field/outlet-locations.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { ApprovalsService } from '../plans/approvals.service';
 import { autoApproveAudit, isDirector, systemPrincipal } from '../plans/auto-approve';
@@ -126,6 +129,7 @@ export class DcrService {
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
     private readonly checkIns: CheckInsService,
+    private readonly outlets: OutletLocationsService,
     private readonly approvals: ApprovalsService,
     private readonly notifications: NotificationsService,
     private readonly recheck: ExceptionRecheck,
@@ -384,6 +388,9 @@ export class DcrService {
                 })),
               remarks: c.remarks,
               presentationOpenedAt: c.presentationOpenedAt?.toISOString() ?? null,
+              presentationLocationId: c.presentationLocationId ?? null,
+              presentationDistanceM: c.presentationDistanceM ?? null,
+              presentationAccuracyM: c.presentationAccuracyM ?? null,
               calledAt: (c.calledAt ?? c.createdAt).toISOString(),
             };
           }),
@@ -799,17 +806,189 @@ export class DcrService {
           keep.length ? notInArray(dcrCalls.id, keep) : sql`true`,
         ),
       );
+    const s = await companySettings(tx, p);
+    const existing = keep.length
+      ? await tx
+          .select({
+            id: dcrCalls.id,
+            presentationOpenedAt: dcrCalls.presentationOpenedAt,
+            presentationLocationId: dcrCalls.presentationLocationId,
+            presentationDistanceM: dcrCalls.presentationDistanceM,
+            presentationAccuracyM: dcrCalls.presentationAccuracyM,
+            geoCaptureId: dcrCalls.geoCaptureId,
+          })
+          .from(dcrCalls)
+          .where(and(inArray(dcrCalls.id, keep), isNull(dcrCalls.deletedAt)))
+      : [];
+    const priorCalls = new Map(existing.map((r) => [r.id, r]));
+
+    // Batch-load locks only for calls newly opening Presentation.
+    const opening = calls.filter((c) => {
+      const was = priorCalls.get(c.clientId);
+      return !!c.presentationCapture || (!!c.presentationOpenedAt && !was?.presentationOpenedAt);
+    });
+    const locks = await this.outlets.loadActive(
+      tx,
+      opening.map((c) => ({ outletKind: c.outletKind, outletId: c.outletId })),
+    );
+    const locksByOutlet = new Map<string, typeof locks>();
+    for (const loc of locks) {
+      const k = `${loc.outletKind}:${loc.outletId}`;
+      const arr = locksByOutlet.get(k) ?? [];
+      arr.push(loc);
+      locksByOutlet.set(k, arr);
+    }
+
     for (const c of calls) {
       // calledAt is server time when the call (clientId) is first saved; re-saves keep it and any
       // client value is ignored (Sharanya, 2026-10-29).
+      const was = priorCalls.get(c.clientId);
+      let geoCaptureId = c.checkInId ?? was?.geoCaptureId ?? null;
+      let presentationOpenedAt: Date | null = c.presentationOpenedAt
+        ? new Date(c.presentationOpenedAt)
+        : null;
+      let presentationLocationId: string | null = was?.presentationLocationId ?? null;
+      let presentationDistanceM: number | null = was?.presentationDistanceM ?? null;
+      let presentationAccuracyM: number | null = was?.presentationAccuracyM ?? null;
+
+      const openingNow =
+        !!c.presentationCapture || (!!presentationOpenedAt && !was?.presentationOpenedAt);
+
+      if (!presentationOpenedAt) {
+        presentationLocationId = null;
+        presentationDistanceM = null;
+        presentationAccuracyM = null;
+      } else if (openingNow) {
+        if (!c.presentationCapture)
+          throw err(
+            422,
+            'PRESENTATION_CAPTURE_REQUIRED',
+            'presentationCapture is required when opening Presentation',
+          );
+        const cap = c.presentationCapture;
+        const dayLocs = locksByOutlet.get(`${c.outletKind}:${c.outletId}`) ?? [];
+        if (!dayLocs.length)
+          throw err(422, 'OUTLET_NOT_LOCKED', 'Lock this outlet location before Presentation', {
+            outletKind: c.outletKind,
+            outletId: c.outletId,
+          });
+
+        const day = localDate(new Date(cap.capturedAt), s.timezone);
+        const punched = await tx
+          .select({ id: geoCaptures.id })
+          .from(geoCaptures)
+          .where(
+            and(
+              eq(geoCaptures.userId, p.userId),
+              eq(geoCaptures.kind, 'punch_in'),
+              sql`${capDate(s.timezone)} = ${day}::date`,
+            ),
+          )
+          .limit(1);
+        if (!punched.length)
+          throw err(422, 'NOT_PUNCHED_IN', 'Punch in before opening Presentation');
+
+        if (cap.isMock && s.blockMockLocation)
+          throw err(422, 'MOCK_LOCATION', 'Mock location is not allowed');
+        if (cap.accuracyM > s.maxAccuracyM)
+          throw err(
+            422,
+            'LOW_ACCURACY',
+            `GPS accuracy ${cap.accuracyM} m exceeds ${s.maxAccuracyM} m`,
+            { maxAccuracyM: s.maxAccuracyM },
+          );
+
+        const hit = this.outlets.nearest(dayLocs, cap.location, cap.locationId);
+        if (!hit)
+          throw err(
+            422,
+            'LOCATION_NOT_FOUND',
+            'presentationCapture.locationId is not an active lock',
+          );
+        if (hit.distanceM > s.presentationRadiusM)
+          throw err(
+            422,
+            'PRESENTATION_OUT_OF_FENCE',
+            `You are ${hit.distanceM} m from the outlet (limit ${s.presentationRadiusM} m)`,
+            { distanceM: hit.distanceM, radiusM: s.presentationRadiusM, locationId: hit.loc.id },
+          );
+
+        const active = await tx
+          .select({ id: devices.id })
+          .from(devices)
+          .where(and(eq(devices.userId, p.userId), eq(devices.status, 'active')));
+        const deviceId = cap.deviceId ?? (active.length === 1 ? active[0]!.id : undefined);
+        if (!deviceId || !active.some((d) => d.id === deviceId))
+          throw err(412, 'DEVICE_NOT_ACTIVE', 'Enrol this device before Presentation');
+        const [consent] = await tx
+          .select({ granted: consentRecords.granted })
+          .from(consentRecords)
+          .where(
+            and(
+              eq(consentRecords.userId, p.userId),
+              eq(consentRecords.purpose, 'location_checkin'),
+            ),
+          )
+          .orderBy(desc(consentRecords.at), desc(consentRecords.id))
+          .limit(1);
+        if (!consent?.granted)
+          throw err(412, 'CONSENT_REQUIRED', 'Location check-in consent not granted');
+
+        const t = OUTLETS[c.outletKind];
+        const [o] = await tx
+          .select({ territoryId: t.territoryId })
+          .from(t)
+          .where(eq(t.id, c.outletId));
+
+        const [prevCap] = await tx
+          .select()
+          .from(geoCaptures)
+          .where(eq(geoCaptures.id, cap.clientId));
+        if (prevCap) {
+          if (prevCap.userId !== p.userId || prevCap.kind !== 'visit')
+            throw err(
+              409,
+              'IDEMPOTENCY_CONFLICT',
+              'clientId already used for a different check-in',
+            );
+          geoCaptureId = prevCap.id;
+        } else {
+          await tx.insert(geoCaptures).values({
+            id: cap.clientId,
+            companyId: p.companyId,
+            userId: p.userId,
+            deviceId,
+            kind: 'visit',
+            location: { x: cap.location.lng, y: cap.location.lat },
+            accuracyM: cap.accuracyM,
+            source: 'gps',
+            isMock: cap.isMock ?? false,
+            entityType: c.outletKind,
+            entityId: c.outletId,
+            distanceM: hit.distanceM,
+            territoryId: o?.territoryId ?? null,
+            capturedAt: new Date(cap.capturedAt),
+          });
+          geoCaptureId = cap.clientId;
+        }
+
+        presentationOpenedAt = presentationOpenedAt ?? new Date(cap.capturedAt);
+        presentationLocationId = hit.loc.id;
+        presentationDistanceM = hit.distanceM;
+        presentationAccuracyM = cap.accuracyM;
+      }
+
       const v = {
         outletKind: c.outletKind,
         outletId: c.outletId,
-        geoCaptureId: c.checkInId ?? null,
+        geoCaptureId,
         jointWorkUserId: c.jointWorkUserIds[0] ?? null,
         jointWorkUserIds: c.jointWorkUserIds,
         remarks: c.remarks ?? null,
-        presentationOpenedAt: c.presentationOpenedAt ? new Date(c.presentationOpenedAt) : null,
+        presentationOpenedAt,
+        presentationLocationId,
+        presentationDistanceM,
+        presentationAccuracyM,
       };
       await tx
         .insert(dcrCalls)

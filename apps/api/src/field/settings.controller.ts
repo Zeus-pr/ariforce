@@ -14,6 +14,8 @@ const toDto = (s: Awaited<ReturnType<typeof companySettings>>): GeofenceSettings
   maxAccuracyM: s.maxAccuracyM,
   blockOutOfFence: s.blockOutOfFence,
   blockMockLocation: s.blockMockLocation,
+  presentationRadiusM: s.presentationRadiusM,
+  lockMaxAccuracyM: s.lockMaxAccuracyM,
   version: s.version,
 });
 
@@ -46,6 +48,8 @@ export class SettingsController {
           geofenceMaxAccuracyM: b.maxAccuracyM,
           geofenceBlockOutOfFence: b.blockOutOfFence,
           geofenceBlockMock: b.blockMockLocation,
+          presentationGeofenceM: b.presentationRadiusM,
+          geoLockMaxAccuracyM: b.lockMaxAccuracyM,
         })
         .where(and(eq(companies.id, p.companyId), eq(companies.version, b.version)))
         .returning({ id: companies.id });

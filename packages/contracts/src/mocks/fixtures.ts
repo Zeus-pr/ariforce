@@ -308,6 +308,8 @@ export const geofence: GeofenceSettings = {
   maxAccuracyM: 100,
   blockOutOfFence: false,
   blockMockLocation: true,
+  presentationRadiusM: 300,
+  lockMaxAccuracyM: 80,
   version: 1,
 };
 export const consentState: ConsentState = {

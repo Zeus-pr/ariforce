@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   check,
   date,
@@ -9,6 +10,7 @@ import {
   numeric,
   pgEnum,
   pgTable,
+  real,
   smallint,
   text,
   timestamp,
@@ -277,6 +279,11 @@ export const dcrCalls = pgTable(
     remarks: text('remarks'),
     /** When the presentation was shown to the doctor (0048); required on submit for detailed doctor calls. */
     presentationOpenedAt: timestamp('presentation_opened_at', { withTimezone: true }),
+    /** Locked outlet_locations row used for the Presentation geofence check. */
+    presentationLocationId: uuid('presentation_location_id'),
+    /** Server-computed metres from the capture to presentationLocationId. */
+    presentationDistanceM: bigint('presentation_distance_m', { mode: 'number' }),
+    presentationAccuracyM: real('presentation_accuracy_m'),
     ...syncCols(),
   },
   (t) => [

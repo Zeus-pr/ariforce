@@ -11,6 +11,8 @@ export interface CompanySettings {
   maxAccuracyM: number;
   blockOutOfFence: boolean;
   blockMockLocation: boolean;
+  presentationRadiusM: number;
+  lockMaxAccuracyM: number;
   dcrLockAfterHours: number;
   version: number;
 }
@@ -61,6 +63,8 @@ async function loadCompanySettings(tx: Tx, p: Principal): Promise<CompanySetting
     maxAccuracyM: c.geofenceMaxAccuracyM,
     blockOutOfFence: c.geofenceBlockOutOfFence,
     blockMockLocation: c.geofenceBlockMock,
+    presentationRadiusM: c.presentationGeofenceM,
+    lockMaxAccuracyM: c.geoLockMaxAccuracyM,
     dcrLockAfterHours: c.dcrLockAfterHours,
     version: c.version,
   };

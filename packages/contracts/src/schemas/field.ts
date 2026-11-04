@@ -157,10 +157,86 @@ export const GeofenceSettings = z
     maxAccuracyM: z.int().min(5).max(5000),
     blockOutOfFence: z.boolean().meta({ description: 'false = allow and flag' }),
     blockMockLocation: z.boolean(),
+    presentationRadiusM: z
+      .int()
+      .min(10)
+      .max(5000)
+      .meta({ description: 'Hard Presentation gate radius (default 300)' }),
+    lockMaxAccuracyM: z
+      .int()
+      .min(5)
+      .max(5000)
+      .meta({ description: 'Max GPS accuracy allowed when locking an outlet (default 80)' }),
     version: z.int().min(1),
   })
   .meta({ id: 'GeofenceSettings' });
 export type GeofenceSettings = z.infer<typeof GeofenceSettings>;
+
+/** Fixed practice labels (doctors may have many locations; chemists/stockists one). */
+export const DoctorLocationLabel = z
+  .enum(['clinic', 'hospital', 'chamber', 'residence', 'nursing_home', 'other'])
+  .meta({ id: 'DoctorLocationLabel' });
+export const ChemistLocationLabel = z
+  .enum(['retail_shop', 'distributor_counter', 'other'])
+  .meta({ id: 'ChemistLocationLabel' });
+export const StockistLocationLabel = z
+  .enum(['godown', 'depot', 'office', 'other'])
+  .meta({ id: 'StockistLocationLabel' });
+export const OutletLocationLabel = z
+  .union([DoctorLocationLabel, ChemistLocationLabel, StockistLocationLabel])
+  .meta({ id: 'OutletLocationLabel' });
+
+export const OutletLocation = Syncable.extend({
+  outletKind: OutletKind,
+  outletId: Id,
+  label: OutletLocationLabel,
+  location: GeoPoint,
+  accuracyM: z.number().nullable(),
+  source: z.enum(['gps', 'network', 'fused', 'manual']),
+  isMock: z.boolean(),
+  lockedAt: Timestamp,
+  lockedBy: Id,
+  lockedByName: z.string().nullable().optional(),
+  active: z.boolean(),
+}).meta({ id: 'OutletLocation' });
+export type OutletLocation = z.infer<typeof OutletLocation>;
+
+export const OutletLocationCreate = z
+  .object({
+    clientId: Id.meta({ description: 'Becomes the outlet_locations id (idempotent)' }),
+    label: OutletLocationLabel,
+    deviceId: Id.optional(),
+    ...Capture.shape,
+  })
+  .meta({ id: 'OutletLocationCreate' });
+export type OutletLocationCreate = z.infer<typeof OutletLocationCreate>;
+
+export const OutletLocationPatch = z
+  .object({
+    version: z.int().min(1),
+    label: OutletLocationLabel.optional(),
+    location: GeoPoint.optional(),
+    accuracyM: z.number().min(0).max(10000).optional(),
+    active: z.boolean().optional(),
+  })
+  .meta({
+    id: 'OutletLocationPatch',
+    description: 'ABM→Director and system_admin only. Reps cannot edit after lock.',
+  });
+export type OutletLocationPatch = z.infer<typeof OutletLocationPatch>;
+
+/** GPS proof when opening Presentation (hard 300 m gate). */
+export const PresentationCapture = z
+  .object({
+    clientId: Id.meta({ description: 'Becomes the visit geo_capture id' }),
+    locationId: Id.optional().meta({
+      description: 'Specific locked location; default = nearest active location',
+    }),
+    deviceId: Id.optional(),
+    ...Capture.shape,
+  })
+  .meta({ id: 'PresentationCapture' });
+export type PresentationCapture = z.infer<typeof PresentationCapture>;
 
 /** DPDP consent state for the caller's device (#36). */
 export const ConsentState = z
@@ -401,8 +477,17 @@ export const DcrCall = z
     remarks: z.string().max(1000).nullable(),
     presentationOpenedAt: Timestamp.nullable().default(null).meta({
       description:
-        'When the product presentation was shown to the doctor (client time). Drafts may omit it; submit requires it on every doctor call with productsDetailed (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED).',
+        'When the product presentation was shown to the doctor (client time). Drafts may omit it; submit requires it on every doctor call with productsDetailed (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED). Setting it requires presentationCapture (hard geofence).',
     }),
+    presentationLocationId: Id.nullable()
+      .optional()
+      .meta({ description: 'Locked outlet_locations row used for the Presentation check' }),
+    presentationDistanceM: z
+      .number()
+      .nullable()
+      .optional()
+      .meta({ description: 'Server metres from capture to presentationLocationId' }),
+    presentationAccuracyM: z.number().nullable().optional(),
     calledAt: Timestamp.meta({
       readOnly: true,
       description:
@@ -411,13 +496,22 @@ export const DcrCall = z
   })
   .meta({ id: 'DcrCall' });
 export type DcrCall = z.infer<typeof DcrCall>;
-export const DcrCallInput = DcrCall.omit({ id: true })
+export const DcrCallInput = DcrCall.omit({
+  id: true,
+  presentationLocationId: true,
+  presentationDistanceM: true,
+  presentationAccuracyM: true,
+})
   .extend({
     clientId: Id,
     pob: z.array(PobLine).max(100),
     rcpa: z.array(RcpaLine).max(100).default([]),
     presentationOpenedAt: Timestamp.nullable().optional().meta({
       description: 'See DcrCall.presentationOpenedAt; omit or null on drafts',
+    }),
+    presentationCapture: PresentationCapture.optional().meta({
+      description:
+        'Required when setting presentationOpenedAt. Server hard-blocks outside presentationRadiusM or without punch-in / lock.',
     }),
     calledAt: Timestamp.optional().meta({
       description: 'Ignored: the server sets calledAt when the call is first saved',
