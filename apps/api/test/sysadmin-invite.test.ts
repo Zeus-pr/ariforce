@@ -189,9 +189,10 @@ describe.skipIf(!OWNER || !APP)('System admin invites any role / any territory',
     expect((await post('abm', emp('business_manager'))).status).toBe(422);
     expect((await post('director', emp('accountant'))).status).toBe(422);
     // A director has the system admin's powers over people (users:write): may add a director.
-    expect((await post('director', emp('director', { territoryIds: [T.national] }))).status).toBe(
-      201,
-    );
+    expect(
+      (await post('director', emp('director', { territoryIds: [T.national], managerId: U.vp })))
+        .status,
+    ).toBe(201);
     expect((await post('dh', emp('business_manager', { territoryIds: [T.hq] }))).status).toBe(403);
     expect(
       (await http().post(`/v1/employees/${created.accountant}/invite`).set(as('dh'))).status,
