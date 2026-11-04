@@ -186,14 +186,6 @@ describe.skipIf(!OWNER || !APP)('Sign-up requests (real API)', () => {
       (
         await http()
           .post(`/v1/signup-requests/${id}/approve`)
-          .set(as('director'))
-          .send({ role: 'director' })
-      ).status,
-    ).toBe(404);
-    expect(
-      (
-        await http()
-          .post(`/v1/signup-requests/${id}/approve`)
           .set(as('sysadmin'))
           .send({ role: 'director', managerId: U.director })
       ).status,

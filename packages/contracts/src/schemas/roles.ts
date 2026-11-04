@@ -199,6 +199,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'expenses:pay',
     'dcr_unlock:decide',
     'sales:write',
+    'users:write',
   ],
   system_admin: [
     ...BASE,

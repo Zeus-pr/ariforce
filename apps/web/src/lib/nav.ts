@@ -204,10 +204,11 @@ export const NAV: NavItem[] = [
     title: 'Invite people',
     href: '/admin/invites',
     icon: UserPlus,
-    // System admin with users:write (the API's isAdmin): any hierarchy role, any HQ, company-wide.
+    // System admin or director with users:write (the API's isAdmin): any hierarchy role, any HQ, company-wide.
     roles: ROLES.filter(
       (r) =>
-        isSystemAdmin(r) && (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
+        (isSystemAdmin(r) || r === 'director') &&
+        (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
     ),
     section: 'admin',
   },
@@ -216,10 +217,11 @@ export const NAV: NavItem[] = [
     title: 'People',
     href: '/admin/people',
     icon: UserCog,
-    // Same gate as Invite people: system admin with users:write.
+    // Same gate as Invite people: system admin or director with users:write.
     roles: ROLES.filter(
       (r) =>
-        isSystemAdmin(r) && (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
+        (isSystemAdmin(r) || r === 'director') &&
+        (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
     ),
     section: 'admin',
   },

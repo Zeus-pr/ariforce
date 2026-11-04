@@ -44,9 +44,12 @@ import { DB } from '../db/db.module';
 import { err } from '../field/checkins.service';
 
 const INVITE_DAYS = 7;
-/** System admin (with users:write) may create/manage any role, including director and functional roles. */
+/** System admin or director (with users:write) may create/manage any role, including director and functional roles. */
 const isAdmin = (p: Principal) =>
-  p.roles.includes('system_admin') && p.permissions.includes('users:write');
+  (p.roles.includes('system_admin') || p.roles.includes('director')) &&
+  p.permissions.includes('users:write');
+/** Only the system admin sits outside the reporting line; a director defaults to being the manager. */
+const outsideLine = (p: Principal) => p.roles.includes('system_admin');
 const DIRECTOR_RANK = ROLE_RANK.director;
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 export type Person = {
@@ -420,7 +423,8 @@ export class TeamService {
       await this.assertTerritoryLevels(tx, [b.role], b.territoryIds);
       const all = await this.people(tx);
       // System admin is outside the reporting line: no default manager; a director never has one.
-      const mgrId = admin ? b.managerId : (b.managerId ?? p.userId);
+      const mgrId =
+        outsideLine(p) || b.role === 'director' ? b.managerId : (b.managerId ?? p.userId);
       if (mgrId) this.assertManager(p, all, mgrId, ROLE_RANK[b.role]);
       const dup = await tx
         .select({ id: users.id })
@@ -1060,8 +1064,8 @@ export class TeamService {
           mgrId =
             b.managerId !== undefined
               ? b.managerId
-              : (r.requestedManagerId ?? (admin ? null : p.userId));
-          if (!mgrId && !admin) mgrId = p.userId;
+              : (r.requestedManagerId ?? (outsideLine(p) ? null : p.userId));
+          if (!mgrId && !outsideLine(p)) mgrId = p.userId;
           if (mgrId) {
             if (mgrId === u.id) throw err(422, 'VALIDATION', 'Reporting cycle');
             this.assertManager(p, all, mgrId, ROLE_RANK[role]);

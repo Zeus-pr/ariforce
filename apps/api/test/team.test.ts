@@ -170,7 +170,6 @@ describe.skipIf(!OWNER || !APP)('Team + employees (real API)', () => {
       designation: 'Director',
       territoryIds: [T.national],
     });
-    expect((await http().post('/v1/employees').set(as('director')).send(b)).status).toBe(403);
     expect((await http().post('/v1/employees').set(as('abm')).send(b)).status).toBe(403);
     expect(
       (

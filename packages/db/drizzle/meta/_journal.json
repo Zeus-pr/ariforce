@@ -414,6 +414,13 @@
       "when": 1793513500000,
       "tag": "0058_sales_write_perm",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1793599900000,
+      "tag": "0059_director_users_write",
+      "breakpoints": true
     }
   ]
 }
