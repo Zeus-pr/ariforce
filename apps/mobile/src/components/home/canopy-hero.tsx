@@ -118,7 +118,7 @@ export function CanopyHero({
         </View>
       </View>
 
-      <PunchButton punchedIn={onDuty} onPress={onPress} disabled={busy || !hydrated} />
+      <PunchButton punchedIn={onDuty} onPress={onPress} loading={busy} disabled={!hydrated} />
 
       <View style={styles.target}>
         <View style={styles.targetRow}>
