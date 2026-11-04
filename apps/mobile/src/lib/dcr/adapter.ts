@@ -255,7 +255,19 @@ export function usePresentationLog(date: string) {
     },
     [date],
   );
-  return { opened, ready, record };
+  /** Product list changed — Presentation no longer covers this call's deck (old-API device log). */
+  const clear = useCallback(
+    (outletId: string) => {
+      setOpened((xs) => {
+        if (!xs.includes(outletId)) return xs;
+        const next = xs.filter((id) => id !== outletId);
+        void mockSavePresentation(date, next);
+        return next;
+      });
+    },
+    [date],
+  );
+  return { opened, ready, record, clear };
 }
 
 // ---------------------------------------------------------------- review status

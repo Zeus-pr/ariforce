@@ -168,14 +168,22 @@ function DoctorProducts({
     return m;
   }, [groups]);
   const pickedReps = [...new Set(call.productIds.map((id) => groupOf.get(id)?.repId ?? id))];
-  /** Product list changes invalidate Presentation (same as web SearchSelect). */
-  const setProducts = (productIds: string[]) =>
+  /**
+   * Presentation covers this call's current product deck. Any add / remove / reorder clears it
+   * so the rep must open Presentation again on the updated list.
+   */
+  const setProducts = (productIds: string[]) => {
+    const same =
+      productIds.length === call.productIds.length &&
+      productIds.every((id, i) => id === call.productIds[i]);
+    if (same) return;
     onChange({
       productIds,
       ...(call.presentationOpened
         ? { presentationOpened: false, presentationOpenedAt: null }
         : {}),
     });
+  };
   const applyPicked = (repIds: string[]) => {
     const out: string[] = [];
     for (const rep of repIds) {
@@ -191,7 +199,7 @@ function DoctorProducts({
     const j = i + d;
     if (j < 0 || j >= xs.length) return;
     [xs[i], xs[j]] = [xs[j]!, xs[i]!];
-    onChange({ productIds: xs });
+    setProducts(xs);
   };
   const removeAt = (i: number) => setProducts(call.productIds.filter((_, j) => j !== i));
 
