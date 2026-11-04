@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
-import { Chip } from '@/components/chip';
 import { Icon } from '@/components/icon';
 import { TextField } from '@/components/text-field';
 import { formatHHmmLabel } from '@/lib/clock12';
@@ -230,18 +229,14 @@ function DoctorProducts({
       ))}
       {picked.length ? (
         <View style={styles.presRow}>
-          <Chip
-            label={call.presentationOpened ? 'Presentation opened' : 'Presentation not opened'}
-            tone={call.presentationOpened ? 'green' : 'orange'}
-          />
           <Button
-            label="Start presentation"
-            variant="tint"
-            compact
+            label={call.presentationOpened ? 'Presentation opened' : 'Start presentation'}
+            variant={call.presentationOpened ? 'success' : 'primary'}
             onPress={() => {
               setShow(true);
               if (!readOnly) onPresented();
             }}
+            style={styles.presBtn}
           />
         </View>
       ) : null}
@@ -402,11 +397,10 @@ const styles = StyleSheet.create({
   },
   order: { width: 24, textAlign: 'center', color: colors.muted },
   presRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    flexWrap: 'wrap',
+    marginTop: spacing.xs,
+  },
+  presBtn: {
+    alignSelf: 'stretch',
   },
   pob: {
     flexDirection: 'row',
