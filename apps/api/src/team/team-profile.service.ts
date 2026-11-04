@@ -276,7 +276,7 @@ export class TeamProfileService {
       const callDays = await rows<{ d: string; n: string }>(
         tx,
         sql`select to_char(c.date, 'YYYY-MM-DD') as d, count(*) as n from dcr_calls c
-            join dcrs r on r.id = c.dcr_id and r.deleted_at is null and r.status <> 'rejected'
+            join dcrs r on r.id = c.dcr_id and ${submittedReportSql('r')}
             where c.user_id = ${userId} and c.deleted_at is null
               and c.date between ${from}::date and ${to}::date group by 1`,
       );
@@ -358,7 +358,8 @@ export class TeamProfileService {
       const totals: TeamMemberActivity['totals'] = {
         days: days.length,
         present: count('present'),
-        absent: count('absent'),
+        absent: days.filter((x) => x.attendance === 'absent' && !(x.date === today && !x.dcr))
+          .length,
         leave: count('leave'),
         holiday: count('holiday'),
         weeklyOff: count('weekly_off'),
@@ -370,7 +371,10 @@ export class TeamProfileService {
           rejected: dcrCount('rejected'),
           locked: dcrCount('locked'),
           missing: days.filter(
-            (x) => !x.dcr && ['present', 'absent', 'incomplete'].includes(x.attendance),
+            (x) =>
+              !x.dcr &&
+              x.date !== today &&
+              ['present', 'absent', 'incomplete'].includes(x.attendance),
           ).length,
         },
         calls: days.reduce((a, x) => a + x.calls, 0),

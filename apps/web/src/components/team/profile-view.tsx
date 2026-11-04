@@ -23,6 +23,7 @@ import {
 } from '@ariforce/ui/components/table';
 import { Tabs, TabsList, TabsTrigger } from '@ariforce/ui/components/tabs';
 import { Member360 } from './member-360';
+import { todayIST } from '@/components/attendance/format';
 import { formatKpi, KPI_META } from '@/components/dashboard/kpi-meta';
 import { API_URL, api, apiReady, toApiError } from '@/lib/api';
 import { roleLabel } from '@/lib/roles';
@@ -345,6 +346,21 @@ type OutletRow = {
   requiredVisits?: number;
 };
 
+const monthName = new Intl.DateTimeFormat('en-IN', {
+  month: 'long',
+  timeZone: 'Asia/Kolkata',
+}).format(new Date());
+
+/** Last visit with its age, so a date in an earlier month reads right next to 0 visits this month. */
+function lastVisit(d: string | null) {
+  if (!d) return 'Never';
+  const days = Math.round(
+    (Date.parse(`${todayIST()}T00:00:00Z`) - Date.parse(`${d}T00:00:00Z`)) / 86_400_000,
+  );
+  const age = days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+  return `${day(d)} · ${age}`;
+}
+
 function Outlets({ userId }: { userId: string }) {
   const [kind, setKind] = useState<'doctors' | 'chemists'>('doctors');
   const [q, setQ] = useState('');
@@ -442,7 +458,7 @@ function Outlets({ userId }: { userId: string }) {
                 {kind === 'doctors' && <TableHead>Specialty</TableHead>}
                 <TableHead>Territory</TableHead>
                 {kind === 'doctors' && (
-                  <TableHead className="text-right">Visits this month</TableHead>
+                  <TableHead className="text-right">Visits in {monthName}</TableHead>
                 )}
                 <TableHead>Last visit</TableHead>
               </TableRow>
@@ -461,7 +477,7 @@ function Outlets({ userId }: { userId: string }) {
                       {o.visitsThisMonth ?? 0} / {o.requiredVisits ?? 0}
                     </TableCell>
                   )}
-                  <TableCell className="whitespace-nowrap">{day(o.lastVisitDate)}</TableCell>
+                  <TableCell className="whitespace-nowrap">{lastVisit(o.lastVisitDate)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
