@@ -168,6 +168,14 @@ function DoctorProducts({
     return m;
   }, [groups]);
   const pickedReps = [...new Set(call.productIds.map((id) => groupOf.get(id)?.repId ?? id))];
+  /** Product list changes invalidate Presentation (same as web SearchSelect). */
+  const setProducts = (productIds: string[]) =>
+    onChange({
+      productIds,
+      ...(call.presentationOpened
+        ? { presentationOpened: false, presentationOpenedAt: null }
+        : {}),
+    });
   const applyPicked = (repIds: string[]) => {
     const out: string[] = [];
     for (const rep of repIds) {
@@ -176,7 +184,7 @@ function DoctorProducts({
       const id = existing ?? rep;
       if (!out.includes(id)) out.push(id);
     }
-    onChange({ productIds: out });
+    setProducts(out);
   };
   const move = (i: number, d: -1 | 1) => {
     const xs = [...call.productIds];
@@ -185,6 +193,7 @@ function DoctorProducts({
     [xs[i], xs[j]] = [xs[j]!, xs[i]!];
     onChange({ productIds: xs });
   };
+  const removeAt = (i: number) => setProducts(call.productIds.filter((_, j) => j !== i));
 
   return (
     <View style={styles.block}>
@@ -222,6 +231,14 @@ function DoctorProducts({
                 style={[styles.iconBtn, i === picked.length - 1 && styles.dim]}
               >
                 <Icon name="chevron-down" color={colors.navy} size={20} />
+              </Pressable>
+              <Pressable
+                onPress={() => removeAt(i)}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${doctorProductLabel(p)}`}
+                style={styles.iconBtn}
+              >
+                <Icon name="trash-can-outline" color={colors.danger} size={20} />
               </Pressable>
             </>
           ) : null}
