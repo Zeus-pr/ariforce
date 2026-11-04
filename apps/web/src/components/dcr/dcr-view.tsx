@@ -111,7 +111,7 @@ function DcrDay({ today }: { today: string }) {
       // POB/RCPA lines must reference contract products (the server prices them from PTR).
       if (p.data)
         setOrderProducts(
-          p.data.items.filter((x) => x.active).map((x) => ({ id: x.id, name: x.name })),
+          p.data.items.filter((x) => x.active).map((x) => ({ id: x.id, name: x.name, pts: x.pts })),
         );
       if (ch.data) setChemists(ch.data.items.map((x) => ({ id: x.id, name: x.name })));
       if (st.data) setStockists(st.data.items.map((x) => ({ id: x.id, name: x.name })));
