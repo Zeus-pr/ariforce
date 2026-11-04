@@ -117,18 +117,24 @@ function DcrDay({ today }: { today: string }) {
       if (st.data) setStockists(st.data.items.map((x) => ({ id: x.id, name: x.name })));
       if (w.data) setWorkTypes(w.data.items.filter((x) => x.active));
       if (d.data) setDoctors(d.data.items);
-      if (p.data)
+      if (p.data) {
+        // One entry per product name (strength stripped); the SKU with a picture represents it.
+        const groups = new Map<string, typeof p.data.items>();
+        for (const x of p.data.items.filter((i) => i.active))
+          groups.set(x.displayName, [...(groups.get(x.displayName) ?? []), x]);
         setProducts(
-          p.data.items
-            .filter((x) => x.active)
-            .map((x) => ({
-              id: x.id,
-              name: x.name,
-              detail: x.composition,
-              isSample: x.isSample,
-              imageUrl: productImageUrl(x),
-            })),
+          [...groups].map(([name, skus]) => {
+            const main = skus.find((x) => productImageUrl(x)) ?? skus[0]!;
+            return {
+              id: main.id,
+              name,
+              detail: main.composition,
+              isSample: skus.some((x) => x.isSample),
+              imageUrl: productImageUrl(main),
+            };
+          }),
         );
+      }
     })().catch(() => {});
   }, []);
 
