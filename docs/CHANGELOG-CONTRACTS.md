@@ -10,6 +10,18 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## feat/gps-outlet-lock (2026-11-05): outlet locks + Presentation hard gate
+
+- `GeofenceSettings` gains `presentationRadiusM` (default 300) and `lockMaxAccuracyM` (default 80).
+- New `OutletLocation` / create / patch; `GET|POST /v1/outlets/{kind}/{id}/locations`,
+  `PATCH /v1/outlet-locations/{id}` (ABM→Director + system_admin for patch).
+- Doctors: unlimited locations (fixed labels). Chemists/stockists: one active.
+- `DcrCall` gains `presentationLocationId` / `presentationDistanceM` / `presentationAccuracyM`.
+- `DcrCallInput.presentationCapture` required when newly opening Presentation; server hard-blocks
+  without punch-in, without a lock, or outside `presentationRadiusM`
+  (`OUTLET_NOT_LOCKED`, `NOT_PUNCHED_IN`, `PRESENTATION_OUT_OF_FENCE`, `PRESENTATION_CAPTURE_REQUIRED`).
+- Migration `0060_outlet_locations` (tables + backfill from master `location`).
+
 ## feat/director-visibility-contract (2026-11-04): Director "see everything", additive
 
 Contract first; server in follow-up PRs (until then the API ignores the new params). No migration.

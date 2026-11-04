@@ -6,12 +6,13 @@ import {
   devices,
   doctors,
   geoCaptures,
+  outletLocations,
   stockists,
   territories,
   userTerritories,
   type Tx,
 } from '@ariforce/db';
-import { and, asc, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
@@ -239,8 +240,25 @@ export class CheckInsService {
           .where(and(eq(t.id, b.outletId!), sql`${t.deletedAt} is null`, scope));
         if (!o) throw new NotFoundException('Outlet not found');
         territoryId = o.territoryId;
-        if (o.location) {
-          distanceM = metres(b.location, { lat: o.location.y, lng: o.location.x });
+        // Prefer locked outlet_locations (nearest); fall back to denormalised master point.
+        const locks = await tx
+          .select({ location: outletLocations.location })
+          .from(outletLocations)
+          .where(
+            and(
+              eq(outletLocations.outletKind, b.outletKind!),
+              eq(outletLocations.outletId, b.outletId!),
+              eq(outletLocations.active, true),
+              isNull(outletLocations.deletedAt),
+            ),
+          );
+        const centres = locks.length
+          ? locks.map((l) => ({ lat: l.location.y, lng: l.location.x }))
+          : o.location
+            ? [{ lat: o.location.y, lng: o.location.x }]
+            : [];
+        if (centres.length) {
+          distanceM = Math.min(...centres.map((c) => metres(b.location, c)));
           inFence = distanceM <= (o.radius ?? s.radiusM);
           if (!inFence && s.blockOutOfFence)
             throw err(422, 'OUT_OF_FENCE', `You are ${distanceM} m from the outlet`, {

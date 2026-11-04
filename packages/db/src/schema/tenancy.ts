@@ -36,6 +36,10 @@ export const companies = pgTable('companies', {
   /** true = reject out-of-fence visits; false = allow and flag. */
   geofenceBlockOutOfFence: boolean('geofence_block_out_of_fence').notNull().default(false),
   geofenceBlockMock: boolean('geofence_block_mock').notNull().default(true),
+  /** Hard gate for DCR Presentation: must be within this many metres of a locked outlet location. */
+  presentationGeofenceM: integer('presentation_geofence_m').notNull().default(300),
+  /** Stricter accuracy floor when locking an outlet location (metres). */
+  geoLockMaxAccuracyM: integer('geo_lock_max_accuracy_m').notNull().default(80),
   /** SFC (Standard Fare Chart) TA rate per km, INR; amounts are computed on write. */
   sfcRatePerKm: numeric('sfc_rate_per_km', { precision: 8, scale: 2 }).notNull().default('2.95'),
   /** Server TA/DA auto-draft on DCR submit (0052). Default off; turned on per company. */

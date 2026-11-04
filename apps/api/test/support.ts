@@ -1,6 +1,89 @@
+import { randomUUID } from 'node:crypto';
+import { v7 as uuidv7 } from 'uuid';
 import type request from 'supertest';
 
 type Http = () => ReturnType<typeof request>;
+
+/** Stable Kolkata-ish point used by field / presentation fixtures. */
+export const TEST_GPS = { lat: 22.57, lng: 88.36 } as const;
+
+/** GeoCapture payload for punch-in / lock / presentationCapture. Fresh clientId each call. */
+export function geoCap(extra: Record<string, unknown> = {}) {
+  return {
+    clientId: uuidv7(),
+    location: TEST_GPS,
+    accuracyM: 15,
+    capturedAt: new Date().toISOString(),
+    isMock: false,
+    ...extra,
+  };
+}
+
+/**
+ * Enrol an active device + location consent when needed, then punch in for today (201 or 409).
+ * Required before Presentation hard-gate DCR calls.
+ */
+export async function ensureFieldReady(http: Http, auth: string): Promise<string> {
+  const hdr = { authorization: auth };
+  const me = await http().get('/v1/me/consent').set(hdr);
+  let deviceId = me.body.deviceId as string | undefined;
+  if (!me.body.canCheckIn) {
+    const dev = await http()
+      .post('/v1/devices')
+      .set(hdr)
+      .send({
+        ownership: 'personal',
+        platform: 'android',
+        installId: `pres-${randomUUID()}`,
+        model: 'Pixel',
+        osVersion: '15',
+        appVersion: '0.1.0',
+        assetTag: null,
+      });
+    if (dev.status !== 201) throw new Error(`device enrol failed: ${JSON.stringify(dev.body)}`);
+    for (const purpose of ['personal_device_enrolment', 'location_checkin'] as const) {
+      const c = await http()
+        .post(`/v1/devices/${dev.body.id}/consents`)
+        .set(hdr)
+        .send({ purpose, granted: true, noticeVersion: '2026-10-v1' });
+      if (c.status !== 201) throw new Error(`consent ${purpose} failed: ${JSON.stringify(c.body)}`);
+    }
+    deviceId = dev.body.id as string;
+  }
+  const pin = await http()
+    .post('/v1/check-ins')
+    .set(hdr)
+    .send(geoCap({ kind: 'punch_in' }));
+  if (![201, 409].includes(pin.status))
+    throw new Error(`punch_in failed: ${pin.status} ${JSON.stringify(pin.body)}`);
+  if (!deviceId) throw new Error('no deviceId after field ready');
+  return deviceId;
+}
+
+/**
+ * Ensure the outlet has at least one active lock near TEST_GPS. Idempotent.
+ * Doctor labels default to clinic; chem/stockist use retail_shop / godown.
+ */
+export async function ensureOutletLocked(
+  http: Http,
+  auth: string,
+  outletKind: 'doctor' | 'chemist' | 'stockist',
+  outletId: string,
+): Promise<string> {
+  const hdr = { authorization: auth };
+  const listed = await http().get(`/v1/outlets/${outletKind}/${outletId}/locations`).set(hdr);
+  const existing = listed.body.items as { id: string }[] | undefined;
+  if (existing?.length) return existing[0]!.id;
+  const label =
+    outletKind === 'doctor' ? 'clinic' : outletKind === 'chemist' ? 'retail_shop' : 'godown';
+  const lock = await http()
+    .post(`/v1/outlets/${outletKind}/${outletId}/locations`)
+    .set(hdr)
+    .send(geoCap({ label }));
+  if (![200, 201].includes(lock.status))
+    throw new Error(`outlet lock failed: ${lock.status} ${JSON.stringify(lock.body)}`);
+  return lock.body.id as string;
+}
 
 /** First visible product; imports a division + product as the director when the seed has none. */
 export async function ensureProduct(http: Http, bm: string, director: string): Promise<string> {

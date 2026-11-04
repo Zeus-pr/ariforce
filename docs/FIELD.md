@@ -1,6 +1,8 @@
-# Field endpoints (attendance, check-ins, devices)
+# Field endpoints (attendance, check-ins, devices, outlet locks)
 
-GPS is captured only at punch-in, visit and punch-out (stored in `geo_captures`; `clientId` is the row id).
+GPS is captured only at punch-in, visit, punch-out and outlet geo-tag (stored in `geo_captures`; `clientId` is the row id).
+Outlet locks live in `outlet_locations` (doctors: many; chemists/stockists: one active). Presentation is hard-gated to
+`companies.presentation_geofence_m` (default 300 m) of a locked location.
 
 ## POST /v1/check-ins — rules in order
 
@@ -10,12 +12,30 @@ GPS is captured only at punch-in, visit and punch-out (stored in `geo_captures`;
 4. `isMock` with `blockMockLocation` → `422 MOCK_LOCATION`; `accuracyM > maxAccuracyM` → `422 LOW_ACCURACY`.
 5. Sequence per local day (company time zone, from `capturedAt`): one punch-in, punch-in before visit/punch-out, nothing after punch-out → `409 SEQUENCE`.
 6. Visit outlet must be in the caller's territory scope → `404`.
-7. Distance (haversine, metres) to the outlet geo-tag; radius = doctor override, else company default.
-   Outside: `422 OUT_OF_FENCE` when `blockOutOfFence`, else stored with `inFence: false`.
-   Untagged outlet: `distanceM`/`inFence` null.
+7. Distance (haversine, metres) to the **nearest active** `outlet_locations` row (else the master `location`);
+   radius = doctor override, else company default. Outside: `422 OUT_OF_FENCE` when `blockOutOfFence`, else
+   stored with `inFence: false`. Untagged outlet: `distanceM`/`inFence` null.
 
 `GET /v1/check-ins?unlinked=true` returns visit check-ins not referenced by any `dcr_calls.geo_capture_id` (DCR call picker, gap #9).
 Read scope: caller + reporting line (`field:read`); `userId` outside the team → `403`.
+
+## Outlet locations (lock)
+
+- `GET /v1/outlets/{kind}/{id}/locations` — active locks (`field:read`).
+- `POST /v1/outlets/{kind}/{id}/locations` — first lock / add (`field:write`). Idempotent on `clientId`.
+  Accuracy must be ≤ `lockMaxAccuracyM` (default 80). Chemist/stockist: `409 LOCATION_EXISTS` if one is already active.
+  Doctor labels: `clinic|hospital|chamber|residence|nursing_home|other`. Chemist: `retail_shop|distributor_counter|other`.
+  Stockist: `godown|depot|office|other`.
+- `PATCH /v1/outlet-locations/{id}` — ABM→Director and system_admin only (403 for BM). Edit label/coords or deactivate.
+  Append-only `geo_lock_events` + audit.
+
+## Presentation hard gate (DCR save)
+
+When a call **newly** sets `presentationOpenedAt`, the body must include `presentationCapture`. Server requires
+punch-in that day, an active lock, and distance ≤ `presentationRadiusM` (else `NOT_PUNCHED_IN` /
+`OUTLET_NOT_LOCKED` / `PRESENTATION_OUT_OF_FENCE`). Writes a visit `geo_capture` and stores
+`presentationLocationId` / `presentationDistanceM` / `presentationAccuracyM` on the call. Re-saves keep an
+existing presentation without re-sending GPS.
 
 ## GET /v1/attendance
 
@@ -31,7 +51,7 @@ Team directory: the caller plus their reporting line; director and system admin 
 ## Settings and devices
 
 - `GET /v1/settings/geofence` (any user), `PUT` needs `settings:write` and the current `version` (`409` when stale).
-  Backed by `companies.default_geofence_m` + migration 0011 columns.
+  Includes `radiusM`, `maxAccuracyM`, `blockOutOfFence`, `blockMockLocation`, `presentationRadiusM`, `lockMaxAccuracyM`.
 - `POST /v1/devices`: company devices are active at once; personal devices stay `pending_consent` until both
   `personal_device_enrolment` and `location_checkin` are granted via `POST /v1/devices/{id}/consents`.
   Withdrawing enrolment consent revokes the device. `GET /v1/me/consent` reports `canCheckIn`.

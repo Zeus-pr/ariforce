@@ -833,6 +833,41 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/outlets/{kind}/{id}/locations': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Active locked locations for a doctor / chemist / stockist */
+    get: operations['listOutletLocations'];
+    put?: never;
+    /** First-time lock (or add another doctor practice). Chemist/stockist: one active only. Idempotent on clientId. */
+    post: operations['createOutletLocation'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/outlet-locations/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** ABM→Director (and system_admin) edit / deactivate a locked location */
+    patch: operations['patchOutletLocation'];
+    trace?: never;
+  };
   '/v1/me/consent': {
     parameters: {
       query?: never;
@@ -3187,7 +3222,56 @@ export interface components {
       /** @description false = allow and flag */
       blockOutOfFence: boolean;
       blockMockLocation: boolean;
+      /** @description Hard Presentation gate radius (default 300) */
+      presentationRadiusM: number;
+      /** @description Max GPS accuracy allowed when locking an outlet (default 80) */
+      lockMaxAccuracyM: number;
       version: number;
+    };
+    OutletLocationCreate: {
+      /**
+       * Format: uuid
+       * @description Becomes the outlet_locations id (idempotent)
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      clientId: string;
+      label: components['schemas']['OutletLocationLabel'];
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      deviceId?: string;
+      location: components['schemas']['GeoPoint'];
+      accuracyM: number;
+      /**
+       * Format: date-time
+       * @description Device clock at capture
+       */
+      capturedAt: string;
+      /**
+       * @description Mock-location flag from the OS
+       * @default false
+       */
+      isMock: boolean;
+    };
+    OutletLocationLabel:
+      | components['schemas']['DoctorLocationLabel']
+      | components['schemas']['ChemistLocationLabel']
+      | components['schemas']['StockistLocationLabel'];
+    /** @enum {string} */
+    DoctorLocationLabel: 'clinic' | 'hospital' | 'chamber' | 'residence' | 'nursing_home' | 'other';
+    /** @enum {string} */
+    ChemistLocationLabel: 'retail_shop' | 'distributor_counter' | 'other';
+    /** @enum {string} */
+    StockistLocationLabel: 'godown' | 'depot' | 'office' | 'other';
+    /** @description ABM→Director and system_admin only. Reps cannot edit after lock. */
+    OutletLocationPatch: {
+      version: number;
+      label?: components['schemas']['OutletLocationLabel'];
+      location?: components['schemas']['GeoPoint'];
+      accuracyM?: number;
+      active?: boolean;
     };
     /** @enum {string} */
     ApprovalStatus: 'draft' | 'submitted' | 'approved' | 'rejected' | 'recalled';
@@ -3469,6 +3553,8 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       clientId: string;
+      /** @description Required when setting presentationOpenedAt. Server hard-blocks outside presentationRadiusM or without punch-in / lock. */
+      presentationCapture?: components['schemas']['PresentationCapture'];
     };
     DetailedProduct: {
       /**
@@ -3520,6 +3606,38 @@ export interface components {
       prescriptions?: number | null;
       /** @description Prescribing doctor, in your scope */
       doctorId?: string | null;
+    };
+    PresentationCapture: {
+      /**
+       * Format: uuid
+       * @description Becomes the visit geo_capture id
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      clientId: string;
+      /**
+       * Format: uuid
+       * @description Specific locked location; default = nearest active location
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      locationId?: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      deviceId?: string;
+      location: components['schemas']['GeoPoint'];
+      accuracyM: number;
+      /**
+       * Format: date-time
+       * @description Device clock at capture
+       */
+      capturedAt: string;
+      /**
+       * @description Mock-location flag from the OS
+       * @default false
+       */
+      isMock: boolean;
     };
     DcrCorrectionRequest: {
       /**
@@ -5386,6 +5504,65 @@ export interface components {
         half: ('am' | 'pm') | null;
       } | null;
     };
+    OutletLocationList: {
+      items: components['schemas']['OutletLocation'][];
+      /** Format: date-time */
+      serverTime: string;
+    };
+    OutletLocation: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Tombstone: set when soft-deleted */
+      deletedAt: string | null;
+      /** @description Row version, incremented on every update (optimistic concurrency) */
+      version: number;
+      outletKind: components['schemas']['OutletKind'];
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      outletId: string;
+      label: components['schemas']['OutletLocationLabel'];
+      location: components['schemas']['GeoPointOutput'];
+      accuracyM: number | null;
+      /** @enum {string} */
+      source: 'gps' | 'network' | 'fused' | 'manual';
+      isMock: boolean;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      lockedAt: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      lockedBy: string;
+      lockedByName?: string | null;
+      active: boolean;
+    };
     ConsentState: {
       deviceId: string | null;
       ownership: ('company' | 'personal') | null;
@@ -5782,10 +5959,15 @@ export interface components {
       rcpa: components['schemas']['RcpaLineOutput'][];
       remarks: string | null;
       /**
-       * @description When the product presentation was shown to the doctor (client time). Drafts may omit it; submit requires it on every doctor call with productsDetailed (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED).
+       * @description When the product presentation was shown to the doctor (client time). Drafts may omit it; submit requires it on every doctor call with productsDetailed (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED). Setting it requires presentationCapture (hard geofence).
        * @default null
        */
       presentationOpenedAt: string | null;
+      /** @description Locked outlet_locations row used for the Presentation check */
+      presentationLocationId?: string | null;
+      /** @description Server metres from capture to presentationLocationId */
+      presentationDistanceM?: number | null;
+      presentationAccuracyM?: number | null;
       /**
        * Format: date-time
        * @description Server time when the call (clientId) was first saved to a DCR; never changes on re-save. Client values are ignored.
@@ -8580,6 +8762,10 @@ export interface components {
       /** @description false = allow and flag */
       blockOutOfFence: boolean;
       blockMockLocation: boolean;
+      /** @description Hard Presentation gate radius (default 300) */
+      presentationRadiusM: number;
+      /** @description Max GPS accuracy allowed when locking an outlet (default 80) */
+      lockMaxAccuracyM: number;
       version: number;
     };
     TourPlanDayOutput: {
@@ -12283,6 +12469,202 @@ export interface operations {
         };
       };
       /** @description Version conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listOutletLocations: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        kind: 'doctor' | 'chemist' | 'stockist';
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OutletLocationList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Outlet not found or outside your territories */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createOutletLocation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        kind: 'doctor' | 'chemist' | 'stockist';
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['OutletLocationCreate'];
+      };
+    };
+    responses: {
+      /** @description Replay */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OutletLocation'];
+        };
+      };
+      /** @description Locked */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OutletLocation'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description LOCATION_EXISTS (chem/stockist) or IDEMPOTENCY_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description DEVICE_NOT_ACTIVE or CONSENT_REQUIRED */
+      412: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description LOW_ACCURACY / MOCK_LOCATION / invalid label */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  patchOutletLocation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['OutletLocationPatch'];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OutletLocation'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description BM cannot edit */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT or LOCATION_EXISTS */
       409: {
         headers: {
           [name: string]: unknown;
