@@ -6755,6 +6755,8 @@ export interface components {
       durationMin: number | null;
       /** @description Live origin-dcr claim lines of this DCR */
       expenseTotal: number;
+      /** @description Expenses reported on the DCR itself. Stay visible when the DCR is rejected (the claim lines are removed then) */
+      expenses: components['schemas']['DcrExpenseItemOutput'][];
     };
     ActivityTotals: {
       days: number;

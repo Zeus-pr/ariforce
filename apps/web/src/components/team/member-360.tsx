@@ -281,7 +281,11 @@ function DcrTab(p: DayProps) {
         render={(d) => ({
           main: d.dcr
             ? [d.dcr.workTypeName, `${d.dcr.callCount} call${d.dcr.callCount === 1 ? '' : 's'}`]
-                .concat(d.dcr.expenseTotal ? [money(d.dcr.expenseTotal)] : [])
+                .concat(
+                  d.dcr.expenses.length
+                    ? [money(d.dcr.expenses.reduce((t, e) => t + e.amount, 0))]
+                    : [],
+                )
                 .join(' · ')
             : ATT[d.attendance],
           side: d.dcr ? DCR[d.dcr.status] : 'No report',
@@ -420,20 +424,55 @@ function ExpensesTab({ userId, from, to }: { userId: string; from: string; to: s
       return all.flatMap((r) => (r.data?.items ?? []) as unknown as Claim[]);
     },
   });
+  const act = useMemberActivity(userId, from, to);
   const [open, setOpen] = useState<string | null>(null);
   if (q.error)
     return <Failed message={(q.error as Error).message} retry={() => void q.refetch()} />;
-  if (!q.data) return <Loading />;
-  if (!q.data.length) return <Empty>No expense claims in this period.</Empty>;
+  if (act.error)
+    return <Failed message={(act.error as Error).message} retry={() => void act.refetch()} />;
+  if (!q.data || !act.data) return <Loading />;
+  const reported = act.data.days.flatMap((d) =>
+    d.dcr && d.dcr.expenses.length ? [{ date: d.date, dcr: d.dcr }] : [],
+  );
+  if (!q.data.length && !reported.length) return <Empty>No expenses in this period.</Empty>;
+  const sum = (r: typeof reported) =>
+    r.reduce((s, x) => s + x.dcr.expenses.reduce((t, e) => t + e.amount, 0), 0);
   const total = q.data.reduce((s, c) => s + c.total, 0);
   return (
     <div className="flex flex-col gap-4">
       <Totals
         items={[
+          ['Reported on reports', money(sum(reported.filter((x) => x.dcr.status !== 'rejected')))],
+          ['On rejected reports', money(sum(reported.filter((x) => x.dcr.status === 'rejected')))],
           ['Claims', q.data.length],
-          ['Total', money(total)],
+          ['Claimed total', money(total)],
         ]}
       />
+      {reported.length > 0 && (
+        <ul className="divide-y rounded-lg border bg-card text-sm">
+          {reported.map(({ date, dcr }) => (
+            <li key={date} className="px-4 py-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="font-medium">{dateLabel(date)}</span>
+                <span className="text-muted-foreground">{DCR[dcr.status]}</span>
+              </div>
+              <ul className="mt-1 space-y-0.5">
+                {dcr.expenses.map((e, i) => (
+                  <li key={i} className="flex justify-between gap-3 text-muted-foreground">
+                    <span className="min-w-0 truncate capitalize">
+                      {e.category}
+                      {e.note ? ` · ${e.note}` : ''}
+                    </span>
+                    <span className={dcr.status === 'rejected' ? 'line-through' : ''}>
+                      {money(e.amount)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      )}
       <ul className="divide-y rounded-lg border bg-card text-sm">
         {q.data.map((c) => (
           <li key={c.id}>

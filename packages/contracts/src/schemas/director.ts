@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { DateOnly, Id, Timestamp, page } from './common';
 import { RoleKey } from './roles';
 import { CheckIn, DcrCall } from './field';
+import { DcrExpenses } from './dcr-parts';
 import { AttendanceStatus } from './team-profile';
 
 /**
@@ -35,6 +36,10 @@ export const ActivityDcr = z
     endTime: z.string().nullable(),
     durationMin: z.int().nullable(),
     expenseTotal: z.number().meta({ description: 'Live origin-dcr claim lines of this DCR' }),
+    expenses: DcrExpenses.meta({
+      description:
+        'Expenses reported on the DCR itself. Stay visible when the DCR is rejected (the claim lines are removed then)',
+    }),
   })
   .meta({ id: 'ActivityDcr' });
 
