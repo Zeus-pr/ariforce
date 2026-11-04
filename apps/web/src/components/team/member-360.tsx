@@ -20,7 +20,7 @@ import { useMemberActivity } from '@/lib/team/activity';
 import { useTeamPeople } from '@/lib/team/people';
 import { RANGE_LABEL, daysIn, monthsIn, rangeOf, type RangeKey } from '@/lib/team/range';
 
-export type Tab = 'today' | 'dcrs' | 'plan' | 'attendance' | 'expenses' | 'leave' | 'performance';
+export type Tab = 'today' | 'dcrs' | 'plan' | 'expenses' | 'leave' | 'performance';
 const MAX_DAYS = 93;
 
 const ATT: Record<ActivityDay['attendance'], string> = {
@@ -70,7 +70,6 @@ export function Member360({
           <TabsTrigger value="today">Today</TabsTrigger>
           <TabsTrigger value="dcrs">DCRs</TabsTrigger>
           <TabsTrigger value="plan">Plan vs actual</TabsTrigger>
-          <TabsTrigger value="attendance">Attendance</TabsTrigger>
           {canSeeExpenses && <TabsTrigger value="expenses">Expenses</TabsTrigger>}
           <TabsTrigger value="leave">Leave</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
@@ -137,11 +136,6 @@ export function Member360({
       <TabsContent value="plan">
         <WithActivity q={act} tooLong={tooLong}>
           {(a) => <PlanTab a={a} onDay={setDay} day={day} userId={userId} />}
-        </WithActivity>
-      </TabsContent>
-      <TabsContent value="attendance">
-        <WithActivity q={act} tooLong={tooLong}>
-          {(a) => <AttendanceTab a={a} onDay={setDay} day={day} userId={userId} />}
         </WithActivity>
       </TabsContent>
       {canSeeExpenses && (
@@ -314,33 +308,6 @@ function PlanTab(p: DayProps) {
         render={(d) => ({
           main: `${d.planned ? 'Planned' : 'Not planned'} · ${d.dcr ? `${d.dcr.workTypeName}, ${d.dcr.callCount} calls` : 'no report'}`,
           side: d.planned && d.dcr ? 'Done' : d.planned ? 'Missed' : d.dcr ? 'Unplanned' : '—',
-        })}
-      />
-    </div>
-  );
-}
-
-function AttendanceTab(p: DayProps) {
-  const t = p.a.totals;
-  return (
-    <div className="flex flex-col gap-4">
-      <Totals
-        items={[
-          ['Present', t.present],
-          ['Absent', t.absent],
-          ['Leave', t.leave],
-          ['GPS points', t.checkIns],
-        ]}
-      />
-      <DayRows
-        {...p}
-        render={(d) => ({
-          main: d.punchInAt
-            ? `In ${hm(d.punchInAt)} · Out ${hm(d.punchOutAt)} · ${d.checkIns} GPS`
-            : d.leave
-              ? `${d.leave.typeCode}${d.leave.half ? ` (${d.leave.half.toUpperCase()})` : ''}`
-              : '—',
-          side: ATT[d.attendance],
         })}
       />
     </div>
