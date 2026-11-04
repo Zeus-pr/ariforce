@@ -21,6 +21,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@ariforce/ui/compo
 import { cn } from '@ariforce/ui/lib/utils';
 import { DataTable } from '@/components/data-table/data-table';
 import type { Column } from '@/components/data-table/types';
+import { OutletLocksCard } from '@/components/field/outlet-locks-card';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
 import { masterSource } from '@/components/masters/source';
 import { api, apiReady } from '@/lib/api';
@@ -355,6 +356,8 @@ function Doctor360({ id }: { id: string }) {
           </p>
         </Stat>
       </div>
+
+      <OutletLocksCard outletKind="doctor" outletId={doc.id} />
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <Card className="gap-0 py-0 shadow-xs">

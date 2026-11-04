@@ -26,6 +26,13 @@ export const canReviewSignups = (role: Role) =>
   isSystemAdmin(role) || roleLevel(role) >= roleLevel('area_business_manager');
 
 /**
+ * Who may edit / deactivate GPS outlet locks (API: ABM→Director + system_admin).
+ * BMs can create locks on Check in; only managers can fix a bad pin.
+ */
+export const canManageOutletLocks = (role: Role) =>
+  isSystemAdmin(role) || roleLevel(role) >= roleLevel('area_business_manager');
+
+/**
  * Who may mark an approved expense claim paid: the `expenses:pay` permission (API migration 0040:
  * Director and System Admin). Read from the contract's role -> permission map, with the role list
  * as a fallback in case the map lacks it. Pass the /v1/me permissions when you have them.

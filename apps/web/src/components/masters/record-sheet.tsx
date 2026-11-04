@@ -25,6 +25,7 @@ import {
 import { toast } from '@ariforce/ui/components/sonner';
 import { api, toApiError } from '@/lib/api';
 import { APPROVAL_LABEL } from '@/components/pickers/pickers';
+import { OutletLocksCard } from '@/components/field/outlet-locks-card';
 import { blankRecord, MASTERS, type MasterKind, type MasterRow } from './config';
 import { FieldInput } from './field-input';
 import { useLookups } from './lookups';
@@ -196,7 +197,7 @@ export function RecordSheet({
             </SheetDescription>
           </SheetHeader>
           {readOnly ? (
-            <ReadOnlyDetails kind={kind} values={values} />
+            <ReadOnlyDetails kind={kind} values={values} rowId={row?.id} />
           ) : (
             <form
               id="record-form"
@@ -236,6 +237,15 @@ export function RecordSheet({
                   onAddAnyway={() => void save(null, true)}
                 />
               )}
+              {row && kind !== 'doctors' ? (
+                <div className="mt-6 border-t pt-4">
+                  <OutletLocksCard
+                    compact
+                    outletKind={kind === 'chemists' ? 'chemist' : 'stockist'}
+                    outletId={row.id}
+                  />
+                </div>
+              ) : null}
             </form>
           )}
           {!readOnly && (
@@ -352,27 +362,43 @@ function DuplicatePanel({
   );
 }
 
-function ReadOnlyDetails({ kind, values }: { kind: MasterKind; values: Values }) {
+function ReadOnlyDetails({
+  kind,
+  values,
+  rowId,
+}: {
+  kind: MasterKind;
+  values: Values;
+  rowId?: string;
+}) {
   const { byId } = useLookups();
   return (
-    <dl
-      className="grid flex-1 content-start gap-3 overflow-y-auto p-4 text-sm"
-      data-testid="master-details"
-    >
-      {MASTERS[kind].fields.map((f) => {
-        const raw = values[f.key];
-        const v =
-          raw && ['territory', 'specialty', 'category'].includes(f.type)
-            ? (byId.get(raw) ?? raw)
-            : raw;
-        return (
-          <div key={f.key} className="grid gap-0.5">
-            <dt className="text-xs text-muted-foreground">{f.label}</dt>
-            <dd>{v || '—'}</dd>
-          </div>
-        );
-      })}
-    </dl>
+    <div className="flex flex-1 flex-col overflow-y-auto" data-testid="master-details">
+      <dl className="grid content-start gap-3 p-4 text-sm">
+        {MASTERS[kind].fields.map((f) => {
+          const raw = values[f.key];
+          const v =
+            raw && ['territory', 'specialty', 'category'].includes(f.type)
+              ? (byId.get(raw) ?? raw)
+              : raw;
+          return (
+            <div key={f.key} className="grid gap-0.5">
+              <dt className="text-xs text-muted-foreground">{f.label}</dt>
+              <dd>{v || '—'}</dd>
+            </div>
+          );
+        })}
+      </dl>
+      {rowId && kind !== 'doctors' ? (
+        <div className="border-t px-4 py-4">
+          <OutletLocksCard
+            compact
+            outletKind={kind === 'chemists' ? 'chemist' : 'stockist'}
+            outletId={rowId}
+          />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
