@@ -261,10 +261,11 @@ export class TeamProfileService {
         details: Record<string, unknown> | null;
         calls: string;
         exp: string | null;
+        expenses: { category: string; amount: number; note?: string | null }[] | null;
       }>(
         tx,
         sql`select r.id, to_char(r.date, 'YYYY-MM-DD') as date, r.status::text as status, r.updated_at,
-                   r.work_type_id, wt.name as wt_name, wt.kind::text as kind, r.details,
+                   r.work_type_id, wt.name as wt_name, wt.kind::text as kind, r.details, r.expenses,
                    (select count(*) from dcr_calls c where c.dcr_id = r.id and c.deleted_at is null) as calls,
                    (select sum(l.amount) from expense_lines l
                      where l.dcr_id = r.id and l.origin = 'dcr' and l.deleted_at is null) as exp
@@ -344,6 +345,7 @@ export class TeamProfileService {
                 endTime: str(det.endTime),
                 durationMin: typeof det.durationMin === 'number' ? det.durationMin : null,
                 expenseTotal: num(r.exp),
+                expenses: (r.expenses ?? []) as never,
               }
             : null,
           calls: num(callDays.find((x) => x.d === d)?.n),

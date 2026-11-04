@@ -30411,6 +30411,14 @@
           "expenseTotal": {
             "type": "number",
             "description": "Live origin-dcr claim lines of this DCR"
+          },
+          "expenses": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrExpenseItemOutput"
+            },
+            "description": "Expenses reported on the DCR itself. Stay visible when the DCR is rejected (the claim lines are removed then)"
           }
         },
         "required": [
@@ -30422,7 +30430,8 @@
           "startTime",
           "endTime",
           "durationMin",
-          "expenseTotal"
+          "expenseTotal",
+          "expenses"
         ],
         "additionalProperties": false
       },
