@@ -1,12 +1,12 @@
 /**
- * Builds the latest role-permissions migration (0019 baseline, 0022 expenses, 0025 leave, 0033 product prices, 0039 SFC, 0040 expenses:pay, now 0058 sales:write) from DEFAULT_ROLE_PERMISSIONS in
+ * Builds the latest role-permissions migration (0019 baseline, 0022 expenses, 0025 leave, 0033 product prices, 0039 SFC, 0040 expenses:pay, 0058 sales:write, now 0059 director users:write) from DEFAULT_ROLE_PERMISSIONS in
  * @ariforce/contracts, the same constant the seed uses, so the SQL and the code cannot drift.
  * Regenerate: pnpm -F @ariforce/db db:role-perms   Check: pnpm -F @ariforce/db db:role-perms:check
  */
 import { DEFAULT_ROLE_PERMISSIONS, ROLE_KEYS } from '../../contracts/src/schemas/roles';
 
 /** Applied 0019 stays frozen; each permission change gets a NEW generated migration (set, not append). */
-export const ROLE_PERMISSIONS_MIGRATION = '0058_sales_write_perm';
+export const ROLE_PERMISSIONS_MIGRATION = '0059_director_users_write';
 
 /** Sorted, de-duplicated permission list per role (the exact array written to roles.permissions). */
 export function rolePermissionMatrix(): Record<string, string[]> {

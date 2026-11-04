@@ -44,9 +44,10 @@ import { DB } from '../db/db.module';
 import { err } from '../field/checkins.service';
 
 const INVITE_DAYS = 7;
-/** System admin (with users:write) may create/manage any role, including director and functional roles. */
+/** System admin or director (with users:write) may create/manage any role, including director and functional roles. */
 const isAdmin = (p: Principal) =>
-  p.roles.includes('system_admin') && p.permissions.includes('users:write');
+  (p.roles.includes('system_admin') || p.roles.includes('director')) &&
+  p.permissions.includes('users:write');
 const DIRECTOR_RANK = ROLE_RANK.director;
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 export type Person = {
