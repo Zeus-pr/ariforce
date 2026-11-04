@@ -17,7 +17,6 @@ import {
   CircleAlert,
   ClipboardList,
   LayoutDashboard,
-  MapPin,
   ReceiptText,
   CalendarOff,
   Tags,
@@ -69,14 +68,6 @@ export const NAV: NavItem[] = [
     icon: LayoutDashboard,
     roles: SALES,
     section: 'workspace',
-  },
-  {
-    slug: 'attendance',
-    title: 'Attendance',
-    href: '/attendance',
-    icon: MapPin,
-    roles: SALES,
-    section: 'field',
   },
   { slug: 'dcr', title: 'DCR', href: '/dcr', icon: ClipboardList, roles: SALES, section: 'field' },
   {
