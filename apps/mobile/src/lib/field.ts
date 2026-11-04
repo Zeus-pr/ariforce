@@ -183,8 +183,23 @@ export async function punch(kind: 'punch_in' | 'punch_out'): Promise<CheckIn> {
   return postCheckIn(kind, { deviceId });
 }
 
-/** Visit check-in: field ready → lock if needed → visit. Returns check-in id for DcrCall.checkInId. */
+/** True when today has punch_in and no punch_out yet. */
+export async function isOnDuty(): Promise<boolean> {
+  return dutyFromCheckIns(await listTodayCheckIns()).onDuty;
+}
+
+/**
+ * Visit / Presentation require an open punch-in for the local day.
+ * Throws ApiError SEQUENCE so fieldErrorMessage points the user to Home.
+ */
+export async function requireOnDuty(): Promise<void> {
+  if (await isOnDuty()) return;
+  throw new ApiError(409, 'SEQUENCE', 'Punch in on Home first, then check in at the call.');
+}
+
+/** Visit check-in: on duty → field ready → lock if needed → visit. Returns check-in id. */
 export async function visitCheckIn(outletKind: OutletKind, outletId: string): Promise<string> {
+  await requireOnDuty();
   const deviceId = await ensureFieldReady();
   const fix = await getFix();
   await ensureOutletLocked(outletKind, outletId, fix, deviceId);
@@ -194,6 +209,7 @@ export async function visitCheckIn(outletKind: OutletKind, outletId: string): Pr
 
 /** GPS proof body for opening Presentation (attach to draft call). */
 export async function capturePresentation(): Promise<PresentationCaptureDraft> {
+  await requireOnDuty();
   const deviceId = await ensureFieldReady();
   const fix = await getFix();
   return {

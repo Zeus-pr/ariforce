@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
@@ -13,7 +13,7 @@ import {
   type DcrDetailProduct,
   type ProductOpt,
 } from '@/lib/dcr/adapter';
-import { capturePresentation, fieldErrorMessage, visitCheckIn } from '@/lib/field';
+import { capturePresentation, fieldErrorMessage, isOnDuty, visitCheckIn } from '@/lib/field';
 import { KIND_LABEL, type CallDraft, type PobDraft } from '@/lib/dcr/model';
 import { formatINR } from '@/lib/money';
 import { colors, radius, spacing, touch } from '@/theme';
@@ -56,18 +56,43 @@ export function CallEditor({
 }) {
   const [pick, setPick] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [onDuty, setOnDuty] = useState<boolean | null>(null);
   const label = KIND_LABEL[call.kind];
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
   const isProd = (e: string) => /product|presentation|order|POB|check.?in/i.test(e);
   const checkedIn = !!call.checkInId;
+
+  useEffect(() => {
+    if (readOnly || !call.outletId || checkedIn) return;
+    let live = true;
+    void isOnDuty()
+      .then((v) => {
+        if (live) setOnDuty(v);
+      })
+      .catch(() => {
+        if (live) setOnDuty(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [readOnly, call.outletId, checkedIn]);
+
   const onCheckIn = async () => {
     if (readOnly || checkedIn || !call.outletId || checkingIn) return;
+    if (onDuty === false) {
+      Alert.alert('Punch in first', 'Punch in on Home before checking in at a call.');
+      return;
+    }
     setCheckingIn(true);
     try {
       const checkInId = await visitCheckIn(call.kind, call.outletId);
       onChange({ checkInId });
+      setOnDuty(true);
     } catch (e) {
       Alert.alert('Check-in failed', fieldErrorMessage(e));
+      void isOnDuty()
+        .then(setOnDuty)
+        .catch(() => {});
     } finally {
       setCheckingIn(false);
     }
@@ -104,8 +129,8 @@ export function CallEditor({
       />
       {call.outletId ? (
         <Button
-          label={checkedIn ? 'Checked in' : 'Check in'}
-          variant={checkedIn ? 'success' : 'primary'}
+          label={checkedIn ? 'Checked in' : onDuty === false ? 'Punch in first' : 'Check in'}
+          variant={checkedIn ? 'success' : onDuty === false ? 'secondary' : 'primary'}
           disabled={readOnly || checkedIn}
           loading={checkingIn}
           loadingLabel="Getting location…"
