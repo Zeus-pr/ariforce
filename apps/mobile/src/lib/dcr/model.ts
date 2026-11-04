@@ -9,7 +9,12 @@ import { bandOf, categoryFitsBand, sfcCategoryOf } from './bands';
 import type { ApiError } from '../api';
 import { tpCaps } from '../tp/caps';
 import { dcrDateNotTodayMessage } from './date-rule';
-import { callPresentationOpened, presentationInput, sendsCalledAt } from './adapter';
+import {
+  callPresentationOpened,
+  presentationInput,
+  sendsCalledAt,
+  type PresentationCaptureDraft,
+} from './adapter';
 
 export type WorkTypeOption = {
   id: string;
@@ -171,10 +176,14 @@ export type CallDraft = {
   productIds: string[];
   /** Chemist / stockist calls: the POB (quantities; valued at PTS on screen). */
   pob: PobDraft[];
+  /** Visit check-in id (geo at this outlet). Required to submit; doctors need it before Presentation. */
+  checkInId: string | null;
   /** Doctor calls: the product presentation was opened (see lib/dcr/adapter.ts). */
   presentationOpened: boolean;
   /** Server value once saved (new API); kept so a re-save never moves it. */
   presentationOpenedAt?: string | null;
+  /** GPS proof when newly opening Presentation (hard geofence); omit on re-save once opened. */
+  presentationCapture?: PresentationCaptureDraft | null;
   remarks: string;
 };
 export type PobDraft = { productId: string; quantity: number };
@@ -368,6 +377,17 @@ export function problems(
         if (c.kind === 'doctor' && c.outletId && !c.productIds.length)
           add(`call-${c.clientId}`, `Call ${i + 1}: pick the products you detailed.`);
       });
+      const noCheck = s.calls
+        .map((c, i) => ({ c, i }))
+        .filter(({ c }) => c.outletId && !c.checkInId);
+      if (noCheck.length) {
+        const who = noCheck.map(
+          ({ c, i }) => `call ${i + 1}${c.outletName ? ` (${c.outletName})` : ''}`,
+        );
+        add('checkin', `Check in at ${who.join(', ')} before submitting.`);
+        for (const { c } of noCheck)
+          add(`call-${c.clientId}`, 'Check in at this outlet before submitting.');
+      }
       const unseen = s.calls
         .map((c, i) => ({ c, i }))
         .filter(({ c }) => c.kind === 'doctor' && c.productIds.length && !c.presentationOpened);
@@ -452,7 +472,7 @@ export function draftBody(
           clientId: c.clientId,
           outletKind: c.kind,
           outletId: c.outletId,
-          checkInId: null,
+          checkInId: c.checkInId,
           jointWorkUserIds: s.workWith,
           productsDetailed:
             c.kind === 'doctor'
@@ -467,7 +487,7 @@ export function draftBody(
                   .filter((l) => l.quantity >= 1)
                   .map((l) => ({ productId: l.productId, quantity: l.quantity })),
           ...(c.kind === 'doctor'
-            ? presentationInput(c.presentationOpened, c.presentationOpenedAt)
+            ? presentationInput(c.presentationOpened, c.presentationOpenedAt, c.presentationCapture)
             : {}),
           rcpa: [],
           remarks: c.remarks.trim() || null,
@@ -495,6 +515,7 @@ export function callsFromDcr(d: Dcr, names: Map<string, string>): CallDraft[] {
     time: timeOfIso(c.calledAt),
     productIds: [...c.productsDetailed].sort((a, b) => a.order - b.order).map((p) => p.productId),
     pob: c.pob.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+    checkInId: c.checkInId ?? null,
     presentationOpened: callPresentationOpened(c) ?? false,
     presentationOpenedAt:
       (c as typeof c & { presentationOpenedAt?: string | null }).presentationOpenedAt ?? null,
@@ -539,6 +560,29 @@ export function dcrErrorMessage(e: ApiError): string {
       return 'Pick Travel, Hotel, Food or Other for each expense.';
     case 'DEVIATION_REASON_REQUIRED':
       return 'Say why the day differs from your approved tour plan.';
+    case 'CALL_NOT_CHECKED_IN':
+      return 'Check in at each call before saving or opening Presentation.';
+    case 'PRESENTATION_CAPTURE_REQUIRED':
+      return 'Open Presentation on the phone so GPS can be recorded.';
+    case 'PRESENTATION_OUT_OF_FENCE':
+      return 'You are too far from the locked location to open Presentation.';
+    case 'OUTLET_NOT_LOCKED':
+      return 'Check in at the outlet first so its location can be locked.';
+    case 'NOT_PUNCHED_IN':
+      return 'Punch in on Home before opening Presentation.';
+    case 'VALIDATION': {
+      const reason =
+        e.details &&
+        typeof e.details === 'object' &&
+        'reason' in e.details &&
+        typeof (e.details as { reason?: unknown }).reason === 'string'
+          ? (e.details as { reason: string }).reason
+          : null;
+      if (reason === 'CALL_NOT_CHECKED_IN') return 'Check in at each call before submitting.';
+      if (reason === 'PRESENTATION_NOT_OPENED')
+        return 'Open Presentation on every doctor call with products before submitting.';
+      return e.message || 'Could not save. Try again.';
+    }
     default:
       return e.message || 'Could not save. Try again.';
   }

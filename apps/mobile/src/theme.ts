@@ -47,6 +47,7 @@ export const colors = {
   dangerBorder: '#FBD5D0',
   success: '#15803D', // 5:1 on white, for text
   successWash: '#E8F6EC',
+  successWashPressed: '#D5EDDC',
   info: '#2563C9', // 5:1 on infoWash, for text and icons
   infoWash: '#EAF1FD',
   infoWashPressed: '#D9E6FB',

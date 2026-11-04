@@ -17,7 +17,15 @@ const FACE_H = 56;
  * Chunky 3D "pushable" button: a darker edge sits under the face; pressing sinks the face onto
  * the edge. Emerald = Punch In, vibrant red = Punch Out.
  */
-export function PunchButton({ punchedIn, onPress }: { punchedIn: boolean; onPress: () => void }) {
+export function PunchButton({
+  punchedIn,
+  onPress,
+  disabled,
+}: {
+  punchedIn: boolean;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
   const reduced = useReducedMotion();
   const sink = useSharedValue(0);
   const tone = punchedIn
@@ -27,20 +35,24 @@ export function PunchButton({ punchedIn, onPress }: { punchedIn: boolean; onPres
 
   const faceStyle = useAnimatedStyle(() => ({ transform: [{ translateY: sink.value * DEPTH }] }));
   const press = (down: boolean) => {
+    if (disabled) return;
     sink.value = reduced ? (down ? 1 : 0) : withTiming(down ? 1 : 0, { duration: down ? 60 : 140 });
   };
 
   return (
     <Pressable
+      disabled={disabled}
       onPressIn={() => {
         press(true);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+        if (!disabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
       }}
       onPressOut={() => press(false)}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
       accessibilityHint={punchedIn ? 'Ends your shift' : 'Starts your shift'}
+      style={disabled ? styles.dim : undefined}
     >
       <View style={styles.wrap}>
         <View style={[styles.edge, { backgroundColor: tone.edge }]} />
@@ -91,4 +103,5 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
   label: { color: colors.onNavy, fontSize: 18, letterSpacing: 0.3 },
+  dim: { opacity: 0.55 },
 });
