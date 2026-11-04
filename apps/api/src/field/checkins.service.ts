@@ -218,10 +218,14 @@ export class CheckInsService {
         .from(geoCaptures)
         .where(and(eq(geoCaptures.userId, p.userId), sql`${capDate(s.timezone)} = ${day}::date`));
       const has = (k: string) => today.some((r) => r.kind === k);
-      if (b.kind === 'punch_in' && has('punch_in'))
+      // Default: one punch_in / day, and nothing after punch_out.
+      // FIELD_RELAX_PUNCH_SEQUENCE=1 (temp testing): allow re-punch-in after punch-out / multiple punch-ins.
+      const relaxSequence = process.env.FIELD_RELAX_PUNCH_SEQUENCE === '1';
+      if (!relaxSequence && b.kind === 'punch_in' && has('punch_in'))
         throw err(409, 'SEQUENCE', 'Already punched in today');
       if (b.kind !== 'punch_in' && !has('punch_in')) throw err(409, 'SEQUENCE', 'Punch in first');
-      if (has('punch_out')) throw err(409, 'SEQUENCE', 'Already punched out today');
+      if (!relaxSequence && has('punch_out'))
+        throw err(409, 'SEQUENCE', 'Already punched out today');
 
       let territoryId: string | null;
       let distanceM: number | null = null;
