@@ -8,7 +8,7 @@ import { monthDates } from '@ariforce/contracts';
 import { T } from '@ariforce/db';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
-import { ensureProduct } from './support';
+import { ensureFieldReady, ensureOutletLocked, ensureProduct, geoCap } from './support';
 
 const OWNER = process.env.DIRECT_URL;
 const APP = process.env.DATABASE_URL;
@@ -53,6 +53,9 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
     doctor = (await http().get('/v1/doctors?approvalStatus=approved&limit=1').set(as('bm'))).body
       .items[0].id;
     product = await ensureProduct(http, tok.bm!, tok.director!);
+    // Presentation hard gate: punch-in + outlet lock before doctor calls with presentationOpenedAt.
+    await ensureFieldReady(http, tok.bm!);
+    await ensureOutletLocked(http, tok.bm!, 'doctor', doctor);
     // Approved tour plan for this month: field work in T.hq every day.
     const entry = { session: 'full', workTypeId: field, territoryIds: [T.hq] };
     const days = monthDates(M).map((date) => ({ date, entries: [entry] }));
@@ -84,6 +87,7 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
     checkInId: null,
     remarks: null,
     presentationOpenedAt: new Date().toISOString(),
+    presentationCapture: geoCap(),
     calledAt: new Date().toISOString(),
     ...over,
   });

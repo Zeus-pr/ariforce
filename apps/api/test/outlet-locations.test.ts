@@ -19,6 +19,8 @@ const id7 = () => {
 const HOME = { lat: 22.57, lng: 88.36 };
 const FAR = { lat: 22.6, lng: 88.36 }; // ~3.3 km
 const RUN = Date.now().toString(36);
+/** Company DCR day is Asia/Kolkata — never use UTC `toISOString().slice(0,10)`. */
+const istToday = () => new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10);
 
 describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () => {
   let app: INestApplication;
@@ -116,7 +118,7 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
       .set(as('bm'))
       .send(cap({ label: 'clinic', accuracyM: 200 }));
     expect(blurry.status).toBe(422);
-    expect(blurry.body.code).toBe('LOW_ACCURACY');
+    expect(blurry.body.error.code).toBe('LOW_ACCURACY');
 
     const lockBody = cap({ label: 'clinic' });
     const lock = await http()
@@ -171,7 +173,7 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
       .set(as('bm'))
       .send(cap({ label: 'distributor_counter' }));
     expect(c2.status).toBe(409);
-    expect(c2.body.code).toBe('LOCATION_EXISTS');
+    expect(c2.body.error.code).toBe('LOCATION_EXISTS');
 
     const bmPatch = await http()
       .patch(`/v1/outlet-locations/${lock.body.id}`)
@@ -193,7 +195,7 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
     expect(g.body.presentationRadiusM).toBe(300);
     expect(g.body.lockMaxAccuracyM).toBe(80);
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = istToday();
     const opt = await http().get(`/v1/dcrs/options?date=${today}`).set(as('bm'));
     expect(opt.status, JSON.stringify(opt.body)).toBe(200);
     const workTypeId = (opt.body.workTypes as { id: string; kind: string }[]).find(
@@ -212,6 +214,7 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
       clientId: id7(),
       outletKind: 'doctor' as const,
       outletId: docId,
+      checkInId: null,
       jointWorkUserIds: [],
       productsDetailed: [],
       samples: [],
@@ -232,7 +235,7 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
         calls: [draftCall({ presentationCapture: cap({}) })],
       });
     expect(openNoLock.status, JSON.stringify(openNoLock.body)).toBe(422);
-    expect(openNoLock.body.code).toBe('OUTLET_NOT_LOCKED');
+    expect(openNoLock.body.error.code).toBe('OUTLET_NOT_LOCKED');
 
     const lock = await http()
       .post(`/v1/outlets/doctor/${docId}/locations`)
@@ -250,7 +253,7 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
         calls: [draftCall({ presentationCapture: cap({ location: FAR }) })],
       });
     expect(far.status, JSON.stringify(far.body)).toBe(422);
-    expect(far.body.code).toBe('PRESENTATION_OUT_OF_FENCE');
+    expect(far.body.error.code).toBe('PRESENTATION_OUT_OF_FENCE');
 
     const ok = await http()
       .put('/v1/dcrs/draft')

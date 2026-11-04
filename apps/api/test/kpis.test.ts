@@ -8,7 +8,13 @@ import { calendarWorkingDates } from '@ariforce/contracts';
 import { T, U } from '@ariforce/db';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
-import { createProduct, insertStaff } from './support';
+import {
+  createProduct,
+  ensureFieldReady,
+  ensureOutletLocked,
+  geoCap,
+  insertStaff,
+} from './support';
 
 const OWNER = process.env.DIRECT_URL;
 const APP = process.env.DATABASE_URL;
@@ -45,6 +51,9 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
       .body.items[0].id;
     // PTS 300 → the server values the 5-unit POB at 1500 (#40: value = quantity × PTS).
     product = await createProduct(http, tok.bm!, tok.director!, { pts: 300 });
+    // Presentation hard gate: punch-in + outlet lock before doctor call with presentationOpenedAt.
+    await ensureFieldReady(http, tok.bm!);
+    await ensureOutletLocked(http, tok.bm!, 'doctor', doctor);
     const res = await http()
       .put('/v1/dcrs')
       .set(as('bm'))
@@ -66,6 +75,7 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
             samples: [{ productId: product, quantity: 3 }],
             pob: [],
             presentationOpenedAt: new Date().toISOString(),
+            presentationCapture: geoCap(),
             calledAt: new Date().toISOString(),
           },
           {
