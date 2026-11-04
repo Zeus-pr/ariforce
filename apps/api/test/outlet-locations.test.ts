@@ -4,9 +4,10 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { T } from '@ariforce/db';
+import { T, U } from '@ariforce/db';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
+import { ensureFieldReady, insertStaff } from './support';
 
 const OWNER = process.env.DIRECT_URL;
 const APP = process.env.DATABASE_URL;
@@ -190,24 +191,24 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
   });
 
   it('presentation hard-blocks without lock / outside 300m; allows in fence', async () => {
-    await enrolBmDevice();
+    // Own BM so seed-bm DCR submits in other files cannot 409 DAY_ALREADY_SUBMITTED.
+    const staff = await insertStaff(`outlet-pres-${RUN}@example.test`, 'business_manager', U.area, [
+      T.hq,
+    ]);
+    tok.pres = staff.bearer;
+    await ensureFieldReady(http, tok.pres);
+
     const g = await http().get('/v1/settings/geofence').set(as('director'));
     expect(g.body.presentationRadiusM).toBe(300);
     expect(g.body.lockMaxAccuracyM).toBe(80);
 
     const today = istToday();
-    const opt = await http().get(`/v1/dcrs/options?date=${today}`).set(as('bm'));
+    const opt = await http().get(`/v1/dcrs/options?date=${today}`).set(as('pres'));
     expect(opt.status, JSON.stringify(opt.body)).toBe(200);
     const workTypeId = (opt.body.workTypes as { id: string; kind: string }[]).find(
       (w) => w.kind === 'field',
     )?.id;
     expect(workTypeId).toBeTruthy();
-
-    const pin = await http()
-      .post('/v1/check-ins')
-      .set(as('bm'))
-      .send(cap({ kind: 'punch_in' }));
-    expect([201, 409]).toContain(pin.status);
 
     const docId = await makeDoctor(`Dr Pres ${RUN}`);
     const draftCall = (extra: object) => ({
@@ -224,50 +225,31 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
       presentationOpenedAt: new Date().toISOString(),
       ...extra,
     });
+    const draft = (calls: object[]) =>
+      http()
+        .put('/v1/dcrs/draft')
+        .set(as('pres'))
+        .send({ date: today, workTypeId, territoryIds: [T.hq], calls });
 
-    const openNoLock = await http()
-      .put('/v1/dcrs/draft')
-      .set(as('bm'))
-      .send({
-        date: today,
-        workTypeId,
-        territoryIds: [T.hq],
-        calls: [draftCall({ presentationCapture: cap({}) })],
-      });
+    const openNoLock = await draft([draftCall({ presentationCapture: cap({}) })]);
     expect(openNoLock.status, JSON.stringify(openNoLock.body)).toBe(422);
     expect(openNoLock.body.error.code).toBe('OUTLET_NOT_LOCKED');
 
     const lock = await http()
       .post(`/v1/outlets/doctor/${docId}/locations`)
-      .set(as('bm'))
+      .set(as('pres'))
       .send(cap({ label: 'clinic' }));
-    expect(lock.status).toBe(201);
+    expect(lock.status, JSON.stringify(lock.body)).toBe(201);
 
-    const far = await http()
-      .put('/v1/dcrs/draft')
-      .set(as('bm'))
-      .send({
-        date: today,
-        workTypeId,
-        territoryIds: [T.hq],
-        calls: [draftCall({ presentationCapture: cap({ location: FAR }) })],
-      });
+    const far = await draft([draftCall({ presentationCapture: cap({ location: FAR }) })]);
     expect(far.status, JSON.stringify(far.body)).toBe(422);
     expect(far.body.error.code).toBe('PRESENTATION_OUT_OF_FENCE');
 
-    const ok = await http()
-      .put('/v1/dcrs/draft')
-      .set(as('bm'))
-      .send({
-        date: today,
-        workTypeId,
-        territoryIds: [T.hq],
-        calls: [
-          draftCall({
-            presentationCapture: cap({ location: { lat: 22.5705, lng: 88.36 } }),
-          }),
-        ],
-      });
+    const ok = await draft([
+      draftCall({
+        presentationCapture: cap({ location: { lat: 22.5705, lng: 88.36 } }),
+      }),
+    ]);
     expect(ok.status, JSON.stringify(ok.body)).toBe(200);
     const call = ok.body.calls?.[0];
     expect(call?.presentationLocationId).toBeTruthy();
