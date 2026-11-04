@@ -1,8 +1,7 @@
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
-import { Chip } from '@/components/chip';
 import { Icon } from '@/components/icon';
 import { TextField } from '@/components/text-field';
 import { formatHHmmLabel } from '@/lib/clock12';
@@ -14,6 +13,7 @@ import {
   type DcrDetailProduct,
   type ProductOpt,
 } from '@/lib/dcr/adapter';
+import { capturePresentation, fieldErrorMessage, isOnDuty, visitCheckIn } from '@/lib/field';
 import { KIND_LABEL, type CallDraft, type PobDraft } from '@/lib/dcr/model';
 import { formatINR } from '@/lib/money';
 import { colors, radius, spacing, touch } from '@/theme';
@@ -55,9 +55,48 @@ export function CallEditor({
   onPresented: () => void;
 }) {
   const [pick, setPick] = useState(false);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [onDuty, setOnDuty] = useState<boolean | null>(null);
   const label = KIND_LABEL[call.kind];
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
-  const isProd = (e: string) => /product|presentation|order|POB/i.test(e);
+  const isProd = (e: string) => /product|presentation|order|POB|check.?in/i.test(e);
+  const checkedIn = !!call.checkInId;
+
+  useEffect(() => {
+    if (readOnly || !call.outletId || checkedIn) return;
+    let live = true;
+    void isOnDuty()
+      .then((v) => {
+        if (live) setOnDuty(v);
+      })
+      .catch(() => {
+        if (live) setOnDuty(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [readOnly, call.outletId, checkedIn]);
+
+  const onCheckIn = async () => {
+    if (readOnly || checkedIn || !call.outletId || checkingIn) return;
+    if (onDuty === false) {
+      Alert.alert('Punch in first', 'Punch in on Home before checking in at a call.');
+      return;
+    }
+    setCheckingIn(true);
+    try {
+      const checkInId = await visitCheckIn(call.kind, call.outletId);
+      onChange({ checkInId });
+      setOnDuty(true);
+    } catch (e) {
+      Alert.alert('Check-in failed', fieldErrorMessage(e));
+      void isOnDuty()
+        .then(setOnDuty)
+        .catch(() => {});
+    } finally {
+      setCheckingIn(false);
+    }
+  };
 
   return (
     <View style={styles.call}>
@@ -88,6 +127,17 @@ export function CallEditor({
         onPress={readOnly ? undefined : () => setPick(true)}
         error={errors.find((e) => !isProd(e))}
       />
+      {call.outletId ? (
+        <Button
+          label={checkedIn ? 'Checked in' : onDuty === false ? 'Punch in first' : 'Check in'}
+          variant={checkedIn ? 'success' : onDuty === false ? 'secondary' : 'primary'}
+          disabled={readOnly || checkedIn}
+          loading={checkingIn}
+          loadingLabel="Getting location…"
+          onPress={() => void onCheckIn()}
+          style={styles.presBtn}
+        />
+      ) : null}
       {call.kind === 'doctor' ? (
         <DoctorProducts
           call={call}
@@ -121,7 +171,17 @@ export function CallEditor({
         scopes={scopes}
         names={names}
         value={call.outletId || null}
-        onPick={(c) => onChange({ outletId: c.id, outletName: c.name, hqId: c.hqId })}
+        onPick={(c) =>
+          onChange({
+            outletId: c.id,
+            outletName: c.name,
+            hqId: c.hqId,
+            checkInId: null,
+            presentationOpened: false,
+            presentationOpenedAt: null,
+            presentationCapture: null,
+          })
+        }
         onClose={() => setPick(false)}
       />
     </View>
@@ -159,6 +219,7 @@ function DoctorProducts({
 }) {
   const [sheet, setSheet] = useState(false);
   const [show, setShow] = useState(false);
+  const [openingPres, setOpeningPres] = useState(false);
   const picked = call.productIds.map((id) => byId.get(id) ?? unknownProduct(id));
   // One row per brand label. A SKU already on the call (older drafts) marks its group as picked
   // and is kept as-is; a newly picked group records its representative product.
@@ -169,6 +230,50 @@ function DoctorProducts({
     return m;
   }, [groups]);
   const pickedReps = [...new Set(call.productIds.map((id) => groupOf.get(id)?.repId ?? id))];
+  /**
+   * Presentation covers this call's current product deck. Any add / remove / reorder clears it
+   * so the rep must open Presentation again on the updated list.
+   */
+  const setProducts = (productIds: string[]) => {
+    const same =
+      productIds.length === call.productIds.length &&
+      productIds.every((id, i) => id === call.productIds[i]);
+    if (same) return;
+    onChange({
+      productIds,
+      ...(call.presentationOpened
+        ? {
+            presentationOpened: false,
+            presentationOpenedAt: null,
+            presentationCapture: null,
+          }
+        : {}),
+    });
+  };
+  const onStartPresentation = async () => {
+    if (!call.checkInId || openingPres) return;
+    if (call.presentationOpened) {
+      setShow(true);
+      return;
+    }
+    if (readOnly) return;
+    setOpeningPres(true);
+    try {
+      const presentationCapture = await capturePresentation();
+      const presentationOpenedAt = new Date().toISOString();
+      onChange({
+        presentationOpened: true,
+        presentationOpenedAt,
+        presentationCapture,
+      });
+      onPresented();
+      setShow(true);
+    } catch (e) {
+      Alert.alert('Presentation', fieldErrorMessage(e));
+    } finally {
+      setOpeningPres(false);
+    }
+  };
   const applyPicked = (repIds: string[]) => {
     const out: string[] = [];
     for (const rep of repIds) {
@@ -177,15 +282,16 @@ function DoctorProducts({
       const id = existing ?? rep;
       if (!out.includes(id)) out.push(id);
     }
-    onChange({ productIds: out });
+    setProducts(out);
   };
   const move = (i: number, d: -1 | 1) => {
     const xs = [...call.productIds];
     const j = i + d;
     if (j < 0 || j >= xs.length) return;
     [xs[i], xs[j]] = [xs[j]!, xs[i]!];
-    onChange({ productIds: xs });
+    setProducts(xs);
   };
+  const removeAt = (i: number) => setProducts(call.productIds.filter((_, j) => j !== i));
 
   return (
     <View style={styles.block}>
@@ -224,24 +330,36 @@ function DoctorProducts({
               >
                 <Icon name="chevron-down" color={colors.navy} size={20} />
               </Pressable>
+              {!call.presentationOpened ? (
+                <Pressable
+                  onPress={() => removeAt(i)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${doctorProductLabel(p)}`}
+                  style={styles.iconBtn}
+                >
+                  <Icon name="trash-can-outline" color={colors.danger} size={20} />
+                </Pressable>
+              ) : null}
             </>
           ) : null}
         </View>
       ))}
       {picked.length ? (
         <View style={styles.presRow}>
-          <Chip
-            label={call.presentationOpened ? 'Presentation opened' : 'Presentation not opened'}
-            tone={call.presentationOpened ? 'green' : 'orange'}
-          />
           <Button
-            label="Start presentation"
-            variant="tint"
-            compact
-            onPress={() => {
-              setShow(true);
-              if (!readOnly) onPresented();
-            }}
+            label={
+              !call.checkInId
+                ? 'Check in to present'
+                : call.presentationOpened
+                  ? 'Presentation opened'
+                  : 'Start presentation'
+            }
+            variant={call.presentationOpened ? 'success' : call.checkInId ? 'primary' : 'secondary'}
+            disabled={!call.checkInId || openingPres}
+            loading={openingPres}
+            loadingLabel="Getting location…"
+            onPress={() => void onStartPresentation()}
+            style={styles.presBtn}
           />
         </View>
       ) : null}
@@ -402,11 +520,10 @@ const styles = StyleSheet.create({
   },
   order: { width: 24, textAlign: 'center', color: colors.muted },
   presRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    flexWrap: 'wrap',
+    marginTop: spacing.xs,
+  },
+  presBtn: {
+    alignSelf: 'stretch',
   },
   pob: {
     flexDirection: 'row',

@@ -215,10 +215,29 @@ export function callPresentationOpened(c: DcrCall): boolean | undefined {
   return 'presentationOpenedAt' in w ? !!w.presentationOpenedAt : undefined;
 }
 
+/** GPS body when newly opening Presentation (contracts PresentationCapture). */
+export type PresentationCaptureDraft = {
+  clientId: string;
+  location: { lat: number; lng: number };
+  accuracyM: number;
+  capturedAt: string;
+  isMock: boolean;
+  deviceId?: string;
+  locationId?: string;
+};
+
 /** Extra fields for a call in PUT /v1/dcrs/draft. */
-export function presentationInput(opened: boolean, at?: string | null): Record<string, unknown> {
+export function presentationInput(
+  opened: boolean,
+  at?: string | null,
+  capture?: PresentationCaptureDraft | null,
+): Record<string, unknown> {
   if (!apiCaps.v2) return {}; // old API: the flag lives on the device (usePresentationLog)
-  return { presentationOpenedAt: opened ? (at ?? new Date().toISOString()) : null };
+  const presentationOpenedAt = opened ? (at ?? new Date().toISOString()) : null;
+  return {
+    presentationOpenedAt,
+    ...(opened && capture ? { presentationCapture: capture } : {}),
+  };
 }
 
 /** Call fields for PUT /v1/dcrs/draft: calledAt is server-set on the new API, so never sent. */
@@ -255,7 +274,19 @@ export function usePresentationLog(date: string) {
     },
     [date],
   );
-  return { opened, ready, record };
+  /** Product list changed — Presentation no longer covers this call's deck (old-API device log). */
+  const clear = useCallback(
+    (outletId: string) => {
+      setOpened((xs) => {
+        if (!xs.includes(outletId)) return xs;
+        const next = xs.filter((id) => id !== outletId);
+        void mockSavePresentation(date, next);
+        return next;
+      });
+    },
+    [date],
+  );
+  return { opened, ready, record, clear };
 }
 
 // ---------------------------------------------------------------- review status

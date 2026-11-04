@@ -15,7 +15,7 @@ import { useAuth } from '@/lib/auth-context';
 import { featureHref, type FeatureKey } from '@/lib/features';
 import { useHomeAttention } from '@/lib/home-attention';
 import { isApprover, roleLabel } from '@/lib/roles';
-import { getHomeMock, HOME_IS_PLACEHOLDER } from '@/mocks/home';
+import { getHomeMock } from '@/mocks/home';
 import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
 import { colors, layout, radius, spacing } from '@/theme';
 
@@ -64,7 +64,7 @@ export default function HomeScreen() {
           style={styles.flex}
           contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
         >
-          <CanopyHero name={name} role={role} now={now} data={data} sample={HOME_IS_PLACEHOLDER} />
+          <CanopyHero name={name} role={role} now={now} data={data} />
 
           <View style={styles.sheet}>
             <QuickActions onOpen={open} roles={user?.roles ?? []} hints={data.quickHints} />

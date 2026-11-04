@@ -53,6 +53,7 @@ import {
   useDcrProducts,
   useDecisions,
   useMyUnlockRequests,
+  apiCaps,
   usePresentationLog,
   useRequestUnlock,
 } from '@/lib/dcr/adapter';
@@ -505,15 +506,28 @@ export function DcrForm({
         sfc: { state: 'idle', hqs: [] },
         routeChoice: {},
         calls: x.calls.map((c) =>
-          c.hqId && !hq.has(c.hqId) ? { ...c, outletId: '', outletName: '', hqId: '' } : c,
+          c.hqId && !hq.has(c.hqId)
+            ? {
+                ...c,
+                outletId: '',
+                outletName: '',
+                hqId: '',
+                checkInId: null,
+                presentationOpened: false,
+                presentationOpenedAt: null,
+                presentationCapture: null,
+              }
+            : c,
         ),
       };
     });
 
-  // Presentation flags live in the adapter (mock store until DcrCall.presentationOpenedAt lands).
+  // Old API only: device log seeds Presentation by doctor for the day. On v2 the call's own
+  // presentationOpened / presentationOpenedAt is source of truth (must clear when products change).
   const sEff: FlowState = {
     ...s,
     calls: s.calls.map((c) =>
+      !apiCaps.v2 &&
       c.kind === 'doctor' &&
       !c.presentationOpened &&
       c.outletId &&
@@ -1077,20 +1091,25 @@ export function DcrForm({
                     products={productsQ.data ?? []}
                     detail={productsQ.detail}
                     onPresented={() => {
+                      // CallEditor already set presentationOpened + presentationCapture via onChange.
                       if (c.outletId) presLog.record(c.outletId);
-                      update((x) => ({
-                        calls: x.calls.map((row) =>
-                          row.clientId === c.clientId ? { ...row, presentationOpened: true } : row,
-                        ),
-                      }));
                     }}
                     scopes={scopes}
                     names={placeName}
                     onChange={(p) =>
                       update((x) => ({
-                        calls: x.calls.map((row) =>
-                          row.clientId === c.clientId ? { ...row, ...p } : row,
-                        ),
+                        calls: x.calls.map((row) => {
+                          if (row.clientId !== c.clientId) return row;
+                          const next = { ...row, ...p };
+                          // Products/deck changed: drop device log so old-API overlay cannot re-green.
+                          if (
+                            p.presentationOpened === false &&
+                            row.outletId &&
+                            row.presentationOpened
+                          )
+                            presLog.clear(row.outletId);
+                          return next;
+                        }),
                       }))
                     }
                     onRemove={() =>
@@ -1119,7 +1138,9 @@ export function DcrForm({
                                 time: sendsCalledAt() ? nowHHmm() : '',
                                 productIds: [],
                                 pob: [],
+                                checkInId: null,
                                 presentationOpened: false,
+                                presentationCapture: null,
                                 remarks: '',
                               },
                             ],
