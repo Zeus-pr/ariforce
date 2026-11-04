@@ -179,9 +179,7 @@ function DoctorProducts({
     if (same) return;
     onChange({
       productIds,
-      ...(call.presentationOpened
-        ? { presentationOpened: false, presentationOpenedAt: null }
-        : {}),
+      ...(call.presentationOpened ? { presentationOpened: false, presentationOpenedAt: null } : {}),
     });
   };
   const applyPicked = (repIds: string[]) => {
