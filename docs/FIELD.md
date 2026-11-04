@@ -11,6 +11,7 @@ Outlet locks live in `outlet_locations` (doctors: many; chemists/stockists: one 
 3. Latest `location_checkin` consent must be granted → else `412 CONSENT_REQUIRED`.
 4. `isMock` with `blockMockLocation` → `422 MOCK_LOCATION`; `accuracyM > maxAccuracyM` → `422 LOW_ACCURACY`.
 5. Sequence per local day (company time zone, from `capturedAt`): one punch-in, punch-in before visit/punch-out, nothing after punch-out → `409 SEQUENCE`.
+   Temp testing: `FIELD_RELAX_PUNCH_SEQUENCE=1` skips the “already punched in” / “already punched out” blocks (still requires punch-in before visit/punch-out).
 6. Visit outlet must be in the caller's territory scope → `404`.
 7. Distance (haversine, metres) to the **nearest active** `outlet_locations` row (else the master `location`);
    radius = doctor override, else company default. Outside: `422 OUT_OF_FENCE` when `blockOutOfFence`, else
