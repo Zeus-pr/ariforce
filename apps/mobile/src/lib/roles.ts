@@ -52,6 +52,10 @@ export function roleLabel(roles: readonly string[]) {
 /** Same rule as the website's isApprover: level 2 (ABM) and above approve their team's work. */
 export const isApprover = (roles: readonly string[]) => roles.some((r) => level(r) >= 2);
 
+/** Team field activity (attendance + check-ins for direct reports). ABM+ and system admin. */
+export const canViewTeamField = (roles: readonly string[]) =>
+  isApprover(roles) || roles.includes('system_admin');
+
 /**
  * Who may change master data (doctors, chemists, stockists): same rule as the website's
  * canWriteMasters (apps/web/src/lib/permissions.ts, docs/PERMISSIONS.md). Regional Business

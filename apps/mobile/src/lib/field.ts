@@ -2,14 +2,24 @@
  * Field GPS: device/consent, punch, outlet lock, visit check-in.
  * Capture is mobile-only; web keeps view/manage.
  */
-import type { CheckIn, CheckInCreate, ConsentState, Device } from '@ariforce/contracts';
+import type {
+  AttendanceDay,
+  CheckIn,
+  CheckInCreate,
+  ConsentState,
+  Device,
+} from '@ariforce/contracts';
 import Constants from 'expo-constants';
 import * as DeviceInfo from 'expo-device';
 import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
+import type { AuthUser } from './auth-api';
 import { ApiError, apiFetch, idempotencyKey } from './api';
 import type { PresentationCaptureDraft } from './dcr/adapter';
 import { todayIST } from './dcr/dates';
 import { getFix, type GpsFix } from './location';
+import { dutyFromMeToday, fetchMeToday } from './me-today';
+import { tokenStore } from './token-store';
 
 export type { GpsFix };
 
@@ -52,6 +62,8 @@ export function fieldErrorMessage(e: unknown): string {
         return 'Mock locations are not allowed.';
       case 'CALL_NOT_CHECKED_IN':
         return 'Check in at this outlet before continuing.';
+      case 'DCR_NOT_SUBMITTED':
+        return e.message || 'Submit today’s DCR before punching out.';
       case 'LOCATION_EXISTS':
         return 'This outlet already has a locked location.';
       case 'IDEMPOTENCY_CONFLICT':
@@ -106,25 +118,59 @@ function captureBody(fix: GpsFix, deviceId?: string | null) {
   };
 }
 
-export async function listTodayCheckIns(): Promise<CheckIn[]> {
-  const day = todayIST();
+/** Check-ins in an IST date range. Pass `userId` for one person; omit for the whole team. */
+export async function listCheckInsInRange(
+  from: string,
+  to: string,
+  userId?: string,
+): Promise<CheckIn[]> {
   const page = await apiFetch<Page<CheckIn>>('/v1/check-ins', {
-    query: { from: day, to: day, limit: 100 },
+    query: { from, to, limit: 100, ...(userId ? { userId } : {}) },
   });
   return page.items ?? [];
 }
 
-/** Today: punched in and not yet punched out. */
+/** Today's check-ins. Pass `userId` for one person; omit only for manager team lists. */
+export async function listTodayCheckIns(userId?: string): Promise<CheckIn[]> {
+  const day = todayIST();
+  return listCheckInsInRange(day, day, userId);
+}
+
+/** One row per user-day from GET /v1/attendance (team scope for approvers). */
+export async function listAttendanceDays(from: string, to: string): Promise<AttendanceDay[]> {
+  const page = await apiFetch<Page<AttendanceDay>>('/v1/attendance', {
+    query: { from, to, limit: 200 },
+  });
+  return page.items ?? [];
+}
+
+/** Visit check-ins for one user today (Home daily target "done"). */
+export async function countTodayVisits(userId: string): Promise<number> {
+  const items = await listTodayCheckIns(userId);
+  return items.filter((c) => c.kind === 'visit').length;
+}
+
+/** Google Maps at a check-in / lock point (managers open visit GPS). */
+export function googleMapsUrl(lat: number, lng: number) {
+  return `https://www.google.com/maps?q=${lat},${lng}`;
+}
+
+/** On duty when the latest punch_in is after any punch_out (caller-scoped items only). */
 export function dutyFromCheckIns(items: CheckIn[]): {
   onDuty: boolean;
   punchedInAt: Date | null;
 } {
-  const hasIn = items.some((c) => c.kind === 'punch_in');
-  const hasOut = items.some((c) => c.kind === 'punch_out');
-  const pin = items.find((c) => c.kind === 'punch_in');
+  let lastIn: CheckIn | null = null;
+  let lastOutAt = 0;
+  for (const c of items) {
+    const t = Date.parse(c.capturedAt);
+    if (c.kind === 'punch_in' && (!lastIn || t >= Date.parse(lastIn.capturedAt))) lastIn = c;
+    if (c.kind === 'punch_out' && t >= lastOutAt) lastOutAt = t;
+  }
+  const onDuty = !!lastIn && Date.parse(lastIn.capturedAt) > lastOutAt;
   return {
-    onDuty: hasIn && !hasOut,
-    punchedInAt: pin ? new Date(pin.capturedAt) : null,
+    onDuty,
+    punchedInAt: onDuty && lastIn ? new Date(lastIn.capturedAt) : null,
   };
 }
 
@@ -185,9 +231,70 @@ export async function punch(kind: 'punch_in' | 'punch_out'): Promise<CheckIn> {
   return postCheckIn(kind, { deviceId });
 }
 
-/** True when today has punch_in and no punch_out yet. */
+/**
+ * Open shift for this user today.
+ * Prefers MeToday when it says `in`; otherwise uses this user's check-ins (last-in wins).
+ * Live MeToday still treats any punch_out as `out` until the API fix is deployed.
+ */
+export async function getDutyState(): Promise<{
+  onDuty: boolean;
+  punchedInAt: Date | null;
+}> {
+  try {
+    const d = dutyFromMeToday(await fetchMeToday());
+    if (d.onDuty) return d;
+  } catch {
+    // Fall through.
+  }
+  const me = await tokenStore.getUser<AuthUser>().catch(() => null);
+  if (!me?.id) return { onDuty: false, punchedInAt: null };
+  return dutyFromCheckIns(await listTodayCheckIns(me.id));
+}
+
 export async function isOnDuty(): Promise<boolean> {
-  return dutyFromCheckIns(await listTodayCheckIns()).onDuty;
+  return (await getDutyState()).onDuty;
+}
+
+/** True when this outlet has no active GPS lock yet (first check-in will create one). */
+export async function outletNeedsFirstLock(
+  outletKind: OutletKind,
+  outletId: string,
+): Promise<boolean> {
+  return (await listOutletLocations(outletKind, outletId)).length === 0;
+}
+
+const dutyCacheKey = (userId: string, day: string) => `ariforce.duty.${userId}.${day}`;
+
+/** Persist last known duty so Home survives reload before MeToday is fixed. */
+export async function rememberDuty(onDuty: boolean, punchedInAt: Date | null) {
+  const me = await tokenStore.getUser<AuthUser>().catch(() => null);
+  if (!me?.id) return;
+  await SecureStore.setItemAsync(
+    dutyCacheKey(me.id, todayIST()),
+    JSON.stringify({
+      onDuty,
+      punchedInAt: punchedInAt?.toISOString() ?? null,
+    }),
+  );
+}
+
+export async function readRememberedDuty(): Promise<{
+  onDuty: boolean;
+  punchedInAt: Date | null;
+} | null> {
+  const me = await tokenStore.getUser<AuthUser>().catch(() => null);
+  if (!me?.id) return null;
+  const raw = await SecureStore.getItemAsync(dutyCacheKey(me.id, todayIST())).catch(() => null);
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as { onDuty?: boolean; punchedInAt?: string | null };
+    return {
+      onDuty: !!v.onDuty,
+      punchedInAt: v.punchedInAt ? new Date(v.punchedInAt) : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**

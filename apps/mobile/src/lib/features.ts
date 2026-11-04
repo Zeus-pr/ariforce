@@ -1,4 +1,4 @@
-import { isSalesRole } from './roles';
+import { canViewTeamField, isSalesRole } from './roles';
 import type { IconName } from '@/components/icon';
 import type { Tone } from '@/theme';
 
@@ -95,6 +95,13 @@ export const FEATURES = {
     short: 'Punch in and out',
     blurb: 'Punch in and out with your location, and see your attendance for the month.',
   },
+  teamField: {
+    title: 'Team field',
+    icon: 'account-group-outline',
+    tone: 'teal',
+    short: 'Team punch and visits',
+    blurb: 'See who is on the field, punch times, and visit check-ins with GPS for your team.',
+  },
   notifications: {
     title: 'Notifications',
     icon: 'bell-outline',
@@ -114,8 +121,11 @@ const isMasterBuilt = (k: FeatureKey): k is MasterBuilt =>
   (MASTER_BUILT as readonly string[]).includes(k);
 
 /** Features a person may open: DCR needs a sales role (same as the website's nav). */
-export const canOpenFeature = (feature: FeatureKey, roles: readonly string[]) =>
-  feature !== 'dcr' || isSalesRole(roles);
+export const canOpenFeature = (feature: FeatureKey, roles: readonly string[]) => {
+  if (feature === 'dcr') return isSalesRole(roles);
+  if (feature === 'teamField') return canViewTeamField(roles);
+  return true;
+};
 
 /** Link to a feature: its screen when the app has it, else its "Coming soon" screen. */
 export const featureHref = (feature: FeatureKey, roles?: readonly string[]) => {
@@ -128,6 +138,7 @@ export const featureHref = (feature: FeatureKey, roles?: readonly string[]) => {
   if (feature === 'leave') return '/leave' as const;
   if (feature === 'expenses') return '/expenses' as const;
   if (feature === 'products') return '/products' as const;
+  if (feature === 'teamField') return '/team-field' as const;
   if (isMasterBuilt(feature))
     return { pathname: '/masters/[kind]', params: { kind: feature } } as const;
   return { pathname: '/coming-soon/[feature]', params: { feature } } as const;

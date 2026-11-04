@@ -59,6 +59,7 @@ function AppStack() {
       <Stack.Screen name="approvals/tp/[id]" />
       <Stack.Screen name="approvals/index" />
       <Stack.Screen name="approvals/dcr/[id]" />
+      <Stack.Screen name="team-field/index" options={{ title: 'Team field' }} />
     </Stack>
   );
 }

@@ -209,6 +209,27 @@ export function useClaimQueue(myId: string | undefined, enabled: boolean) {
   });
 }
 
+/** Manager approve / reject from the approvals inbox (same route as claim detail). */
+export function useDecideExpenseClaim() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      decision,
+      comment,
+    }: {
+      id: string;
+      decision: 'approve' | 'reject';
+      comment?: string;
+    }) =>
+      apiFetch<Claim>(`/v1/expense-claims/${id}/decision`, {
+        method: 'POST',
+        body: { decision, ...(comment ? { comment } : {}) },
+      }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: key }),
+  });
+}
+
 export const ensureClaim = (month: string) =>
   apiFetch<Claim>('/v1/expense-claims', { method: 'POST', body: { month } });
 

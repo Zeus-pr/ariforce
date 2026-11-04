@@ -11,7 +11,7 @@ import { ListRow } from '@/components/list-row';
 import { SectionHeader } from '@/components/section-header';
 import { useAuth } from '@/lib/auth-context';
 import { FEATURES, featureHref, type FeatureKey } from '@/lib/features';
-import { isApprover, roleLabel } from '@/lib/roles';
+import { canViewTeamField, isApprover, roleLabel } from '@/lib/roles';
 import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
 import { colors, layout, spacing } from '@/theme';
 
@@ -25,6 +25,7 @@ export default function MoreTab() {
   const roles = user?.roles ?? [];
   const name = user?.name?.trim() || user?.email || 'Your account';
   const links: FeatureKey[] = [
+    ...(canViewTeamField(roles) ? (['teamField'] as const) : []),
     'attendance',
     'leave',
     'expenses',

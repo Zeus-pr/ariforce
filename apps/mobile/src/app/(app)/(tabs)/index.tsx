@@ -64,7 +64,7 @@ export default function HomeScreen() {
           style={styles.flex}
           contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
         >
-          <CanopyHero name={name} role={role} now={now} data={data} />
+          <CanopyHero name={name} role={role} now={now} />
 
           <View style={styles.sheet}>
             <QuickActions onOpen={open} roles={user?.roles ?? []} hints={data.quickHints} />
