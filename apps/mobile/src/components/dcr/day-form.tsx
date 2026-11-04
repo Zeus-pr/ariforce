@@ -53,6 +53,7 @@ import {
   useDcrProducts,
   useDecisions,
   useMyUnlockRequests,
+  apiCaps,
   usePresentationLog,
   useRequestUnlock,
 } from '@/lib/dcr/adapter';
@@ -510,10 +511,12 @@ export function DcrForm({
       };
     });
 
-  // Presentation flags live in the adapter (mock store until DcrCall.presentationOpenedAt lands).
+  // Old API only: device log seeds Presentation by doctor for the day. On v2 the call's own
+  // presentationOpened / presentationOpenedAt is source of truth (must clear when products change).
   const sEff: FlowState = {
     ...s,
     calls: s.calls.map((c) =>
+      !apiCaps.v2 &&
       c.kind === 'doctor' &&
       !c.presentationOpened &&
       c.outletId &&
@@ -1078,9 +1081,12 @@ export function DcrForm({
                     detail={productsQ.detail}
                     onPresented={() => {
                       if (c.outletId) presLog.record(c.outletId);
+                      const at = new Date().toISOString();
                       update((x) => ({
                         calls: x.calls.map((row) =>
-                          row.clientId === c.clientId ? { ...row, presentationOpened: true } : row,
+                          row.clientId === c.clientId
+                            ? { ...row, presentationOpened: true, presentationOpenedAt: at }
+                            : row,
                         ),
                       }));
                     }}
@@ -1088,9 +1094,18 @@ export function DcrForm({
                     names={placeName}
                     onChange={(p) =>
                       update((x) => ({
-                        calls: x.calls.map((row) =>
-                          row.clientId === c.clientId ? { ...row, ...p } : row,
-                        ),
+                        calls: x.calls.map((row) => {
+                          if (row.clientId !== c.clientId) return row;
+                          const next = { ...row, ...p };
+                          // Products/deck changed: drop device log so old-API overlay cannot re-green.
+                          if (
+                            p.presentationOpened === false &&
+                            row.outletId &&
+                            row.presentationOpened
+                          )
+                            presLog.clear(row.outletId);
+                          return next;
+                        }),
                       }))
                     }
                     onRemove={() =>

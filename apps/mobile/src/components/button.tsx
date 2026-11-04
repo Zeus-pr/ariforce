@@ -23,6 +23,13 @@ const variants = {
     fg: colors.info,
     border: 'transparent',
   },
+  /** Completed action (e.g. presentation opened) — soft success fill. */
+  success: {
+    bg: colors.successWash,
+    bgPressed: colors.successWashPressed,
+    fg: colors.success,
+    border: 'transparent',
+  },
 } as const;
 
 type Props = {

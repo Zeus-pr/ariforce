@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
-import { Chip } from '@/components/chip';
 import { Icon } from '@/components/icon';
 import { TextField } from '@/components/text-field';
 import { formatHHmmLabel } from '@/lib/clock12';
@@ -169,6 +168,20 @@ function DoctorProducts({
     return m;
   }, [groups]);
   const pickedReps = [...new Set(call.productIds.map((id) => groupOf.get(id)?.repId ?? id))];
+  /**
+   * Presentation covers this call's current product deck. Any add / remove / reorder clears it
+   * so the rep must open Presentation again on the updated list.
+   */
+  const setProducts = (productIds: string[]) => {
+    const same =
+      productIds.length === call.productIds.length &&
+      productIds.every((id, i) => id === call.productIds[i]);
+    if (same) return;
+    onChange({
+      productIds,
+      ...(call.presentationOpened ? { presentationOpened: false, presentationOpenedAt: null } : {}),
+    });
+  };
   const applyPicked = (repIds: string[]) => {
     const out: string[] = [];
     for (const rep of repIds) {
@@ -177,15 +190,16 @@ function DoctorProducts({
       const id = existing ?? rep;
       if (!out.includes(id)) out.push(id);
     }
-    onChange({ productIds: out });
+    setProducts(out);
   };
   const move = (i: number, d: -1 | 1) => {
     const xs = [...call.productIds];
     const j = i + d;
     if (j < 0 || j >= xs.length) return;
     [xs[i], xs[j]] = [xs[j]!, xs[i]!];
-    onChange({ productIds: xs });
+    setProducts(xs);
   };
+  const removeAt = (i: number) => setProducts(call.productIds.filter((_, j) => j !== i));
 
   return (
     <View style={styles.block}>
@@ -224,24 +238,30 @@ function DoctorProducts({
               >
                 <Icon name="chevron-down" color={colors.navy} size={20} />
               </Pressable>
+              {!call.presentationOpened ? (
+                <Pressable
+                  onPress={() => removeAt(i)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${doctorProductLabel(p)}`}
+                  style={styles.iconBtn}
+                >
+                  <Icon name="trash-can-outline" color={colors.danger} size={20} />
+                </Pressable>
+              ) : null}
             </>
           ) : null}
         </View>
       ))}
       {picked.length ? (
         <View style={styles.presRow}>
-          <Chip
-            label={call.presentationOpened ? 'Presentation opened' : 'Presentation not opened'}
-            tone={call.presentationOpened ? 'green' : 'orange'}
-          />
           <Button
-            label="Start presentation"
-            variant="tint"
-            compact
+            label={call.presentationOpened ? 'Presentation opened' : 'Start presentation'}
+            variant={call.presentationOpened ? 'success' : 'primary'}
             onPress={() => {
               setShow(true);
               if (!readOnly) onPresented();
             }}
+            style={styles.presBtn}
           />
         </View>
       ) : null}
@@ -402,11 +422,10 @@ const styles = StyleSheet.create({
   },
   order: { width: 24, textAlign: 'center', color: colors.muted },
   presRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    flexWrap: 'wrap',
+    marginTop: spacing.xs,
+  },
+  presBtn: {
+    alignSelf: 'stretch',
   },
   pob: {
     flexDirection: 'row',
