@@ -232,14 +232,16 @@ function DoctorProducts({
               >
                 <Icon name="chevron-down" color={colors.navy} size={20} />
               </Pressable>
-              <Pressable
-                onPress={() => removeAt(i)}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${doctorProductLabel(p)}`}
-                style={styles.iconBtn}
-              >
-                <Icon name="trash-can-outline" color={colors.danger} size={20} />
-              </Pressable>
+              {!call.presentationOpened ? (
+                <Pressable
+                  onPress={() => removeAt(i)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${doctorProductLabel(p)}`}
+                  style={styles.iconBtn}
+                >
+                  <Icon name="trash-can-outline" color={colors.danger} size={20} />
+                </Pressable>
+              ) : null}
             </>
           ) : null}
         </View>
