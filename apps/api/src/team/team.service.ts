@@ -423,7 +423,8 @@ export class TeamService {
       await this.assertTerritoryLevels(tx, [b.role], b.territoryIds);
       const all = await this.people(tx);
       // System admin is outside the reporting line: no default manager; a director never has one.
-      const mgrId = outsideLine(p) ? b.managerId : (b.managerId ?? p.userId);
+      const mgrId =
+        outsideLine(p) || b.role === 'director' ? b.managerId : (b.managerId ?? p.userId);
       if (mgrId) this.assertManager(p, all, mgrId, ROLE_RANK[b.role]);
       const dup = await tx
         .select({ id: users.id })
