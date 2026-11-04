@@ -57,8 +57,10 @@ export function CanopyHero({
       setSince(kind === 'punch_in' ? new Date(row.capturedAt) : null);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {
-      Alert.alert('Punch failed', fieldErrorMessage(e));
+      const msg = fieldErrorMessage(e);
+      // Already punched in: sync local duty instead of a dead-end "punch in first" alert.
       await refreshDuty();
+      Alert.alert(kind === 'punch_in' ? 'Punch in' : 'Punch out', msg);
     } finally {
       setBusy(false);
     }

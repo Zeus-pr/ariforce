@@ -35,9 +35,11 @@ export function fieldErrorMessage(e: unknown): string {
       case 'CONSENT_REQUIRED':
         return 'Location consent is required before you can check in.';
       case 'SEQUENCE':
-        return 'Punch in on Home first, then check in at the call.';
+        // API: "Already punched in today" / "Punch in first" / "Already punched out today".
+        // Visit path sets its own message via requireOnDuty — never rewrite punch errors here.
+        return e.message || 'This check-in is out of order for today.';
       case 'NOT_PUNCHED_IN':
-        return 'Punch in on Home before opening Presentation.';
+        return e.message || 'Punch in on Home before opening Presentation.';
       case 'OUT_OF_FENCE':
         return 'You are too far from this outlet. Move closer and try again.';
       case 'PRESENTATION_OUT_OF_FENCE':
