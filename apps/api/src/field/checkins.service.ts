@@ -5,6 +5,7 @@ import {
   consentRecords,
   devices,
   doctors,
+  dcrs,
   geoCaptures,
   outletLocations,
   stockists,
@@ -18,6 +19,7 @@ import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
+import { autoCloseOpenPunches } from './auto-punch-out';
 import { companySettings, localDate, metres } from './field.util';
 
 type Row = typeof geoCaptures.$inferSelect;
@@ -213,6 +215,15 @@ export class CheckInsService {
 
       const capturedAt = new Date(b.capturedAt);
       const day = localDate(capturedAt, s.timezone);
+      const companyToday = localDate(new Date(), s.timezone);
+      // Close any open punches on prior local days (IST midnight / missed cron).
+      await autoCloseOpenPunches(tx, {
+        companyId: p.companyId,
+        userId: p.userId,
+        timezone: s.timezone,
+        beforeDay: companyToday,
+      });
+
       const today = await tx
         .select({ kind: geoCaptures.kind })
         .from(geoCaptures)
@@ -226,6 +237,23 @@ export class CheckInsService {
       if (b.kind !== 'punch_in' && !has('punch_in')) throw err(409, 'SEQUENCE', 'Punch in first');
       if (!relaxSequence && has('punch_out'))
         throw err(409, 'SEQUENCE', 'Already punched out today');
+
+      if (b.kind === 'punch_out') {
+        const [dcr] = await tx
+          .select({ id: dcrs.id, status: dcrs.status })
+          .from(dcrs)
+          .where(
+            and(
+              eq(dcrs.userId, p.userId),
+              eq(dcrs.date, day),
+              isNull(dcrs.deletedAt),
+              inArray(dcrs.status, ['submitted', 'approved']),
+            ),
+          )
+          .limit(1);
+        if (!dcr)
+          throw err(409, 'DCR_NOT_SUBMITTED', "Submit today's DCR before punching out");
+      }
 
       let territoryId: string | null;
       let distanceM: number | null = null;

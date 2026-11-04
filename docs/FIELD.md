@@ -12,6 +12,8 @@ Outlet locks live in `outlet_locations` (doctors: many; chemists/stockists: one 
 4. `isMock` with `blockMockLocation` → `422 MOCK_LOCATION`; `accuracyM > maxAccuracyM` → `422 LOW_ACCURACY`.
 5. Sequence per local day (company time zone, from `capturedAt`): one punch-in, punch-in before visit/punch-out, nothing after punch-out → `409 SEQUENCE`.
    Temp testing: `FIELD_RELAX_PUNCH_SEQUENCE=1` skips the “already punched in” / “already punched out” blocks (still requires punch-in before visit/punch-out).
+5b. `punch_out` also requires today’s DCR **submitted** or **approved** → else `409 DCR_NOT_SUBMITTED`.
+5c. Open punches on **prior** local days are auto-closed with a system `punch_out` (`source: manual`, end of that local day) on the next `punch_in` or `GET /v1/me/today` (covers IST midnight without a separate cron).
 6. Visit outlet must be in the caller's territory scope → `404`.
 7. Distance (haversine, metres) to the **nearest active** `outlet_locations` row (else the master `location`);
    radius = doctor override, else company default. Outside: `422 OUT_OF_FENCE` when `blockOutOfFence`, else
