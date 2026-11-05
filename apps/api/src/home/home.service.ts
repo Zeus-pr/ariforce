@@ -11,6 +11,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { Principal } from '../auth/principal';
 import { TenantService } from '../common/tenant.service';
 import { DcrService } from '../dcr/dcr.service';
+import { autoCloseOpenPunches } from '../field/auto-punch-out';
 import { companySettings, localDate } from '../field/field.util';
 import { KpisService } from '../kpis/kpis.service';
 import { approvedItemOn } from '../plans/tp-items';
@@ -126,16 +127,34 @@ export class HomeService {
     return this.tenant.run(p, async (tx) => {
       const s = await companySettings(tx, p);
       const date = localDate(new Date(), s.timezone);
+      // Lazy IST midnight close: prior open punches become punch_out when Home loads.
+      await autoCloseOpenPunches(tx, {
+        companyId: p.companyId,
+        userId: p.userId,
+        timezone: s.timezone,
+        beforeDay: date,
+      });
       const me = sql`${p.userId}::uuid`;
-      const [punch] = await rows<{ in_at: string | null; out_at: string | null }>(
+      // Prefer open shift: on duty when the latest punch_in is after any punch_out
+      // (FIELD_RELAX can allow re-punch-in after out; min/max alone would still say "out").
+      const [punch] = await rows<{
+        in_at: string | null;
+        out_at: string | null;
+        last_in: string | null;
+        last_out: string | null;
+      }>(
         tx,
         sql`select min(captured_at) filter (where kind = 'punch_in')::text as in_at,
-                   max(captured_at) filter (where kind = 'punch_out')::text as out_at
+                   max(captured_at) filter (where kind = 'punch_out')::text as out_at,
+                   max(captured_at) filter (where kind = 'punch_in')::text as last_in,
+                   max(captured_at) filter (where kind = 'punch_out')::text as last_out
             from geo_captures where user_id = ${me}
               and (captured_at at time zone ${s.timezone})::date = ${date}::date`,
       );
       const inAt = punch?.in_at ? new Date(punch.in_at).toISOString() : null;
       const outAt = punch?.out_at ? new Date(punch.out_at).toISOString() : null;
+      const lastIn = punch?.last_in ? Date.parse(punch.last_in) : 0;
+      const lastOut = punch?.last_out ? Date.parse(punch.last_out) : 0;
       const item = await approvedItemOn(tx, p.userId, date);
       const plan = (item?.plan ?? {}) as { workTypeId?: string; territoryIds?: string[] };
       const [wt] = plan.workTypeId
@@ -165,7 +184,11 @@ export class HomeService {
         date,
         timezone: s.timezone,
         serverTime: new Date().toISOString(),
-        punch: { status: outAt ? 'out' : inAt ? 'in' : 'not_in', inAt, outAt },
+        punch: {
+          status: !inAt ? 'not_in' : lastIn > lastOut ? 'in' : 'out',
+          inAt,
+          outAt: lastIn > lastOut ? null : outAt,
+        },
         tourPlan: {
           itemId: item?.id ?? null,
           workTypeId: plan.workTypeId ?? null,

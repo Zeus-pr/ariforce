@@ -57,7 +57,7 @@ function labelText(kind: OutletKind, value: string) {
 }
 
 function mapsUrl(lat: number, lng: number) {
-  return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=18/${lat}/${lng}`;
+  return `https://www.google.com/maps?q=${lat},${lng}`;
 }
 
 function fmtWhen(iso: string) {
@@ -102,11 +102,25 @@ export function OutletLocksCard({
       const r = await api.GET('/v1/outlets/{kind}/{id}/locations', {
         params: { path: { kind: outletKind, id: outletId } },
       });
+      // Prefer HTTP ok + items even when openapi-fetch leaves a parse `error`.
+      if (r.response?.ok) {
+        setItems(r.data?.items ?? []);
+        return;
+      }
       if (r.error) throw toApiError(r);
       setItems(r.data?.items ?? []);
     } catch (e) {
+      const apiErr = e instanceof Error ? { code: 'NETWORK', message: e.message } : toApiError(e);
+      const code = 'code' in apiErr ? String(apiErr.code) : 'NETWORK';
+      const soft =
+        code === 'NETWORK' ||
+        code === 'NOT_FOUND' ||
+        code === 'AbortError' ||
+        !code ||
+        code === 'undefined';
       setItems([]);
-      setError(e instanceof Error ? e.message : toApiError(e).message);
+      // Empty locks / flaky parse → empty state, not a red “Could not reach the server”.
+      setError(soft ? null : apiErr.message || 'Could not load locks.');
     }
   }, [outletKind, outletId]);
 
