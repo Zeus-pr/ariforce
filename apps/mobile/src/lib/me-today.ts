@@ -41,7 +41,7 @@ export function dailyTargetFromMeToday(
     nTerr > 0 ? `${nTerr} territor${nTerr === 1 ? 'y' : 'ies'}` : wt ? wt : 'Field day';
   const stp = wt ?? (t.tourPlan.itemId ? 'Tour plan' : 'No plan');
   return {
-    done: total > 0 ? Math.min(visitsDone, total) : visitsDone,
+    done,
     total,
     cluster,
     stp,
