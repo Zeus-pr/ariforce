@@ -129,12 +129,7 @@ export function useTeamFieldDay(date: string, selfUserId?: string) {
   const sortedDays = [...days].sort((a, b) => a.userName.localeCompare(b.userName));
 
   const namesQ = useQuery({
-    queryKey: [
-      'team-field',
-      'outlet-names',
-      date,
-      checkIns.map((c) => c.id).join(','),
-    ],
+    queryKey: ['team-field', 'outlet-names', date, checkIns.map((c) => c.id).join(',')],
     queryFn: () => loadOutletNames(checkIns),
     enabled: checkIns.length > 0,
   });

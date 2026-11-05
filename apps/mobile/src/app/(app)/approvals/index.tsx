@@ -39,7 +39,13 @@ import {
   useDecideLeave,
   useLeaveQueue,
 } from '@/lib/leave';
-import { CONTRACT as TP_CONTRACT, rangeLabel, tpMessage, useDecideTp, useTpQueue } from '@/lib/tp/adapter';
+import {
+  CONTRACT as TP_CONTRACT,
+  rangeLabel,
+  tpMessage,
+  useDecideTp,
+  useTpQueue,
+} from '@/lib/tp/adapter';
 import { layout, spacing } from '@/theme';
 
 /** Manager review (ABM and above, same rule as the website's isApprover): DCRs and unlock requests. */
@@ -120,7 +126,11 @@ function Approvals({ myId, director }: { myId?: string; director: boolean }) {
         >
           <SectionHead
             title={teamQ.isPending ? 'DCRs to review' : `DCRs to review (${toReview.length})`}
-            chip={!apiCaps.decisionRoute ? { label: 'Decisions: sample mode', tone: 'orange' } : undefined}
+            chip={
+              !apiCaps.decisionRoute
+                ? { label: 'Decisions: sample mode', tone: 'orange' }
+                : undefined
+            }
           />
           {teamQ.isPending ? (
             <SkeletonList count={3} />
@@ -165,7 +175,8 @@ function Approvals({ myId, director }: { myId?: string; director: boolean }) {
                       { id: d.id, decision, reason },
                       {
                         onSettled: () => setDeciding(null),
-                        onError: (e) => setErrors((x) => ({ ...x, [key]: decisionErrorMessage(e) })),
+                        onError: (e) =>
+                          setErrors((x) => ({ ...x, [key]: decisionErrorMessage(e) })),
                       },
                     );
                   }}
@@ -316,7 +327,9 @@ function Approvals({ myId, director }: { myId?: string; director: boolean }) {
                   approveBlocked={
                     dcrBlocked ? 'Fix rejected DCR days on the claim before approving.' : null
                   }
-                  onDetails={() => router.push({ pathname: '/expenses/[id]', params: { id: c.id } })}
+                  onDetails={() =>
+                    router.push({ pathname: '/expenses/[id]', params: { id: c.id } })
+                  }
                   onDecide={(decision, reason) => {
                     setDeciding(key);
                     setErrors((x) => {

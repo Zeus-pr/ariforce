@@ -124,7 +124,9 @@ function PobDesk() {
                 No orders yet today
               </AppText>
               <AppText variant="bodyMuted" style={styles.emptyBody}>
-                {"Open today's DCR, add a chemist or stockist call, then book products. They show up here with the day total."}
+                {
+                  "Open today's DCR, add a chemist or stockist call, then book products. They show up here with the day total."
+                }
               </AppText>
               <Button label={"Open today's DCR"} onPress={openDcr} variant="secondary" />
             </Card>
@@ -137,9 +139,7 @@ function PobDesk() {
                   outletName={outlets[i]?.data?.name}
                   product={product}
                   open={expanded === row.callId}
-                  onToggle={() =>
-                    setExpanded((id) => (id === row.callId ? null : row.callId))
-                  }
+                  onToggle={() => setExpanded((id) => (id === row.callId ? null : row.callId))}
                   onEdit={openDcr}
                   divider={i < rows.length - 1}
                 />

@@ -15,11 +15,7 @@ import { lockPortrait } from '@/lib/orientation';
 import { BrandSplash } from '@/components/brand-splash';
 import { iconFont } from '@/components/icon';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
-import {
-  configureObserve,
-  SplashHiddenContext,
-  wrapWithObserve,
-} from '@/lib/observe';
+import { configureObserve, SplashHiddenContext, wrapWithObserve } from '@/lib/observe';
 import { queryClient } from '@/lib/query-client';
 import { colors, fonts, motion } from '@/theme';
 

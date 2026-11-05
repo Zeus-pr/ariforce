@@ -29,15 +29,7 @@ type Target = {
  * Stitch Field Command canopy: identity, date, Punch In / Punch Out, daily target.
  * Duty + target hydrate from GET /v1/me/today (caller-scoped — survives app reload).
  */
-export function CanopyHero({
-  name,
-  role,
-  now,
-}: {
-  name: string;
-  role: string;
-  now: Date;
-}) {
+export function CanopyHero({ name, role, now }: { name: string; role: string; now: Date }) {
   const { user } = useAuth();
   const [onDuty, setOnDuty] = useState(false);
   const [since, setSince] = useState<Date | null>(null);
@@ -215,7 +207,9 @@ export function CanopyHero({
               </>
             ) : (
               <AppText variant="small" style={styles.onCanopyMuted}>
-                {done > 0 ? `${done} visit${done === 1 ? '' : 's'} today · No plan target` : 'No plan target'}
+                {done > 0
+                  ? `${done} visit${done === 1 ? '' : 's'} today · No plan target`
+                  : 'No plan target'}
               </AppText>
             )}
           </AppText>

@@ -213,15 +213,7 @@ function PersonRow({
   );
 }
 
-function TimelineRow({
-  checkIn,
-  title,
-  last,
-}: {
-  checkIn: CheckIn;
-  title: string;
-  last: boolean;
-}) {
+function TimelineRow({ checkIn, title, last }: { checkIn: CheckIn; title: string; last: boolean }) {
   const { lat, lng } = checkIn.location;
   const hasGps = Number.isFinite(lat) && Number.isFinite(lng);
 
@@ -298,7 +290,10 @@ const styles = StyleSheet.create({
     borderColor: colors.separator,
   },
   kpiLabel: { textAlign: 'center', color: colors.muted },
-  personDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator },
+  personDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.separator,
+  },
   personHead: {
     flexDirection: 'row',
     alignItems: 'center',

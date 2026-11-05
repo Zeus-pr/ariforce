@@ -52,15 +52,13 @@ export function ApprovalInboxCard({
 }) {
   const reduced = useReducedMotion();
   const [expanded, setExpanded] = useState(false);
-  const enter =
-    reduced ? undefined : FadeIn.duration(motion.fast).delay(Math.min(index, 10) * 36);
+  const enter = reduced ? undefined : FadeIn.duration(motion.fast).delay(Math.min(index, 10) * 36);
   const canExpand = expandOnDetails != null;
   const detailsAction = () => {
     if (canExpand) setExpanded((o) => !o);
     else onDetails?.();
   };
-  const detailsText =
-    canExpand && expanded ? 'Hide details' : detailsLabel;
+  const detailsText = canExpand && expanded ? 'Hide details' : detailsLabel;
 
   return (
     <Animated.View entering={enter}>

@@ -272,16 +272,13 @@ export async function ensureOutletLocked(
   const existing = await listOutletLocations(outletKind, outletId);
   if (existing[0]) return existing[0].id;
   const gps = fix ?? (await getFix());
-  const lock = await apiFetch<OutletLocation>(
-    `/v1/outlets/${outletKind}/${outletId}/locations`,
-    {
-      method: 'POST',
-      body: {
-        ...captureBody(gps, deviceId),
-        label: LOCK_LABEL[outletKind],
-      },
+  const lock = await apiFetch<OutletLocation>(`/v1/outlets/${outletKind}/${outletId}/locations`, {
+    method: 'POST',
+    body: {
+      ...captureBody(gps, deviceId),
+      label: LOCK_LABEL[outletKind],
     },
-  );
+  });
   return lock.id;
 }
 
