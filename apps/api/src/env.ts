@@ -74,6 +74,9 @@ export const ProdEnv = z.object({
   SESSION_MAX_AGE_SECONDS: intStr
     .refine((v) => Number(v) >= 300 && Number(v) <= 2_592_000, 'must be 300..2592000')
     .optional(),
+  MOBILE_SESSION_MAX_AGE_SECONDS: intStr
+    .refine((v) => Number(v) >= 300 && Number(v) <= 31_536_000, 'must be 300..31536000')
+    .optional(),
   AUTH_COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none'], 'must be lax, strict or none').optional(),
   AUTH_COOKIE_DOMAIN: z
     .string()
