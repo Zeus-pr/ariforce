@@ -2,11 +2,20 @@ import type { Dcr } from '@ariforce/contracts';
 import { useQueryClient } from '@tanstack/react-query';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+  useReducedMotion,
+} from 'react-native-reanimated';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
 import { Chip } from '@/components/chip';
 import { CallEditor } from '@/components/dcr/call-editor';
+import { PressableScale } from '@/components/pressable-scale';
+import { SlideToConfirm } from '@/components/slide-to-confirm';
 import { dcrStyles, Errors, Field } from '@/components/dcr/field';
 import { autoDraftNote, ensureExpenseDraft } from '@/lib/expenses';
 import { LeaveFields } from '@/components/dcr/leave-fields';
@@ -97,7 +106,7 @@ import {
   type WorkTypeOption,
   plusMinutes,
 } from '@/lib/dcr/model';
-import { colors, layout, radius, spacing, touch } from '@/theme';
+import { colors, layout, motion, radius, spacing, touch } from '@/theme';
 
 const fresh = (date: string): FlowState => ({
   date,
@@ -140,6 +149,7 @@ export function DcrForm({
 }) {
   const isTp = mode === 'tp';
   const { user } = useAuth();
+  const reduced = useReducedMotion();
   const tpQ = useTp(isTp ? tpId : fromTp);
   const tpItem = tpQ.data ?? null;
   const tpSave = useSaveTp();
@@ -147,6 +157,9 @@ export function DcrForm({
   const [tpTo, setTpTo] = useState(initialDate);
   const router = useRouter();
   const bottom = useBottomSpace();
+  const callLayout = reduced ? undefined : LinearTransition.duration(motion.fast);
+  const callEnter = reduced ? undefined : FadeIn.duration(motion.press);
+  const callExit = reduced ? undefined : FadeOut.duration(motion.press);
   const [s, setS] = useState<FlowState>(() => fresh(initialDate));
   const [dcr, setDcr] = useState<Dcr | null>(null);
   const [workTypes, setWorkTypes] = useState<WorkTypeOption[] | null>(null);
@@ -156,6 +169,8 @@ export function DcrForm({
   const [askDeviation, setAskDeviation] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState<'draft' | 'submit' | null>(null);
+  /** Lock the form scroll while the submit slider is being dragged (CUTLY pattern). */
+  const [sliding, setSliding] = useState(false);
   const [peopleQ, setPeopleQ] = useState('');
   const peopleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Work With search goes to the server (web dcr-flow.tsx), debounced like the website's pickers.
@@ -540,19 +555,20 @@ export function DcrForm({
   const err = (key: string) =>
     showErrors ? probs.filter((p) => p.key === key).map((p) => p.text) : [];
 
-  async function save(submit: boolean) {
-    if (readOnly) return;
+  /** True only when the draft was saved (or the report really submitted); false on every refusal or failure. */
+  async function save(submit: boolean): Promise<boolean> {
+    if (readOnly) return false;
     if (isTp) return saveTp(submit);
     if (submit && s.date > todayIST()) {
       setFormError(
         `You can submit this report from ${dateLabel(s.date)}. Save it as a draft for now.`,
       );
-      return;
+      return false;
     }
     if (submit && probs.length) {
       setShowErrors(true);
       setFormError((probs.find((p) => p.key === 'presentation') ?? probs[0]!).text);
-      return;
+      return false;
     }
     setSaving(submit ? 'submit' : 'draft');
     setFormError(null);
@@ -578,7 +594,7 @@ export function DcrForm({
       if (!submit) {
         Alert.alert('Draft saved', 'You can come back and finish it later.');
         router.back();
-        return;
+        return true;
       }
       submitKey.current ??= idempotencyKey();
       try {
@@ -589,6 +605,7 @@ export function DcrForm({
           ...expenseBodyExtras(sEff.expenses),
         });
         setDcr(submitted);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         // Server links DCR expenses to the claim; we only read its outcome (v2-adapter).
         const added = expenseOutcome(submitted);
         const addedText = expenseOutcomeText(added);
@@ -617,6 +634,7 @@ export function DcrForm({
             : undefined,
         );
         if (added?.kind !== 'linked') router.back();
+        return true;
       } catch (e) {
         // Same as web dcr-flow.tsx: keep the key only when no answer came back (the submit may
         // have gone through, and a retry with the same key is safe); any API answer drops it.
@@ -633,20 +651,21 @@ export function DcrForm({
             .filter(Boolean)
             .join(', ');
           setFormError(`${rule.message}${which ? ` (${which})` : ''}`);
-          return;
+          return false;
         }
         if (e instanceof ApiError && e.code === 'DEVIATION_REASON_REQUIRED') {
           setAskDeviation(true);
           setFormError(saveMessage(e));
-          return;
+          return false;
         }
         if (e instanceof ApiError && e.code === 'DAY_ALREADY_SUBMITTED') {
           const existingId = (e.details as { existingId?: string } | undefined)?.existingId ?? null;
           setDaySubmitted({ id: existingId });
           setFormError(saveMessage(e));
-          return;
+          return false;
         }
         setFormError(`${saveMessage(e)} Your draft is saved; press Submit again.`);
+        return false;
       }
     } catch (e) {
       if (e instanceof ApiError && e.code === 'DAY_ALREADY_SUBMITTED') {
@@ -654,31 +673,32 @@ export function DcrForm({
         setDaySubmitted({ id: existingId });
       }
       setFormError(saveMessage(e));
+      return false;
     } finally {
       setSaving(null);
     }
   }
 
-  async function saveTp(send: boolean) {
+  async function saveTp(send: boolean): Promise<boolean> {
     if (send && probs.length) {
       setShowErrors(true);
       setFormError(probs[0]!.text);
-      return;
+      return false;
     }
     if (tpTo < s.date) {
       setFormError('The end date is before the start date.');
-      return;
+      return false;
     }
     if (datesOf(s.date, tpTo).length > MAX_TP_DAYS) {
       setFormError(`A tour plan covers at most ${MAX_TP_DAYS} days.`);
-      return;
+      return false;
     }
     const cutoff = tpFutureMonthCutoffError(s.date);
     if (cutoff) {
       setFormError(cutoff);
-      return;
+      return false;
     }
-    if (!user) return;
+    if (!user) return false;
     const b = draftBody(sEff, null);
     setSaving(send ? 'submit' : 'draft');
     setFormError(null);
@@ -700,6 +720,9 @@ export function DcrForm({
           },
         },
       });
+      if (send) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
       Alert.alert(
         send ? 'Sent for approval' : 'Tour plan saved',
         send
@@ -707,8 +730,10 @@ export function DcrForm({
           : 'You can come back and send it for approval later.',
       );
       router.back();
+      return true;
     } catch (e) {
       setFormError(tpMessage(e));
+      return false;
     } finally {
       setSaving(null);
     }
@@ -852,6 +877,7 @@ export function DcrForm({
         contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
         keyboardShouldPersistTaps="handled"
         bottomOffset={spacing.xl}
+        scrollEnabled={!sliding}
       >
         <View style={styles.statusRow}>
           {isTp ? (
@@ -1079,50 +1105,56 @@ export function DcrForm({
                 <AppText variant="label">Calls</AppText>
                 <Errors list={err('calls')} />
                 {s.calls.map((c, i) => (
-                  <CallEditor
+                  <Animated.View
                     key={c.clientId}
-                    call={sEff.calls[i] ?? c}
-                    index={i}
-                    readOnly={readOnly}
-                    errors={[
-                      ...err(`call-${c.clientId}`),
-                      ...(flagged[c.clientId] ? [flagged[c.clientId]!] : []),
-                    ]}
-                    products={productsQ.data ?? []}
-                    detail={productsQ.detail}
-                    onPresented={() => {
-                      // CallEditor already set presentationOpened + presentationCapture via onChange.
-                      if (c.outletId) presLog.record(c.outletId);
-                    }}
-                    scopes={scopes}
-                    names={placeName}
-                    onChange={(p) =>
-                      update((x) => ({
-                        calls: x.calls.map((row) => {
-                          if (row.clientId !== c.clientId) return row;
-                          const next = { ...row, ...p };
-                          // Products/deck changed: drop device log so old-API overlay cannot re-green.
-                          if (
-                            p.presentationOpened === false &&
-                            row.outletId &&
-                            row.presentationOpened
-                          )
-                            presLog.clear(row.outletId);
-                          return next;
-                        }),
-                      }))
-                    }
-                    onRemove={() =>
-                      update((x) => ({
-                        calls: x.calls.filter((row) => row.clientId !== c.clientId),
-                      }))
-                    }
-                  />
+                    layout={callLayout}
+                    entering={callEnter}
+                    exiting={callExit}
+                  >
+                    <CallEditor
+                      call={sEff.calls[i] ?? c}
+                      index={i}
+                      readOnly={readOnly}
+                      errors={[
+                        ...err(`call-${c.clientId}`),
+                        ...(flagged[c.clientId] ? [flagged[c.clientId]!] : []),
+                      ]}
+                      products={productsQ.data ?? []}
+                      detail={productsQ.detail}
+                      onPresented={() => {
+                        // CallEditor already set presentationOpened + presentationCapture via onChange.
+                        if (c.outletId) presLog.record(c.outletId);
+                      }}
+                      scopes={scopes}
+                      names={placeName}
+                      onChange={(p) =>
+                        update((x) => ({
+                          calls: x.calls.map((row) => {
+                            if (row.clientId !== c.clientId) return row;
+                            const next = { ...row, ...p };
+                            // Products/deck changed: drop device log so old-API overlay cannot re-green.
+                            if (
+                              p.presentationOpened === false &&
+                              row.outletId &&
+                              row.presentationOpened
+                            )
+                              presLog.clear(row.outletId);
+                            return next;
+                          }),
+                        }))
+                      }
+                      onRemove={() =>
+                        update((x) => ({
+                          calls: x.calls.filter((row) => row.clientId !== c.clientId),
+                        }))
+                      }
+                    />
+                  </Animated.View>
                 ))}
                 {!readOnly ? (
                   <View style={styles.row}>
                     {(['doctor', 'chemist', 'stockist'] as CallKind[]).map((kind) => (
-                      <Pressable
+                      <PressableScale
                         key={kind}
                         onPress={() =>
                           update((x) => ({
@@ -1146,13 +1178,13 @@ export function DcrForm({
                             ],
                           }))
                         }
-                        accessibilityRole="button"
                         accessibilityLabel={`Add ${KIND_LABEL[kind].toLowerCase()} call`}
+                        scaleTo={0.96}
                         style={styles.addCall}
                       >
                         <Icon name="plus" size={18} color={colors.navy} />
                         <AppText variant="action">{KIND_LABEL[kind]}</AppText>
-                      </Pressable>
+                      </PressableScale>
                     ))}
                   </View>
                 ) : null}
@@ -1241,13 +1273,16 @@ export function DcrForm({
               disabled={busy || !s.workTypeId}
               onPress={() => void save(false)}
             />
-            <Button
-              label={isTp ? 'Send for approval' : 'Submit'}
-              loading={saving === 'submit'}
-              loadingLabel={isTp ? 'Sending…' : 'Submitting…'}
-              disabled={busy || !s.workTypeId}
-              onPress={() => void save(true)}
-            />
+            <View style={styles.slideWrap}>
+              <SlideToConfirm
+                label={isTp ? 'Slide to send for approval' : 'Slide to submit'}
+                doneLabel={isTp ? 'Sent' : 'Submitted'}
+                errorLabel={isTp ? 'Could not send' : 'Could not submit'}
+                disabled={busy || !s.workTypeId}
+                onDragChange={setSliding}
+                onCommit={() => save(true)}
+              />
+            </View>
           </>
         ) : null}
         {isTp && tpItem && !readOnly ? (
@@ -1395,6 +1430,8 @@ const styles = StyleSheet.create({
   },
   centerText: { textAlign: 'center' },
   content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm, gap: spacing.lg },
+  /** Locks the CUTLY slider to 56pt so KeyboardAwareScrollView cannot stretch it. */
+  slideWrap: { height: 56, width: '100%', flexGrow: 0, flexShrink: 0 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   warn: {
     gap: spacing.sm,

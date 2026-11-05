@@ -12,6 +12,9 @@
       "distribution": "internal",
       "android": { "buildType": "apk" }
     },
-    "production": {}
+    "production": {
+      "android": { "buildType": "apk" },
+      "uploadSourceMaps": true
+    }
   }
 }

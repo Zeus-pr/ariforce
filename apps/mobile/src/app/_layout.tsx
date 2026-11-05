@@ -15,8 +15,12 @@ import { lockPortrait } from '@/lib/orientation';
 import { BrandSplash } from '@/components/brand-splash';
 import { iconFont } from '@/components/icon';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
+import { configureObserve, SplashHiddenContext, wrapWithObserve } from '@/lib/observe';
 import { queryClient } from '@/lib/query-client';
 import { colors, fonts, motion } from '@/theme';
+
+// Before any screen mounts — no-op in Expo Go (no ExpoAppMetrics native module).
+configureObserve();
 
 // Keep the native splash (same mark, same ground) up until the in-app splash has painted its
 // identical mark (BrandSplash onReady), then cross-fade: nothing visible changes at the hand-off.
@@ -46,7 +50,7 @@ const NAV_THEME = {
   },
 };
 
-export default function RootLayout() {
+function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -61,6 +65,8 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+export default wrapWithObserve(RootLayout);
 
 function RootNavigator() {
   const { status } = useAuth();
@@ -97,7 +103,7 @@ function RootNavigator() {
   // The BrandSplash mark is the very first thing React draws (even before fonts), exactly over
   // the launch window's mark. The app mounts under it only once that mark is painted.
   return (
-    <>
+    <SplashHiddenContext.Provider value={splashGone}>
       <StatusBar style="dark" />
       {fontsReady && splashReady && (
         <ThemeProvider value={NAV_THEME}>
@@ -121,6 +127,6 @@ function RootNavigator() {
           onHidden={onSplashHidden}
         />
       )}
-    </>
+    </SplashHiddenContext.Provider>
   );
 }

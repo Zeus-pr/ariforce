@@ -41,7 +41,7 @@ export const isMasterKind = (k: unknown): k is MasterKind =>
 export type FieldDef = {
   key: string;
   label: string;
-  type: 'text' | 'territory' | 'specialty' | 'category' | 'tel' | 'pincode';
+  type: 'text' | 'territory' | 'specialty' | 'category' | 'tel' | 'pincode' | 'date' | 'email';
   required?: boolean;
   /** Contract max length (zod .max). */
   max?: number;
@@ -85,6 +85,9 @@ export const MASTERS: Record<
       { key: 'specialtyId', label: 'Specialty', type: 'specialty' },
       { key: 'categoryId', label: 'Category', type: 'category' },
       { key: 'registrationNo', label: 'Registration no.', type: 'text', max: 40 },
+      { key: 'dateOfBirth', label: 'Date of birth', type: 'date', placeholder: 'YYYY-MM-DD' },
+      { key: 'anniversary', label: 'Anniversary', type: 'date', placeholder: 'YYYY-MM-DD' },
+      { key: 'email', label: 'Email', type: 'email', max: 160, placeholder: 'name@clinic.com' },
       ...address,
     ],
   },
@@ -125,6 +128,15 @@ export function valuesFrom(kind: MasterKind, row: MasterRow | null): Values {
 }
 
 const PIN = /^[1-9][0-9]{5}$/;
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function realDay(s: string) {
+  if (!ISO_DAY.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number) as [number, number, number];
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
 
 /** Contract rules with the website's messages (record-sheet.tsx save()). */
 export function validate(kind: MasterKind, values: Values): Record<string, string> {
@@ -134,6 +146,10 @@ export function validate(kind: MasterKind, values: Values): Record<string, strin
     if (f.required && !String(v ?? '').trim()) errs[f.key] = 'Required.';
     else if (f.type === 'pincode' && v != null && !PIN.test(v))
       errs[f.key] = 'Use a 6-digit PIN code.';
+    else if (f.type === 'date' && v != null && !realDay(v))
+      errs[f.key] = 'Use a real date (YYYY-MM-DD).';
+    else if (f.type === 'email' && v != null && (v.length > 160 || !EMAIL.test(v)))
+      errs[f.key] = 'Enter a valid email.';
     else if (f.max && v != null && v.length > f.max)
       errs[f.key] = `Too long: at most ${f.max} characters.`;
   }

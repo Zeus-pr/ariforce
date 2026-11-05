@@ -7,11 +7,13 @@ import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
 import { Icon } from '@/components/icon';
 import { ScrollView } from '@/components/scroll';
+import { OutletLocksCard } from '@/components/outlet-locks-card';
 import { TintedIcon } from '@/components/tinted-icon';
 import { SkeletonDetail } from '@/components/skeleton';
 import { useBottomSpace } from '@/components/floating-tab-bar';
 import { useAuth } from '@/lib/auth-context';
 import { FEATURES } from '@/lib/features';
+import type { OutletKind } from '@/lib/field';
 import {
   APPROVAL_LABEL,
   isMasterKind,
@@ -24,6 +26,12 @@ import {
 import { canWriteMasters } from '@/lib/roles';
 import { colors, layout, radius, spacing, touch } from '@/theme';
 
+const OUTLET_KIND: Record<MasterKind, OutletKind> = {
+  doctors: 'doctor',
+  chemists: 'chemist',
+  stockists: 'stockist',
+};
+
 export default function MasterDetailScreen() {
   const { kind, id } = useLocalSearchParams<{ kind: string; id: string }>();
   if (!isMasterKind(kind) || typeof id !== 'string') return <Redirect href="/business" />;
@@ -31,6 +39,17 @@ export default function MasterDetailScreen() {
 }
 
 const LOOKUP_TYPES = ['territory', 'specialty', 'category'];
+
+function dayLabel(iso: string) {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
 
 /**
  * One record (web doctors-view.tsx Doctor360 header + record-sheet.tsx ReadOnlyDetails):
@@ -130,6 +149,19 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
                 </AppText>
               </Pressable>
             ) : null}
+            {values.email ? (
+              <Pressable
+                onPress={() => void Linking.openURL(`mailto:${values.email}`)}
+                accessibilityRole="link"
+                accessibilityLabel={`Email ${values.email}`}
+                style={[styles.line, styles.call]}
+              >
+                <Icon name="email-outline" size={18} color={colors.tealDeep} />
+                <AppText variant="label" style={styles.callText}>
+                  {values.email}
+                </AppText>
+              </Pressable>
+            ) : null}
           </Card>
 
           {rejection ? (
@@ -144,7 +176,12 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
           <Card>
             {cfg.fields.map((f, i) => {
               const raw = values[f.key];
-              const v = raw && LOOKUP_TYPES.includes(f.type) ? (lk.byId.get(raw) ?? raw) : raw;
+              const v =
+                raw && LOOKUP_TYPES.includes(f.type)
+                  ? (lk.byId.get(raw) ?? raw)
+                  : raw && f.type === 'date'
+                    ? dayLabel(raw)
+                    : raw;
               return (
                 <View
                   key={f.key}
@@ -158,6 +195,12 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
               );
             })}
           </Card>
+
+          <OutletLocksCard
+            outletKind={OUTLET_KIND[kind]}
+            outletId={row.id}
+            roles={user?.roles ?? []}
+          />
 
           {canWrite ? (
             <Button
