@@ -195,6 +195,9 @@ export const doctors: Doctor[] = [
     specialtyId: specialties[1]!.id,
     categoryId: doctorCategories[0]!.id,
     registrationNo: 'WBMC-12345',
+    dateOfBirth: null,
+    anniversary: null,
+    email: null,
     approvalStatus: 'approved',
   },
 ];
