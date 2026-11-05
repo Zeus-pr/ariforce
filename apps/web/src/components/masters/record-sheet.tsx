@@ -362,6 +362,17 @@ function DuplicatePanel({
   );
 }
 
+function showDay(iso: string) {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
 function ReadOnlyDetails({
   kind,
   values,
@@ -380,7 +391,9 @@ function ReadOnlyDetails({
           const v =
             raw && ['territory', 'specialty', 'category'].includes(f.type)
               ? (byId.get(raw) ?? raw)
-              : raw;
+              : raw && f.type === 'date'
+                ? showDay(raw)
+                : raw;
           return (
             <div key={f.key} className="grid gap-0.5">
               <dt className="text-xs text-muted-foreground">{f.label}</dt>

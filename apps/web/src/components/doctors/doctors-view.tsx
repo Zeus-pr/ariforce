@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 
 import { PlaceholderTag } from '@/components/masters/placeholder';
 
-import { ArrowLeft, FileSpreadsheet, MapPin, Pencil, Phone, Plus } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, Mail, MapPin, Pencil, Phone, Plus } from 'lucide-react';
 import { RecordSheet } from '@/components/masters/record-sheet';
 import type { MasterRow } from '@/components/masters/config';
 import { Button } from '@ariforce/ui/components/button';
@@ -41,6 +41,17 @@ const VisitsChart = dynamic(() => import('./doctor-charts').then((m) => m.Visits
     <div className="h-[170px] animate-pulse rounded-md bg-muted/40" aria-busy="true" />
   ),
 });
+
+function dayLabel(iso: string) {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
 
 export function DoctorsView() {
   const id = useSearchParams().get('id');
@@ -310,6 +321,17 @@ function Doctor360({ id }: { id: string }) {
               {doc.phone}
             </a>
           )}
+          {doc.email && (
+            <a
+              href={`mailto:${doc.email}`}
+              className="inline-flex items-center gap-1 hover:text-foreground"
+            >
+              <Mail className="size-3.5" />
+              {doc.email}
+            </a>
+          )}
+          {doc.dateOfBirth && <span>Born {dayLabel(doc.dateOfBirth)}</span>}
+          {doc.anniversary && <span>Anniversary {dayLabel(doc.anniversary)}</span>}
         </p>
       </div>
 
