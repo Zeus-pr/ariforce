@@ -1,14 +1,16 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import { Suspense } from 'react';
+import { AuthFibers } from '@/components/auth/auth-fibers';
 import { SignInForm } from '@/components/auth/sign-in-form';
 
 export const metadata: Metadata = { title: 'Sign in' };
 
 export default function SignInPage() {
   return (
-    <main className="flex min-h-dvh items-start justify-center bg-muted/40 px-4 pt-[10vh] pb-10 sm:pt-[14vh]">
-      <div className="w-full max-w-sm">
+    <main className="flex min-h-dvh items-start justify-center bg-white px-4 pt-[10vh] pb-10 sm:pt-[14vh]">
+      <AuthFibers />
+      <div className="relative z-10 w-full max-w-sm">
         {/* Server-rendered so the splash finds its landing box at hydration. The splash logo glides onto
             this box; 9:8 like the header mark so the FLIP scale is exact. */}
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
