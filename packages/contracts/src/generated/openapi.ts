@@ -2935,6 +2935,12 @@ export interface components {
       specialtyId: string | null;
       categoryId: string | null;
       registrationNo: string | null;
+      /** @default null */
+      dateOfBirth: (string | null) | null;
+      /** @default null */
+      anniversary: (string | null) | null;
+      /** @default null */
+      email: string | null;
       addressLine: string | null;
       city: string | null;
       state: string | null;
@@ -2960,6 +2966,9 @@ export interface components {
       specialtyId?: string | null;
       categoryId?: string | null;
       registrationNo?: string | null;
+      dateOfBirth?: (string | null) | null;
+      anniversary?: (string | null) | null;
+      email?: string | null;
       addressLine?: string | null;
       city?: string | null;
       state?: string | null;
@@ -4784,6 +4793,9 @@ export interface components {
       specialtyId: string | null;
       categoryId: string | null;
       registrationNo: string | null;
+      dateOfBirth: (string | null) | null;
+      anniversary: (string | null) | null;
+      email: string | null;
       addressLine: string | null;
       city: string | null;
       state: string | null;

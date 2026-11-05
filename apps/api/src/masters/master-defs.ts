@@ -175,7 +175,7 @@ export const MASTERS: Record<string, MasterDef> = {
       updatedAt: doctors.updatedAt,
       createdAt: doctors.createdAt,
     },
-    search: [doctors.name, doctors.registrationNo, doctors.city, doctors.pincode],
+    search: [doctors.name, doctors.registrationNo, doctors.city, doctors.pincode, doctors.email],
     filters: (q) => [
       q.territoryId ? inSubtree(doctors.territoryId, String(q.territoryId)) : undefined,
       localTerritory(doctors.localTerritoryId, q.localTerritoryId),

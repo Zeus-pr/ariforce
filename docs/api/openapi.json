@@ -17680,6 +17680,60 @@
               }
             ]
           },
+          "dateOfBirth": {
+            "default": null,
+            "anyOf": [
+              {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "anniversary": {
+            "default": null,
+            "anyOf": [
+              {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160,
+                "format": "email",
+                "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "addressLine": {
             "anyOf": [
               {
@@ -17843,6 +17897,57 @@
               {
                 "type": "string",
                 "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dateOfBirth": {
+            "anyOf": [
+              {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "anniversary": {
+            "anyOf": [
+              {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160,
+                "format": "email",
+                "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
               },
               {
                 "type": "null"
@@ -23783,6 +23888,57 @@
               }
             ]
           },
+          "dateOfBirth": {
+            "anyOf": [
+              {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "anniversary": {
+            "anyOf": [
+              {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160,
+                "format": "email",
+                "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "addressLine": {
             "anyOf": [
               {
@@ -23904,6 +24060,9 @@
           "specialtyId",
           "categoryId",
           "registrationNo",
+          "dateOfBirth",
+          "anniversary",
+          "email",
           "addressLine",
           "city",
           "state",

@@ -74,7 +74,7 @@ divisions → products → product_hq → specialties/categories → doctors/che
 
 ### doctors
 
-**name**, **territory_code**, qualification, specialty_code, category_code (A/B/C), registration_no, address_line, city, state, pincode (6 digits), lat, lng, phone
+**name**, **territory_code**, qualification, specialty_code, category_code (A/B/C), registration_no, date_of_birth (YYYY-MM-DD), anniversary (YYYY-MM-DD), email, address_line, city, state, pincode (6 digits), lat, lng, phone
 
 ### chemists / stockists
 

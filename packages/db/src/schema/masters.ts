@@ -118,6 +118,7 @@ export const doctors = pgTable(
     geoTaggedBy: uuid('geo_tagged_by').references(() => users.id),
     dateOfBirth: text('date_of_birth'),
     anniversary: text('anniversary'),
+    email: text('email'),
     ...contact(),
     ...syncCols(),
   },
@@ -128,6 +129,7 @@ export const doctors = pgTable(
     // Duplicate detection on field-added doctors (#26).
     index('doctors_regno_idx').on(t.companyId, sql`upper(${t.registrationNo})`),
     index('doctors_pincode_idx').on(t.companyId, t.pincode),
+    index('doctors_email_idx').on(t.companyId, sql`lower(${t.email})`),
     index('doctors_location_gix').using('gist', t.location),
     check(
       'doctors_geofence_ck',

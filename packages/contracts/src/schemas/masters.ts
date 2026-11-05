@@ -26,6 +26,18 @@ const Address = {
   phone: z.string().max(20).nullable(),
 };
 
+/** Calendar day stored as text (doctors.date_of_birth / anniversary). Omit or null when unknown. */
+const IsoDay = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a real date (YYYY-MM-DD).')
+  .refine((s) => {
+    const [y, m, d] = s.split('-').map(Number) as [number, number, number];
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+  }, 'Use a real date (YYYY-MM-DD).')
+  .nullable()
+  .default(null);
+
 export const DoctorApprovalStatus = z.enum(['pending', 'approved', 'rejected']).meta({
   description:
     'Field-added doctors start pending until their manager decides (#26); company-wide roles add approved doctors. Read-only.',
@@ -43,6 +55,9 @@ export const Doctor = Syncable.extend({
   specialtyId: Id.nullable(),
   categoryId: Id.nullable(),
   registrationNo: z.string().max(40).nullable(),
+  dateOfBirth: IsoDay.nullable(),
+  anniversary: IsoDay.nullable(),
+  email: z.email().max(160).nullable(),
   ...Address,
   approvalStatus: DoctorApprovalStatus,
   rejectionReason: z.string().nullable().optional().meta({
@@ -85,6 +100,9 @@ const DoctorFields = Doctor.omit({
   rejectedAt: true,
 });
 export const DoctorCreate = DoctorFields.extend({
+  dateOfBirth: IsoDay.nullable().default(null),
+  anniversary: IsoDay.nullable().default(null),
+  email: z.email().max(160).nullable().default(null),
   allowPossibleDuplicate: z.boolean().optional().meta({
     description:
       'Create even when a doctor with the same name (without "Dr.") and pincode exists (409 DOCTOR_POSSIBLE_DUPLICATE). A registration number match can never be overridden.',
