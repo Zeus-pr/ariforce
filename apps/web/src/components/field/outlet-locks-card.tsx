@@ -107,20 +107,23 @@ export function OutletLocksCard({
         setItems(r.data?.items ?? []);
         return;
       }
+      // 403 used to surface as NETWORK → false “No lock yet” (sysadmin lacked field:read).
+      if (r.response?.status === 403) {
+        setItems([]);
+        setError('You do not have permission to view locked locations.');
+        return;
+      }
+      if (r.response?.status === 404) {
+        setItems([]);
+        setError(null);
+        return;
+      }
       if (r.error) throw toApiError(r);
       setItems(r.data?.items ?? []);
     } catch (e) {
       const apiErr = e instanceof Error ? { code: 'NETWORK', message: e.message } : toApiError(e);
-      const code = 'code' in apiErr ? String(apiErr.code) : 'NETWORK';
-      const soft =
-        code === 'NETWORK' ||
-        code === 'NOT_FOUND' ||
-        code === 'AbortError' ||
-        !code ||
-        code === 'undefined';
       setItems([]);
-      // Empty locks / flaky parse → empty state, not a red “Could not reach the server”.
-      setError(soft ? null : apiErr.message || 'Could not load locks.');
+      setError(apiErr.message || 'Could not load locks.');
     }
   }, [outletKind, outletId]);
 

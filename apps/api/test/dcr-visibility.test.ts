@@ -17,7 +17,8 @@ const PASSWORD = process.env.DEMO_PASSWORD ?? 'ariforce-demo-pass';
 /**
  * GET /v1/dcrs/{id} and GET /v1/dcrs?userId= visibility: a BM reads only their own DCRs (another
  * person's id is 404, never 403, so ids are not confirmed); managers read their subtree; the
- * Director reads everyone's; System Admin has no field:read (403).
+ * Director reads everyone's; System Admin has field:read (outlet locks) but no sales line, so a
+ * BM's DCR by id is 404 (not 403).
  */
 describe.skipIf(!OWNER || !APP)('DCR read visibility (real API)', () => {
   let app: INestApplication;
@@ -96,8 +97,8 @@ describe.skipIf(!OWNER || !APP)('DCR read visibility (real API)', () => {
     expect((await byId('otherAbm')).status).toBe(404);
   });
 
-  it('System Admin has no field data: 403', async () => {
-    expect((await byId('sysadmin')).status).toBe(403);
+  it('System Admin has field:read but no sales line: BM DCR by id is 404', async () => {
+    expect((await byId('sysadmin')).status).toBe(404);
   });
 
   it('list with userId: Director sees it; a peer BM never does; an ABM outside the line 403', async () => {
