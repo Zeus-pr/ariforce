@@ -14,7 +14,7 @@ export type MasterRow = Doctor | Chemist | Stockist;
 export type FieldDef = {
   key: string;
   label: string;
-  type: 'text' | 'territory' | 'specialty' | 'category' | 'tel' | 'pincode';
+  type: 'text' | 'territory' | 'specialty' | 'category' | 'tel' | 'pincode' | 'date' | 'email';
   required?: boolean;
   /** Header names accepted when importing a sheet (lower-cased, punctuation ignored). */
   aliases: string[];
@@ -129,6 +129,24 @@ export const MASTERS: Record<
         label: 'Registration no.',
         type: 'text',
         aliases: ['registrationno', 'regno', 'nmcno', 'mciregno', 'registration'],
+      },
+      {
+        key: 'dateOfBirth',
+        label: 'Date of birth',
+        type: 'date',
+        aliases: ['dateofbirth', 'dob', 'birthdate'],
+      },
+      {
+        key: 'anniversary',
+        label: 'Anniversary',
+        type: 'date',
+        aliases: ['anniversary', 'doa', 'dateofanniversary'],
+      },
+      {
+        key: 'email',
+        label: 'Email',
+        type: 'email',
+        aliases: ['email', 'emailaddress', 'mail'],
       },
       ...address,
     ],
