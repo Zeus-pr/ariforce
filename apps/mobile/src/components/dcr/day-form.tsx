@@ -169,8 +169,6 @@ export function DcrForm({
   const [askDeviation, setAskDeviation] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState<'draft' | 'submit' | null>(null);
-  /** Remount the teal slider after a failed submit so it can be tried again. */
-  const [slideKey, setSlideKey] = useState(0);
   /** Lock the form scroll while the submit slider is being dragged (CUTLY pattern). */
   const [sliding, setSliding] = useState(false);
   const [peopleQ, setPeopleQ] = useState('');
@@ -557,19 +555,20 @@ export function DcrForm({
   const err = (key: string) =>
     showErrors ? probs.filter((p) => p.key === key).map((p) => p.text) : [];
 
-  async function save(submit: boolean) {
-    if (readOnly) return;
+  /** True only when the draft was saved (or the report really submitted); false on every refusal or failure. */
+  async function save(submit: boolean): Promise<boolean> {
+    if (readOnly) return false;
     if (isTp) return saveTp(submit);
     if (submit && s.date > todayIST()) {
       setFormError(
         `You can submit this report from ${dateLabel(s.date)}. Save it as a draft for now.`,
       );
-      return;
+      return false;
     }
     if (submit && probs.length) {
       setShowErrors(true);
       setFormError((probs.find((p) => p.key === 'presentation') ?? probs[0]!).text);
-      return;
+      return false;
     }
     setSaving(submit ? 'submit' : 'draft');
     setFormError(null);
@@ -595,7 +594,7 @@ export function DcrForm({
       if (!submit) {
         Alert.alert('Draft saved', 'You can come back and finish it later.');
         router.back();
-        return;
+        return true;
       }
       submitKey.current ??= idempotencyKey();
       try {
@@ -635,6 +634,7 @@ export function DcrForm({
             : undefined,
         );
         if (added?.kind !== 'linked') router.back();
+        return true;
       } catch (e) {
         // Same as web dcr-flow.tsx: keep the key only when no answer came back (the submit may
         // have gone through, and a retry with the same key is safe); any API answer drops it.
@@ -651,20 +651,21 @@ export function DcrForm({
             .filter(Boolean)
             .join(', ');
           setFormError(`${rule.message}${which ? ` (${which})` : ''}`);
-          return;
+          return false;
         }
         if (e instanceof ApiError && e.code === 'DEVIATION_REASON_REQUIRED') {
           setAskDeviation(true);
           setFormError(saveMessage(e));
-          return;
+          return false;
         }
         if (e instanceof ApiError && e.code === 'DAY_ALREADY_SUBMITTED') {
           const existingId = (e.details as { existingId?: string } | undefined)?.existingId ?? null;
           setDaySubmitted({ id: existingId });
           setFormError(saveMessage(e));
-          return;
+          return false;
         }
         setFormError(`${saveMessage(e)} Your draft is saved; press Submit again.`);
+        return false;
       }
     } catch (e) {
       if (e instanceof ApiError && e.code === 'DAY_ALREADY_SUBMITTED') {
@@ -672,31 +673,32 @@ export function DcrForm({
         setDaySubmitted({ id: existingId });
       }
       setFormError(saveMessage(e));
+      return false;
     } finally {
       setSaving(null);
     }
   }
 
-  async function saveTp(send: boolean) {
+  async function saveTp(send: boolean): Promise<boolean> {
     if (send && probs.length) {
       setShowErrors(true);
       setFormError(probs[0]!.text);
-      return;
+      return false;
     }
     if (tpTo < s.date) {
       setFormError('The end date is before the start date.');
-      return;
+      return false;
     }
     if (datesOf(s.date, tpTo).length > MAX_TP_DAYS) {
       setFormError(`A tour plan covers at most ${MAX_TP_DAYS} days.`);
-      return;
+      return false;
     }
     const cutoff = tpFutureMonthCutoffError(s.date);
     if (cutoff) {
       setFormError(cutoff);
-      return;
+      return false;
     }
-    if (!user) return;
+    if (!user) return false;
     const b = draftBody(sEff, null);
     setSaving(send ? 'submit' : 'draft');
     setFormError(null);
@@ -728,8 +730,10 @@ export function DcrForm({
           : 'You can come back and send it for approval later.',
       );
       router.back();
+      return true;
     } catch (e) {
       setFormError(tpMessage(e));
+      return false;
     } finally {
       setSaving(null);
     }
@@ -1271,16 +1275,12 @@ export function DcrForm({
             />
             <View style={styles.slideWrap}>
               <SlideToConfirm
-                key={slideKey}
-                tone="canopy"
-                text={isTp ? 'Slide to send for approval' : 'Slide to submit'}
-                confirmedText={isTp ? 'Sent' : 'Submitted'}
+                label={isTp ? 'Slide to send for approval' : 'Slide to submit'}
+                doneLabel={isTp ? 'Sent' : 'Submitted'}
+                errorLabel={isTp ? 'Could not send' : 'Could not submit'}
                 disabled={busy || !s.workTypeId}
                 onDragChange={setSliding}
-                onConfirm={async () => {
-                  await save(true);
-                  setSlideKey((k) => k + 1);
-                }}
+                onCommit={() => save(true)}
               />
             </View>
           </>
