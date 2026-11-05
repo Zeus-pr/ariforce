@@ -1,11 +1,11 @@
 import { Redirect, Stack } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Linking, StyleSheet, View } from 'react-native';
 import { PullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
-import { Chip } from '@/components/chip';
 import { Icon } from '@/components/icon';
+import { PressableScale } from '@/components/pressable-scale';
 import { ScrollView } from '@/components/scroll';
 import { SkeletonList } from '@/components/skeleton';
 import { useBottomSpace } from '@/components/floating-tab-bar';
@@ -16,7 +16,6 @@ import { addDays } from '@/lib/leave';
 import { canViewTeamField } from '@/lib/roles';
 import {
   PUNCH_CHIP_LABEL,
-  PUNCH_CHIP_TONE,
   checkInTitle,
   checkInsForUser,
   punchChip,
@@ -36,11 +35,13 @@ export default function TeamFieldScreen() {
 }
 
 function TeamField() {
+  const { user } = useAuth();
   const bottom = useBottomSpace();
   const today = todayIST();
   const [date, setDate] = useState(today);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const q = useTeamFieldDay(date);
+  // API includes the caller in teamUserIds; this screen is for reports only.
+  const q = useTeamFieldDay(date, user?.id);
 
   const subtitle = useMemo(() => dateLabel(date), [date]);
 
@@ -61,33 +62,32 @@ function TeamField() {
         >
           <Card style={styles.dateCard}>
             <View style={styles.dateRow}>
-              <Pressable
+              <PressableScale
                 onPress={() => shift(-1)}
                 hitSlop={8}
-                accessibilityRole="button"
                 accessibilityLabel="Previous day"
-                style={({ pressed }) => [styles.dateBtn, pressed && styles.dateBtnPressed]}
+                scaleTo={0.92}
+                style={styles.dateBtn}
+                pressedStyle={styles.dateBtnPressed}
               >
                 <Icon name="chevron-left" color={colors.ink} />
-              </Pressable>
+              </PressableScale>
               <View style={styles.dateCenter} accessible accessibilityRole="header">
                 <AppText variant="label">{subtitle}</AppText>
                 <AppText variant="small">{date === today ? 'Today · IST' : 'IST'}</AppText>
               </View>
-              <Pressable
+              <PressableScale
                 onPress={() => shift(1)}
                 disabled={date >= today}
                 hitSlop={8}
-                accessibilityRole="button"
                 accessibilityLabel="Next day"
-                style={({ pressed }) => [
-                  styles.dateBtn,
-                  date >= today && styles.dateBtnDisabled,
-                  pressed && date < today && styles.dateBtnPressed,
-                ]}
+                haptic={date < today}
+                scaleTo={0.92}
+                style={[styles.dateBtn, date >= today && styles.dateBtnDisabled]}
+                pressedStyle={date < today ? styles.dateBtnPressed : undefined}
               >
                 <Icon name="chevron-right" color={date >= today ? colors.subtle : colors.ink} />
-              </Pressable>
+              </PressableScale>
             </View>
             <AppText variant="small" style={styles.hint}>
               GPS is captured only at punch in, each visit and punch out.
@@ -96,10 +96,10 @@ function TeamField() {
 
           {!q.isPending && !q.isError ? (
             <View style={styles.kpiRow}>
-              <Kpi label="On field" value={q.summary.in} tone="green" />
-              <Kpi label="Day done" value={q.summary.out} tone="blue" />
-              <Kpi label="Absent" value={q.summary.absent} tone="red" />
-              <Kpi label="Incomplete" value={q.summary.incomplete} tone="orange" />
+              <Kpi label="On field" value={q.summary.in} />
+              <Kpi label="Day done" value={q.summary.out} />
+              <Kpi label="Absent" value={q.summary.absent} />
+              <Kpi label="Incomplete" value={q.summary.incomplete} />
             </View>
           ) : null}
 
@@ -136,11 +136,13 @@ function TeamField() {
   );
 }
 
-function Kpi({ label, value, tone }: { label: string; value: number; tone: 'green' | 'blue' | 'red' | 'orange' }) {
+function Kpi({ label, value }: { label: string; value: number }) {
   return (
     <View style={styles.kpi}>
       <AppText variant="count">{value}</AppText>
-      <Chip label={label} tone={tone} center />
+      <AppText variant="small" style={styles.kpiLabel}>
+        {label}
+      </AppText>
     </View>
   );
 }
@@ -160,23 +162,24 @@ function PersonRow({
   onToggle: () => void;
   divider: boolean;
 }) {
-  const chip = punchChip(day);
+  const status = punchChip(day);
   const visits = day.visits;
   const inTime = day.punchIn ? timeIST(day.punchIn.capturedAt) : '—';
   const outTime = day.punchOut ? timeIST(day.punchOut.capturedAt) : '—';
-  const meta =
-    chip === 'absent' && day.leave
+  const detail =
+    status === 'absent' && day.leave
       ? `Leave · ${day.leave.typeCode}${day.leave.half ? ` (${day.leave.half})` : ''}`
       : `${inTime} → ${outTime} · ${visits} visit${visits === 1 ? '' : 's'}`;
+  const meta = `${PUNCH_CHIP_LABEL[status]} · ${detail}`;
 
   return (
     <View style={divider ? styles.personDivider : undefined}>
-      <Pressable
+      <PressableScale
         onPress={onToggle}
-        accessibilityRole="button"
         accessibilityState={{ expanded: open }}
-        accessibilityLabel={`${day.userName}, ${PUNCH_CHIP_LABEL[chip]}, ${meta}`}
-        style={({ pressed }) => [styles.personHead, pressed && styles.personPressed]}
+        accessibilityLabel={`${day.userName}, ${meta}`}
+        style={styles.personHead}
+        pressedStyle={styles.personPressed}
       >
         <View style={styles.personText}>
           <AppText variant="rowTitle" numberOfLines={1}>
@@ -186,9 +189,8 @@ function PersonRow({
             {meta}
           </AppText>
         </View>
-        <Chip label={PUNCH_CHIP_LABEL[chip]} tone={PUNCH_CHIP_TONE[chip]} />
         <Icon name={open ? 'chevron-up' : 'chevron-down'} color={colors.subtle} />
-      </Pressable>
+      </PressableScale>
       {open ? (
         <View style={styles.timeline}>
           {!checkIns.length ? (
@@ -235,15 +237,16 @@ function TimelineRow({
             {title}
           </AppText>
           {hasGps ? (
-            <Pressable
+            <PressableScale
               onPress={() => Linking.openURL(googleMapsUrl(lat, lng)).catch(() => {})}
               hitSlop={8}
-              accessibilityRole="button"
               accessibilityLabel={`Open ${title} in Google Maps`}
-              style={({ pressed }) => [styles.mapBtn, pressed && styles.mapBtnPressed]}
+              scaleTo={0.92}
+              style={styles.mapBtn}
+              pressedStyle={styles.mapBtnPressed}
             >
               <Icon name="map-marker-radius-outline" size={20} color={colors.tealDeep} />
-            </Pressable>
+            </PressableScale>
           ) : null}
         </View>
         <AppText variant="small">{timeIST(checkIn.capturedAt)}</AppText>
@@ -294,6 +297,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.separator,
   },
+  kpiLabel: { textAlign: 'center', color: colors.muted },
   personDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator },
   personHead: {
     flexDirection: 'row',
@@ -339,5 +343,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.tealWash,
   },
   mapBtnPressed: { backgroundColor: colors.tealSoft },
-  outside: { color: colors.warn },
+  outside: { color: colors.muted },
 });

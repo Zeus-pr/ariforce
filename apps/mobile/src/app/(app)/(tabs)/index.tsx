@@ -14,6 +14,7 @@ import { SyncStrip } from '@/components/home/sync-strip';
 import { useAuth } from '@/lib/auth-context';
 import { featureHref, type FeatureKey } from '@/lib/features';
 import { useHomeAttention } from '@/lib/home-attention';
+import { useMarkObserveInteractive } from '@/lib/observe';
 import { isApprover, roleLabel } from '@/lib/roles';
 import { getHomeMock } from '@/mocks/home';
 import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
@@ -24,6 +25,7 @@ import { colors, layout, radius, spacing } from '@/theme';
  * schedule → KPIs → sync stub. User identity from auth; everything else from mocks/home.
  */
 export default function HomeScreen() {
+  useMarkObserveInteractive();
   const { user, refresh } = useAuth();
   const router = useRouter();
   const [now, setNow] = useState(() => new Date());
@@ -102,7 +104,8 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.ground },
+  // Transparent so the tab watermark (TabScene) shows; the scene paints colors.ground.
+  flex: { flex: 1 },
   content: { paddingHorizontal: layout.gutter, paddingTop: 0 },
   sheet: {
     // Full-bleed under the canopy so rounded corners don’t leave a white gap

@@ -28,13 +28,54 @@ export type OutletKind = 'doctor' | 'chemist' | 'stockist';
 
 type Page<T> = { items: T[] };
 
-type OutletLocationRow = { id: string; active: boolean };
+/** Active GPS lock for an outlet (GET /v1/outlets/{kind}/{id}/locations). */
+export type OutletLocation = {
+  id: string;
+  version: number;
+  outletKind: OutletKind;
+  outletId: string;
+  label: string;
+  location: { lat: number; lng: number };
+  accuracyM: number | null;
+  source: string;
+  isMock: boolean;
+  lockedAt: string;
+  lockedBy: string;
+  lockedByName?: string | null;
+  active: boolean;
+};
 
 const LOCK_LABEL: Record<OutletKind, string> = {
   doctor: 'clinic',
   chemist: 'retail_shop',
   stockist: 'godown',
 };
+
+export const OUTLET_LOCK_LABELS: Record<OutletKind, { value: string; label: string }[]> = {
+  doctor: [
+    { value: 'clinic', label: 'Clinic' },
+    { value: 'hospital', label: 'Hospital' },
+    { value: 'chamber', label: 'Chamber' },
+    { value: 'residence', label: 'Residence' },
+    { value: 'nursing_home', label: 'Nursing home' },
+    { value: 'other', label: 'Other' },
+  ],
+  chemist: [
+    { value: 'retail_shop', label: 'Retail shop' },
+    { value: 'distributor_counter', label: 'Distributor counter' },
+    { value: 'other', label: 'Other' },
+  ],
+  stockist: [
+    { value: 'godown', label: 'Godown' },
+    { value: 'depot', label: 'Depot' },
+    { value: 'office', label: 'Office' },
+    { value: 'other', label: 'Other' },
+  ],
+};
+
+export function outletLockLabelText(kind: OutletKind, value: string) {
+  return OUTLET_LOCK_LABELS[kind].find((x) => x.value === value)?.label ?? value;
+}
 
 /** Plain copy for field API error codes. */
 export function fieldErrorMessage(e: unknown): string {
@@ -80,10 +121,17 @@ export async function getConsent(): Promise<ConsentState> {
   return apiFetch<ConsentState>('/v1/me/consent');
 }
 
+/** Cached after the first successful enrol so punch does not re-hit /v1/me/consent every time. */
+let cachedDeviceId: string | null | undefined;
+
 /** Enrol personal device + grant required consents when the user cannot check in yet. */
 export async function ensureFieldReady(): Promise<string | null> {
+  if (cachedDeviceId !== undefined) return cachedDeviceId;
   const me = await getConsent();
-  if (me.canCheckIn) return me.deviceId;
+  if (me.canCheckIn) {
+    cachedDeviceId = me.deviceId;
+    return me.deviceId;
+  }
   const platform = Platform.OS === 'ios' ? 'ios' : 'android';
   const device = await apiFetch<Device>('/v1/devices', {
     method: 'POST',
@@ -104,6 +152,7 @@ export async function ensureFieldReady(): Promise<string | null> {
       body: { purpose, granted: true, noticeVersion },
     });
   }
+  cachedDeviceId = device.id;
   return device.id;
 }
 
@@ -195,11 +244,22 @@ export async function postCheckIn(
 export async function listOutletLocations(
   outletKind: OutletKind,
   outletId: string,
-): Promise<OutletLocationRow[]> {
-  const page = await apiFetch<Page<OutletLocationRow>>(
+): Promise<OutletLocation[]> {
+  const page = await apiFetch<Page<OutletLocation>>(
     `/v1/outlets/${outletKind}/${outletId}/locations`,
   );
   return (page.items ?? []).filter((x) => x.active);
+}
+
+/** ABM+ / system admin: change label or deactivate a wrong first lock. */
+export async function patchOutletLocation(
+  id: string,
+  body: { version: number; label?: string; active?: boolean },
+): Promise<OutletLocation> {
+  return apiFetch<OutletLocation>(`/v1/outlet-locations/${id}`, {
+    method: 'PATCH',
+    body,
+  });
 }
 
 /** Create first lock at current fix when the outlet has none. */
@@ -212,7 +272,7 @@ export async function ensureOutletLocked(
   const existing = await listOutletLocations(outletKind, outletId);
   if (existing[0]) return existing[0].id;
   const gps = fix ?? (await getFix());
-  const lock = await apiFetch<OutletLocationRow>(
+  const lock = await apiFetch<OutletLocation>(
     `/v1/outlets/${outletKind}/${outletId}/locations`,
     {
       method: 'POST',
@@ -225,10 +285,10 @@ export async function ensureOutletLocked(
   return lock.id;
 }
 
-/** Punch in/out with device ready + GPS. */
+/** Punch in/out with device ready + GPS (consent and GPS in parallel). */
 export async function punch(kind: 'punch_in' | 'punch_out'): Promise<CheckIn> {
-  const deviceId = await ensureFieldReady();
-  return postCheckIn(kind, { deviceId });
+  const [deviceId, fix] = await Promise.all([ensureFieldReady(), getFix()]);
+  return postCheckIn(kind, { deviceId, fix });
 }
 
 /**
@@ -306,11 +366,10 @@ export async function requireOnDuty(): Promise<void> {
   throw new ApiError(409, 'SEQUENCE', 'Punch in on Home first, then check in at the call.');
 }
 
-/** Visit check-in: on duty → field ready → lock if needed → visit. Returns check-in id. */
+/** Visit check-in: on duty → field ready + GPS in parallel → lock if needed → visit. */
 export async function visitCheckIn(outletKind: OutletKind, outletId: string): Promise<string> {
   await requireOnDuty();
-  const deviceId = await ensureFieldReady();
-  const fix = await getFix();
+  const [deviceId, fix] = await Promise.all([ensureFieldReady(), getFix()]);
   await ensureOutletLocked(outletKind, outletId, fix, deviceId);
   const visit = await postCheckIn('visit', { fix, outletKind, outletId, deviceId });
   return visit.id;
@@ -319,8 +378,7 @@ export async function visitCheckIn(outletKind: OutletKind, outletId: string): Pr
 /** GPS proof body for opening Presentation (attach to draft call). */
 export async function capturePresentation(): Promise<PresentationCaptureDraft> {
   await requireOnDuty();
-  const deviceId = await ensureFieldReady();
-  const fix = await getFix();
+  const [deviceId, fix] = await Promise.all([ensureFieldReady(), getFix()]);
   return {
     ...captureBody(fix, deviceId),
   };

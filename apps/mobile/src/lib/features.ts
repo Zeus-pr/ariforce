@@ -50,8 +50,8 @@ export const FEATURES = {
     title: 'POB',
     icon: 'cart-outline',
     tone: 'blue',
-    short: 'Chemist booking desk',
-    blurb: 'Book chemist purchase orders from the field. Coming to mobile soon.',
+    short: 'Orders booked today',
+    blurb: "See today's chemist and stockist orders from your DCR, and jump in to book more.",
   },
   doctors: {
     title: 'Doctors',
@@ -120,17 +120,18 @@ type MasterBuilt = (typeof MASTER_BUILT)[number];
 const isMasterBuilt = (k: FeatureKey): k is MasterBuilt =>
   (MASTER_BUILT as readonly string[]).includes(k);
 
-/** Features a person may open: DCR needs a sales role (same as the website's nav). */
+/** Features a person may open: DCR/POB need a sales role (same as the website's nav). */
 export const canOpenFeature = (feature: FeatureKey, roles: readonly string[]) => {
-  if (feature === 'dcr') return isSalesRole(roles);
+  if (feature === 'dcr' || feature === 'pob') return isSalesRole(roles);
   if (feature === 'teamField') return canViewTeamField(roles);
   return true;
 };
 
 /** Link to a feature: its screen when the app has it, else its "Coming soon" screen. */
 export const featureHref = (feature: FeatureKey, roles?: readonly string[]) => {
-  // DCR is for the sales ladder only (web nav.ts SALES); others land on Home.
+  // DCR / POB are for the sales ladder only (web nav.ts SALES); others land on Home.
   if (feature === 'dcr') return roles && !isSalesRole(roles) ? ('/' as const) : ('/dcr' as const);
+  if (feature === 'pob') return roles && !isSalesRole(roles) ? ('/' as const) : ('/pob' as const);
   // Approvals: DCR review and DCR unlock requests are built; the screen checks isApprover.
   if (feature === 'approvals') return '/approvals' as const;
   if (feature === 'tour-plan') return '/tour-plan' as const;

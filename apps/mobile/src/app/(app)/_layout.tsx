@@ -48,8 +48,9 @@ function AppStack() {
       <Stack.Screen name="masters/[kind]/[id]" />
       <Stack.Screen name="masters/[kind]/form" />
       <Stack.Screen name="products/index" options={{ title: 'Products' }} />
-      <Stack.Screen name="dcr/form" />
-      <Stack.Screen name="tour-plan/form" />
+      {/* Edge swipe-back only: full-screen gesture steals the teal submit slider pan. */}
+      <Stack.Screen name="dcr/form" options={{ fullScreenGestureEnabled: false }} />
+      <Stack.Screen name="tour-plan/form" options={{ fullScreenGestureEnabled: false }} />
       <Stack.Screen name="notifications" />
       <Stack.Screen name="leave/index" />
       <Stack.Screen name="leave/apply" />
@@ -60,6 +61,7 @@ function AppStack() {
       <Stack.Screen name="approvals/index" />
       <Stack.Screen name="approvals/dcr/[id]" />
       <Stack.Screen name="team-field/index" options={{ title: 'Team field' }} />
+      <Stack.Screen name="pob/index" options={{ title: 'POB' }} />
     </Stack>
   );
 }

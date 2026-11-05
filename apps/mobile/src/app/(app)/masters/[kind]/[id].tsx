@@ -7,11 +7,13 @@ import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
 import { Icon } from '@/components/icon';
 import { ScrollView } from '@/components/scroll';
+import { OutletLocksCard } from '@/components/outlet-locks-card';
 import { TintedIcon } from '@/components/tinted-icon';
 import { SkeletonDetail } from '@/components/skeleton';
 import { useBottomSpace } from '@/components/floating-tab-bar';
 import { useAuth } from '@/lib/auth-context';
 import { FEATURES } from '@/lib/features';
+import type { OutletKind } from '@/lib/field';
 import {
   APPROVAL_LABEL,
   isMasterKind,
@@ -23,6 +25,12 @@ import {
 } from '@/lib/masters';
 import { canWriteMasters } from '@/lib/roles';
 import { colors, layout, radius, spacing, touch } from '@/theme';
+
+const OUTLET_KIND: Record<MasterKind, OutletKind> = {
+  doctors: 'doctor',
+  chemists: 'chemist',
+  stockists: 'stockist',
+};
 
 export default function MasterDetailScreen() {
   const { kind, id } = useLocalSearchParams<{ kind: string; id: string }>();
@@ -158,6 +166,12 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
               );
             })}
           </Card>
+
+          <OutletLocksCard
+            outletKind={OUTLET_KIND[kind]}
+            outletId={row.id}
+            roles={user?.roles ?? []}
+          />
 
           {canWrite ? (
             <Button

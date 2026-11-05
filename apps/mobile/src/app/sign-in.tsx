@@ -9,6 +9,7 @@ import { LogoLockup } from '@/components/logo-lockup';
 import { TextField } from '@/components/text-field';
 import { AuthError, type OtpChallenge } from '@/lib/auth-api';
 import { useAuth } from '@/lib/auth-context';
+import { useMarkObserveInteractive } from '@/lib/observe';
 import { colors, radius, spacing } from '@/theme';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -23,6 +24,7 @@ const TITLES: Partial<Record<AuthError['kind'], string>> = {
 };
 
 export default function SignInScreen() {
+  useMarkObserveInteractive();
   const { signIn, completeOtp, resendOtp, notice, clearNotice } = useAuth();
   const insets = useSafeAreaInsets();
   const passwordRef = useRef<TextInputInstance>(null);

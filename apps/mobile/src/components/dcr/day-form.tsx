@@ -2,11 +2,20 @@ import type { Dcr } from '@ariforce/contracts';
 import { useQueryClient } from '@tanstack/react-query';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+  useReducedMotion,
+} from 'react-native-reanimated';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
 import { Chip } from '@/components/chip';
 import { CallEditor } from '@/components/dcr/call-editor';
+import { PressableScale } from '@/components/pressable-scale';
+import { SlideToConfirm } from '@/components/slide-to-confirm';
 import { dcrStyles, Errors, Field } from '@/components/dcr/field';
 import { autoDraftNote, ensureExpenseDraft } from '@/lib/expenses';
 import { LeaveFields } from '@/components/dcr/leave-fields';
@@ -97,7 +106,7 @@ import {
   type WorkTypeOption,
   plusMinutes,
 } from '@/lib/dcr/model';
-import { colors, layout, radius, spacing, touch } from '@/theme';
+import { colors, layout, motion, radius, spacing, touch } from '@/theme';
 
 const fresh = (date: string): FlowState => ({
   date,
@@ -140,6 +149,7 @@ export function DcrForm({
 }) {
   const isTp = mode === 'tp';
   const { user } = useAuth();
+  const reduced = useReducedMotion();
   const tpQ = useTp(isTp ? tpId : fromTp);
   const tpItem = tpQ.data ?? null;
   const tpSave = useSaveTp();
@@ -147,6 +157,9 @@ export function DcrForm({
   const [tpTo, setTpTo] = useState(initialDate);
   const router = useRouter();
   const bottom = useBottomSpace();
+  const callLayout = reduced ? undefined : LinearTransition.duration(motion.fast);
+  const callEnter = reduced ? undefined : FadeIn.duration(motion.press);
+  const callExit = reduced ? undefined : FadeOut.duration(motion.press);
   const [s, setS] = useState<FlowState>(() => fresh(initialDate));
   const [dcr, setDcr] = useState<Dcr | null>(null);
   const [workTypes, setWorkTypes] = useState<WorkTypeOption[] | null>(null);
@@ -156,6 +169,10 @@ export function DcrForm({
   const [askDeviation, setAskDeviation] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState<'draft' | 'submit' | null>(null);
+  /** Remount the teal slider after a failed submit so it can be tried again. */
+  const [slideKey, setSlideKey] = useState(0);
+  /** Lock the form scroll while the submit slider is being dragged (CUTLY pattern). */
+  const [sliding, setSliding] = useState(false);
   const [peopleQ, setPeopleQ] = useState('');
   const peopleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Work With search goes to the server (web dcr-flow.tsx), debounced like the website's pickers.
@@ -589,6 +606,7 @@ export function DcrForm({
           ...expenseBodyExtras(sEff.expenses),
         });
         setDcr(submitted);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         // Server links DCR expenses to the claim; we only read its outcome (v2-adapter).
         const added = expenseOutcome(submitted);
         const addedText = expenseOutcomeText(added);
@@ -700,6 +718,9 @@ export function DcrForm({
           },
         },
       });
+      if (send) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
       Alert.alert(
         send ? 'Sent for approval' : 'Tour plan saved',
         send
@@ -852,6 +873,7 @@ export function DcrForm({
         contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
         keyboardShouldPersistTaps="handled"
         bottomOffset={spacing.xl}
+        scrollEnabled={!sliding}
       >
         <View style={styles.statusRow}>
           {isTp ? (
@@ -1079,50 +1101,56 @@ export function DcrForm({
                 <AppText variant="label">Calls</AppText>
                 <Errors list={err('calls')} />
                 {s.calls.map((c, i) => (
-                  <CallEditor
+                  <Animated.View
                     key={c.clientId}
-                    call={sEff.calls[i] ?? c}
-                    index={i}
-                    readOnly={readOnly}
-                    errors={[
-                      ...err(`call-${c.clientId}`),
-                      ...(flagged[c.clientId] ? [flagged[c.clientId]!] : []),
-                    ]}
-                    products={productsQ.data ?? []}
-                    detail={productsQ.detail}
-                    onPresented={() => {
-                      // CallEditor already set presentationOpened + presentationCapture via onChange.
-                      if (c.outletId) presLog.record(c.outletId);
-                    }}
-                    scopes={scopes}
-                    names={placeName}
-                    onChange={(p) =>
-                      update((x) => ({
-                        calls: x.calls.map((row) => {
-                          if (row.clientId !== c.clientId) return row;
-                          const next = { ...row, ...p };
-                          // Products/deck changed: drop device log so old-API overlay cannot re-green.
-                          if (
-                            p.presentationOpened === false &&
-                            row.outletId &&
-                            row.presentationOpened
-                          )
-                            presLog.clear(row.outletId);
-                          return next;
-                        }),
-                      }))
-                    }
-                    onRemove={() =>
-                      update((x) => ({
-                        calls: x.calls.filter((row) => row.clientId !== c.clientId),
-                      }))
-                    }
-                  />
+                    layout={callLayout}
+                    entering={callEnter}
+                    exiting={callExit}
+                  >
+                    <CallEditor
+                      call={sEff.calls[i] ?? c}
+                      index={i}
+                      readOnly={readOnly}
+                      errors={[
+                        ...err(`call-${c.clientId}`),
+                        ...(flagged[c.clientId] ? [flagged[c.clientId]!] : []),
+                      ]}
+                      products={productsQ.data ?? []}
+                      detail={productsQ.detail}
+                      onPresented={() => {
+                        // CallEditor already set presentationOpened + presentationCapture via onChange.
+                        if (c.outletId) presLog.record(c.outletId);
+                      }}
+                      scopes={scopes}
+                      names={placeName}
+                      onChange={(p) =>
+                        update((x) => ({
+                          calls: x.calls.map((row) => {
+                            if (row.clientId !== c.clientId) return row;
+                            const next = { ...row, ...p };
+                            // Products/deck changed: drop device log so old-API overlay cannot re-green.
+                            if (
+                              p.presentationOpened === false &&
+                              row.outletId &&
+                              row.presentationOpened
+                            )
+                              presLog.clear(row.outletId);
+                            return next;
+                          }),
+                        }))
+                      }
+                      onRemove={() =>
+                        update((x) => ({
+                          calls: x.calls.filter((row) => row.clientId !== c.clientId),
+                        }))
+                      }
+                    />
+                  </Animated.View>
                 ))}
                 {!readOnly ? (
                   <View style={styles.row}>
                     {(['doctor', 'chemist', 'stockist'] as CallKind[]).map((kind) => (
-                      <Pressable
+                      <PressableScale
                         key={kind}
                         onPress={() =>
                           update((x) => ({
@@ -1146,13 +1174,13 @@ export function DcrForm({
                             ],
                           }))
                         }
-                        accessibilityRole="button"
                         accessibilityLabel={`Add ${KIND_LABEL[kind].toLowerCase()} call`}
+                        scaleTo={0.96}
                         style={styles.addCall}
                       >
                         <Icon name="plus" size={18} color={colors.navy} />
                         <AppText variant="action">{KIND_LABEL[kind]}</AppText>
-                      </Pressable>
+                      </PressableScale>
                     ))}
                   </View>
                 ) : null}
@@ -1241,13 +1269,20 @@ export function DcrForm({
               disabled={busy || !s.workTypeId}
               onPress={() => void save(false)}
             />
-            <Button
-              label={isTp ? 'Send for approval' : 'Submit'}
-              loading={saving === 'submit'}
-              loadingLabel={isTp ? 'Sending…' : 'Submitting…'}
-              disabled={busy || !s.workTypeId}
-              onPress={() => void save(true)}
-            />
+            <View style={styles.slideWrap}>
+              <SlideToConfirm
+                key={slideKey}
+                tone="canopy"
+                text={isTp ? 'Slide to send for approval' : 'Slide to submit'}
+                confirmedText={isTp ? 'Sent' : 'Submitted'}
+                disabled={busy || !s.workTypeId}
+                onDragChange={setSliding}
+                onConfirm={async () => {
+                  await save(true);
+                  setSlideKey((k) => k + 1);
+                }}
+              />
+            </View>
           </>
         ) : null}
         {isTp && tpItem && !readOnly ? (
@@ -1395,6 +1430,8 @@ const styles = StyleSheet.create({
   },
   centerText: { textAlign: 'center' },
   content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm, gap: spacing.lg },
+  /** Locks the CUTLY slider to 56pt so KeyboardAwareScrollView cannot stretch it. */
+  slideWrap: { height: 56, width: '100%', flexGrow: 0, flexShrink: 0 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   warn: {
     gap: spacing.sm,

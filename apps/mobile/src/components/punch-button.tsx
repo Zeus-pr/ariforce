@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   cancelAnimation,
@@ -9,11 +9,12 @@ import Animated, {
   useReducedMotion,
   useSharedValue,
   withRepeat,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import { AppText } from './app-text';
 import { Icon } from './icon';
-import { colors, radius, spacing } from '@/theme';
+import { colors, motion, radius, spacing } from '@/theme';
 
 const DEPTH = 6; // height of the 3D edge, dp
 const FACE_H = 56;
@@ -39,6 +40,8 @@ export function PunchButton({
   const sink = useSharedValue(0);
   const wave = useSharedValue(0);
   const faceW = useSharedValue(0);
+  const settle = useSharedValue(1);
+  const seenDuty = useRef(false);
   const tone = punchedIn
     ? { face: colors.punchOut, edge: colors.punchOutEdge }
     : { face: colors.punchIn, edge: colors.punchInEdge };
@@ -64,7 +67,22 @@ export function PunchButton({
     sink.value = reduced ? 0 : withTiming(0, { duration: 140 });
   }, [loading, reduced, sink, wave]);
 
-  const faceStyle = useAnimatedStyle(() => ({ transform: [{ translateY: sink.value * DEPTH }] }));
+  // One-shot settle after a real duty flip (skip first paint / hydrate).
+  useEffect(() => {
+    if (!seenDuty.current) {
+      seenDuty.current = true;
+      return;
+    }
+    if (loading || reduced) return;
+    settle.value = withSequence(
+      withTiming(1.035, { duration: motion.press, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: motion.fast, easing: motion.easeOut }),
+    );
+  }, [punchedIn, loading, reduced, settle]);
+
+  const faceStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sink.value * DEPTH }, { scale: settle.value }],
+  }));
 
   const ringA = useAnimatedStyle(() => {
     const t = wave.value;

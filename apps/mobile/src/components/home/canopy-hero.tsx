@@ -104,41 +104,42 @@ export function CanopyHero({
       setSince(nextSince);
       await rememberDuty(nextOn, nextSince);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      // Reconcile with server (check-ins last-in wins — not stale MeToday "out").
-      const d = await getDutyState();
-      if (kind === 'punch_in') {
-        if (d.onDuty) {
-          setOnDuty(true);
-          setSince(d.punchedInAt ?? nextSince);
-          await rememberDuty(true, d.punchedInAt ?? nextSince);
-        }
-        // If server still lags, keep the successful local punch-in.
-      } else {
-        setOnDuty(false);
-        setSince(null);
-        await rememberDuty(false, null);
-      }
-      try {
-        const today = await fetchMeToday();
-        let visits = 0;
-        if (user?.id) {
-          try {
-            visits = await countTodayVisits(user.id);
-          } catch {
+      // Unblock the button as soon as the punch lands; refresh duty/target in the background.
+      setBusy(false);
+      void (async () => {
+        try {
+          const d = await getDutyState();
+          if (kind === 'punch_in') {
+            if (d.onDuty) {
+              setOnDuty(true);
+              setSince(d.punchedInAt ?? nextSince);
+              await rememberDuty(true, d.punchedInAt ?? nextSince);
+            }
+          } else {
+            setOnDuty(false);
+            setSince(null);
+            await rememberDuty(false, null);
+          }
+          const today = await fetchMeToday();
+          let visits = 0;
+          if (user?.id) {
+            try {
+              visits = await countTodayVisits(user.id);
+            } catch {
+              visits = today.dcr?.calls ?? 0;
+            }
+          } else {
             visits = today.dcr?.calls ?? 0;
           }
-        } else {
-          visits = today.dcr?.calls ?? 0;
+          setTarget(dailyTargetFromMeToday(today, visits));
+        } catch {
+          // Local success state already applied.
         }
-        setTarget(dailyTargetFromMeToday(today, visits));
-      } catch {
-        // Local success state already applied.
-      }
+      })();
     } catch (e) {
       const msg = fieldErrorMessage(e);
       await refreshDuty();
       Alert.alert(kind === 'punch_in' ? 'Punch in' : 'Punch out', msg);
-    } finally {
       setBusy(false);
     }
   }

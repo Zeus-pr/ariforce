@@ -6,7 +6,6 @@ import { useQuery } from '@tanstack/react-query';
 import { ApiError, apiFetch } from './api';
 import { listAttendanceDays, listCheckInsInRange } from './field';
 import type { OutletKind } from './field';
-import type { Tone } from '@/theme';
 
 type Page<T> = { items: T[] };
 
@@ -49,14 +48,7 @@ export const PUNCH_CHIP_LABEL: Record<PunchChip, string> = {
   incomplete: 'Incomplete',
 };
 
-export const PUNCH_CHIP_TONE: Record<PunchChip, Tone> = {
-  in: 'green',
-  out: 'blue',
-  absent: 'red',
-  incomplete: 'orange',
-};
-
-/** Punch status chip for a team member's day row. */
+/** Punch status label for a team member's day row (plain text — no colored pills). */
 export function punchChip(day: AttendanceDay): PunchChip {
   if (day.status === 'absent' || day.status === 'leave' || day.status === 'holiday') {
     return 'absent';
@@ -118,7 +110,11 @@ export function checkInsForUser(checkIns: CheckIn[], userId: string) {
     .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
 }
 
-export function useTeamFieldDay(date: string) {
+/**
+ * Team field for managers: attendance + check-ins of the reporting line for one day.
+ * Pass `selfUserId` to drop the caller's own row — this screen is about the team, not self.
+ */
+export function useTeamFieldDay(date: string, selfUserId?: string) {
   const attendanceQ = useQuery({
     queryKey: ['team-field', 'attendance', date],
     queryFn: () => listAttendanceDays(date, date),
@@ -127,14 +123,21 @@ export function useTeamFieldDay(date: string) {
     queryKey: ['team-field', 'check-ins', date],
     queryFn: () => listCheckInsInRange(date, date),
   });
-  const namesQ = useQuery({
-    queryKey: ['team-field', 'outlet-names', date, checkInsQ.data?.map((c) => c.id).join(',') ?? ''],
-    queryFn: () => loadOutletNames(checkInsQ.data ?? []),
-    enabled: !!checkInsQ.data?.length,
-  });
 
-  const days = attendanceQ.data ?? [];
+  const days = (attendanceQ.data ?? []).filter((d) => d.userId !== selfUserId);
+  const checkIns = (checkInsQ.data ?? []).filter((c) => c.userId !== selfUserId);
   const sortedDays = [...days].sort((a, b) => a.userName.localeCompare(b.userName));
+
+  const namesQ = useQuery({
+    queryKey: [
+      'team-field',
+      'outlet-names',
+      date,
+      checkIns.map((c) => c.id).join(','),
+    ],
+    queryFn: () => loadOutletNames(checkIns),
+    enabled: checkIns.length > 0,
+  });
 
   const summary = sortedDays.reduce(
     (acc, d) => {
@@ -147,7 +150,7 @@ export function useTeamFieldDay(date: string) {
 
   return {
     days: sortedDays,
-    checkIns: checkInsQ.data ?? [],
+    checkIns,
     outletNames: namesQ.data ?? new Map<string, string>(),
     summary,
     isPending: attendanceQ.isPending || checkInsQ.isPending,

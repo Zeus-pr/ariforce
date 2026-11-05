@@ -1,7 +1,8 @@
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { AppText } from '../app-text';
 import { Card } from '../card';
+import { PressableScale } from '../pressable-scale';
 import { SkeletonList } from '../skeleton';
 import type { Attention } from '@/lib/home-attention';
 import { colors, fonts, radius, spacing } from '@/theme';
@@ -39,16 +40,17 @@ export function AttentionList({ items, pending }: { items: Attention[]; pending:
                   {item.detail}
                 </AppText>
               </View>
-              <Pressable
+              <PressableScale
                 onPress={() => router.push(item.href)}
-                accessibilityRole="button"
                 accessibilityLabel={`Open ${item.title}`}
-                style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
+                scaleTo={0.96}
+                style={styles.cta}
+                pressedStyle={styles.ctaPressed}
               >
                 <AppText variant="chip" style={styles.ctaText}>
                   Review
                 </AppText>
-              </Pressable>
+              </PressableScale>
             </View>
           ))}
         </Card>

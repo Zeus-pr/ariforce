@@ -57,6 +57,13 @@ export const canViewTeamField = (roles: readonly string[]) =>
   isApprover(roles) || roles.includes('system_admin');
 
 /**
+ * Who may edit / deactivate GPS outlet locks (API: ABM→Director + system_admin).
+ * BMs create locks on Check in; only managers can fix a bad pin. Matches web canManageOutletLocks.
+ */
+export const canManageOutletLocks = (roles: readonly string[]) =>
+  isApprover(roles) || roles.includes('system_admin');
+
+/**
  * Who may change master data (doctors, chemists, stockists): same rule as the website's
  * canWriteMasters (apps/web/src/lib/permissions.ts, docs/PERMISSIONS.md). Regional Business
  * Manager and above (ZBM, SM, GM, VP, Director) and System Admin add, edit and remove; Area
