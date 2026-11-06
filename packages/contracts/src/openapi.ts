@@ -35,6 +35,8 @@ import {
   ExceptionUpdate,
 } from './schemas/exceptions';
 import {
+  CompanyMessage,
+  CompanyMessageResult,
   JobStats,
   NotificationPage,
   NotificationQuery,
@@ -277,7 +279,14 @@ import {
   TeamProfile,
   TeamProfileExportQuery,
 } from './schemas/team-profile';
-import { ConsentGrant, ConsentRecord, Device, DeviceEnrol } from './schemas/devices';
+import {
+  ConsentGrant,
+  ConsentRecord,
+  Device,
+  DeviceEnrol,
+  DevicePushToken,
+  DevicePushTokenResult,
+} from './schemas/devices';
 
 const json = <T extends z.ZodType>(schema: T) => ({ content: { 'application/json': { schema } } });
 const err = (description: string) => ({ description, ...json(ErrorBody) });
@@ -608,6 +617,19 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '201': { description: 'Enrolled', ...json(Device) },
             '422': err('Validation failed'),
+          },
+        }),
+      },
+      '/v1/devices/{id}/push-token': {
+        post: op({
+          tags: ['Devices'],
+          operationId: 'setDevicePushToken',
+          summary: 'Save or clear the Expo push token for this install',
+          requestParams: { path: IdParam },
+          requestBody: json(DevicePushToken),
+          responses: {
+            '200': { description: 'Saved', ...json(DevicePushTokenResult) },
+            '404': err('Not found'),
           },
         }),
       },
@@ -1620,6 +1642,19 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '200': { description: 'Notification', ...json(NotificationSchema) },
             '404': err('Not found (or not yours)'),
+          },
+        }),
+      },
+      '/v1/notifications/company': {
+        post: op({
+          tags: ['Notifications'],
+          operationId: 'sendCompanyMessage',
+          summary: 'Director or system admin: one notification for every other active user',
+          requestBody: json(CompanyMessage),
+          responses: {
+            '200': { description: 'Queued', ...json(CompanyMessageResult) },
+            '403': err('Director or system admin only'),
+            '422': err('Validation failed'),
           },
         }),
       },

@@ -120,6 +120,7 @@ export class JobsRunner implements OnApplicationBootstrap, BeforeApplicationShut
     const slot = exceptionsDailySlot(now);
     if (slot !== this.lastExceptionsSlot) {
       await this.jobs.enqueueSystem('exceptions.daily', {}, slot);
+      await this.jobs.enqueueSystem('doctors.occasions', {}, slot);
       this.lastExceptionsSlot = slot;
     }
     await this.runOnce();

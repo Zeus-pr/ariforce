@@ -10,6 +10,20 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## feat/phone-notifications (2026-11-06): phone push, company message, doctor dates
+
+Additive. Existing notification calls are unchanged. Two new event types and two new routes.
+
+- `NotificationType` gains `company.message` and `doctor.occasion`.
+- `POST /v1/notifications/company` `{ title, body }` → `{ recipients }` (director or system admin).
+- `POST /v1/devices/{id}/push-token` `{ token }` → `{ ok: true }`. `token: null` clears it.
+  The token is not added to `Device`.
+- After an inbox row is inserted, a `notification.deliver` job sends an Expo push when that
+  user has a token. No token records the delivery as skipped.
+- Once a company-local day, birthdays and anniversaries in the next 5 days (including today)
+  notify the HQ assignee and the managers above them. Blank dates are skipped. One note per
+  person per day.
+
 ## feat/dcr-call-checkin (2026-11-05): per-call visit check-in gates
 
 Additive behaviour on existing `checkInId` / visit check-ins (no schema break).
