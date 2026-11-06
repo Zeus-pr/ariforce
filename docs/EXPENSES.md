@@ -65,7 +65,7 @@ Per claimed day: the amount and line count, the DCR for that day, and flags:
 
 ## Reports and export
 
-`GET /expense-reports` returns one row per claim for the month (totals by category, DCR match counts) within the caller's scope; `teamOf` narrows to a manager and everyone below. `export` returns the same data as XLSX (sheets Claims and Lines) or PDF. Exports are audited (`expense.exported`).
+`GET /expense-reports` returns one row per claim for the month (totals by category, DCR match counts) within the caller's scope; `teamOf` narrows to a manager and everyone below. `export` returns XLSX (Claims, Lines, and one Expense Claim Report sheet per person) or a landscape PDF of that same day-by-day statement. Exports are audited (`expense.exported`).
 
 ## Audit actions
 
