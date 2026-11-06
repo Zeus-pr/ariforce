@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import type { ExpensesService } from './expenses.service';
@@ -6,9 +8,11 @@ import {
   statementTotals,
   type MoneyColumn,
   type StatementInput,
+  type StatementRow,
 } from './statement';
 
 type Data = Awaited<ReturnType<ExpensesService['reportData']>>;
+type Doc = InstanceType<typeof PDFDocument>;
 
 /** Excel: "Claims" (one row per claim with reconciliation) and "Lines" (every line with day flags). */
 export async function toXlsx(
@@ -79,51 +83,228 @@ export async function toXlsx(
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-/** PDF: summary table per claim plus a flagged-days list. Built-in Helvetica (ASCII names fine). */
-export function toPdf(month: string, data: Data): Promise<Buffer> {
+const LOGO = join(__dirname, 'ariforce-logo.png');
+
+/** Landscape day-by-day statement, one person per section. Same rows as the Excel statement sheet. */
+export function toPdf(month: string, statements: StatementInput[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 40, info: { Title: `Expenses ${month}` } });
+    const doc = new PDFDocument({
+      size: 'A4',
+      layout: 'landscape',
+      margin: 22,
+      bufferPages: true,
+      info: { Title: `Expense Claim Report ${month}` },
+    });
     const chunks: Buffer[] = [];
     doc.on('data', (c: Buffer) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
-    doc.fontSize(16).text(`Expense report ${month}`);
-    const total = data.reduce((s, d) => s + d.rec.total, 0);
-    doc
-      .fontSize(10)
-      .text(`Claims: ${data.length}   Total: INR ${total.toFixed(2)}`)
-      .moveDown();
-    const cols = [40, 210, 280, 360, 420, 480];
-    const row = (vals: string[], bold = false) => {
-      const y = doc.y;
-      doc.font(bold ? 'Helvetica-Bold' : 'Helvetica');
-      vals.forEach((v, i) =>
-        doc.text(v, cols[i]!, y, { width: (cols[i + 1] ?? 555) - cols[i]! - 4 }),
-      );
-      doc.moveDown(0.3);
-      if (doc.y > 780) doc.addPage();
-    };
-    row(['Employee', 'Status', 'Total', 'Claimed', 'DCR days', 'Unmatched'], true);
-    for (const d of data)
-      row([
-        d.userName,
-        d.status,
-        d.rec.total.toFixed(2),
-        String(d.rec.claimedDays),
-        String(d.rec.dcrDays),
-        d.rec.unmatchedAmount.toFixed(2),
-      ]);
-    const flagged = data.flatMap((d) =>
-      d.rec.days.filter((x) => x.flags.length).map((x) => ({ d, x })),
-    );
-    if (flagged.length) {
-      doc.moveDown().font('Helvetica-Bold').text('Flagged days', 40);
-      for (const { d, x } of flagged)
-        row([d.userName, x.date, x.claimed.toFixed(2), x.flags.join(', ')]);
+    if (!statements.length) {
+      doc.font('Helvetica-Bold').fontSize(14).text(`Expense Claim Report ${month}`, 22, 22);
+      doc.font('Helvetica').fontSize(10).text('No claims for this month.', 22, 48);
+    } else {
+      statements.forEach((st, i) => {
+        if (i) doc.addPage();
+        drawStatement(doc, st);
+      });
+    }
+    const range = doc.bufferedPageRange();
+    for (let i = 0; i < range.count; i++) {
+      doc.switchToPage(range.start + i);
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor('#5c6b7a')
+        .text(`${i + 1} / ${range.count}`, doc.page.width - 70, doc.page.height - 18, {
+          width: 48,
+          align: 'right',
+          lineBreak: false,
+        });
     }
     doc.end();
   });
 }
+
+const COLS: [string, number][] = [
+  ['Date', 44],
+  ['Activity', 48],
+  ['DCR', 36],
+  ['Category', 42],
+  ['Work place', 52],
+  ['From–to', 80],
+  ['Km', 28],
+  ['Doctors', 32],
+  ['Accomp.', 34],
+  ['Travel', 36],
+  ['Daily', 32],
+  ['Addl TA', 34],
+  ['Courier', 32],
+  ['Mobile', 30],
+  ['Meeting', 34],
+  ['Other', 32],
+  ['Total', 34],
+  ['Remarks', 76],
+];
+
+function drawStatement(doc: Doc, st: StatementInput) {
+  const left = doc.page.margins.left;
+  const right = doc.page.width - doc.page.margins.right;
+  const h = st.header;
+  const rows = buildStatementRows(st);
+  const totals = statementTotals(rows);
+  let y = doc.page.margins.top;
+  doc.fillColor('#102a43').font('Helvetica-Bold').fontSize(14);
+  doc.text('Expense Claim Report', left, y, { lineBreak: false });
+  if (existsSync(LOGO)) doc.image(LOGO, right - 78, y - 4, { height: 28 });
+  y += 22;
+  const [year, mon] = st.month.split('-').map(Number) as [number, number];
+  const last = new Date(Date.UTC(year, mon, 0)).getUTCDate();
+  const period = `01-${pad(mon)}-${year} to ${last}-${pad(mon)}-${year}`;
+  const facts: [string, string][] = [
+    ['Employee', h.userName],
+    ['Number', h.employeeCode ?? '-'],
+    ['Designation', h.designation ?? '-'],
+    ['HQ', h.hq ?? '-'],
+    ['Region', h.region ?? '-'],
+    ['Division', h.division ?? '-'],
+    ['Joined', h.joinedOn ? dmy(h.joinedOn) : '-'],
+    ['Manager', h.managerName ? `${h.managerName} (${h.managerCode ?? '-'})` : '-'],
+    ['Period', period],
+    ['Status', h.status],
+    ['Mobile', h.phone ?? '-'],
+    ['Email', h.email ?? '-'],
+    ['Company', h.company || '-'],
+    ['Total', totals.total.toFixed(2)],
+  ];
+  doc.fontSize(7.5);
+  const colW = (right - left) / 2;
+  for (let i = 0; i < facts.length; i += 2) {
+    pair(doc, left, y, colW, facts[i]!);
+    if (facts[i + 1]) pair(doc, left + colW, y, colW, facts[i + 1]!);
+    y += 11;
+  }
+  y += 6;
+  const head = () => {
+    y = headerRow(doc, left, y);
+  };
+  head();
+  const body = rows.map(rowCells);
+  body.push([
+    'Total',
+    '',
+    '',
+    '',
+    '',
+    '',
+    String(totals.distance),
+    String(totals.doctorsMet),
+    String(totals.accompanists),
+    ...MONEY_HEADERS.map(([k]) => totals.money[k].toFixed(2)),
+    totals.total.toFixed(2),
+    '',
+  ]);
+  for (const [n, cells] of body.entries()) {
+    const lastRow = n === body.length - 1;
+    const height = rowHeight(doc, cells);
+    if (y + height > doc.page.height - 28) {
+      doc.addPage();
+      y = doc.page.margins.top;
+      head();
+    }
+    y = paintRow(doc, left, y, cells, height, lastRow);
+  }
+  y += 18;
+  if (y > doc.page.height - 50) {
+    doc.addPage();
+    y = doc.page.margins.top;
+  }
+  doc.strokeColor('#102a43').lineWidth(0.6);
+  doc
+    .moveTo(left, y)
+    .lineTo(left + 160, y)
+    .stroke();
+  doc
+    .moveTo(right - 160, y)
+    .lineTo(right, y)
+    .stroke();
+  doc.fillColor('#102a43').font('Helvetica-Bold').fontSize(8);
+  doc.text(h.employeeCode ?? h.userName, left, y + 4, { width: 160, lineBreak: false });
+  doc.text(h.managerName ?? '', right - 160, y + 4, {
+    width: 160,
+    align: 'right',
+    lineBreak: false,
+  });
+}
+
+function pair(doc: Doc, x: number, y: number, width: number, [k, v]: [string, string]) {
+  doc.font('Helvetica-Bold').fillColor('#5c6b7a').text(k, x, y, { width: 58, lineBreak: false });
+  doc
+    .font('Helvetica')
+    .fillColor('#102a43')
+    .text(v, x + 60, y, { width: width - 64, lineBreak: false, ellipsis: true });
+}
+
+function headerRow(doc: Doc, x: number, y: number) {
+  const h = 16;
+  let cursor = x;
+  doc.font('Helvetica-Bold').fontSize(5.5);
+  for (const [label, w] of COLS) {
+    doc.save();
+    doc.rect(cursor, y, w, h).fill('#e7eef5');
+    doc.restore();
+    doc.rect(cursor, y, w, h).lineWidth(0.3).strokeColor('#c5ced6').stroke();
+    doc
+      .fillColor('#102a43')
+      .text(label, cursor + 1, y + 4, { width: w - 2, align: 'center', lineBreak: false });
+    cursor += w;
+  }
+  return y + h;
+}
+
+function rowCells(r: StatementRow): string[] {
+  return [
+    dmy(r.date),
+    r.activity,
+    r.dcrStatus,
+    r.category,
+    r.workPlace,
+    r.route,
+    dash(r.distance),
+    dash(r.doctorsMet),
+    dash(r.accompanists),
+    ...MONEY_HEADERS.map(([k]) => dash(r.money[k])),
+    dash(r.total),
+    r.remarks || '-',
+  ];
+}
+
+function rowHeight(doc: Doc, cells: string[]) {
+  doc.font('Helvetica').fontSize(6);
+  let h = 11;
+  cells.forEach((c, i) => {
+    h = Math.max(h, doc.heightOfString(c || '-', { width: COLS[i]![1] - 3 }) + 3);
+  });
+  return Math.min(h, 32);
+}
+
+function paintRow(doc: Doc, x: number, y: number, cells: string[], height: number, bold: boolean) {
+  let cursor = x;
+  doc
+    .font(bold ? 'Helvetica-Bold' : 'Helvetica')
+    .fontSize(6)
+    .fillColor('#102a43');
+  cells.forEach((c, i) => {
+    const w = COLS[i]![1];
+    doc.rect(cursor, y, w, height).lineWidth(0.3).strokeColor('#d5dee6').stroke();
+    doc.text(c, cursor + 1.5, y + 1.5, { width: w - 3, height: height - 2 });
+    cursor += w;
+  });
+  return y + height;
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+const dmy = (d: string) => d.split('-').reverse().join('-');
+const dash = (n: number) => (n ? String(n) : '-');
 
 const MONEY_HEADERS: [MoneyColumn, string][] = [
   ['ta', 'Travel Allowance'],
