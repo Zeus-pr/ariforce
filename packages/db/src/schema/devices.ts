@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
@@ -42,6 +43,8 @@ export const devices = pgTable(
     /** Company asset tag for company-issued phones. */
     assetTag: text('asset_tag'),
     status: deviceStatus('status').notNull().default('pending_consent'),
+    /** Expo push token for this install. Null until the phone registers, cleared when it moves. */
+    pushToken: text('push_token'),
     enrolledAt: timestamp('enrolled_at', { withTimezone: true }),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     revokedReason: text('revoked_reason'),
@@ -49,6 +52,9 @@ export const devices = pgTable(
   },
   (t) => [
     uniqueIndex('devices_company_install_uq').on(t.companyId, t.installId),
+    uniqueIndex('devices_push_token_uq')
+      .on(t.pushToken)
+      .where(sql`${t.pushToken} is not null`),
     index('devices_user_idx').on(t.companyId, t.userId),
   ],
 );

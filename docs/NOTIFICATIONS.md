@@ -110,29 +110,32 @@ Business code calls `NotificationsService.enqueue(tx, p, event)` **inside the sa
 as the change, wrapped in a savepoint: if enqueueing fails it is logged and the business action still
 commits. The job (`notify`) renders and inserts the notification.
 
-| type                                    | when                                                                                                                 | recipient        |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| `leave.submitted`                       | leave applied; also each higher approval step                                                                        | current approver |
-| `leave.approved` / `leave.rejected`     | final decision                                                                                                       | requester        |
-| `leave.cancelled`                       | cancelled by a manager → requester; by the owner while pending → approver                                            |                  |
-| `expense.submitted`                     | claim submitted/resubmitted; also each higher step                                                                   | current approver |
-| `expense.approved` / `expense.rejected` | final decision                                                                                                       | claimant         |
-| `expense.paid`                          | marked paid                                                                                                          | claimant         |
-| `exceptions.digest`                     | daily exceptions job (#56): one per manager per run, new exceptions of direct reports; dedupe `exceptions:<runDate>` | direct manager   |
-| `tour_plan.approved`                    | tour plan finally approved (`data.comment`, approver in `actorName`)                                                 | requester        |
-| `tour_plan.rejected`                    | tour plan rejected (body has `Reason:`; `data.reason`)                                                               | requester        |
-| `doctor.approved`                       | added doctor finally approved (`data.comment`, approver in `actorName`)                                              | requester        |
-| `doctor.rejected`                       | field-added doctor rejected (body has `Reason:`; `data.reason`)                                                      | requester        |
-| `dcr_unlock.rejected`                   | DCR correction rejected (body has `Reason:`; `data.reason`; entityType `approval_request`)                           | requester        |
+| type                                    | when                                                                                                                        | recipient                                               |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `leave.submitted`                       | leave applied; also each higher approval step                                                                               | current approver                                        |
+| `leave.approved` / `leave.rejected`     | final decision                                                                                                              | requester                                               |
+| `leave.cancelled`                       | cancelled by a manager → requester; by the owner while pending → approver                                                   |                                                         |
+| `expense.submitted`                     | claim submitted/resubmitted; also each higher step                                                                          | current approver                                        |
+| `expense.approved` / `expense.rejected` | final decision                                                                                                              | claimant                                                |
+| `expense.paid`                          | marked paid                                                                                                                 | claimant                                                |
+| `exceptions.digest`                     | daily exceptions job (#56): one per manager per run, new exceptions of direct reports; dedupe `exceptions:<runDate>`        | direct manager                                          |
+| `tour_plan.approved`                    | tour plan finally approved (`data.comment`, approver in `actorName`)                                                        | requester                                               |
+| `tour_plan.rejected`                    | tour plan rejected (body has `Reason:`; `data.reason`)                                                                      | requester                                               |
+| `doctor.approved`                       | added doctor finally approved (`data.comment`, approver in `actorName`)                                                     | requester                                               |
+| `doctor.rejected`                       | field-added doctor rejected (body has `Reason:`; `data.reason`)                                                             | requester                                               |
+| `dcr_unlock.rejected`                   | DCR correction rejected (body has `Reason:`; `data.reason`; entityType `approval_request`)                                  | requester                                               |
+| `company.message`                       | director or system admin sends a company message (`POST /v1/notifications/company`)                                         | every other active user                                 |
+| `doctor.occasion`                       | daily, company-local date: a doctor's birthday or anniversary is today or within 5 days (year ignored; blank dates skipped) | BM on that HQ (and local territory) plus managers above |
 
 Nobody is notified about their own action (recipient = actor is skipped).
 
 ## Channels
 
 `NotificationChannel { key: 'in_app'|'email'|'sms'|'push'; deliver(notification, recipient) }`.
-`in_app` is the `notifications` row itself. A future channel registers an implementation, the
-`notify` handler creates `notification_deliveries` rows for it and enqueues
-`notification.deliver` jobs; no schema change needed.
+`in_app` is the `notifications` row itself. After that row is inserted, the `notify` handler
+enqueues `notification.deliver`, which sends an Expo push when the user's phone has registered a
+token (`POST /v1/devices/{id}/push-token`). No token, or a dead token, is recorded as `skipped`
+and the inbox row stays. Email and SMS are still unused.
 
 ## API (own notifications only)
 
@@ -142,13 +145,16 @@ Nobody is notified about their own action (recipient = actor is skipped).
 - `GET /v1/notifications/unread-count` → `{ count }`
 - `POST /v1/notifications/{id}/read` → `Notification` (idempotent; 404 if not yours)
 - `POST /v1/notifications/read-all` → `{ updated }`
+- `POST /v1/notifications/company` `{ title, body }` → `{ recipients }` (director or system admin;
+  the sender is not a recipient)
 - `GET /v1/jobs/stats` (system_admin only, own company) → `{ queued, running, done, dead }`.
 
 ## Known gaps
 
 - No per-user notification preferences yet (every listed event is delivered in-app).
-- No email / SMS / push channels yet; `notification_deliveries` exists for them.
+- No email or SMS yet. Phone push goes out through Expo when a device has a token.
 - No realtime push to the web app; clients poll `GET /v1/notifications/unread-count`.
+- A new phone build is required before Android shows the banner. The inbox works on the current app.
 - Job health is a count endpoint only; dead jobs are logged, not alerted.
 
 Tour plans (#86): `tour_plan.approved` / `tour_plan.rejected` are sent once per submission;

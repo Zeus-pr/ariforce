@@ -1160,6 +1160,86 @@
         }
       }
     },
+    "/v1/devices/{id}/push-token": {
+      "post": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Devices"
+        ],
+        "operationId": "setDevicePushToken",
+        "summary": "Save or clear the Expo push token for this install",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevicePushToken"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevicePushTokenResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/devices/{id}/consents": {
       "post": {
         "security": [
@@ -10973,6 +11053,71 @@
         }
       }
     },
+    "/v1/notifications/company": {
+      "post": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Notifications"
+        ],
+        "operationId": "sendCompanyMessage",
+        "summary": "Director or system admin: one notification for every other active user",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompanyMessage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyMessageResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Director or system admin only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/notifications/read-all": {
       "post": {
         "security": [
@@ -17534,6 +17679,26 @@
           "ios"
         ]
       },
+      "DevicePushToken": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
       "ConsentGrant": {
         "type": "object",
         "properties": {
@@ -20990,6 +21155,25 @@
           }
         }
       },
+      "CompanyMessage": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "title",
+          "body"
+        ]
+      },
       "LeaveStatus": {
         "type": "string",
         "enum": [
@@ -23406,6 +23590,19 @@
           "active",
           "revoked"
         ]
+      },
+      "DevicePushTokenResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false
       },
       "ConsentRecord": {
         "type": "object",
@@ -32370,7 +32567,9 @@
           "dcr.rejected",
           "dcr_unlock.submitted",
           "dcr_unlock.approved",
-          "dcr_unlock.rejected"
+          "dcr_unlock.rejected",
+          "company.message",
+          "doctor.occasion"
         ]
       },
       "UnreadCount": {
@@ -32384,6 +32583,20 @@
         },
         "required": [
           "count"
+        ],
+        "additionalProperties": false
+      },
+      "CompanyMessageResult": {
+        "type": "object",
+        "properties": {
+          "recipients": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "recipients"
         ],
         "additionalProperties": false
       },
