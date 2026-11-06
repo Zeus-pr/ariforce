@@ -132,12 +132,12 @@ export function render(type: NotificationType, d: NotifyData): { title: string; 
     case 'company.message':
       return {
         title: s(d.title).slice(0, 120) || 'Company message',
-        body: s(d.body).slice(0, 500),
+        body: s(d.body).slice(0, 500) || 'You have a company message.',
       };
     case 'doctor.occasion':
       return {
         title: s(d.title).slice(0, 120) || 'Doctor dates coming up',
-        body: s(d.summary).slice(0, 500),
+        body: s(d.summary).slice(0, 500) || 'A doctor birthday or anniversary is coming up.',
       };
   }
 }

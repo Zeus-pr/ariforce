@@ -205,6 +205,9 @@ export class NotificationsService {
       actorName: actor?.name,
     };
     const { title, body } = render(ev.type, data);
+    // INSERT ... RETURNING is also checked against the SELECT policy (own row only). The job runs
+    // as the company, so the recipient has to be the current user for the new row to come back.
+    await tx.execute(sql`select set_config('app.current_user_id', ${ev.recipientId!}, true)`);
     const inserted = await tx
       .insert(notifications)
       .values({
