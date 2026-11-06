@@ -21,6 +21,7 @@ import {
   CalendarOff,
   Tags,
   Route,
+  Megaphone,
 } from 'lucide-react';
 
 import { seesExpenses } from './expenses/model';
@@ -223,6 +224,14 @@ export const NAV: NavItem[] = [
         (isSystemAdmin(r) || r === 'director') &&
         (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
     ),
+    section: 'admin',
+  },
+  {
+    slug: 'company-message',
+    title: 'Company message',
+    href: '/admin/message',
+    icon: Megaphone,
+    roles: ['director', 'system_admin'],
     section: 'admin',
   },
   {
