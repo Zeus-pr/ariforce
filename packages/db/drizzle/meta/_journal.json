@@ -449,6 +449,13 @@
       "when": 1793945500000,
       "tag": "0063_phone_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1794031900000,
+      "tag": "0064_coverage_list_without_calls",
+      "breakpoints": true
     }
   ]
 }
