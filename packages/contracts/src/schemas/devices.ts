@@ -56,6 +56,19 @@ export const ConsentRecord = ConsentGrant.extend({
 }).meta({ id: 'ConsentRecord' });
 export type ConsentRecord = z.infer<typeof ConsentRecord>;
 
+/** Expo push token for this install. Null clears it. The token is not returned on Device. */
+export const DevicePushToken = z
+  .object({
+    token: z.string().trim().min(1).max(200).nullable(),
+  })
+  .meta({ id: 'DevicePushToken' });
+export type DevicePushToken = z.infer<typeof DevicePushToken>;
+
+export const DevicePushTokenResult = z
+  .object({ ok: z.literal(true) })
+  .meta({ id: 'DevicePushTokenResult' });
+export type DevicePushTokenResult = z.infer<typeof DevicePushTokenResult>;
+
 export const GeoCaptureKind = z
   .enum(['punch_in', 'visit', 'punch_out', 'geo_tag'])
   .meta({ id: 'GeoCaptureKind' });

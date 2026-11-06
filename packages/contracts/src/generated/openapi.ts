@@ -250,6 +250,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/devices/{id}/push-token': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Save or clear the Expo push token for this install */
+    post: operations['setDevicePushToken'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/devices/{id}/consents': {
     parameters: {
       query?: never;
@@ -1689,6 +1706,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/notifications/company': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Director or system admin: one notification for every other active user */
+    post: operations['sendCompanyMessage'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/notifications/read-all': {
     parameters: {
       query?: never;
@@ -2894,6 +2928,9 @@ export interface components {
     DeviceOwnership: 'company' | 'personal';
     /** @enum {string} */
     DevicePlatform: 'android' | 'ios';
+    DevicePushToken: {
+      token: string | null;
+    };
     ConsentGrant: {
       purpose: components['schemas']['ConsentPurpose'];
       /** @description Version of the DPDP notice shown */
@@ -3812,6 +3849,10 @@ export interface components {
       maxFutureDays?: number | null;
       version?: number;
     };
+    CompanyMessage: {
+      title: string;
+      body: string;
+    };
     /**
      * @description pending -> approved | rejected; pending or approved -> cancelled (balance restored). Applying submits straight to approval.
      * @enum {string}
@@ -4642,6 +4683,10 @@ export interface components {
     };
     /** @enum {string} */
     DeviceStatus: 'pending_consent' | 'active' | 'revoked';
+    DevicePushTokenResult: {
+      /** @constant */
+      ok: true;
+    };
     ConsentRecord: {
       purpose: components['schemas']['ConsentPurpose'];
       /** @description Version of the DPDP notice shown */
@@ -7308,9 +7353,14 @@ export interface components {
       | 'dcr.rejected'
       | 'dcr_unlock.submitted'
       | 'dcr_unlock.approved'
-      | 'dcr_unlock.rejected';
+      | 'dcr_unlock.rejected'
+      | 'company.message'
+      | 'doctor.occasion';
     UnreadCount: {
       count: number;
+    };
+    CompanyMessageResult: {
+      recipients: number;
     };
     ReadAllResult: {
       updated: number;
@@ -9709,6 +9759,60 @@ export interface operations {
       };
       /** @description Validation failed */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  setDevicePushToken: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DevicePushToken'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DevicePushTokenResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };
@@ -15667,6 +15771,57 @@ export interface operations {
       };
       /** @description Not found (or not yours) */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  sendCompanyMessage: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['CompanyMessage'];
+      };
+    };
+    responses: {
+      /** @description Queued */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CompanyMessageResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Director or system admin only */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed */
+      422: {
         headers: {
           [name: string]: unknown;
         };
