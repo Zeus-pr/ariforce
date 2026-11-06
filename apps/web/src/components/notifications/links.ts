@@ -6,6 +6,8 @@ export type AppNotification = components['schemas']['Notification'];
 export function notificationHref(
   n: Pick<AppNotification, 'type' | 'entityType' | 'entityId'>,
 ): string | null {
+  const type = n.type as string;
+  if (type === 'doctor.occasion') return n.entityId ? `/doctors?id=${n.entityId}` : '/doctors';
   if (n.type === 'exceptions.digest') return '/exceptions';
   if (n.entityType === 'leave_request' || n.type.startsWith('leave.')) return '/leave';
   if (n.entityType === 'expense_claim' || n.type.startsWith('expense.'))
