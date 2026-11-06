@@ -40,7 +40,6 @@ export function exceptionMessage(code?: string, message?: string): string {
 /** Where an exception drills to. */
 export function sourceLink(x: ExceptionItem): { label: string; href: string } {
   if (x.ruleCode === 'tp_not_submitted') return { label: 'Open tour plans', href: '/tour-plans' };
-  if (x.ruleCode === 'no_punch_in') return { label: 'Open attendance', href: '/attendance' };
   if (x.ruleCode === 'coverage_gap') return { label: 'Open doctors', href: '/doctors' };
   return { label: 'Open DCR', href: '/dcr' };
 }

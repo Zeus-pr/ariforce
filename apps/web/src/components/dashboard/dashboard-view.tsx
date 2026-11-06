@@ -113,11 +113,7 @@ function Dashboard({ role, month }: { role: Role; month: string }) {
           </h1>
           {field && (
             <p className="mt-1 text-sm text-muted-foreground">
-              Check in from{' '}
-              <Link className="underline underline-offset-4" href="/attendance">
-                Attendance
-              </Link>
-              , file calls in{' '}
+              File calls in{' '}
               <Link className="underline underline-offset-4" href="/dcr">
                 DCR
               </Link>
