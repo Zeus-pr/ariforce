@@ -7,6 +7,7 @@
  */
 import * as Location from 'expo-location';
 import { assertFieldDeviceIntegrity } from './device-integrity';
+import { accuracyMetres } from './gps-accuracy';
 
 export type GpsFix = {
   location: { lat: number; lng: number };
@@ -21,10 +22,9 @@ const LAST_KNOWN_MAX_AGE_MS = 45_000;
 const LAST_KNOWN_MAX_ACCURACY_M = 80;
 
 function toFix(pos: Location.LocationObject): GpsFix {
-  const accuracy = pos.coords.accuracy;
   return {
     location: { lat: pos.coords.latitude, lng: pos.coords.longitude },
-    accuracyM: Math.min(10000, Math.round(accuracy != null && accuracy >= 0 ? accuracy : 100)),
+    accuracyM: accuracyMetres(pos.coords.accuracy),
     capturedAt: new Date(pos.timestamp).toISOString(),
     isMock: !!(pos.mocked ?? false),
   };

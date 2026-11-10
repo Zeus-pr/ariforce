@@ -1,5 +1,7 @@
 import { useRouter } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { PlannedDoctors } from '@ariforce/contracts';
 import { StyleSheet, View } from 'react-native';
 import { ScrollView } from '@/components/scroll';
 import { PullToRefresh } from '@/components/refresh';
@@ -10,20 +12,19 @@ import { KpiGrid } from '@/components/home/kpi-grid';
 import { BusinessTiles } from '@/components/home/business-tiles';
 import { QuickActions } from '@/components/home/quick-actions';
 import { ScheduleToday } from '@/components/home/schedule-today';
-import { SyncStrip } from '@/components/home/sync-strip';
+import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { featureHref, type FeatureKey } from '@/lib/features';
 import { useHomeAttention } from '@/lib/home-attention';
+import { scheduleFromPlan } from '@/lib/home-schedule';
 import { useHomeKpis } from '@/lib/home-kpis';
 import { useMarkObserveInteractive } from '@/lib/observe';
 import { isApprover, isSalesRole, roleLabel } from '@/lib/roles';
-import { getHomeMock } from '@/mocks/home';
 import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
 import { colors, layout, radius, spacing } from '@/theme';
 
 /**
- * Home: canopy, actions, attention, and this month’s live KPIs. Schedule and the sync
- * line are still sample copy.
+ * Home: canopy, actions, attention, this month’s live KPIs, and today’s tour-plan doctors.
  */
 export default function HomeScreen() {
   useMarkObserveInteractive();
@@ -37,8 +38,12 @@ export default function HomeScreen() {
     return () => clearInterval(t);
   }, []);
 
-  const day = now.toDateString();
-  const data = useMemo(() => getHomeMock(new Date(day)), [day]);
+  const schedule = useQuery({
+    queryKey: ['me', 'planned-doctors'],
+    queryFn: () => apiFetch<PlannedDoctors>('/v1/me/planned-doctors'),
+    staleTime: 60_000,
+  });
+  const scheduleRows = useMemo(() => scheduleFromPlan(schedule.data?.items ?? []), [schedule.data]);
 
   const name = user?.name?.trim() || user?.email || 'there';
   const role = roleLabel(user?.roles ?? []);
@@ -52,7 +57,7 @@ export default function HomeScreen() {
   );
 
   async function onRefresh() {
-    await Promise.all([refresh(), attention.refetch(), kpis.refetch()]);
+    await Promise.all([refresh(), attention.refetch(), kpis.refetch(), schedule.refetch()]);
     setNow(new Date());
   }
 
@@ -71,7 +76,7 @@ export default function HomeScreen() {
           <CanopyHero name={name} role={role} now={now} />
 
           <View style={styles.sheet}>
-            <QuickActions onOpen={open} roles={user?.roles ?? []} hints={data.quickHints} />
+            <QuickActions onOpen={open} roles={user?.roles ?? []} />
 
             <View style={styles.section}>
               <BusinessTiles onOpen={open} roles={user?.roles ?? []} />
@@ -90,7 +95,12 @@ export default function HomeScreen() {
             ) : null}
 
             <View style={styles.section}>
-              <ScheduleToday items={data.doctorsToday} onFullRoute={() => open('tour-plan')} />
+              <ScheduleToday
+                items={scheduleRows}
+                pending={schedule.isPending}
+                error={schedule.isError}
+                onFullRoute={() => open('tour-plan')}
+              />
             </View>
 
             {isSalesRole(user?.roles ?? []) ? (
@@ -98,10 +108,6 @@ export default function HomeScreen() {
                 <KpiGrid cards={kpis.cards} pending={kpis.pending} error={kpis.error} />
               </View>
             ) : null}
-
-            <View style={styles.section}>
-              <SyncStrip label={data.offlineCache.label} />
-            </View>
           </View>
         </ScrollView>
       </PullToRefresh>
