@@ -99,7 +99,9 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     tok.writer = writer.bearer;
     tok.otherWriter = otherWriter.bearer;
     const wt = (await http().get('/v1/work-types?limit=50').set(as('writer'))).body.items;
-    field = wt.find((w: { kind: string }) => w.kind === 'field').id;
+    field = wt.find(
+      (w: { kind: string; code: string }) => w.kind === 'field' && w.code.startsWith('FIELD_'),
+    ).id;
     doctor = (
       await http()
         .get(`/v1/doctors?territoryId=${T.otherArea}&approvalStatus=approved&limit=1`)

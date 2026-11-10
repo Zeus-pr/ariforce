@@ -24,6 +24,7 @@ import {
   territories,
   tourPlans,
   users,
+  isCampWorkType,
   workTypes,
   type Tx,
 } from '@ariforce/db';
@@ -710,8 +711,11 @@ export class DcrService {
           { date: b.date, session: 'full', kind: wt.kind },
         ]);
       const field = wt.kind === 'field';
+      const camp = isCampWorkType(wt.code);
+      if (camp && b.calls.length)
+        throw err(422, 'VALIDATION', 'Camp does not take doctor, chemist or stockist calls');
       if (!field && b.calls.length) throw err(422, 'VALIDATION', 'Calls need a field work type');
-      if (field && b.submit && !b.calls.length)
+      if (field && !camp && b.submit && !b.calls.length)
         throw err(422, 'VALIDATION', 'Field work needs at least one call');
       if (b.territoryIds.length) {
         const found = await tx

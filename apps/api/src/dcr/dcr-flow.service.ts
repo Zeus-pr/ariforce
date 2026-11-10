@@ -23,6 +23,7 @@ import {
   products,
   sfcRoutes,
   territories,
+  isCampWorkType,
   users,
   workTypes,
   type Tx,
@@ -629,6 +630,10 @@ export class DcrFlowService {
         assertNotOnLeave(await approvedLeaveDays(tx, [p.userId], b.date, b.date), [
           { date: b.date, session: 'full', kind: wt.kind },
         ]);
+      if (isCampWorkType(wt.code) && b.calls.length)
+        throw err(422, 'VALIDATION', 'Camp does not take doctor, chemist or stockist calls', {
+          field: 'calls',
+        });
       if (wt.kind !== 'field' && b.calls.length)
         throw err(422, 'VALIDATION', 'Calls need a field work type', { field: 'calls' });
       this.checkDetailsKind(wt, b.details);
@@ -764,9 +769,14 @@ export class DcrFlowService {
         ]);
       const dto = (await this.dcr.toDto(tx, s, [cur]))[0]!;
       const field = wt.kind === 'field';
+      const camp = isCampWorkType(wt.code);
       if (field && !cur.territoryIds.length)
         throw err(422, 'VALIDATION', 'Pick at least one territory', { field: 'territoryIds' });
-      if (field && !dto.calls.length)
+      if (camp && dto.calls.length)
+        throw err(422, 'VALIDATION', 'Camp does not take doctor, chemist or stockist calls', {
+          field: 'calls',
+        });
+      if (field && !camp && !dto.calls.length)
         throw err(422, 'VALIDATION', 'Field work needs at least one call', { field: 'calls' });
       if (!field && dto.calls.length)
         throw err(422, 'VALIDATION', 'Calls need a field work type', { field: 'calls' });

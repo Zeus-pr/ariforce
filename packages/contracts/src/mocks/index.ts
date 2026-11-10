@@ -952,7 +952,10 @@ function fieldHandlers(baseUrl: string) {
       if (want && (!d.details || d.details.kind !== want))
         return validation(`details (kind '${want}') are required`, { field: 'details' });
       if (band && !d.territoryIds.length) return validation('Pick at least one territory');
-      if (band && !d.calls.length) return validation('Field work needs at least one call');
+      const camp = wt.code.toUpperCase().startsWith('CAMP_');
+      if (camp && d.calls.length)
+        return validation('Camp does not take doctor, chemist or stockist calls');
+      if (band && !camp && !d.calls.length) return validation('Field work needs at least one call');
       const hqIds = [...new Set(d.territoryIds.map(hqOf))] as string[];
       const frozenAt = serverTime();
       const routes = band

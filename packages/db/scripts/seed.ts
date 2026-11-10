@@ -2,7 +2,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as s from '../src/schema';
 import { rolePermissionMatrix } from '../src/role-permissions-sql';
-import { DEFAULT_WORK_TYPES } from '../src/work-types';
+import { CAMP_WORK_TYPES, DEFAULT_WORK_TYPES } from '../src/work-types';
 import { DEMO_COMPANY_ID as C, ROLE_DEFS, T, U, roleId, seedIds } from '../src/seed-data';
 
 // Demo data only (same guard as apps/api/scripts/seed-auth.mts). No override on purpose.
@@ -284,7 +284,7 @@ await db.transaction(async (tx) => {
   // Standard codes (same as migration 0026 / prod). The legacy demo codes above stay for existing tests.
   await tx
     .insert(s.workTypes)
-    .values(DEFAULT_WORK_TYPES.map((w) => ({ ...w, companyId: C })))
+    .values([...DEFAULT_WORK_TYPES, ...CAMP_WORK_TYPES].map((w) => ({ ...w, companyId: C })))
     .onConflictDoNothing();
   const addr = { city: 'Kolkata', state: 'West Bengal', pincode: '700004' };
   await tx
