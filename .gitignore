@@ -2,9 +2,12 @@ node_modules
 .next
 .turbo
 dist
-coverage
-!apps/web/src/app/(app)/coverage/
-!apps/mobile/src/app/(app)/coverage/
+# Test-coverage output only. A bare "coverage" name also hid the app's Coverage screen from EAS.
+/coverage/
+apps/*/coverage/
+packages/*/coverage/
+# Firebase client config. The Android build needs this for push notifications.
+!apps/mobile/google-services.json
 *.tsbuildinfo
 next-env.d.ts
 .env*

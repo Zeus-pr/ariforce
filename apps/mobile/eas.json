@@ -6,15 +6,30 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "buildType": "apk" }
+      "android": { "buildType": "apk" },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://ariforce-api.arighnapharma.com",
+        "EXPO_PUBLIC_AUTH_ORIGIN": "https://ariforce.arighnapharma.com",
+        "EXPO_PUBLIC_DCR_V2_FIELDS": "1"
+      }
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk" }
+      "android": { "buildType": "apk" },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://ariforce-api.arighnapharma.com",
+        "EXPO_PUBLIC_AUTH_ORIGIN": "https://ariforce.arighnapharma.com",
+        "EXPO_PUBLIC_DCR_V2_FIELDS": "1"
+      }
     },
     "production": {
       "android": { "buildType": "apk" },
-      "uploadSourceMaps": true
+      "uploadSourceMaps": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://ariforce-api.arighnapharma.com",
+        "EXPO_PUBLIC_AUTH_ORIGIN": "https://ariforce.arighnapharma.com",
+        "EXPO_PUBLIC_DCR_V2_FIELDS": "1"
+      }
     }
   }
 }

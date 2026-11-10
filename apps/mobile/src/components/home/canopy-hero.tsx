@@ -15,6 +15,7 @@ import {
 } from '@/lib/field';
 import { formatDate, formatTime } from '@/lib/format';
 import { dailyTargetFromMeToday, dutyFromMeToday, fetchMeToday } from '@/lib/me-today';
+import { PUNCH_OUT_CONFIRM, PUNCH_OUT_SUBMIT, punchOutAsk } from '@/lib/punch-out';
 import { colors, fonts, layout, radius, spacing } from '@/theme';
 
 type Target = {
@@ -36,6 +37,10 @@ export function CanopyHero({ name, role, now }: { name: string; role: string; no
   const [busy, setBusy] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [target, setTarget] = useState<Target | null>(null);
+  const [dcrLoaded, setDcrLoaded] = useState(false);
+  const [dcrStatus, setDcrStatus] = useState<
+    'draft' | 'submitted' | 'approved' | 'rejected' | null
+  >(null);
 
   const refreshDuty = useCallback(async () => {
     // 1) Local cache first — unlock Punch without waiting on network/GPS.
@@ -78,6 +83,8 @@ export function CanopyHero({ name, role, now }: { name: string; role: string; no
           /* keep dcr.calls */
         }
       }
+      setDcrLoaded(true);
+      setDcrStatus(today.dcr?.status ?? null);
       setTarget(dailyTargetFromMeToday(today, visits));
     } catch {
       // Offline / slow: keep cache; fall back to check-ins when MeToday fails.
@@ -138,6 +145,8 @@ export function CanopyHero({ name, role, now }: { name: string; role: string; no
           } else {
             visits = today.dcr?.calls ?? 0;
           }
+          setDcrLoaded(true);
+          setDcrStatus(today.dcr?.status ?? null);
           setTarget(dailyTargetFromMeToday(today, visits));
         } catch {
           // Local success state already applied.
@@ -153,8 +162,31 @@ export function CanopyHero({ name, role, now }: { name: string; role: string; no
 
   function onPress() {
     if (busy || !hydrated) return;
-    // Hold-to-commit is on the button; no second confirm dialog.
-    void runPunch(onDuty ? 'punch_out' : 'punch_in');
+    if (!onDuty) {
+      void runPunch('punch_in');
+      return;
+    }
+    void askPunchOut();
+  }
+
+  async function askPunchOut() {
+    let ask = punchOutAsk(dcrLoaded, dcrStatus);
+    try {
+      const today = await fetchMeToday();
+      setDcrLoaded(true);
+      setDcrStatus(today.dcr?.status ?? null);
+      ask = punchOutAsk(true, today.dcr?.status ?? null);
+    } catch {
+      // Keep the last known report. A failed refresh still asks before punching out.
+    }
+    if (ask === 'submit_dcr') {
+      Alert.alert('Punch out', PUNCH_OUT_SUBMIT);
+      return;
+    }
+    Alert.alert('Punch out', PUNCH_OUT_CONFIRM, [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Punch out', style: 'destructive', onPress: () => void runPunch('punch_out') },
+    ]);
   }
 
   const done = target?.done ?? 0;

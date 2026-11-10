@@ -104,13 +104,16 @@ export function PunchButton({
     );
   }, [punchedIn, loading, reduced, settle]);
 
+  const afterRelease = useRef<(() => void) | null>(null);
+
   const commitHold = () => {
     if (!holding.current || fired.current || inactive) return;
     fired.current = true;
     holding.current = false;
     setHoldingUi(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    onPressRef.current();
+    // Wait until the finger is up. An alert opened during the hold is dropped on iOS.
+    afterRelease.current = () => onPressRef.current();
   };
 
   useAnimatedReaction(
@@ -175,6 +178,9 @@ export function PunchButton({
   const cancelHold = () => {
     if (fired.current) {
       sink.value = reduced ? 0 : withTiming(0, { duration: 140 });
+      const action = afterRelease.current;
+      afterRelease.current = null;
+      if (action) setTimeout(action, 40);
       return;
     }
     holding.current = false;
