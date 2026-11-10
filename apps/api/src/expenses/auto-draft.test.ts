@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { AllowanceDay } from '@ariforce/contracts';
-import { autoDraftError, autoDraftPlan, claimMonth, rejectionPlan } from './auto-draft';
+import {
+  autoDraftError,
+  autoDraftPlan,
+  claimMonth,
+  claimWriteMode,
+  rejectionPlan,
+} from './auto-draft';
 
 const base = {
   date: '2026-10-05',
@@ -105,4 +111,19 @@ describe('rejectionPlan', () => {
 
 describe('claimMonth', () => {
   it('is the first of the month', () => expect(claimMonth('2026-10-29')).toBe('2026-10-01'));
+});
+
+describe('claimWriteMode', () => {
+  it('lets a draft or rejected claim be edited', () => {
+    expect(claimWriteMode('draft', 0)).toBe('edit');
+    expect(claimWriteMode('rejected', 2)).toBe('edit');
+  });
+  it('lets a submitted claim take a replacement only for a day whose DCR lines were rejected', () => {
+    expect(claimWriteMode('submitted', 1)).toBe('replace');
+    expect(claimWriteMode('submitted', 0)).toBe('locked');
+  });
+  it('leaves an approved or paid claim locked', () => {
+    expect(claimWriteMode('approved', 3)).toBe('locked');
+    expect(claimWriteMode('paid', 3)).toBe('locked');
+  });
 });

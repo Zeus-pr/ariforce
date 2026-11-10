@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Tx } from '@ariforce/db';
 import type { Principal } from '../auth/principal';
-import { companySettings, invalidateCompanySettings } from './field.util';
+import { companySettings, invalidateCompanySettings, punchOnCompanyToday } from './field.util';
 
 const row = (companyId: string, radius: number) => ({
   id: companyId,
@@ -80,5 +80,15 @@ describe('company settings cache', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('punch day', () => {
+  it('accepts a punch whose captured day is the company today', () => {
+    expect(punchOnCompanyToday('2026-11-11', '2026-11-11')).toBe(true);
+  });
+  it('refuses a punch the device clock places on another day', () => {
+    expect(punchOnCompanyToday('2026-11-10', '2026-11-11')).toBe(false);
+    expect(punchOnCompanyToday('2026-11-12', '2026-11-11')).toBe(false);
   });
 });

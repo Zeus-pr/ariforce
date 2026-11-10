@@ -48,6 +48,7 @@ import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leav
 import {
   DCR_LOCK_TZ,
   doctorPob,
+  foreignDayCheckInIds,
   missingCheckIns,
   missingPresentation,
   pobValue,
@@ -503,7 +504,13 @@ export class DcrService {
     return { tourPlanId: tp.id, entries };
   }
 
-  async validateCalls(tx: Tx, p: Principal, b: Pick<Upsert, 'calls'>, dcrId: string | undefined) {
+  async validateCalls(
+    tx: Tx,
+    p: Principal,
+    b: Pick<Upsert, 'calls'>,
+    dcrId: string | undefined,
+    date: string,
+  ) {
     const bad: Record<string, string[]> = {};
     const scope = this.tenant.scope(p, territories.path);
     for (const kind of ['doctor', 'chemist', 'stockist'] as const) {
@@ -613,6 +620,13 @@ export class DcrService {
         );
       });
       if (wrong.length) bad.checkInIds = wrong.map((c) => c.checkInId!);
+      const tz = (await companySettings(tx, p)).timezone;
+      const otherDay = foreignDayCheckInIds(
+        date,
+        ci.map((c) => ({ checkInId: c.checkInId })),
+        caps.map((g) => ({ id: g.id, day: localDate(g.capturedAt, tz) })),
+      );
+      if (otherDay.length) bad.checkInIds = [...new Set([...(bad.checkInIds ?? []), ...otherDay])];
       // Multi-draft (0045): a check-in counts as used only by a live submitted report; other
       // drafts of the day are alternatives and may reuse it.
       const used = await tx
@@ -736,7 +750,7 @@ export class DcrService {
       // TP feature: changes from the approved tour plan no longer need a deviation reason
       // (deviationReason stays optional and is stored as given).
 
-      const { pts } = await this.validateCalls(tx, p, b, cur?.id);
+      const { pts } = await this.validateCalls(tx, p, b, cur?.id, b.date);
       if (b.submit) {
         this.assertCheckIns(b.calls);
         this.assertPresentations(b.calls);

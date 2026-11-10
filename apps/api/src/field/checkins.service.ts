@@ -20,7 +20,7 @@ import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { autoCloseOpenPunches } from './auto-punch-out';
-import { companySettings, localDate, metres } from './field.util';
+import { companySettings, localDate, metres, punchOnCompanyToday } from './field.util';
 
 type Row = typeof geoCaptures.$inferSelect;
 const OUTLETS = { doctor: doctors, chemist: chemists, stockist: stockists } as const;
@@ -216,6 +216,14 @@ export class CheckInsService {
       const capturedAt = new Date(b.capturedAt);
       const day = localDate(capturedAt, s.timezone);
       const companyToday = localDate(new Date(), s.timezone);
+      if (
+        (b.kind === 'punch_in' || b.kind === 'punch_out') &&
+        !punchOnCompanyToday(day, companyToday)
+      )
+        throw err(422, 'PUNCH_DATE', 'A punch is recorded for today in the company time zone', {
+          capturedDay: day,
+          today: companyToday,
+        });
       // Close any open punches on prior local days (IST midnight / missed cron).
       await autoCloseOpenPunches(tx, {
         companyId: p.companyId,

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { DcrDecision } from '@ariforce/contracts';
-import { doctorPob, lockAtOf, missingCheckIns, missingPresentation, pobValue } from './dcr-rules';
+import {
+  doctorPob,
+  foreignDayCheckInIds,
+  lockAtOf,
+  missingCheckIns,
+  missingPresentation,
+  pobValue,
+} from './dcr-rules';
 import { draftsNewestFirst, rejectedNewestFirst, reviewable, submittedOf } from './day-report';
 
 const call = (o: Partial<Parameters<typeof doctorPob>[0][number]>) => ({
@@ -25,6 +32,18 @@ describe('dcr rules', () => {
       callIds: ['d'],
     });
     expect(doctorPob([call({ outletKind: 'stockist', pob: [1] })])).toBeNull();
+  });
+  it('rejects a visit check-in from another day and keeps one from this day', () => {
+    expect(
+      foreignDayCheckInIds(
+        '2026-11-11',
+        [{ checkInId: 'today' }, { checkInId: 'yesterday' }, { checkInId: null }],
+        [
+          { id: 'today', day: '2026-11-11' },
+          { id: 'yesterday', day: '2026-11-10' },
+        ],
+      ),
+    ).toEqual(['yesterday']);
   });
   it('needs a visit check-in on every call at submit', () => {
     expect(

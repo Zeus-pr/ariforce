@@ -70,6 +70,14 @@ async function loadCompanySettings(tx: Tx, p: Principal): Promise<CompanySetting
   };
 }
 
+/**
+ * A punch is stored on the company-local today. The device clock must name that same day;
+ * a capturedAt on another day is refused so the phone cannot choose the attendance day.
+ */
+export function punchOnCompanyToday(capturedDay: string, companyToday: string) {
+  return capturedDay === companyToday;
+}
+
 /** Calendar date (YYYY-MM-DD) of an instant in the company time zone. */
 export function localDate(at: Date, tz: string): string {
   return new Intl.DateTimeFormat('en-CA', {

@@ -643,7 +643,7 @@ export class DcrFlowService {
       const hqs = await this.resolveHqs(tx, p, b.territoryIds);
       await this.checkWorkWith(tx, b.workWithUserIds);
       await this.checkChoices(tx, p, b.sfcRoutes ?? [], hqs, band);
-      const { pts } = await this.dcr.validateCalls(tx, p, b, cur?.id);
+      const { pts } = await this.dcr.validateCalls(tx, p, b, cur?.id, b.date);
       const plan = await this.dcr.plan(tx, p.userId, b.date);
 
       const vals = {
@@ -796,6 +796,7 @@ export class DcrFlowService {
           })),
         },
         cur.id,
+        cur.date,
       );
       const plan = await this.dcr.plan(tx, p.userId, cur.date);
       // TP feature: changes from the approved tour plan no longer need a deviation reason

@@ -173,7 +173,13 @@ export class ExpensesService implements OnModuleInit {
     const lines = await tx
       .select({ date: expenseLines.date })
       .from(expenseLines)
-      .where(and(eq(expenseLines.claimId, claimId), isNull(expenseLines.deletedAt)));
+      .where(
+        and(
+          eq(expenseLines.claimId, claimId),
+          isNull(expenseLines.deletedAt),
+          isNull(expenseLines.dcrRejectedAt),
+        ),
+      );
     const dates = [...new Set(lines.map((l) => l.date))];
     if (!dates.length) return;
     const rows = await tx
@@ -488,7 +494,8 @@ export class ExpensesService implements OnModuleInit {
 
   private async recomputeTotal(tx: Tx, claimId: string) {
     await tx.execute(sql`update expense_claims set total = coalesce((
-      select sum(amount) from expense_lines where claim_id = ${claimId} and deleted_at is null), 0)
+      select sum(amount) from expense_lines
+        where claim_id = ${claimId} and deleted_at is null and dcr_rejected_at is null), 0)
       where id = ${claimId}`);
   }
 
@@ -1291,13 +1298,15 @@ function reconcileClaim(
   }[],
 ): ExpenseReconciliation {
   const m = c.month.slice(0, 7);
+  // Rejected-DCR lines stay on the claim for the approver and are not part of the payable total.
+  const payable = lines.filter((l) => !l.dcrRejectedAt);
   const byDate = new Map<string, LineRow[]>();
-  for (const l of lines) byDate.set(l.date, [...(byDate.get(l.date) ?? []), l]);
+  for (const l of payable) byDate.set(l.date, [...(byDate.get(l.date) ?? []), l]);
   const byCategory = Object.fromEntries(EXPENSE_CATEGORIES.map((k) => [k, 0])) as Record<
     Category,
     number
   >;
-  for (const l of lines) byCategory[l.category] = r2(byCategory[l.category] + Number(l.amount));
+  for (const l of payable) byCategory[l.category] = r2(byCategory[l.category] + Number(l.amount));
   let unmatched = 0;
   const out = [...byDate.entries()]
     .sort(([a], [b]) => a.localeCompare(b))

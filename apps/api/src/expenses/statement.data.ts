@@ -237,13 +237,15 @@ export async function loadStatements(
       month,
       header,
       dcrs: dcrRows,
-      lines: d.lines.map((l) => ({
-        date: l.date,
-        category: l.category,
-        amount: Number(l.amount),
-        notes: l.notes,
-        mileageKm: l.mileageKm === null ? null : Number(l.mileageKm),
-      })),
+      lines: d.lines
+        .filter((l) => !l.dcrRejectedAt)
+        .map((l) => ({
+          date: l.date,
+          category: l.category,
+          amount: Number(l.amount),
+          notes: l.notes,
+          mileageKm: l.mileageKm === null ? null : Number(l.mileageKm),
+        })),
       leaves: leaves.filter((l) => l.userId === d.rec.userId),
       weeklyOffDays: settings?.off ?? [0],
     };
