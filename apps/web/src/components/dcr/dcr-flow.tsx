@@ -31,6 +31,7 @@ import {
   emptyMeeting,
   emptyOffice,
   hqIdsOf,
+  isRouteDay,
   problems as findProblems,
   territoryRows,
   workOnChoices,
@@ -238,6 +239,7 @@ function Flow({
   const submitKey = useRef<string | null>(null);
   const names = useRef(new Map<string, string>());
   const lastFieldWt = useRef('');
+  const lastCampWt = useRef('');
   const [personNames, setPersonNames] = useState<Map<string, string>>(new Map());
   const [peopleTick, setPeopleTick] = useState(0);
 
@@ -245,7 +247,8 @@ function Flow({
   const rows = useMemo(() => territoryRows(hqs ?? []), [hqs]);
   const hqNames = useMemo(() => new Map((hqs ?? []).map((h) => [h.id, h.name])), [hqs]);
   const branch = s.workOn?.branch;
-  const field = branch === 'field';
+  const field = isRouteDay(branch);
+  const withCalls = branch === 'field';
   const blocked = !!daySubmitted && dcr?.status !== 'submitted';
   const unlockedOpen = !!unlockedUntil && Date.parse(unlockedUntil) > Date.now();
   const lockedView =
@@ -342,7 +345,7 @@ function Flow({
         next.workTypeId = d.workTypeId;
         next.territoryIds = d.territoryIds;
         next.workWith = d.workWithUserIds;
-        next.workWithDone = wo?.branch === 'field' && d.territoryIds.length > 0;
+        next.workWithDone = isRouteDay(wo?.branch) && d.territoryIds.length > 0;
         next.routeChoice = Object.fromEntries(
           d.sfcRoutes.map((x) => [x.hqTerritoryId, x.sfcRouteId]),
         );
@@ -435,7 +438,7 @@ function Flow({
 
   // Products for detailing (GET /v1/products).
   useEffect(() => {
-    if (!field) return;
+    if (!withCalls) return;
     let live = true;
     setProductsError(null);
     void (async () => {
@@ -474,7 +477,7 @@ function Flow({
     return () => {
       live = false;
     };
-  }, [field, productsTick]);
+  }, [withCalls, productsTick]);
 
   // Saved calls name their customer by id only: look the names up once per DCR (doctors in one batch).
   useEffect(() => {
@@ -592,11 +595,19 @@ function Flow({
     // Field values stay on the page (hidden) when you look at another branch; they are never sent with it.
     update((x) => {
       if (x.workOn?.branch === 'field') lastFieldWt.current = x.workTypeId;
-      if (wo.branch !== 'field') return { workOn: wo, workTypeId: wo.workTypes[0]!.id };
-      return {
-        workOn: wo,
-        workTypeId: x.workOn?.branch === 'field' ? x.workTypeId : lastFieldWt.current,
-      };
+      if (x.workOn?.branch === 'camp') lastCampWt.current = x.workTypeId;
+      if (wo.branch === 'field')
+        return {
+          workOn: wo,
+          workTypeId: x.workOn?.branch === 'field' ? x.workTypeId : lastFieldWt.current,
+        };
+      if (wo.branch === 'camp')
+        return {
+          workOn: wo,
+          workTypeId: x.workOn?.branch === 'camp' ? x.workTypeId : lastCampWt.current,
+          calls: [],
+        };
+      return { workOn: wo, workTypeId: wo.workTypes[0]!.id };
     });
   };
   const chooseBand = (workTypeId: string) =>
@@ -765,7 +776,7 @@ function Flow({
     hint: [p.designation, p.employeeCode].filter(Boolean).join(' · ') || null,
   }));
   const showSfc = field && s.workTypeId && s.territoryIds.length > 0 && s.workWithDone;
-  const callsOpen = field && s.sfc.state === 'ok';
+  const callsOpen = withCalls && s.sfc.state === 'ok';
 
   return (
     <div className="flex flex-col gap-6">
@@ -1206,7 +1217,7 @@ function Flow({
         </Step>
       )}
 
-      {(callsOpen || (readOnly && field)) && (
+      {(callsOpen || (readOnly && withCalls)) && (
         <Step
           title="Calls"
           hint="One card per visit. Add as many as you made."
@@ -1343,9 +1354,11 @@ function Flow({
             <p className="text-sm text-muted-foreground" data-testid="dcr-review">
               {probs.length
                 ? `${probs.length} thing${probs.length > 1 ? 's' : ''} left before you can submit`
-                : field
+                : withCalls
                   ? `Ready: ${s.calls.length} call${s.calls.length === 1 ? '' : 's'}, ${s.sfc.hqs.length} SFC route${s.sfc.hqs.length === 1 ? '' : 's'}`
-                  : 'Ready to submit'}
+                  : field
+                    ? `Ready: ${s.sfc.hqs.length} SFC route${s.sfc.hqs.length === 1 ? '' : 's'}`
+                    : 'Ready to submit'}
             </p>
             <div className="grid grid-cols-2 gap-2 sm:flex">
               {dcr?.status === 'draft' && onDelete && (

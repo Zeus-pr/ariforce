@@ -18,6 +18,7 @@ import { api, apiReady, toApiError } from '@/lib/api';
 import {
   BANDS,
   cleanSfcHqs,
+  isRouteDay,
   detailsOf,
   emptyMeeting,
   emptyOffice,
@@ -186,7 +187,7 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
   }, [date, from, workTypesTick]);
 
   useEffect(() => {
-    if (!date || !state.workOn || state.workOn.branch !== 'field') return;
+    if (!date || !state.workOn || !isRouteDay(state.workOn.branch)) return;
     let live = true;
     setHqsError(null);
     setHqsLoading(true);
@@ -209,7 +210,7 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
   }, [date, state.workOn?.branch, hqsTick]);
 
   useEffect(() => {
-    if (!date || !state.workOn || state.workOn.branch !== 'field' || !state.territoryIds.length)
+    if (!date || !state.workOn || !isRouteDay(state.workOn.branch) || !state.territoryIds.length)
       return;
     let live = true;
     setPeopleError(null);
@@ -256,7 +257,7 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
     [workTypes],
   );
   const chosenWorkType = workTypes.find((workType) => workType.id === state.workTypeId);
-  const field = state.workOn?.branch === 'field';
+  const field = isRouteDay(state.workOn?.branch);
   const sfcKey =
     field && state.workTypeId && state.territoryIds.length && state.workWithDone
       ? `${from}|${state.workTypeId}|${state.territoryIds.join(',')}|${state.workWith.join(',')}|${sfcTick}`
@@ -341,9 +342,7 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
     }));
   };
   const pickBand = (band: string) => {
-    const workType = workTypes.find(
-      (candidate) => candidate.kind === 'field' && candidate.band === band,
-    );
+    const workType = state.workOn?.workTypes.find((candidate) => candidate.band === band);
     if (!workType) return;
     setState((current) => ({
       ...current,
@@ -598,9 +597,7 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
                     value={chosenWorkType?.band ?? ''}
                     onValueChange={pickBand}
                     choices={BANDS.filter((band) =>
-                      workTypes.some(
-                        (workType) => workType.kind === 'field' && workType.band === band.band,
-                      ),
+                      state.workOn?.workTypes.some((workType) => workType.band === band.band),
                     ).map((band) => ({ value: band.band, label: band.label, hint: band.hint }))}
                     placeholder="Choose HQ, EX or OS"
                     disabled={!editable}
