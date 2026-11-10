@@ -68,11 +68,50 @@ export const DEFAULT_WORK_TYPES = [
     allowanceBand: 'none',
     requiresLocation: false,
   },
-] as const satisfies readonly {
+] as const satisfies readonly WorkTypeDefault[];
+
+/**
+ * Camp days use the same bands, territories, work-with and SFC as field work, and pay the same
+ * TA/DA band. They do not count as a call-average field day and do not take doctor, chemist or
+ * stockist calls. Migration 0065 inserts these for companies that already ran 0026.
+ */
+export const CAMP_WORK_TYPES = [
+  {
+    code: 'CAMP_HQ',
+    name: 'Camp (HQ)',
+    kind: 'field',
+    countsAsFieldDay: false,
+    allowanceBand: 'hq',
+    requiresLocation: true,
+  },
+  {
+    code: 'CAMP_EXHQ',
+    name: 'Camp (ex-HQ)',
+    kind: 'field',
+    countsAsFieldDay: false,
+    allowanceBand: 'ex_hq',
+    requiresLocation: true,
+  },
+  {
+    code: 'CAMP_OUT',
+    name: 'Camp (outstation)',
+    kind: 'field',
+    countsAsFieldDay: false,
+    allowanceBand: 'outstation',
+    requiresLocation: true,
+  },
+] as const satisfies readonly WorkTypeDefault[];
+
+type WorkTypeDefault = {
   code: string;
   name: string;
   kind: 'field' | 'non_field' | 'leave' | 'holiday';
   countsAsFieldDay: boolean;
   allowanceBand: 'hq' | 'ex_hq' | 'outstation' | 'none';
   requiresLocation: boolean;
-}[];
+};
+
+/** Camp work-type codes (CAMP_HQ, CAMP_EXHQ, CAMP_OUT). */
+export function isCampWorkType(code: string): boolean {
+  return code.toUpperCase().startsWith('CAMP_');
+}

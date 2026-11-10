@@ -45,7 +45,9 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
     ]);
     tok.bm = staff.bearer;
     const wt = (await http().get('/v1/work-types?limit=50').set(as('bm'))).body.items;
-    const field = wt.find((w: { kind: string }) => w.kind === 'field').id;
+    const field = wt.find(
+      (w: { kind: string; code: string }) => w.kind === 'field' && w.code.startsWith('FIELD_'),
+    ).id;
     const doctor = (await http().get('/v1/doctors?approvalStatus=approved&limit=1').set(as('bm')))
       .body.items[0].id;
     const chemist = (await http().get(`/v1/chemists?territoryId=${T.hq}&limit=1`).set(as('bm')))

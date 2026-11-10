@@ -456,6 +456,13 @@
       "when": 1794031900000,
       "tag": "0064_coverage_list_without_calls",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1794118300000,
+      "tag": "0065_camp_work_types",
+      "breakpoints": true
     }
   ]
 }

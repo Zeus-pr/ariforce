@@ -54,7 +54,9 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
       tok[who] = `Bearer ${res.headers['set-auth-token']}`;
     }
     const wt = (await http().get('/v1/work-types?limit=50').set(as('bm'))).body.items;
-    field = wt.find((w: { kind: string }) => w.kind === 'field').id;
+    field = wt.find(
+      (w: { kind: string; code: string }) => w.kind === 'field' && w.code.startsWith('FIELD_'),
+    ).id;
     leave = wt.find((w: { kind: string }) => w.kind !== 'field').id;
     doctor = (await http().get('/v1/doctors?approvalStatus=approved&limit=1').set(as('bm'))).body
       .items[0].id;

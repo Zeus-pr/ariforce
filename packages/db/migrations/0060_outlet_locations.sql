@@ -10,9 +10,12 @@ BEGIN
     RAISE NOTICE 'skip 0060_outlet_locations (already applied)';
     RETURN;
   END IF;
-  EXECUTE $ariforce_stmt$ALTER TABLE "companies" ADD COLUMN "presentation_geofence_m" integer DEFAULT 300 NOT NULL;$ariforce_stmt$;
-  EXECUTE $ariforce_stmt$ALTER TABLE "companies" ADD COLUMN "geo_lock_max_accuracy_m" integer DEFAULT 80 NOT NULL;$ariforce_stmt$;
-  EXECUTE $ariforce_stmt$CREATE TYPE "public"."geo_lock_action" AS ENUM('lock', 'edit', 'deactivate', 'reactivate');$ariforce_stmt$;
+  EXECUTE $ariforce_stmt$ALTER TABLE "companies" ADD COLUMN IF NOT EXISTS "presentation_geofence_m" integer DEFAULT 300 NOT NULL;$ariforce_stmt$;
+  EXECUTE $ariforce_stmt$ALTER TABLE "companies" ADD COLUMN IF NOT EXISTS "geo_lock_max_accuracy_m" integer DEFAULT 80 NOT NULL;$ariforce_stmt$;
+  EXECUTE $ariforce_stmt$DO $$ BEGIN
+  CREATE TYPE "public"."geo_lock_action" AS ENUM('lock', 'edit', 'deactivate', 'reactivate');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;$ariforce_stmt$;
   EXECUTE $ariforce_stmt$CREATE TABLE IF NOT EXISTS "outlet_locations" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"company_id" uuid NOT NULL,
@@ -46,9 +49,9 @@ BEGIN
 	"after" text,
 	"at" timestamp with time zone DEFAULT now() NOT NULL
 );$ariforce_stmt$;
-  EXECUTE $ariforce_stmt$ALTER TABLE "dcr_calls" ADD COLUMN "presentation_location_id" uuid;$ariforce_stmt$;
-  EXECUTE $ariforce_stmt$ALTER TABLE "dcr_calls" ADD COLUMN "presentation_distance_m" bigint;$ariforce_stmt$;
-  EXECUTE $ariforce_stmt$ALTER TABLE "dcr_calls" ADD COLUMN "presentation_accuracy_m" real;$ariforce_stmt$;
+  EXECUTE $ariforce_stmt$ALTER TABLE "dcr_calls" ADD COLUMN IF NOT EXISTS "presentation_location_id" uuid;$ariforce_stmt$;
+  EXECUTE $ariforce_stmt$ALTER TABLE "dcr_calls" ADD COLUMN IF NOT EXISTS "presentation_distance_m" bigint;$ariforce_stmt$;
+  EXECUTE $ariforce_stmt$ALTER TABLE "dcr_calls" ADD COLUMN IF NOT EXISTS "presentation_accuracy_m" real;$ariforce_stmt$;
   EXECUTE $ariforce_stmt$DO $$ BEGIN ALTER TABLE "outlet_locations" ADD CONSTRAINT "outlet_locations_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE no action ON UPDATE no action; EXCEPTION WHEN duplicate_object THEN NULL; END $$;$ariforce_stmt$;
   EXECUTE $ariforce_stmt$DO $$ BEGIN ALTER TABLE "outlet_locations" ADD CONSTRAINT "outlet_locations_locked_by_users_id_fk" FOREIGN KEY ("locked_by") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action; EXCEPTION WHEN duplicate_object THEN NULL; END $$;$ariforce_stmt$;
   EXECUTE $ariforce_stmt$DO $$ BEGIN ALTER TABLE "geo_lock_events" ADD CONSTRAINT "geo_lock_events_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE no action ON UPDATE no action; EXCEPTION WHEN duplicate_object THEN NULL; END $$;$ariforce_stmt$;

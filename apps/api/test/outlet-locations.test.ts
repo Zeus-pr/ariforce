@@ -205,8 +205,8 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
     const today = istToday();
     const opt = await http().get(`/v1/dcrs/options?date=${today}`).set(as('pres'));
     expect(opt.status, JSON.stringify(opt.body)).toBe(200);
-    const workTypeId = (opt.body.workTypes as { id: string; kind: string }[]).find(
-      (w) => w.kind === 'field',
+    const workTypeId = (opt.body.workTypes as { id: string; kind: string; code: string }[]).find(
+      (w) => w.kind === 'field' && w.code.startsWith('FIELD_'),
     )?.id;
     expect(workTypeId).toBeTruthy();
 

@@ -257,7 +257,9 @@ describe.skipIf(!OWNER || !APP)('approval details + rejection reasons (real API)
   it('tour plan: approver sees resolved days; reason required, notified, cleared on resubmit', async () => {
     const me = await http().get('/v1/me').set(as('bm2'));
     const wt = await http().get('/v1/work-types?limit=50').set(as('bm2'));
-    const field = wt.body.items.find((w: { kind: string }) => w.kind === 'field');
+    const field = wt.body.items.find(
+      (w: { kind: string; code: string }) => w.kind === 'field' && w.code.startsWith('FIELD_'),
+    );
     const entry = {
       session: 'full',
       workTypeId: field.id,

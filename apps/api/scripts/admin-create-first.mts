@@ -22,7 +22,7 @@ import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
 import { hashPassword } from 'better-auth/crypto';
 import { Client } from 'pg';
-import { DEFAULT_WORK_TYPES } from '@ariforce/db';
+import { CAMP_WORK_TYPES, DEFAULT_WORK_TYPES } from '@ariforce/db';
 import {
   DEFAULT_ROLE_PERMISSIONS,
   ROLE_KEYS,
@@ -115,9 +115,9 @@ try {
     [companyId, `admin-create-first-${randomUUID()}`],
   );
 
-  // Work types: ensure the standard codes exist (same set as migration 0026; existing rows untouched).
+  // Work types: standard codes (0026) plus Camp (0065). Existing rows stay untouched.
   let wtAdded = 0;
-  for (const w of DEFAULT_WORK_TYPES) {
+  for (const w of [...DEFAULT_WORK_TYPES, ...CAMP_WORK_TYPES]) {
     const r = await c.query(
       `insert into work_types (id, company_id, code, name, kind, counts_as_field_day, allowance_band, requires_location)
        values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (company_id, code) do nothing`,
