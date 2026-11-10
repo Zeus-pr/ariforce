@@ -6,9 +6,8 @@ import { useSession } from '@/lib/auth';
 import { canSee, homeFor } from '@/lib/nav';
 
 /**
- * Client guard for the signed-in app. Hard loads are already redirected by the inline head script
- * (authBootScript) before paint; this covers sign-out and client navigation. Protected content only
- * renders when a session exists (or during SSR/hydration, where the head script has already run).
+ * Client guard for the signed-in app. The role comes from GET /v1/me (useSession), not from the
+ * profile stored in localStorage. Nothing renders until that answer is in.
  */
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const session = useSession();
@@ -25,7 +24,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     }
   }, [session, allowed, pathname, router]);
 
-  if (session === null) return null;
-  if (session && !allowed) return null;
+  if (!session || !allowed) return null;
   return <>{children}</>;
 }
