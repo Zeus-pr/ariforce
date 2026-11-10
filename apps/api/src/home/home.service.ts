@@ -176,7 +176,8 @@ export class HomeService {
         sql`select d.id, d.status::text as status,
               (select count(*) from dcr_calls c where c.dcr_id = d.id)::int as calls
             from dcrs d where d.user_id = ${me} and d.date = ${date}::date and d.deleted_at is null
-            order by case d.status when 'approved' then 0 when 'submitted' then 1 when 'rejected' then 2 else 3 end,
+              and d.status in ('approved', 'submitted', 'draft')
+            order by case d.status when 'approved' then 0 when 'submitted' then 1 else 2 end,
                      d.updated_at desc limit 1`,
       );
       const li = d ? await this.dcr.lockInfo(tx, s, p.userId, date) : null;

@@ -76,3 +76,19 @@ export function rejectionPlan(
   const flag = lines.filter((l) => !l.flagged && !remove.includes(l.id)).map((l) => l.id);
   return { editable, remove, flag };
 }
+
+/**
+ * How a DCR submit may write that day's lines.
+ * draft/rejected: the claim is editable.
+ * submitted: only when this day already has DCR lines flagged by a rejection, so the
+ * replacement report replaces those lines instead of leaving them in the payable total.
+ * approved/paid: locked.
+ */
+export function claimWriteMode(
+  claimStatus: string,
+  flaggedDcrLines: number,
+): 'edit' | 'replace' | 'locked' {
+  if (claimEditable(claimStatus)) return 'edit';
+  if (claimStatus === 'submitted' && flaggedDcrLines > 0) return 'replace';
+  return 'locked';
+}

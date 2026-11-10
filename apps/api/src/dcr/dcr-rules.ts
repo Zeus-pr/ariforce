@@ -32,6 +32,23 @@ export function doctorPob(calls: CallLike[]) {
     : null;
 }
 
+/**
+ * Visit check-ins whose local day is not the DCR day. A call cannot reuse a check-in from
+ * another day. Captures that are missing are not listed here (the caller already rejects those).
+ */
+export function foreignDayCheckInIds(
+  dcrDate: string,
+  calls: { checkInId?: string | null }[],
+  captures: { id: string; day: string }[],
+): string[] {
+  const dayOf = new Map(captures.map((c) => [c.id, c.day]));
+  return calls.flatMap((c) => {
+    if (!c.checkInId) return [];
+    const day = dayOf.get(c.checkInId);
+    return day && day !== dcrDate ? [c.checkInId] : [];
+  });
+}
+
 /** On submit: every field call needs a visit check-in linked (geo at the outlet). */
 export function missingCheckIns(calls: CallLike[]) {
   const bad = calls.flatMap((c, i) => (!c.checkInId ? [{ index: i, id: idOf(c) }] : []));

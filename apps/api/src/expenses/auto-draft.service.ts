@@ -6,7 +6,7 @@ import type {
   ExpenseStatus,
 } from '@ariforce/contracts';
 import { companies, expenseClaims, expenseLines, type Tx } from '@ariforce/db';
-import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
@@ -16,6 +16,7 @@ import {
   autoDraftPlan,
   claimEditable,
   claimMonth,
+  claimWriteMode,
   rejectionPlan,
 } from './auto-draft';
 
@@ -208,21 +209,45 @@ export class ExpenseAutoDraftService {
           });
         }
         out = { ...out, claimId: c!.id, claimStatus: c!.status };
-        if (c!.deletedAt || !claimEditable(c!.status))
-          return { ...out, reason: 'claim_locked' as const };
-        const now = new Date();
-        const old = await sp
-          .update(expenseLines)
-          .set({ deletedAt: now })
+        const flagged = await sp
+          .select({ id: expenseLines.id })
+          .from(expenseLines)
           .where(
             and(
               eq(expenseLines.claimId, c!.id),
-              eq(expenseLines.dcrId, d.id),
+              eq(expenseLines.date, d.date),
               eq(expenseLines.origin, 'dcr'),
+              isNotNull(expenseLines.dcrRejectedAt),
               isNull(expenseLines.deletedAt),
             ),
-          )
-          .returning({ id: expenseLines.id });
+          );
+        const mode = claimWriteMode(c!.deletedAt ? 'paid' : c!.status, flagged.length);
+        if (mode === 'locked') return { ...out, reason: 'claim_locked' as const };
+        const now = new Date();
+        const old =
+          mode === 'replace'
+            ? await sp
+                .update(expenseLines)
+                .set({ deletedAt: now })
+                .where(
+                  inArray(
+                    expenseLines.id,
+                    flagged.map((f) => f.id),
+                  ),
+                )
+                .returning({ id: expenseLines.id })
+            : await sp
+                .update(expenseLines)
+                .set({ deletedAt: now })
+                .where(
+                  and(
+                    eq(expenseLines.claimId, c!.id),
+                    eq(expenseLines.dcrId, d.id),
+                    eq(expenseLines.origin, 'dcr'),
+                    isNull(expenseLines.deletedAt),
+                  ),
+                )
+                .returning({ id: expenseLines.id });
         if (items.length)
           await sp.insert(expenseLines).values(
             items.map((it, i) => ({
@@ -297,18 +322,19 @@ export class ExpenseAutoDraftService {
     );
     if (!plan.remove.length && !plan.flag.length) return null;
     const now = new Date();
-    if (plan.remove.length) {
+    if (plan.remove.length)
       await tx
         .update(expenseLines)
         .set({ deletedAt: now })
         .where(inArray(expenseLines.id, plan.remove));
-      await recomputeTotal(tx, c.id);
-    }
     if (plan.flag.length)
       await tx
         .update(expenseLines)
         .set({ dcrRejectedAt: now })
         .where(inArray(expenseLines.id, plan.flag));
+    // Flagged lines stay visible to the approver and drop out of the payable total.
+    // A paid claim has already moved money, so its stored total stays as paid.
+    if (c.status !== 'paid') await recomputeTotal(tx, c.id);
     const out = {
       claimId: c.id,
       claimStatus: c.status,
@@ -326,6 +352,7 @@ export class ExpenseAutoDraftService {
 
 export async function recomputeTotal(tx: Tx, claimId: string) {
   await tx.execute(sql`update expense_claims set total = coalesce((
-    select sum(amount) from expense_lines where claim_id = ${claimId} and deleted_at is null), 0)
+    select sum(amount) from expense_lines
+      where claim_id = ${claimId} and deleted_at is null and dcr_rejected_at is null), 0)
     where id = ${claimId}`);
 }
