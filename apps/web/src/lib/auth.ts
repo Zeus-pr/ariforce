@@ -2,7 +2,8 @@
  * Production authentication using better-auth + GET /v1/me
  * Session is the HTTP-only cookie; profile is stored in localStorage.
  */
-import { useSyncExternalStore } from 'react';
+import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { rateLimitMessage, SUSPENDED_MESSAGE } from '@/lib/auth-errors';
 import { ROLES, ROLE_LABEL, roleLevel, type Role } from './roles';
 import { API_URL, api, setAccountStateHandler, setUnauthenticatedHandler } from './api';
@@ -18,36 +19,7 @@ export type Session = { userId: string; role?: Role; user?: User };
 
 export type SignedIn = { user: User; role: Role };
 
-let cache: { raw: string | null; value: SignedIn | null } = { raw: null, value: null };
 const listeners = new Set<() => void>();
-
-let migrated = false;
-
-function read(): SignedIn | null {
-  if (!migrated) {
-    migrated = true;
-    migrateLegacySession();
-  }
-  let raw: string | null = null;
-  try {
-    raw = localStorage.getItem(SESSION_KEY);
-  } catch {
-    // storage blocked (private mode): treat as signed out
-  }
-  if (raw === cache.raw) return cache.value;
-  let value: SignedIn | null = null;
-  try {
-    const s = raw ? (JSON.parse(raw) as Session) : null;
-    const user = s && s.user?.id === s.userId ? s.user : undefined;
-    if (user) {
-      value = { user, role: user.role };
-    }
-  } catch {
-    // storage blocked (private mode): treat as signed out
-  }
-  cache = { raw, value };
-  return value;
-}
 
 function write(s: Session | null) {
   try {
@@ -69,9 +41,30 @@ function subscribe(l: () => void) {
   };
 }
 
-/** `undefined` while rendering on the server or hydrating; `null` when signed out. */
+/** `undefined` while GET /v1/me has not answered; `null` when there is no portal role. */
 export function useSession(): SignedIn | null | undefined {
-  return useSyncExternalStore(subscribe, read, () => undefined);
+  const q = useQuery(meQuery);
+  useEffect(() => {
+    migrateLegacySession();
+    return subscribe(() => {
+      void queryClient.invalidateQueries({ queryKey: meQuery.queryKey });
+    });
+  }, []);
+  if (q.isPending || q.isError) return undefined;
+  const me = q.data;
+  if (!me) return null;
+  const role = primaryRole(me.roles);
+  if (!role) return null;
+  return {
+    role,
+    user: {
+      id: me.id,
+      name: me.name,
+      email: me.email,
+      role,
+      territory: me.companyName,
+    },
+  };
 }
 
 export type SignInError = {
