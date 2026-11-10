@@ -46,6 +46,26 @@ export function useDraftList() {
   });
 }
 
+/** This person's DCRs for a month, used to draw the call capsule and the day strip. */
+export function useMyMonthDcrs(month: string, enabled = true) {
+  const from = `${month}-01`;
+  const [y, m] = month.split('-').map(Number);
+  const last = new Date(Date.UTC(y!, m!, 0)).getUTCDate();
+  const end = `${month}-${String(last).padStart(2, '0')}`;
+  const today = todayIST();
+  const to = end < today ? end : today;
+  return useQuery({
+    queryKey: [...dcrKey, 'picture', from, to],
+    enabled,
+    staleTime: 60_000,
+    queryFn: ({ signal }) =>
+      apiFetch<Page<Dcr>>('/v1/dcrs', {
+        signal,
+        query: { mine: 'true', from, to, sort: 'date', limit: 100 },
+      }).then((page) => page.items ?? []),
+  });
+}
+
 /** Submitted history for the current IST month (and earlier drafts' dates if needed). */
 export function useSubmittedHistory(from = monthStartIST(), to = todayIST()) {
   return useQuery({

@@ -1,6 +1,10 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
+import { useEffect } from 'react';
 import { AppHeader } from '@/components/app-header';
-import { Platform, StyleSheet, View } from 'react-native';
+import { AppState, Platform, StyleSheet, View } from 'react-native';
+import { registerPushIfEnrolled } from '@/lib/field';
+import { notificationHref } from '@/lib/notifications';
+import { listenForNotificationOpens } from '@/lib/push';
 import { colors, layout, motion } from '@/theme';
 
 /**
@@ -12,6 +16,7 @@ export default function AppLayout() {
   return (
     <View style={styles.backdrop}>
       <View style={styles.column}>
+        <PushBridge />
         <AppStack />
       </View>
     </View>
@@ -23,6 +28,30 @@ const styles = StyleSheet.create({
   // Tablets: one centred, readable column instead of stretching every screen edge to edge.
   column: { flex: 1, width: '100%', maxWidth: layout.maxContent },
 });
+
+function PushBridge() {
+  const router = useRouter();
+  useEffect(() => {
+    void registerPushIfEnrolled();
+    const app = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void registerPushIfEnrolled();
+    });
+    const stop = listenForNotificationOpens((data) => {
+      const href = notificationHref({
+        type: typeof data.type === 'string' ? data.type : '',
+        entityType: typeof data.entityType === 'string' ? data.entityType : null,
+        entityId: typeof data.entityId === 'string' ? data.entityId : null,
+        data: null,
+      });
+      router.push(href ?? '/notifications');
+    });
+    return () => {
+      app.remove();
+      stop();
+    };
+  }, [router]);
+  return null;
+}
 
 function AppStack() {
   return (
@@ -52,6 +81,20 @@ function AppStack() {
       <Stack.Screen name="dcr/form" options={{ fullScreenGestureEnabled: false }} />
       <Stack.Screen name="tour-plan/form" options={{ fullScreenGestureEnabled: false }} />
       <Stack.Screen name="notifications" />
+      <Stack.Screen name="company-message" options={{ title: 'Company message' }} />
+      <Stack.Screen name="attendance/index" options={{ title: 'Attendance' }} />
+      <Stack.Screen name="sales/index" options={{ title: 'Sales' }} />
+      <Stack.Screen name="doctor-coverage" options={{ title: 'Coverage' }} />
+      <Stack.Screen name="reports/index" options={{ title: 'Reports' }} />
+      <Stack.Screen name="reports/activity" options={{ title: 'Field activity' }} />
+      <Stack.Screen name="reports/products" options={{ title: 'Product detailing' }} />
+      <Stack.Screen name="team/index" options={{ title: 'Team' }} />
+      <Stack.Screen name="exceptions/index" options={{ title: 'Exceptions' }} />
+      <Stack.Screen name="expense-reports/index" options={{ title: 'Expense report' }} />
+      <Stack.Screen name="sfc/index" options={{ title: 'SFC' }} />
+      <Stack.Screen name="signups/index" options={{ title: 'Sign-up requests' }} />
+      <Stack.Screen name="my-team/index" options={{ title: 'My team' }} />
+      <Stack.Screen name="people/index" options={{ title: 'People' }} />
       <Stack.Screen name="leave/index" />
       <Stack.Screen name="leave/apply" />
       <Stack.Screen name="expenses/index" />

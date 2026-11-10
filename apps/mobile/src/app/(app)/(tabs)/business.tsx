@@ -30,14 +30,9 @@ export default function BusinessTab() {
         style={styles.flex}
         contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
       >
-        <View style={styles.hero}>
-          <AppText variant="title" accessibilityRole="header">
-            Business
-          </AppText>
-          <AppText variant="bodyMuted">
-            Doctors, chemists, stockists and products for your territories.
-          </AppText>
-        </View>
+        <AppText variant="bodyMuted" style={styles.lead}>
+          Doctors, chemists, stockists and products for your territories.
+        </AppText>
 
         <View style={styles.grid}>
           {LISTS.map((key) => {
@@ -102,7 +97,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     gap: spacing.xl,
   },
-  hero: { gap: spacing.sm, paddingHorizontal: spacing.xs },
+  lead: { paddingHorizontal: spacing.xs },
   grid: { gap: spacing.md },
   cell: { alignSelf: 'stretch' },
   tile: {

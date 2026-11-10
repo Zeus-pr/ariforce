@@ -6,6 +6,7 @@
  * one-shot (Highest waits many seconds indoors and is unnecessary vs the 200 m server cap).
  */
 import * as Location from 'expo-location';
+import { assertFieldDeviceIntegrity } from './device-integrity';
 
 export type GpsFix = {
   location: { lat: number; lng: number };
@@ -40,14 +41,22 @@ async function ensurePermission() {
   }
 }
 
+function rejectMock(fix: GpsFix): GpsFix {
+  if (fix.isMock) {
+    throw new Error('Mock locations are not allowed.');
+  }
+  return fix;
+}
+
 export async function getFix(): Promise<GpsFix> {
+  await assertFieldDeviceIntegrity();
   await ensurePermission();
 
   const last = await Location.getLastKnownPositionAsync({
     maxAge: LAST_KNOWN_MAX_AGE_MS,
     requiredAccuracy: LAST_KNOWN_MAX_ACCURACY_M,
   });
-  if (last) return toFix(last);
+  if (last) return rejectMock(toFix(last));
 
   // High ≈ 10 m — enough for geofence (server default maxAccuracyM 200).
   // mayShowUserSettingsDialog: Android high-accuracy mode when device is on battery saver.
@@ -55,5 +64,5 @@ export async function getFix(): Promise<GpsFix> {
     accuracy: Location.Accuracy.High,
     mayShowUserSettingsDialog: true,
   });
-  return toFix(pos);
+  return rejectMock(toFix(pos));
 }

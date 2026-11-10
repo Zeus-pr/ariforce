@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm, gap: spacing.md },
   pad: { padding: spacing.lg },
   dateCard: { padding: spacing.lg, gap: spacing.sm },
-  dateRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   dateBtn: {
     width: touch.min,
     height: touch.min,
@@ -269,7 +269,7 @@ const styles = StyleSheet.create({
   },
   dateBtnPressed: { backgroundColor: colors.separator },
   dateBtnDisabled: { opacity: 0.45 },
-  dateCenter: { flex: 1, alignItems: 'center' },
+  dateCenter: { alignItems: 'center', minWidth: 148 },
   hint: { textAlign: 'center', color: colors.muted },
   kpiRow: {
     flexDirection: 'row',

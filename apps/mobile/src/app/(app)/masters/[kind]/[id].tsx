@@ -7,6 +7,7 @@ import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
 import { Icon } from '@/components/icon';
 import { ScrollView } from '@/components/scroll';
+import { OutletActivity } from '@/components/outlet-activity';
 import { OutletLocksCard } from '@/components/outlet-locks-card';
 import { TintedIcon } from '@/components/tinted-icon';
 import { SkeletonDetail } from '@/components/skeleton';
@@ -23,6 +24,7 @@ import {
   useMasterRecord,
   type MasterKind,
 } from '@/lib/masters';
+import { useOutletActivity } from '@/lib/outlet-activity';
 import { canWriteMasters } from '@/lib/roles';
 import { colors, layout, radius, spacing, touch } from '@/theme';
 
@@ -63,6 +65,7 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
   const canWrite = canWriteMasters(user?.roles ?? []);
   const lk = useLookups();
   const rec = useMasterRecord(kind, id);
+  const activity = useOutletActivity(OUTLET_KIND[kind], id);
   const row = rec.data;
   const title = `${cfg.singular[0]!.toUpperCase()}${cfg.singular.slice(1)}`;
 
@@ -103,7 +106,7 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
   return (
     <View style={styles.flex}>
       <Stack.Screen options={{ title }} />
-      <PullToRefresh onRefresh={() => rec.refetch()}>
+      <PullToRefresh onRefresh={() => Promise.all([rec.refetch(), activity.refetch()])}>
         <ScrollView
           style={styles.flex}
           contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
@@ -195,6 +198,8 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
               );
             })}
           </Card>
+
+          <OutletActivity kind={OUTLET_KIND[kind]} outletId={row.id} />
 
           <OutletLocksCard
             outletKind={OUTLET_KIND[kind]}

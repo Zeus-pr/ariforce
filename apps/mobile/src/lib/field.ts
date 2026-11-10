@@ -19,6 +19,7 @@ import type { PresentationCaptureDraft } from './dcr/adapter';
 import { todayIST } from './dcr/dates';
 import { getFix, type GpsFix } from './location';
 import { dutyFromMeToday, fetchMeToday } from './me-today';
+import { registerPush } from './push';
 import { tokenStore } from './token-store';
 
 export type { GpsFix };
@@ -126,10 +127,14 @@ let cachedDeviceId: string | null | undefined;
 
 /** Enrol personal device + grant required consents when the user cannot check in yet. */
 export async function ensureFieldReady(): Promise<string | null> {
-  if (cachedDeviceId !== undefined) return cachedDeviceId;
+  if (cachedDeviceId !== undefined) {
+    if (cachedDeviceId) void registerPush(cachedDeviceId);
+    return cachedDeviceId;
+  }
   const me = await getConsent();
   if (me.canCheckIn) {
     cachedDeviceId = me.deviceId;
+    if (me.deviceId) void registerPush(me.deviceId);
     return me.deviceId;
   }
   const platform = Platform.OS === 'ios' ? 'ios' : 'android';
@@ -153,7 +158,50 @@ export async function ensureFieldReady(): Promise<string | null> {
     });
   }
   cachedDeviceId = device.id;
+  void registerPush(device.id);
   return device.id;
+}
+
+/**
+ * Registers the Expo token on a device the user already has, or enrols one phone row when they
+ * have none. Does not grant location consent and does not cache a pending device, so punch-in
+ * still runs its own consent step.
+ */
+export async function registerPushIfEnrolled() {
+  try {
+    let id: string | null = typeof cachedDeviceId === 'string' ? cachedDeviceId : null;
+    if (!id) {
+      const me = await getConsent();
+      id = me.deviceId;
+      if (me.canCheckIn && me.deviceId) cachedDeviceId = me.deviceId;
+    }
+    if (!id) {
+      const page = await apiFetch<Page<Device>>('/v1/devices');
+      id = page.items.find((d) => d.status !== 'revoked')?.id ?? null;
+    }
+    if (!id) {
+      const platform = Platform.OS === 'ios' ? 'ios' : 'android';
+      const existing = await SecureStore.getItemAsync('ariforce.install-id');
+      const installId = existing ?? `mobile-${idempotencyKey()}`;
+      if (!existing) await SecureStore.setItemAsync('ariforce.install-id', installId);
+      const device = await apiFetch<Device>('/v1/devices', {
+        method: 'POST',
+        body: {
+          ownership: 'personal',
+          platform,
+          installId,
+          model: DeviceInfo.modelName ?? null,
+          osVersion: DeviceInfo.osVersion ?? null,
+          appVersion: Constants.expoConfig?.version ?? null,
+          assetTag: null,
+        },
+      });
+      id = device.id;
+    }
+    await registerPush(id);
+  } catch {
+    // Tried again the next time the app comes forward. The inbox still works without a token.
+  }
 }
 
 function captureBody(fix: GpsFix, deviceId?: string | null) {
@@ -185,12 +233,50 @@ export async function listTodayCheckIns(userId?: string): Promise<CheckIn[]> {
   return listCheckInsInRange(day, day, userId);
 }
 
-/** One row per user-day from GET /v1/attendance (team scope for approvers). */
-export async function listAttendanceDays(from: string, to: string): Promise<AttendanceDay[]> {
-  const page = await apiFetch<Page<AttendanceDay>>('/v1/attendance', {
-    query: { from, to, limit: 200 },
-  });
-  return page.items ?? [];
+/** One row per user-day from GET /v1/attendance. Pass `userId` for one person in your team. */
+export async function listAttendanceDays(
+  from: string,
+  to: string,
+  userId?: string,
+): Promise<AttendanceDay[]> {
+  const items: AttendanceDay[] = [];
+  let cursor: string | undefined;
+  for (let pageNo = 0; pageNo < 15; pageNo++) {
+    const page = await apiFetch<{ items?: AttendanceDay[]; nextCursor?: string | null }>(
+      '/v1/attendance',
+      {
+        query: {
+          from,
+          to,
+          limit: 200,
+          ...(userId ? { userId } : {}),
+          ...(cursor ? { cursor } : {}),
+        },
+      },
+    );
+    items.push(...(page.items ?? []));
+    if (!page.nextCursor) break;
+    cursor = page.nextCursor;
+  }
+  return items;
+}
+
+/** Caller plus their reporting line (GET /v1/users). Company-wide roles get everyone. */
+export async function listTeamPeople(): Promise<{ id: string; name: string; roles: string[] }[]> {
+  const items: { id: string; name: string; roles: string[] }[] = [];
+  let cursor: string | undefined;
+  for (let pageNo = 0; pageNo < 10; pageNo++) {
+    const page = await apiFetch<{
+      items: { id: string; name: string; roles: string[] }[];
+      nextCursor?: string | null;
+    }>('/v1/users', {
+      query: { status: 'active', sort: 'name', limit: 200, ...(cursor ? { cursor } : {}) },
+    });
+    items.push(...(page.items ?? []));
+    if (!page.nextCursor) break;
+    cursor = page.nextCursor;
+  }
+  return items;
 }
 
 /** Visit check-ins for one user today (Home daily target "done"). */

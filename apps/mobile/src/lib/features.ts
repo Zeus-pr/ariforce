@@ -109,6 +109,83 @@ export const FEATURES = {
     short: 'Flags and approval updates',
     blurb: 'Flags for missed DCRs, punch-in and tour plans, and approval updates.',
   },
+  companyMessage: {
+    title: 'Company message',
+    icon: 'bullhorn-outline',
+    tone: 'navy',
+    short: 'Message everyone',
+    blurb: 'Send one message to every active person in the company.',
+  },
+  sales: {
+    title: 'Sales',
+    icon: 'cash-multiple',
+    tone: 'navy',
+    short: 'Primary and secondary sales',
+    blurb: 'Primary and secondary sales for the month, and the six months before it.',
+  },
+  coverage: {
+    title: 'Coverage',
+    icon: 'target',
+    tone: 'teal',
+    short: 'Doctors seen against the list',
+    blurb: 'Coverage, visit frequency and missed doctors for the month.',
+  },
+  reports: {
+    title: 'Reports',
+    icon: 'file-chart-outline',
+    tone: 'blue',
+    short: 'Activity, coverage, sales, products',
+    blurb: 'Field activity, coverage, sales and product detailing for a month.',
+  },
+  team: {
+    title: 'Team performance',
+    icon: 'chart-bar',
+    tone: 'navy',
+    short: 'Coverage down the territory',
+    blurb: 'Open a territory, then a person, for this month’s coverage.',
+  },
+  exceptions: {
+    title: 'Exceptions',
+    icon: 'alert-circle-outline',
+    tone: 'orange',
+    short: 'Open flags by rule',
+    blurb: 'Open exceptions from the last 30 days, grouped by rule.',
+  },
+  expenseReports: {
+    title: 'Expense report',
+    icon: 'file-document-outline',
+    tone: 'blue',
+    short: 'Claims for the month',
+    blurb: 'Who claimed what this month, and which days match a DCR.',
+  },
+  sfc: {
+    title: 'SFC',
+    icon: 'map-marker-path',
+    tone: 'teal',
+    short: 'Fare chart by headquarters',
+    blurb: 'Routes and fares for people in your headquarters.',
+  },
+  signups: {
+    title: 'Sign-up requests',
+    icon: 'account-plus-outline',
+    tone: 'navy',
+    short: 'People waiting to join',
+    blurb: 'Approve or reject a sign-up with the role they asked for.',
+  },
+  myTeam: {
+    title: 'My team',
+    icon: 'account-supervisor-outline',
+    tone: 'navy',
+    short: 'Who reports to you',
+    blurb: 'The reporting line under you, folded so you open one person at a time.',
+  },
+  people: {
+    title: 'People',
+    icon: 'account-multiple-outline',
+    tone: 'blue',
+    short: 'Everyone in the company',
+    blurb: 'Search the company directory. Changing a person stays on the website.',
+  },
 } satisfies Record<string, Feature>;
 
 export type FeatureKey = keyof typeof FEATURES;
@@ -124,6 +201,8 @@ const isMasterBuilt = (k: FeatureKey): k is MasterBuilt =>
 export const canOpenFeature = (feature: FeatureKey, roles: readonly string[]) => {
   if (feature === 'dcr' || feature === 'pob') return isSalesRole(roles);
   if (feature === 'teamField') return canViewTeamField(roles);
+  if (feature === 'companyMessage')
+    return roles.includes('director') || roles.includes('system_admin');
   return true;
 };
 
@@ -136,10 +215,22 @@ export const featureHref = (feature: FeatureKey, roles?: readonly string[]) => {
   if (feature === 'approvals') return '/approvals' as const;
   if (feature === 'tour-plan') return '/tour-plan' as const;
   if (feature === 'notifications') return '/notifications' as const;
+  if (feature === 'companyMessage') return '/company-message' as const;
   if (feature === 'leave') return '/leave' as const;
   if (feature === 'expenses') return '/expenses' as const;
   if (feature === 'products') return '/products' as const;
   if (feature === 'teamField') return '/team-field' as const;
+  if (feature === 'attendance') return '/attendance' as const;
+  if (feature === 'sales') return '/sales' as const;
+  if (feature === 'coverage') return '/doctor-coverage' as const;
+  if (feature === 'reports') return '/reports' as const;
+  if (feature === 'team') return '/team' as const;
+  if (feature === 'exceptions') return '/exceptions' as const;
+  if (feature === 'expenseReports') return '/expense-reports' as const;
+  if (feature === 'sfc') return '/sfc' as const;
+  if (feature === 'signups') return '/signups' as const;
+  if (feature === 'myTeam') return '/my-team' as const;
+  if (feature === 'people') return '/people' as const;
   if (isMasterBuilt(feature))
     return { pathname: '/masters/[kind]', params: { kind: feature } } as const;
   return { pathname: '/coming-soon/[feature]', params: { feature } } as const;

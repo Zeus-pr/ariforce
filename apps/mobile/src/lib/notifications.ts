@@ -72,7 +72,12 @@ export function useMarkAllRead() {
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
 
 /** Where a notification opens (existing app routes), or null when there is nothing to open. */
-export function notificationHref(n: Notif): Href | null {
+export function notificationHref(n: {
+  type: string;
+  entityType: string | null;
+  entityId: string | null;
+  data?: Record<string, unknown> | null;
+}): Href | null {
   const id = n.entityId;
   const date = str(n.data?.date) ?? str(n.data?.dcrDate);
   switch (n.entityType) {
@@ -104,6 +109,7 @@ export function notificationIcon(n: Notif) {
   if (t.startsWith('leave')) return 'beach' as const;
   if (t.startsWith('expense')) return 'receipt' as const;
   if (t.startsWith('tour_plan')) return 'calendar-month-outline' as const;
+  if (t === 'company.message') return 'bullhorn-outline' as const;
   if (t.startsWith('doctor')) return 'stethoscope' as const;
   if (t.startsWith('dcr')) return 'clipboard-text-outline' as const;
   return 'bell-outline' as const;

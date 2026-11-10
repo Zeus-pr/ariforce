@@ -11,7 +11,7 @@ import { ListRow } from '@/components/list-row';
 import { SectionHeader } from '@/components/section-header';
 import { useAuth } from '@/lib/auth-context';
 import { FEATURES, featureHref, type FeatureKey } from '@/lib/features';
-import { canViewTeamField, isApprover, roleLabel } from '@/lib/roles';
+import { canViewTeamField, isApprover, isSalesRole, roleLabel } from '@/lib/roles';
 import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
 import { layout, spacing } from '@/theme';
 
@@ -31,6 +31,22 @@ export default function MoreTab() {
     'expenses',
     ...(isApprover(roles) ? (['approvals'] as const) : []),
     'notifications',
+    ...(roles.includes('director') || roles.includes('system_admin')
+      ? (['companyMessage'] as const)
+      : []),
+  ];
+  const performance: FeatureKey[] = [
+    ...(isSalesRole(roles) ? (['sales', 'coverage', 'reports'] as const) : []),
+    ...(isApprover(roles) ? (['team'] as const) : []),
+  ];
+  const watch: FeatureKey[] = [
+    ...(isSalesRole(roles) ? (['exceptions', 'expenseReports'] as const) : []),
+    ...(!isSalesRole(roles) && roles.includes('system_admin') ? (['expenseReports'] as const) : []),
+    ...(canViewTeamField(roles) ? (['sfc', 'signups'] as const) : []),
+  ];
+  const directory: FeatureKey[] = [
+    ...(isApprover(roles) ? (['myTeam'] as const) : []),
+    ...(roles.includes('system_admin') ? (['people'] as const) : []),
   ];
 
   async function onSignOut() {
@@ -81,6 +97,34 @@ export default function MoreTab() {
             })}
           </Card>
         </View>
+
+        {[
+          ['Performance', performance],
+          ['Watch', watch],
+          ['Directory', directory],
+        ].map(([title, keys]) =>
+          (keys as FeatureKey[]).length ? (
+            <View key={title as string} style={styles.section}>
+              <SectionHeader title={title as string} />
+              <Card>
+                {(keys as FeatureKey[]).map((key, i, all) => {
+                  const f = FEATURES[key];
+                  return (
+                    <ListRow
+                      key={key}
+                      icon={f.icon}
+                      tone={f.tone}
+                      title={f.title}
+                      subtitle={f.short}
+                      onPress={() => router.push(featureHref(key))}
+                      divider={i < all.length - 1}
+                    />
+                  );
+                })}
+              </Card>
+            </View>
+          ) : null,
+        )}
 
         <View style={styles.section}>
           <Button

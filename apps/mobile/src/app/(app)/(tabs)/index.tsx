@@ -14,15 +14,16 @@ import { SyncStrip } from '@/components/home/sync-strip';
 import { useAuth } from '@/lib/auth-context';
 import { featureHref, type FeatureKey } from '@/lib/features';
 import { useHomeAttention } from '@/lib/home-attention';
+import { useHomeKpis } from '@/lib/home-kpis';
 import { useMarkObserveInteractive } from '@/lib/observe';
-import { isApprover, roleLabel } from '@/lib/roles';
+import { isApprover, isSalesRole, roleLabel } from '@/lib/roles';
 import { getHomeMock } from '@/mocks/home';
 import { TabScene, useBottomSpace } from '@/components/floating-tab-bar';
 import { colors, layout, radius, spacing } from '@/theme';
 
 /**
- * Stitch Field Command home: canopy → quick actions → business masters → attention →
- * schedule → KPIs → sync stub. User identity from auth; everything else from mocks/home.
+ * Home: canopy, actions, attention, and this month’s live KPIs. Schedule and the sync
+ * line are still sample copy.
  */
 export default function HomeScreen() {
   useMarkObserveInteractive();
@@ -43,6 +44,7 @@ export default function HomeScreen() {
   const role = roleLabel(user?.roles ?? []);
   const approver = isApprover(user?.roles ?? []);
   const attention = useHomeAttention(user);
+  const kpis = useHomeKpis(user?.roles ?? []);
   const roles = user?.roles;
   const open = useCallback(
     (f: FeatureKey) => router.push(featureHref(f, roles ?? [])),
@@ -50,7 +52,7 @@ export default function HomeScreen() {
   );
 
   async function onRefresh() {
-    await Promise.all([refresh(), attention.refetch()]);
+    await Promise.all([refresh(), attention.refetch(), kpis.refetch()]);
     setNow(new Date());
   }
 
@@ -75,9 +77,11 @@ export default function HomeScreen() {
               <BusinessTiles onOpen={open} roles={user?.roles ?? []} />
             </View>
 
-            <View style={styles.section}>
-              <AttentionList items={attention.items} pending={attention.pending} />
-            </View>
+            {attention.pending || attention.items.some((item) => item.id !== 'approvals') ? (
+              <View style={styles.section}>
+                <AttentionList items={attention.items} pending={attention.pending} />
+              </View>
+            ) : null}
 
             {approver ? (
               <View style={styles.section}>
@@ -89,9 +93,11 @@ export default function HomeScreen() {
               <ScheduleToday items={data.doctorsToday} onFullRoute={() => open('tour-plan')} />
             </View>
 
-            <View style={styles.section}>
-              <KpiGrid kpis={data.kpis} />
-            </View>
+            {isSalesRole(user?.roles ?? []) ? (
+              <View style={styles.section}>
+                <KpiGrid cards={kpis.cards} pending={kpis.pending} error={kpis.error} />
+              </View>
+            ) : null}
 
             <View style={styles.section}>
               <SyncStrip label={data.offlineCache.label} />

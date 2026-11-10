@@ -75,6 +75,8 @@ async function request(url: string, init: RequestInit & { token?: string | null 
       signal: ctrl.signal,
       headers: {
         accept: 'application/json',
+        // Lets the API give mobile a long session (web stays on the 18 h cookie cap).
+        'x-ariforce-client': 'mobile',
         ...(rest.body ? { 'content-type': 'application/json' } : {}),
         ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...(headers as Record<string, string> | undefined),

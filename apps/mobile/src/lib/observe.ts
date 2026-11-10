@@ -1,31 +1,35 @@
 /**
  * Expo Observe helpers — mark TTI after BrandSplash has fully dismissed.
  *
- * Expo Go does not ship ExpoAppMetrics. Never import/require `expo-observe` there
- * (its entry re-exports expo-app-metrics, which throws on load). Dev/EAS builds keep Observe.
+ * Local Metro (Expo Go) resolves `expo-observe` to `expo-observe-stub.js` so
+ * ExpoAppMetrics is never loaded. EAS builds use the real native module.
  */
-import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { createContext, useContext, useEffect, type ComponentType } from 'react';
 
 /** True once the in-app splash has finished its hide animation. */
 export const SplashHiddenContext = createContext(false);
 
-const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+type ObserveModule = {
+  Observe: {
+    configure: (opts: { integrations: { 'expo-router': { filteredParams: string[] } } }) => void;
+    markInteractive: () => void;
+  };
+  ObserveRoot: {
+    wrap: (
+      Component: ComponentType<Record<string, unknown>>,
+    ) => ComponentType<Record<string, unknown>>;
+  };
+};
 
-type ObserveModule = typeof import('expo-observe');
-
-function observeNative(): ObserveModule | null {
-  if (isExpoGo) return null;
-  // Lazy require: Metro still bundles it, but Expo Go never evaluates the native module.
+function observeNative(): ObserveModule {
+  // Always require — Metro stubs this in Expo Go; EAS gets the real package.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require('expo-observe') as ObserveModule;
 }
 
-/** Call once at root before rendering. No-op in Expo Go. */
+/** Call once at root before rendering. */
 export function configureObserve() {
-  const mod = observeNative();
-  if (!mod) return;
-  mod.Observe.configure({
+  observeNative().Observe.configure({
     integrations: {
       'expo-router': {
         filteredParams: ['id', 'claimId', 'lineId', 'name'],
@@ -34,12 +38,9 @@ export function configureObserve() {
   });
 }
 
-/** Identity wrap in Expo Go; ObserveRoot.wrap in native builds. */
+/** ObserveRoot.wrap when native Observe exists; identity via stub in Expo Go. */
 export function wrapWithObserve(Component: ComponentType<object>): ComponentType<object> {
-  const mod = observeNative();
-  if (!mod) return Component;
-  // ObserveRoot.wrap is typed against Record<string, unknown>; root layout has no props.
-  return mod.ObserveRoot.wrap(
+  return observeNative().ObserveRoot.wrap(
     Component as ComponentType<Record<string, unknown>>,
   ) as ComponentType<object>;
 }
@@ -50,8 +51,6 @@ export function useMarkObserveInteractive() {
 
   useEffect(() => {
     if (!splashHidden) return;
-    const mod = observeNative();
-    if (!mod) return;
-    mod.Observe.markInteractive();
+    observeNative().Observe.markInteractive();
   }, [splashHidden]);
 }

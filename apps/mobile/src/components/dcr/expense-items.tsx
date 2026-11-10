@@ -13,7 +13,7 @@ import {
   type DcrExpenseItem,
 } from '@/lib/dcr/v2-adapter';
 import { CATEGORY_LABEL } from '@/lib/expenses';
-import { colors, spacing } from '@/theme';
+import { colors, radius, spacing } from '@/theme';
 import { dcrStyles, Field } from './field';
 
 const inr = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -55,41 +55,24 @@ export function ExpenseItems({
         <Icon name={open ? 'chevron-up' : 'chevron-down'} size={20} color={colors.navy} />
       </Pressable>
       {open ? (
-        <>
+        <View style={styles.list}>
           {value.map((i) => (
             <View key={i.id} style={styles.item}>
-              <View style={styles.row}>
-                <View style={styles.flex}>
-                  <Field
-                    label="Category"
-                    value={i.category ? CATEGORY_LABEL[i.category] : undefined}
-                    placeholder="Choose"
-                    onPress={readOnly ? undefined : () => setPickFor(i.id)}
-                  />
-                </View>
-                <View style={styles.flex}>
-                  <TextField
-                    label="Amount (₹)"
-                    value={i.amount}
-                    onChangeText={(amount) => set(i.id, { amount: amount.replace(/[^\d.]/g, '') })}
-                    keyboardType="decimal-pad"
-                    editable={!readOnly}
-                    error={i.amount && !expenseAmount(i.amount) ? 'Enter an amount.' : undefined}
-                    maxLength={10}
-                  />
-                </View>
-                {readOnly ? null : (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Remove expense"
-                    onPress={() => onChange(value.filter((x) => x.id !== i.id))}
-                    hitSlop={8}
-                    style={styles.remove}
-                  >
-                    <Icon name="trash-can-outline" size={20} color={colors.muted} />
-                  </Pressable>
-                )}
-              </View>
+              <Field
+                label="Category"
+                value={i.category ? CATEGORY_LABEL[i.category] : undefined}
+                placeholder="Choose"
+                onPress={readOnly ? undefined : () => setPickFor(i.id)}
+              />
+              <TextField
+                label="Amount (₹)"
+                value={i.amount}
+                onChangeText={(amount) => set(i.id, { amount: amount.replace(/[^\d.]/g, '') })}
+                keyboardType="decimal-pad"
+                editable={!readOnly}
+                error={i.amount && !expenseAmount(i.amount) ? 'Enter an amount.' : undefined}
+                maxLength={10}
+              />
               <TextField
                 label="Note (optional)"
                 value={i.note}
@@ -97,6 +80,20 @@ export function ExpenseItems({
                 editable={!readOnly}
                 maxLength={300}
               />
+              {readOnly ? null : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove expense"
+                  onPress={() => onChange(value.filter((x) => x.id !== i.id))}
+                  hitSlop={8}
+                  style={styles.remove}
+                >
+                  <Icon name="trash-can-outline" size={18} color={colors.danger} />
+                  <AppText variant="action" style={styles.removeText}>
+                    Remove
+                  </AppText>
+                </Pressable>
+              )}
             </View>
           ))}
           {readOnly ? null : (
@@ -109,7 +106,7 @@ export function ExpenseItems({
               <AppText variant="action">Add expense</AppText>
             </Pressable>
           )}
-        </>
+        </View>
       ) : null}
       <SelectSheet
         visible={!!pickFor}
@@ -146,10 +143,31 @@ export function DcrExpenseChip({ dcr }: { dcr: object }) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   head: { flexDirection: 'row', alignItems: 'center' },
-  item: { gap: spacing.sm },
-  row: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
-  remove: { paddingTop: spacing.xl },
-  add: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  list: { gap: spacing.md },
+  item: {
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.md,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: colors.separator,
+    backgroundColor: colors.surface,
+  },
+  remove: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    minHeight: 44,
+  },
+  removeText: { color: colors.danger },
+  add: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    minHeight: 44,
+  },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',

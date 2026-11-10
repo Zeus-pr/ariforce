@@ -49,6 +49,11 @@ export function roleLabel(roles: readonly string[]) {
   return r ? ROLE_LABEL[r] : 'Other role';
 }
 
+/** Sales level of the highest role (1 = Business Manager … 8 = Director, 0 = outside the ladder). */
+export function roleRank(roles: readonly string[]) {
+  return roles.reduce((best, r) => Math.max(best, level(r)), 0);
+}
+
 /** Same rule as the website's isApprover: level 2 (ABM) and above approve their team's work. */
 export const isApprover = (roles: readonly string[]) => roles.some((r) => level(r) >= 2);
 

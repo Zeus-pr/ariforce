@@ -17,6 +17,7 @@
     },
     "android": {
       "package": "in.arighna.ariforce",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#F4F8FD",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -33,6 +34,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-notifications",
       "expo-secure-store",
       [
         "expo-font",

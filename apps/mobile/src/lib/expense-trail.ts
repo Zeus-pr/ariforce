@@ -34,7 +34,8 @@ const DEFAULT_LEVELS = 2;
 
 export function trailSteps(c: TrailClaim): TrailStep[] {
   const trail = Array.isArray(c.approvalTrail) && c.approvalTrail.length ? c.approvalTrail : null;
-  const levels = trail?.length ?? c.totalLevels ?? DEFAULT_LEVELS;
+  // A short trail must not hide later levels the server says are configured.
+  const levels = Math.max(trail?.length ?? 0, c.totalLevels ?? 0) || DEFAULT_LEVELS;
   const steps: TrailStep[] = [
     {
       key: 'submitted',
@@ -46,7 +47,7 @@ export function trailSteps(c: TrailClaim): TrailStep[] {
   for (let i = 1; i <= levels; i++) {
     const t = trail?.find((x) => x.level === i);
     let status: TrailStatus;
-    let who = i === 1 ? 'Manager' : `Level ${i} approver`;
+    let who: string | undefined;
     let at: string | null = null;
     let note: string | null = null;
     let role: string | null | undefined;

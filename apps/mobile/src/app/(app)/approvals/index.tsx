@@ -1,11 +1,12 @@
 import { Redirect, Stack, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { ApprovalInboxCard } from '@/components/approvals/inbox-card';
 import { PullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
+import { Icon } from '@/components/icon';
 import { ScrollView } from '@/components/scroll';
 import { SkeletonList } from '@/components/skeleton';
 import { useBottomSpace } from '@/components/floating-tab-bar';
@@ -46,7 +47,7 @@ import {
   useDecideTp,
   useTpQueue,
 } from '@/lib/tp/adapter';
-import { layout, spacing } from '@/theme';
+import { colors, layout, spacing } from '@/theme';
 
 /** Manager review (ABM and above, same rule as the website's isApprover): DCRs and unlock requests. */
 export default function ApprovalsScreen() {
@@ -55,19 +56,36 @@ export default function ApprovalsScreen() {
   return <Approvals myId={user?.id} director={isDirector(user?.roles ?? [])} />;
 }
 
-function SectionHead({
+function Queue({
   title,
-  chip,
-  section,
+  detail,
+  open,
+  onPress,
+  children,
 }: {
   title: string;
-  chip?: { label: string; tone: 'orange' };
-  section?: boolean;
+  detail: string;
+  open: boolean;
+  onPress: () => void;
+  children: ReactNode;
 }) {
   return (
-    <View style={[styles.head, section && styles.section]}>
-      <AppText variant="small">{title}</AppText>
-      {chip ? <Chip label={chip.label} tone={chip.tone} /> : null}
+    <View style={styles.queue}>
+      <Card>
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          style={styles.queueHead}
+        >
+          <View style={styles.queueCopy}>
+            <AppText variant="label">{title}</AppText>
+            <AppText variant="small">{detail}</AppText>
+          </View>
+          <Icon name={open ? 'chevron-up' : 'chevron-down'} size={20} color={colors.subtle} />
+        </Pressable>
+      </Card>
+      {open ? children : null}
     </View>
   );
 }
@@ -115,6 +133,10 @@ function Approvals({ myId, director }: { myId?: string; director: boolean }) {
     ]);
 
   const decideKey = (kind: string, id: string) => `${kind}:${id}`;
+  const [open, setOpen] = useState<string | null>(null);
+  const toggle = (id: string) => setOpen((cur) => (cur === id ? null : id));
+  const waiting = (pending: boolean, n: number) =>
+    pending ? 'Loading…' : n === 0 ? 'Nothing waiting' : `${n} waiting`;
 
   return (
     <View style={styles.flex}>
@@ -124,239 +146,254 @@ function Approvals({ myId, director }: { myId?: string; director: boolean }) {
           style={styles.flex}
           contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
         >
-          <SectionHead
-            title={teamQ.isPending ? 'DCRs to review' : `DCRs to review (${toReview.length})`}
-            chip={
+          <Queue
+            title="DCRs"
+            detail={
               !apiCaps.decisionRoute
-                ? { label: 'Decisions: sample mode', tone: 'orange' }
-                : undefined
+                ? 'Sample decisions'
+                : waiting(teamQ.isPending, toReview.length)
             }
-          />
-          {teamQ.isPending ? (
-            <SkeletonList count={3} />
-          ) : teamQ.isError ? (
-            <EmptyCard message={saveMessage(teamQ.error)} />
-          ) : !toReview.length ? (
-            <EmptyCard message="Nothing to review. Submitted DCRs from your team show here." />
-          ) : (
-            toReview.map((d, i) => {
-              const rep = name(d.userId);
-              const n = d.callCount ?? d.calls?.length ?? 0;
-              const submitted = d.submittedAt ? ` · Submitted ${savedLabel(d.submittedAt)}` : '';
-              const what = `${rep}'s DCR for ${dateLabel(d.date)}`;
-              const key = decideKey('dcr', d.id);
-              return (
-                <ApprovalInboxCard
-                  key={d.id}
-                  index={i}
-                  icon="clipboard-text-outline"
-                  tone="teal"
-                  who={rep}
-                  typeLabel="DCR"
-                  typeTone="teal"
-                  summary={`${dateLabel(d.date)} · ${n} call${n === 1 ? '' : 's'}${submitted}`}
-                  what={what}
-                  busy={deciding === key}
-                  error={errors[key]}
-                  onDetails={() =>
-                    router.push({
-                      pathname: '/approvals/dcr/[id]',
-                      params: { id: d.id, name: rep },
-                    })
-                  }
-                  onDecide={(decision, reason) => {
-                    setDeciding(key);
-                    setErrors((x) => {
-                      const next = { ...x };
-                      delete next[key];
-                      return next;
-                    });
-                    decideDcr.mutate(
-                      { id: d.id, decision, reason },
-                      {
-                        onSettled: () => setDeciding(null),
-                        onError: (e) =>
-                          setErrors((x) => ({ ...x, [key]: decisionErrorMessage(e) })),
-                      },
-                    );
-                  }}
-                />
-              );
-            })
-          )}
+            open={open === 'dcr'}
+            onPress={() => toggle('dcr')}
+          >
+            {teamQ.isPending ? (
+              <SkeletonList count={3} />
+            ) : teamQ.isError ? (
+              <EmptyCard message={saveMessage(teamQ.error)} />
+            ) : !toReview.length ? (
+              <EmptyCard message="Nothing to review. Submitted DCRs from your team show here." />
+            ) : (
+              toReview.map((d, i) => {
+                const rep = name(d.userId);
+                const n = d.callCount ?? d.calls?.length ?? 0;
+                const submitted = d.submittedAt ? ` · Submitted ${savedLabel(d.submittedAt)}` : '';
+                const what = `${rep}'s DCR for ${dateLabel(d.date)}`;
+                const key = decideKey('dcr', d.id);
+                return (
+                  <ApprovalInboxCard
+                    key={d.id}
+                    index={i}
+                    icon="clipboard-text-outline"
+                    tone="teal"
+                    who={rep}
+                    typeLabel="DCR"
+                    typeTone="teal"
+                    summary={`${dateLabel(d.date)} · ${n} call${n === 1 ? '' : 's'}${submitted}`}
+                    what={what}
+                    busy={deciding === key}
+                    error={errors[key]}
+                    onDetails={() =>
+                      router.push({
+                        pathname: '/approvals/dcr/[id]',
+                        params: { id: d.id, name: rep },
+                      })
+                    }
+                    onDecide={(decision, reason) => {
+                      setDeciding(key);
+                      setErrors((x) => {
+                        const next = { ...x };
+                        delete next[key];
+                        return next;
+                      });
+                      decideDcr.mutate(
+                        { id: d.id, decision, reason },
+                        {
+                          onSettled: () => setDeciding(null),
+                          onError: (e) =>
+                            setErrors((x) => ({ ...x, [key]: decisionErrorMessage(e) })),
+                        },
+                      );
+                    }}
+                  />
+                );
+              })
+            )}
+          </Queue>
 
-          <SectionHead
-            title={tpQ.isPending ? 'Tour plans' : `Tour plans (${tpQ.data?.length ?? 0})`}
-            chip={!TP_CONTRACT.tpItems ? { label: 'Sample mode', tone: 'orange' } : undefined}
-            section
-          />
-          {tpQ.isPending ? (
-            <SkeletonList count={2} />
-          ) : tpQ.isError ? (
-            <EmptyCard message={saveMessage(tpQ.error)} />
-          ) : !tpQ.data?.length ? (
-            <EmptyCard message="No tour plans waiting for you." />
-          ) : (
-            tpQ.data.map((t, i) => {
-              const who = t.userName || name(t.userId);
-              const what = `${who}'s tour plan for ${rangeLabel(t.from, t.to)}`;
-              const key = decideKey('tp', t.id);
-              return (
-                <ApprovalInboxCard
-                  key={t.id}
-                  index={i}
-                  icon="calendar-month-outline"
-                  tone="blue"
-                  who={who}
-                  typeLabel="Tour plan"
-                  typeTone="blue"
-                  summary={
-                    t.submittedAt
-                      ? `${rangeLabel(t.from, t.to)} · Sent ${savedLabel(t.submittedAt)}`
-                      : `${rangeLabel(t.from, t.to)} · Sent for approval`
-                  }
-                  what={what}
-                  busy={deciding === key}
-                  error={errors[key]}
-                  onDetails={() =>
-                    router.push({ pathname: '/approvals/tp/[id]', params: { id: t.id } })
-                  }
-                  onDecide={(decision, reason) => {
-                    setDeciding(key);
-                    setErrors((x) => {
-                      const next = { ...x };
-                      delete next[key];
-                      return next;
-                    });
-                    decideTp.mutate(
-                      { id: t.id, decision, reason },
-                      {
-                        onSettled: () => setDeciding(null),
-                        onError: (e) => setErrors((x) => ({ ...x, [key]: tpMessage(e) })),
-                      },
-                    );
-                  }}
-                />
-              );
-            })
-          )}
+          <Queue
+            title="Tour plans"
+            detail={
+              !TP_CONTRACT.tpItems ? 'Sample mode' : waiting(tpQ.isPending, tpQ.data?.length ?? 0)
+            }
+            open={open === 'tp'}
+            onPress={() => toggle('tp')}
+          >
+            {tpQ.isPending ? (
+              <SkeletonList count={2} />
+            ) : tpQ.isError ? (
+              <EmptyCard message={saveMessage(tpQ.error)} />
+            ) : !tpQ.data?.length ? (
+              <EmptyCard message="No tour plans waiting for you." />
+            ) : (
+              tpQ.data.map((t, i) => {
+                const who = t.userName || name(t.userId);
+                const what = `${who}'s tour plan for ${rangeLabel(t.from, t.to)}`;
+                const key = decideKey('tp', t.id);
+                return (
+                  <ApprovalInboxCard
+                    key={t.id}
+                    index={i}
+                    icon="calendar-month-outline"
+                    tone="blue"
+                    who={who}
+                    typeLabel="Tour plan"
+                    typeTone="blue"
+                    summary={
+                      t.submittedAt
+                        ? `${rangeLabel(t.from, t.to)} · Sent ${savedLabel(t.submittedAt)}`
+                        : `${rangeLabel(t.from, t.to)} · Sent for approval`
+                    }
+                    what={what}
+                    busy={deciding === key}
+                    error={errors[key]}
+                    onDetails={() =>
+                      router.push({ pathname: '/approvals/tp/[id]', params: { id: t.id } })
+                    }
+                    onDecide={(decision, reason) => {
+                      setDeciding(key);
+                      setErrors((x) => {
+                        const next = { ...x };
+                        delete next[key];
+                        return next;
+                      });
+                      decideTp.mutate(
+                        { id: t.id, decision, reason },
+                        {
+                          onSettled: () => setDeciding(null),
+                          onError: (e) => setErrors((x) => ({ ...x, [key]: tpMessage(e) })),
+                        },
+                      );
+                    }}
+                  />
+                );
+              })
+            )}
+          </Queue>
 
-          <AppText variant="small" style={styles.section}>
-            {leaveQ.isPending ? 'Leave' : `Leave (${leaveQ.data?.length ?? 0})`}
-          </AppText>
-          {leaveQ.isPending ? (
-            <SkeletonList count={2} />
-          ) : leaveQ.isError ? (
-            <EmptyCard message={leaveMessage(leaveQ.error)} />
-          ) : !leaveQ.data?.length ? (
-            <EmptyCard message="No leave requests waiting for you." />
-          ) : (
-            leaveQ.data.map((l, i) => {
-              const what = `${l.userName}'s ${l.typeName} (${leaveRange(l)})`;
-              const key = decideKey('leave', l.id);
-              return (
-                <ApprovalInboxCard
-                  key={l.id}
-                  index={i}
-                  icon="calendar-clock-outline"
-                  tone="green"
-                  who={l.userName}
-                  typeLabel="Leave"
-                  typeTone="green"
-                  summary={`${l.typeName} · ${leaveRange(l)} · ${daysLabel(l.days)}`}
-                  expandOnDetails={
-                    <AppText variant="bodyMuted">
-                      {l.reason ? `Reason: ${l.reason}` : 'No reason provided.'}
-                    </AppText>
-                  }
-                  what={what}
-                  busy={deciding === key}
-                  error={errors[key]}
-                  onDecide={(decision, reason) => {
-                    setDeciding(key);
-                    setErrors((x) => {
-                      const next = { ...x };
-                      delete next[key];
-                      return next;
-                    });
-                    decideLeave.mutate(
-                      { id: l.id, decision, comment: reason ?? undefined },
-                      {
-                        onSettled: () => setDeciding(null),
-                        onError: (e) => setErrors((x) => ({ ...x, [key]: leaveMessage(e) })),
-                      },
-                    );
-                  }}
-                />
-              );
-            })
-          )}
+          <Queue
+            title="Leave"
+            detail={waiting(leaveQ.isPending, leaveQ.data?.length ?? 0)}
+            open={open === 'leave'}
+            onPress={() => toggle('leave')}
+          >
+            {leaveQ.isPending ? (
+              <SkeletonList count={2} />
+            ) : leaveQ.isError ? (
+              <EmptyCard message={leaveMessage(leaveQ.error)} />
+            ) : !leaveQ.data?.length ? (
+              <EmptyCard message="No leave requests waiting for you." />
+            ) : (
+              leaveQ.data.map((l, i) => {
+                const what = `${l.userName}'s ${l.typeName} (${leaveRange(l)})`;
+                const key = decideKey('leave', l.id);
+                return (
+                  <ApprovalInboxCard
+                    key={l.id}
+                    index={i}
+                    icon="calendar-clock-outline"
+                    tone="green"
+                    who={l.userName}
+                    typeLabel="Leave"
+                    typeTone="green"
+                    summary={`${l.typeName} · ${leaveRange(l)} · ${daysLabel(l.days)}`}
+                    expandOnDetails={
+                      <AppText variant="bodyMuted">
+                        {l.reason ? `Reason: ${l.reason}` : 'No reason provided.'}
+                      </AppText>
+                    }
+                    what={what}
+                    busy={deciding === key}
+                    error={errors[key]}
+                    onDecide={(decision, reason) => {
+                      setDeciding(key);
+                      setErrors((x) => {
+                        const next = { ...x };
+                        delete next[key];
+                        return next;
+                      });
+                      decideLeave.mutate(
+                        { id: l.id, decision, comment: reason ?? undefined },
+                        {
+                          onSettled: () => setDeciding(null),
+                          onError: (e) => setErrors((x) => ({ ...x, [key]: leaveMessage(e) })),
+                        },
+                      );
+                    }}
+                  />
+                );
+              })
+            )}
+          </Queue>
 
-          <AppText variant="small" style={styles.section}>
-            {expQ.isPending ? 'Expenses' : `Expenses (${expQ.data?.length ?? 0})`}
-          </AppText>
-          {expQ.isPending ? (
-            <SkeletonList count={2} />
-          ) : !expQ.data?.length ? (
-            <EmptyCard
-              message={
-                expQ.isError
-                  ? 'Could not load expense claims.'
-                  : 'No expense claims waiting for you.'
-              }
-            />
-          ) : (
-            expQ.data.map((c, i) => {
-              const dcrBlocked = claimDcrRejected(c, () => false);
-              const what = `${c.userName}'s expense claim for ${monthLabel(c.month)}`;
-              const key = decideKey('exp', c.id);
-              return (
-                <ApprovalInboxCard
-                  key={c.id}
-                  index={i}
-                  icon="receipt"
-                  tone="orange"
-                  who={c.userName}
-                  typeLabel="Expense"
-                  typeTone="orange"
-                  summary={`${monthLabel(c.month)} · ${formatINR(c.total)}`}
-                  meta={dcrBlocked ? <Chip label="DCR rejected" tone="red" /> : undefined}
-                  what={what}
-                  busy={deciding === key}
-                  error={errors[key]}
-                  approveBlocked={
-                    dcrBlocked ? 'Fix rejected DCR days on the claim before approving.' : null
-                  }
-                  onDetails={() =>
-                    router.push({ pathname: '/expenses/[id]', params: { id: c.id } })
-                  }
-                  onDecide={(decision, reason) => {
-                    setDeciding(key);
-                    setErrors((x) => {
-                      const next = { ...x };
-                      delete next[key];
-                      return next;
-                    });
-                    decideExpense.mutate(
-                      { id: c.id, decision, comment: reason ?? undefined },
-                      {
-                        onSettled: () => setDeciding(null),
-                        onError: (e) => setErrors((x) => ({ ...x, [key]: expenseMessage(e) })),
-                      },
-                    );
-                  }}
-                />
-              );
-            })
-          )}
+          <Queue
+            title="Expenses"
+            detail={waiting(expQ.isPending, expQ.data?.length ?? 0)}
+            open={open === 'exp'}
+            onPress={() => toggle('exp')}
+          >
+            {expQ.isPending ? (
+              <SkeletonList count={2} />
+            ) : !expQ.data?.length ? (
+              <EmptyCard
+                message={
+                  expQ.isError
+                    ? 'Could not load expense claims.'
+                    : 'No expense claims waiting for you.'
+                }
+              />
+            ) : (
+              expQ.data.map((c, i) => {
+                const dcrBlocked = claimDcrRejected(c, () => false);
+                const what = `${c.userName}'s expense claim for ${monthLabel(c.month)}`;
+                const key = decideKey('exp', c.id);
+                return (
+                  <ApprovalInboxCard
+                    key={c.id}
+                    index={i}
+                    icon="receipt"
+                    tone="orange"
+                    who={c.userName}
+                    typeLabel="Expense"
+                    typeTone="orange"
+                    summary={`${monthLabel(c.month)} · ${formatINR(c.total)} · Level ${c.approvalStep ?? 1} of ${c.totalLevels ?? 1}`}
+                    meta={dcrBlocked ? <Chip label="DCR rejected" tone="red" /> : undefined}
+                    what={what}
+                    busy={deciding === key}
+                    error={errors[key]}
+                    approveBlocked={
+                      dcrBlocked ? 'Fix rejected DCR days on the claim before approving.' : null
+                    }
+                    onDetails={() =>
+                      router.push({ pathname: '/expenses/[id]', params: { id: c.id } })
+                    }
+                    onDecide={(decision, reason) => {
+                      setDeciding(key);
+                      setErrors((x) => {
+                        const next = { ...x };
+                        delete next[key];
+                        return next;
+                      });
+                      decideExpense.mutate(
+                        { id: c.id, decision, comment: reason ?? undefined },
+                        {
+                          onSettled: () => setDeciding(null),
+                          onError: (e) => setErrors((x) => ({ ...x, [key]: expenseMessage(e) })),
+                        },
+                      );
+                    }}
+                  />
+                );
+              })
+            )}
+          </Queue>
 
           {director ? (
-            <>
-              <AppText variant="small" style={styles.section}>
-                {unlockQ.isPending
-                  ? 'Unlock requests'
-                  : `Unlock requests (${unlockQ.data?.length ?? 0})`}
-              </AppText>
+            <Queue
+              title="Unlock requests"
+              detail={waiting(unlockQ.isPending, unlockQ.data?.length ?? 0)}
+              open={open === 'unlock'}
+              onPress={() => toggle('unlock')}
+            >
               {unlockQ.isPending ? (
                 <SkeletonList count={2} />
               ) : unlockQ.isError ? (
@@ -416,7 +453,7 @@ function Approvals({ myId, director }: { myId?: string; director: boolean }) {
                   );
                 })
               )}
-            </>
+            </Queue>
           ) : null}
         </ScrollView>
       </PullToRefresh>
@@ -426,13 +463,15 @@ function Approvals({ myId, director }: { myId?: string; director: boolean }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm, gap: spacing.md },
-  head: {
+  content: { paddingHorizontal: layout.gutter, paddingTop: spacing.lg, gap: spacing.md },
+  queue: { gap: spacing.md },
+  queueHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
-  section: { marginTop: spacing.sm },
+  queueCopy: { flex: 1, gap: 2 },
   pad: { padding: spacing.lg, gap: spacing.sm },
 });

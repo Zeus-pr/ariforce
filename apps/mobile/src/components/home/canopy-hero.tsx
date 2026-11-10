@@ -14,7 +14,7 @@ import {
   rememberDuty,
 } from '@/lib/field';
 import { formatDate, formatTime } from '@/lib/format';
-import { dailyTargetFromMeToday, fetchMeToday } from '@/lib/me-today';
+import { dailyTargetFromMeToday, dutyFromMeToday, fetchMeToday } from '@/lib/me-today';
 import { colors, fonts, layout, radius, spacing } from '@/theme';
 
 type Target = {
@@ -38,20 +38,31 @@ export function CanopyHero({ name, role, now }: { name: string; role: string; no
   const [target, setTarget] = useState<Target | null>(null);
 
   const refreshDuty = useCallback(async () => {
+    // 1) Local cache first — unlock Punch without waiting on network/GPS.
+    // GPS only runs when the user taps Punch (see punch() → getFix()).
+    let cached: Awaited<ReturnType<typeof readRememberedDuty>> = null;
     try {
-      // Instant paint from last successful punch (survives reload before API MeToday fix).
-      const cached = await readRememberedDuty();
+      cached = await readRememberedDuty();
       if (cached?.onDuty) {
         setOnDuty(true);
         setSince(cached.punchedInAt);
       }
-      const d = await getDutyState();
-      // Prefer live open shift; if server still looks "out" but this device punched in today, keep it.
+    } catch {
+      // No cache yet.
+    } finally {
+      setHydrated(true);
+    }
+
+    // 2) Live MeToday once (duty + target). Do not block the button on this.
+    try {
+      const today = await fetchMeToday();
+      const d = dutyFromMeToday(today);
       if (d.onDuty) {
         setOnDuty(true);
         setSince(d.punchedInAt);
         void rememberDuty(true, d.punchedInAt);
       } else if (cached?.onDuty) {
+        // Server still lagging; keep device cache until it catches up.
         setOnDuty(true);
         setSince(cached.punchedInAt);
       } else {
@@ -59,26 +70,30 @@ export function CanopyHero({ name, role, now }: { name: string; role: string; no
         setSince(null);
         void rememberDuty(false, null);
       }
-      try {
-        const today = await fetchMeToday();
-        let visits = 0;
-        if (user?.id) {
-          try {
-            visits = await countTodayVisits(user.id);
-          } catch {
-            visits = today.dcr?.calls ?? 0;
-          }
-        } else {
-          visits = today.dcr?.calls ?? 0;
+      let visits = today.dcr?.calls ?? 0;
+      if (user?.id) {
+        try {
+          visits = await countTodayVisits(user.id);
+        } catch {
+          /* keep dcr.calls */
         }
-        setTarget(dailyTargetFromMeToday(today, visits));
-      } catch {
-        // Target strip can wait; duty already applied.
       }
+      setTarget(dailyTargetFromMeToday(today, visits));
     } catch {
-      // Keep last known local / cached state.
-    } finally {
-      setHydrated(true);
+      // Offline / slow: keep cache; fall back to check-ins when MeToday fails.
+      try {
+        const d = await getDutyState();
+        if (d.onDuty) {
+          setOnDuty(true);
+          setSince(d.punchedInAt);
+          void rememberDuty(true, d.punchedInAt);
+        } else if (!cached?.onDuty) {
+          setOnDuty(false);
+          setSince(null);
+        }
+      } catch {
+        // Keep last painted state.
+      }
     }
   }, [user?.id]);
 
@@ -138,14 +153,8 @@ export function CanopyHero({ name, role, now }: { name: string; role: string; no
 
   function onPress() {
     if (busy || !hydrated) return;
-    if (!onDuty) {
-      void runPunch('punch_in');
-      return;
-    }
-    Alert.alert('Punch out?', 'This ends your shift. Today’s DCR must be submitted first.', [
-      { text: 'Stay on duty', style: 'cancel' },
-      { text: 'Punch Out', style: 'destructive', onPress: () => void runPunch('punch_out') },
-    ]);
+    // Hold-to-commit is on the button; no second confirm dialog.
+    void runPunch(onDuty ? 'punch_out' : 'punch_in');
   }
 
   const done = target?.done ?? 0;

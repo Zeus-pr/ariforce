@@ -97,6 +97,7 @@ import {
   emptyOffice,
   hqIdsOf,
   normaliseWorkTypes,
+  isRouteDay,
   problems as findProblems,
   territoryRows,
   workOnChoices,
@@ -202,14 +203,15 @@ export function DcrForm({
   const [routeHq, setRouteHq] = useState<string | null>(null);
   const submitKey = useRef<string | null>(null);
   const lastFieldWt = useRef('');
+  const lastCampWt = useRef('');
   const names = useRef(new Map<string, string>());
   // TP: the pickers' options come from today's DCR options (a plan is for future dates).
   const optionsQ = useDcrOptions(isTp ? today : s.date);
   const recordQ = useDcrRecord(reportId);
-  const field = s.workOn?.branch === 'field';
+  const field = isRouteDay(s.workOn?.branch);
   const terrQ = useDcrTerritories(!!field);
   const peopleQry = useWorkWith(!!field && s.territoryIds.length > 0, peopleQ);
-  const productsQ = useDcrProducts(optionsQ.data, !!field);
+  const productsQ = useDcrProducts(optionsQ.data, s.workOn?.branch === 'field');
   const saveDraft = useSaveDraft();
   const submitMut = useSubmitDcr();
   const qc = useQueryClient();
@@ -340,7 +342,7 @@ export function DcrForm({
       next.workTypeId = src.workTypeId;
       next.territoryIds = src.territoryIds;
       next.workWith = src.workWithUserIds;
-      next.workWithDone = wo?.branch === 'field' && src.territoryIds.length > 0;
+      next.workWithDone = isRouteDay(wo?.branch) && src.territoryIds.length > 0;
       next.routeChoice = Object.fromEntries(
         src.sfcRoutes.map((x) => [x.hqTerritoryId, x.sfcRouteId]),
       );
@@ -489,11 +491,19 @@ export function DcrForm({
     if (!wo) return;
     update((x) => {
       if (x.workOn?.branch === 'field') lastFieldWt.current = x.workTypeId;
-      if (wo.branch !== 'field') return { workOn: wo, workTypeId: wo.workTypes[0]!.id };
-      return {
-        workOn: wo,
-        workTypeId: x.workOn?.branch === 'field' ? x.workTypeId : lastFieldWt.current,
-      };
+      if (x.workOn?.branch === 'camp') lastCampWt.current = x.workTypeId;
+      if (wo.branch === 'field')
+        return {
+          workOn: wo,
+          workTypeId: x.workOn?.branch === 'field' ? x.workTypeId : lastFieldWt.current,
+        };
+      if (wo.branch === 'camp')
+        return {
+          workOn: wo,
+          workTypeId: x.workOn?.branch === 'camp' ? x.workTypeId : lastCampWt.current,
+          calls: [],
+        };
+      return { workOn: wo, workTypeId: wo.workTypes[0]!.id };
     });
   };
 
@@ -1100,7 +1110,9 @@ export function DcrForm({
               />
             ) : null}
 
-            {!isTp && (s.sfc.state === 'ok' || (readOnly && (dcr?.calls?.length ?? 0) > 0)) ? (
+            {!isTp &&
+            s.workOn?.branch === 'field' &&
+            (s.sfc.state === 'ok' || (readOnly && (dcr?.calls?.length ?? 0) > 0)) ? (
               <View style={dcrStyles.section}>
                 <AppText variant="label">Calls</AppText>
                 <Errors list={err('calls')} />
