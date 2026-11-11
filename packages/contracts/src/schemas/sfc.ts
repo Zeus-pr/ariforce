@@ -65,6 +65,40 @@ export const SfcCategory = z.enum(['ex', 'hq', 'os']).meta({ id: 'SfcCategory' }
 export type SfcCategory = z.infer<typeof SfcCategory>;
 export const SFC_CATEGORY_BAND = { ex: 'ex_hq', hq: 'hq', os: 'outstation' } as const;
 
+/**
+ * What a save may store. The three bands, plus the two labels the 2026-10-28 data fix
+ * deliberately left as text (Meeting never matches a DCR band; EX / OS is not one band).
+ */
+export const SfcStoredCategory = z.enum(['ex', 'hq', 'os', 'EX / OS', 'MEETING']);
+export type SfcStoredCategory = z.infer<typeof SfcStoredCategory>;
+
+/**
+ * Dropdown and sheet labels the page sends, in any case or spacing.
+ * HQ is hq. EX and EX HQ are ex. OS and OUT EX HQ are os.
+ * EX / OS and MEETING are kept as those labels. Blank is null. Anything else is undefined.
+ */
+export function sfcCategoryFromLabel(v: unknown): SfcStoredCategory | null | undefined {
+  if (v == null) return null;
+  const raw = String(v).trim();
+  if (!raw) return null;
+  const k = raw.toUpperCase().replace(/[^A-Z0-9]+/g, '');
+  if (k === 'HQ') return 'hq';
+  if (k === 'EX' || k === 'EXHQ') return 'ex';
+  if (k === 'OS' || k === 'OUTSTATION' || k === 'OUTEXHQ') return 'os';
+  if (k === 'EXOS') return 'EX / OS';
+  if (k === 'MEETING') return 'MEETING';
+  return undefined;
+}
+
+/** Preferred dropdown label for a stored category. */
+export function sfcCategoryLabel(stored: string | null | undefined): string {
+  if (stored === 'hq') return 'HQ';
+  if (stored === 'ex') return 'EX';
+  if (stored === 'os') return 'OS';
+  if (stored === 'EX / OS' || stored === 'MEETING') return stored;
+  return stored ?? '';
+}
+
 export const SfcRoute = z
   .object({
     id: Id,
@@ -114,9 +148,16 @@ export const SfcRouteInput = z
     oneWayKm: Km,
     actualFare: z.boolean().default(false),
     travelMode: SfcTravelMode.nullable().default(null),
-    category: SfcCategory.nullable()
+    category: z
+      .preprocess(
+        (v) => (v === undefined ? undefined : sfcCategoryFromLabel(v)),
+        SfcStoredCategory.nullable(),
+      )
       .default(null)
-      .meta({ description: 'ex | hq | os; anything else is 422 VALIDATION' }),
+      .meta({
+        description:
+          'HQ/EX/EX HQ/OS/OUT EX HQ (any case) are stored as hq, ex, or os. EX / OS and MEETING are stored as those labels. Anything else is 422 VALIDATION.',
+      }),
     da: Money.nullable().default(null),
   })
   .meta({ id: 'SfcRouteInput' });

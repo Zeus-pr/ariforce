@@ -4087,18 +4087,13 @@ export interface components {
       actualFare: boolean;
       /** @default null */
       travelMode: components['schemas']['SfcTravelMode'] | null;
-      /**
-       * @description ex | hq | os; anything else is 422 VALIDATION
-       * @default null
-       */
-      category: components['schemas']['SfcCategory'] | null;
+      /** @description HQ/EX/EX HQ/OS/OUT EX HQ (any case) are stored as hq, ex, or os. EX / OS and MEETING are stored as those labels. Anything else is 422 VALIDATION. */
+      category?: ('ex' | 'hq' | 'os' | 'EX / OS' | 'MEETING') | null;
       /** @default null */
       da: number | null;
     };
     /** @enum {string} */
     SfcTravelMode: 'bike' | 'bus' | 'train' | 'bus_train' | 'car' | 'other';
-    /** @enum {string} */
-    SfcCategory: 'ex' | 'hq' | 'os';
     /** @enum {string} */
     SalesKind: 'primary' | 'secondary';
     SalesTargetSet: {
@@ -6084,6 +6079,8 @@ export interface components {
       /** @description own | hq (fallback). Absent on snapshots frozen before the fallback existed */
       source?: components['schemas']['DcrSfcSource'];
     };
+    /** @enum {string} */
+    SfcCategory: 'ex' | 'hq' | 'os';
     /**
      * @description own = the filer's route; hq = the filer has no live route on that HQ, so the HQ's routes (any owner) are offered
      * @enum {string}
