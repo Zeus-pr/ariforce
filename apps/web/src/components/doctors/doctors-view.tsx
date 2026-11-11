@@ -170,14 +170,22 @@ function Doctor360({ id }: { id: string }) {
       await apiReady();
       const today = todayYmd();
       const from = addDays(today, -HISTORY_DAYS);
-      // Check-ins are filtered on the server by doctor (outletKind + outletId). /v1/dcrs has no doctor
-      // filter yet (blocked on API), so DCRs are paged through in full instead of stopping at 200.
+      // Check-ins are filtered on the server by doctor. DCRs use doctorId so this page
+      // does not download the whole team's reports (that request was cut off at 8s).
       const allDcrs = async () => {
         const items: Dcr[] = [];
         let cursor: string | undefined;
         for (let i = 0; i < 20; i++) {
           const r = await api.GET('/v1/dcrs', {
-            params: { query: { from, to: today, limit: 200, ...(cursor ? { cursor } : {}) } },
+            params: {
+              query: {
+                from,
+                to: today,
+                limit: 50,
+                doctorId: id,
+                ...(cursor ? { cursor } : {}),
+              },
+            },
           });
           items.push(...(r.data?.items ?? []));
           cursor = r.data?.nextCursor ?? undefined;
