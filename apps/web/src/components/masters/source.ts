@@ -3,6 +3,7 @@ import type { DataSource, FilterDef } from '@/components/data-table/types';
 import { api, apiReady } from '@/lib/api';
 import { MASTERS, type MasterKind, type MasterRow } from './config';
 import type { Lookups } from './lookups';
+import { masterTerritoryFilterOptions } from './territory-filter';
 
 /** Table column id -> API sort key (`sort=name` / `sort=-name`). */
 const SORT_KEYS: Record<string, string> = { name: 'name', city: 'city', updated: 'updatedAt' };
@@ -50,7 +51,11 @@ export function masterSource(kind: MasterKind, lk: Lookups): DataSource<MasterRo
   const opt = (rows: { id: string; name: string }[]) =>
     rows.map((r) => ({ value: r.id, label: r.name }));
   const filters: FilterDef[] = [
-    { id: 'territoryId', label: 'Territory', options: opt(lk.territories) },
+    {
+      id: 'territoryId',
+      label: 'Territory',
+      options: masterTerritoryFilterOptions(lk.territories),
+    },
   ];
   if (kind === 'doctors')
     filters.push(
