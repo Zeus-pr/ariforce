@@ -21820,11 +21820,17 @@
             ]
           },
           "category": {
-            "default": null,
-            "description": "ex | hq | os; anything else is 422 VALIDATION",
+            "description": "HQ/EX/EX HQ/OS/OUT EX HQ (any case) are stored as hq, ex, or os. EX / OS and MEETING are stored as those labels. Anything else is 422 VALIDATION.",
             "anyOf": [
               {
-                "$ref": "#/components/schemas/SfcCategory"
+                "type": "string",
+                "enum": [
+                  "ex",
+                  "hq",
+                  "os",
+                  "EX / OS",
+                  "MEETING"
+                ]
               },
               {
                 "type": "null"
@@ -21861,14 +21867,6 @@
           "bus_train",
           "car",
           "other"
-        ]
-      },
-      "SfcCategory": {
-        "type": "string",
-        "enum": [
-          "ex",
-          "hq",
-          "os"
         ]
       },
       "SalesKind": {
@@ -28266,6 +28264,14 @@
           "frozenAt"
         ],
         "additionalProperties": false
+      },
+      "SfcCategory": {
+        "type": "string",
+        "enum": [
+          "ex",
+          "hq",
+          "os"
+        ]
       },
       "DcrSfcSource": {
         "type": "string",
