@@ -6254,7 +6254,7 @@
             }
           },
           "409": {
-            "description": "LOCATION_EXISTS (chem/stockist) or IDEMPOTENCY_CONFLICT",
+            "description": "LOCATION_EXISTS (chem/stockist), LOCATION_LIMIT (doctor already at their pin cap), or IDEMPOTENCY_CONFLICT",
             "content": {
               "application/json": {
                 "schema": {
@@ -6275,6 +6275,109 @@
           },
           "422": {
             "description": "LOW_ACCURACY / MOCK_LOCATION / invalid label",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/outlets/{kind}/{id}/lock-cap": {
+      "patch": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Field"
+        ],
+        "operationId": "patchOutletLockCap",
+        "summary": "ABM and above, and system admin, set how many active pins a doctor may have (1–5). Default is 1.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "doctor",
+                "chemist",
+                "stockist"
+              ]
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DoctorLockCap"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DoctorLockCapOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "BM cannot change the cap",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Outlet not found or outside your territories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Only a doctor has a pin cap, or the number is outside 1–5",
             "content": {
               "application/json": {
                 "schema": {
@@ -19358,6 +19461,20 @@
           "other"
         ]
       },
+      "DoctorLockCap": {
+        "type": "object",
+        "properties": {
+          "maxActiveLocks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "1–5. A deactivated pin does not count toward this."
+          }
+        },
+        "required": [
+          "maxActiveLocks"
+        ]
+      },
       "OutletLocationPatch": {
         "type": "object",
         "properties": {
@@ -24208,6 +24325,13 @@
             ],
             "description": "Field-added doctors start pending until their manager decides (#26); company-wide roles add approved doctors. Read-only."
           },
+          "maxActiveLocks": {
+            "default": 1,
+            "description": "Active GPS pins this doctor may have. Default 1. ABM and above, and system admin, set 1–5 on the lock card. A deactivated pin does not count. Read-only here.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
           "rejectionReason": {
             "description": "Latest rejection reason while approvalStatus is rejected; only for the adder, their reporting line, the approvers and company-wide roles (else null). Read-only.",
             "type": [
@@ -24264,7 +24388,8 @@
           "pincode",
           "location",
           "phone",
-          "approvalStatus"
+          "approvalStatus",
+          "maxActiveLocks"
         ],
         "additionalProperties": false
       },
@@ -37784,6 +37909,21 @@
           "presentationRadiusM",
           "lockMaxAccuracyM",
           "version"
+        ],
+        "additionalProperties": false
+      },
+      "DoctorLockCapOutput": {
+        "type": "object",
+        "properties": {
+          "maxActiveLocks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "1–5. A deactivated pin does not count toward this."
+          }
+        },
+        "required": [
+          "maxActiveLocks"
         ],
         "additionalProperties": false
       },

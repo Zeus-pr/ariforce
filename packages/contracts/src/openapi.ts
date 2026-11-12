@@ -115,6 +115,7 @@ import {
   DcrUpsert,
   FieldListQuery,
   GeofenceSettings,
+  DoctorLockCap,
   OutletLocation,
   OutletLocationCreate,
   OutletLocationPatch,
@@ -882,9 +883,29 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '201': { description: 'Locked', ...json(OutletLocation) },
             '200': { description: 'Replay', ...json(OutletLocation) },
-            '409': err('LOCATION_EXISTS (chem/stockist) or IDEMPOTENCY_CONFLICT'),
+            '409': err(
+              'LOCATION_EXISTS (chem/stockist), LOCATION_LIMIT (doctor already at their pin cap), or IDEMPOTENCY_CONFLICT',
+            ),
             '412': err('DEVICE_NOT_ACTIVE or CONSENT_REQUIRED'),
             '422': err('LOW_ACCURACY / MOCK_LOCATION / invalid label'),
+          },
+        }),
+      },
+      '/v1/outlets/{kind}/{id}/lock-cap': {
+        patch: op({
+          tags: ['Field'],
+          operationId: 'patchOutletLockCap',
+          summary:
+            'ABM and above, and system admin, set how many active pins a doctor may have (1–5). Default is 1.',
+          requestParams: {
+            path: z.object({ kind: z.enum(['doctor', 'chemist', 'stockist']), id: Id }),
+          },
+          requestBody: json(DoctorLockCap),
+          responses: {
+            '200': { description: 'Saved', ...json(DoctorLockCap) },
+            '403': err('BM cannot change the cap'),
+            '404': err('Outlet not found or outside your territories'),
+            '422': err('Only a doctor has a pin cap, or the number is outside 1–5'),
           },
         }),
       },

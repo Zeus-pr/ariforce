@@ -225,6 +225,16 @@ export const OutletLocationPatch = z
   });
 export type OutletLocationPatch = z.infer<typeof OutletLocationPatch>;
 
+/** How many active pins a doctor may have. Default on the doctor row is 1. */
+export const DoctorLockCap = z
+  .object({
+    maxActiveLocks: z.int().min(1).max(5).meta({
+      description: '1–5. A deactivated pin does not count toward this.',
+    }),
+  })
+  .meta({ id: 'DoctorLockCap' });
+export type DoctorLockCap = z.infer<typeof DoctorLockCap>;
+
 /** GPS proof when opening Presentation (hard 300 m gate). */
 export const PresentationCapture = z
   .object({

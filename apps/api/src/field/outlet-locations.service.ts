@@ -34,7 +34,7 @@ import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { err } from './checkins.service';
-import { companySettings, metres } from './field.util';
+import { companySettings, doctorLockLimitMessage, metres } from './field.util';
 
 const OUTLETS = { doctor: doctors, chemist: chemists, stockist: stockists } as const;
 
@@ -110,8 +110,8 @@ export class OutletLocationsService {
   }
 
   /**
-   * First lock / add location. Reps may add (doctors: unlimited; chem/stockist: one active).
-   * Idempotent on clientId. Stricter accuracy than visit check-ins.
+   * First lock / add location. A doctor may have `max_active_locks` active pins (default 1, max 5).
+   * Chemist/stockist: one active. Idempotent on clientId. Stricter accuracy than visit check-ins.
    */
   create(p: Principal, outletKind: OutletKind, outletId: string, b: OutletLocationCreate) {
     return this.tenant.run(p, async (tx) => {
@@ -163,6 +163,8 @@ export class OutletLocationsService {
             'This outlet already has a locked location; ask a manager to edit it',
             { locationId: existing.id },
           );
+      } else {
+        await this.assertDoctorLockRoom(tx, outletId);
       }
 
       const lockedAt = new Date(b.capturedAt);
@@ -280,6 +282,9 @@ export class OutletLocationsService {
             'Another active location already exists for this outlet',
           );
       }
+      if (b.active === true && !row.active && row.outletKind === 'doctor') {
+        await this.assertDoctorLockRoom(tx, row.outletId);
+      }
 
       const before = {
         label: row.label,
@@ -364,6 +369,61 @@ export class OutletLocationsService {
       );
     const want = new Set(pairs.map((p) => `${p.outletKind}:${p.outletId}`));
     return rows.filter((r) => want.has(`${r.outletKind}:${r.outletId}`));
+  }
+
+  /**
+   * ABM and above, and system admin. Does not remove pins already saved.
+   * A cap below the current active count only blocks the next new pin.
+   */
+  setLockCap(p: Principal, outletKind: OutletKind, outletId: string, maxActiveLocks: number) {
+    if (!canManageOutletLocations(p))
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'Only ABM and above can set how many places a doctor can lock',
+      });
+    if (outletKind !== 'doctor') throw err(422, 'VALIDATION', 'Only a doctor has a pin cap');
+    return this.tenant.run(p, async (tx) => {
+      await this.requireOutlet(tx, p, 'doctor', outletId);
+      const [row] = await tx
+        .update(doctors)
+        .set({ maxActiveLocks })
+        .where(and(eq(doctors.id, outletId), isNull(doctors.deletedAt)))
+        .returning({ maxActiveLocks: doctors.maxActiveLocks });
+      if (!row) throw new NotFoundException('Outlet not found');
+      await this.audit.record(tx, p, 'outlet.lock_cap', {
+        entityType: 'doctor',
+        entityId: outletId,
+        after: { maxActiveLocks: row.maxActiveLocks },
+      });
+      return { maxActiveLocks: row.maxActiveLocks };
+    });
+  }
+
+  /** Active doctor pins. A deactivated pin does not count. The cap is per doctor (default 1). */
+  private async assertDoctorLockRoom(tx: Tx, outletId: string) {
+    const limit = await this.doctorLockCap(tx, outletId);
+    const [row] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(outletLocations)
+      .where(
+        and(
+          eq(outletLocations.outletKind, 'doctor'),
+          eq(outletLocations.outletId, outletId),
+          eq(outletLocations.active, true),
+          isNull(outletLocations.deletedAt),
+        ),
+      );
+    if ((row?.n ?? 0) >= limit)
+      throw err(409, 'LOCATION_LIMIT', doctorLockLimitMessage(limit), { limit });
+  }
+
+  private async doctorLockCap(tx: Tx, outletId: string) {
+    const [doc] = await tx
+      .select({ maxActiveLocks: doctors.maxActiveLocks })
+      .from(doctors)
+      .where(eq(doctors.id, outletId));
+    const n = doc?.maxActiveLocks ?? 1;
+    return n >= 1 && n <= 5 ? n : 1;
   }
 
   nearest(

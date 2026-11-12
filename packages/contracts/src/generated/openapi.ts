@@ -868,6 +868,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/outlets/{kind}/{id}/lock-cap': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** ABM and above, and system admin, set how many active pins a doctor may have (1–5). Default is 1. */
+    patch: operations['patchOutletLockCap'];
+    trace?: never;
+  };
   '/v1/outlet-locations/{id}': {
     parameters: {
       query?: never;
@@ -3311,6 +3328,10 @@ export interface components {
     ChemistLocationLabel: 'retail_shop' | 'distributor_counter' | 'other';
     /** @enum {string} */
     StockistLocationLabel: 'godown' | 'depot' | 'office' | 'other';
+    DoctorLockCap: {
+      /** @description 1–5. A deactivated pin does not count toward this. */
+      maxActiveLocks: number;
+    };
     /** @description ABM→Director and system_admin only. Reps cannot edit after lock. */
     OutletLocationPatch: {
       version: number;
@@ -4850,6 +4871,11 @@ export interface components {
        * @enum {string}
        */
       approvalStatus: 'pending' | 'approved' | 'rejected';
+      /**
+       * @description Active GPS pins this doctor may have. Default 1. ABM and above, and system admin, set 1–5 on the lock card. A deactivated pin does not count. Read-only here.
+       * @default 1
+       */
+      maxActiveLocks: number;
       /** @description Latest rejection reason while approvalStatus is rejected; only for the adder, their reporting line, the approvers and company-wide roles (else null). Read-only. */
       rejectionReason?: string | null;
       /** @description Who rejected it. Read-only. */
@@ -8830,6 +8856,10 @@ export interface components {
       lockMaxAccuracyM: number;
       version: number;
     };
+    DoctorLockCapOutput: {
+      /** @description 1–5. A deactivated pin does not count toward this. */
+      maxActiveLocks: number;
+    };
     TourPlanDayOutput: {
       /**
        * Format: date
@@ -12699,7 +12729,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description LOCATION_EXISTS (chem/stockist) or IDEMPOTENCY_CONFLICT */
+      /** @description LOCATION_EXISTS (chem/stockist), LOCATION_LIMIT (doctor already at their pin cap), or IDEMPOTENCY_CONFLICT */
       409: {
         headers: {
           [name: string]: unknown;
@@ -12718,6 +12748,70 @@ export interface operations {
         };
       };
       /** @description LOW_ACCURACY / MOCK_LOCATION / invalid label */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  patchOutletLockCap: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        kind: 'doctor' | 'chemist' | 'stockist';
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DoctorLockCap'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DoctorLockCapOutput'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description BM cannot change the cap */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Outlet not found or outside your territories */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Only a doctor has a pin cap, or the number is outside 1–5 */
       422: {
         headers: {
           [name: string]: unknown;

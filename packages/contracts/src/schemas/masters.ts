@@ -60,6 +60,10 @@ export const Doctor = Syncable.extend({
   email: z.email().max(160).nullable(),
   ...Address,
   approvalStatus: DoctorApprovalStatus,
+  maxActiveLocks: z.int().min(1).max(5).default(1).meta({
+    description:
+      'Active GPS pins this doctor may have. Default 1. ABM and above, and system admin, set 1–5 on the lock card. A deactivated pin does not count. Read-only here.',
+  }),
   rejectionReason: z.string().nullable().optional().meta({
     description:
       'Latest rejection reason while approvalStatus is rejected; only for the adder, their reporting line, the approvers and company-wide roles (else null). Read-only.',
@@ -95,6 +99,7 @@ const DoctorFields = Doctor.omit({
   ...writable,
   localTerritoryId: true,
   approvalStatus: true,
+  maxActiveLocks: true,
   rejectionReason: true,
   rejectedBy: true,
   rejectedAt: true,

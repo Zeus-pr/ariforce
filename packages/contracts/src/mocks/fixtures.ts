@@ -199,6 +199,7 @@ export const doctors: Doctor[] = [
     anniversary: null,
     email: null,
     approvalStatus: 'approved',
+    maxActiveLocks: 1,
   },
 ];
 export const chemists: Chemist[] = [
