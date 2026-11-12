@@ -54,7 +54,7 @@ describe.skipIf(!OWNER || !APP)(
       const prevSlug = process.env.SIGNUP_COMPANY_SLUG;
       process.env.SIGNUP_COMPANY_SLUG = 'demo';
       const email = `field.${RUN}@example.test`;
-      const pw = `field-${RUN}-pass`;
+      const pw = `Field-${RUN}-1!`;
       const req = await http().post('/v1/auth/sign-up-request').send({
         name: BM_NAME,
         email,

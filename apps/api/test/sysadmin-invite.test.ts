@@ -168,7 +168,7 @@ describe.skipIf(!OWNER || !APP)('System admin invites any role / any territory',
     const h = await insertRetiredHolder(`${RUN}.acc-accept@demo.ariforce.in`, 'accountant');
     const res = await http()
       .post('/v1/invites/accept')
-      .send({ token: h.token, password: 'a-long-enough-password' });
+      .send({ token: h.token, password: 'Good-Pass-12a' });
     expect(res.status, JSON.stringify(res.body)).toBe(422);
     expect(res.body.error.code).toBe('ROLE_RETIRED');
     const list = await http().get('/v1/users').query({ q: RUN, limit: 100 }).set(as('sysadmin'));

@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { Id, Timestamp } from './common';
+import { NewPassword, PASSWORD_MIN } from './password';
 import { HIERARCHY_ROLE_KEYS, FUNCTIONAL_ROLE_KEYS, RoleKey } from './roles';
 
 /**
@@ -9,8 +10,8 @@ import { HIERARCHY_ROLE_KEYS, FUNCTIONAL_ROLE_KEYS, RoleKey } from './roles';
 /** Kept for reading old requests; retired keys in it are rejected on submit with ROLE_RETIRED. */
 export const SIGNUP_ROLE_KEYS = [...HIERARCHY_ROLE_KEYS, ...FUNCTIONAL_ROLE_KEYS] as const;
 export const SignupRoleKey = z.enum(SIGNUP_ROLE_KEYS).meta({ id: 'SignupRoleKey' });
-/** Same minimum as the admin CLI. */
-export const SIGNUP_PASSWORD_MIN = 12;
+/** Same minimum as the admin CLI. The full rule is NewPassword. */
+export const SIGNUP_PASSWORD_MIN = PASSWORD_MIN;
 
 /** Error codes the sign-in / sign-up screens must handle. */
 export const AUTH_STATE_CODES = {
@@ -29,7 +30,7 @@ export const SignupRequestCreate = z
     name: z.string().trim().min(1).max(200),
     email: z.email().max(254),
     phone: z.string().trim().min(6).max(20).nullable().default(null),
-    password: z.string().min(SIGNUP_PASSWORD_MIN).max(128),
+    password: NewPassword,
     requestedRole: SignupRoleKey,
     territoryId: Id.nullable().default(null).meta({ description: 'Optional HQ/territory' }),
     managerId: Id.nullable().default(null).meta({ description: 'Optional requested manager' }),

@@ -9652,7 +9652,7 @@
             }
           },
           "422": {
-            "description": "VALIDATION: password shorter than 12 characters (or token malformed)",
+            "description": "VALIDATION: password must be 12–128 characters with one uppercase letter, one lowercase letter, one number, and one symbol (or token malformed)",
             "content": {
               "application/json": {
                 "schema": {
@@ -15147,7 +15147,7 @@
             }
           },
           "422": {
-            "description": "Validation failed (email, 6-digit code, password 12-128)",
+            "description": "Validation failed (email, 6-digit code, password: 12–128 characters with upper, lower, number, and symbol)",
             "content": {
               "application/json": {
                 "schema": {
@@ -15217,7 +15217,7 @@
             }
           },
           "422": {
-            "description": "Validation failed (password min 12; system_admin cannot be requested)",
+            "description": "Validation failed (password needs 12–128 characters with upper, lower, number, and symbol; system_admin cannot be requested)",
             "content": {
               "application/json": {
                 "schema": {
@@ -21034,8 +21034,8 @@
           },
           "password": {
             "type": "string",
-            "minLength": 12,
-            "maxLength": 128
+            "maxLength": 128,
+            "description": "12–128 characters, with one uppercase letter, one lowercase letter, one number, and one symbol"
           }
         },
         "required": [
@@ -22190,8 +22190,8 @@
           },
           "password": {
             "type": "string",
-            "minLength": 12,
-            "maxLength": 128
+            "maxLength": 128,
+            "description": "12–128 characters, with one uppercase letter, one lowercase letter, one number, and one symbol"
           }
         },
         "required": [
@@ -22229,8 +22229,8 @@
           },
           "password": {
             "type": "string",
-            "minLength": 12,
-            "maxLength": 128
+            "maxLength": 128,
+            "description": "12–128 characters, with one uppercase letter, one lowercase letter, one number, and one symbol"
           },
           "requestedRole": {
             "$ref": "#/components/schemas/SignupRoleKey"

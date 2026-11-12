@@ -20,6 +20,8 @@ import {
   SignupRequestCreate,
   assignableRoles,
   isHierarchyRole,
+  passwordAccepted,
+  passwordRuleMessage,
 } from '@ariforce/contracts';
 import type * as z from 'zod';
 import { api, apiReady } from '@/lib/api';
@@ -124,23 +126,12 @@ export function validate(i: SignupInput): SignupError | null {
   const phone = i.phone?.trim() ?? '';
   if (phone && (phone.length < 6 || phone.length > 20 || !/^\+?[0-9 ()-]+$/.test(phone)))
     return f('Enter a valid phone number, or leave it empty.', 'phone');
-  if (i.password.length < SIGNUP_PASSWORD_MIN)
-    return f(`Use at least ${SIGNUP_PASSWORD_MIN} characters.`, 'password');
-  if (i.password.length > 128) return f('Use at most 128 characters.', 'password');
+  if (!passwordAccepted(i.password))
+    return f(passwordRuleMessage(i.password) ?? 'Choose a stronger password.', 'password');
   if (!SIGNUP_ROLES.includes(i.requestedRole as Role)) return f('Pick your role.', 'requestedRole');
   return SignupRequestCreate.safeParse(i).success
     ? null
     : new SignupError(messageFor(422), 'VALIDATION', undefined, 422);
-}
-
-/** 0-4 hint only (length 12/16, mixed case, digit + symbol); the server only enforces length. */
-export function strength(p: string): { score: number; label: string } {
-  if (p.length < SIGNUP_PASSWORD_MIN) return { score: p ? 1 : 0, label: p ? 'Too short' : '' };
-  let s = 1;
-  if (p.length >= 16) s++;
-  if (/[a-z]/.test(p) && /[A-Z]/.test(p)) s++;
-  if (/\d/.test(p) && /[^A-Za-z0-9]/.test(p)) s++;
-  return { score: s, label: ['', 'Fair', 'Good', 'Strong', 'Very strong'][s]! };
 }
 
 // ---------- who reviews what (one helper; route guard uses canReviewSignups in lib/permissions) ----------

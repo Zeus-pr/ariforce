@@ -1,10 +1,12 @@
 import * as z from 'zod';
 import { Id, Timestamp } from './common';
+import { NewPassword, PASSWORD_MIN } from './password';
 import { Permission, RoleKey } from './roles';
 
 export const SignInEmailBody = z
   .object({
     email: z.email(),
+    // Existing passwords may be shorter than the rule for a new password.
     password: z.string().min(8).max(128),
     rememberMe: z.boolean().optional(),
   })
@@ -41,8 +43,8 @@ export type Me = z.infer<typeof Me>;
 export const PASSWORD_RESET_CODE_LENGTH = 6;
 export const PASSWORD_RESET_CODE_TTL_SECONDS = 600;
 export const PASSWORD_RESET_MAX_ATTEMPTS = 3;
-/** Same rule as invite accept (INVITE_PASSWORD_MIN). */
-export const PASSWORD_RESET_MIN = 12;
+/** Same rule as a newly chosen password (PASSWORD_MIN). */
+export const PASSWORD_RESET_MIN = PASSWORD_MIN;
 
 export const PasswordForgot = z
   .object({ email: z.email().max(254) })
@@ -63,10 +65,7 @@ export const PasswordReset = z
   .object({
     email: z.email().max(254),
     code: z.string().regex(/^\d{6}$/, 'Code must be 6 digits'),
-    password: z
-      .string()
-      .min(PASSWORD_RESET_MIN, `Password must be at least ${PASSWORD_RESET_MIN} characters`)
-      .max(128),
+    password: NewPassword,
   })
   .meta({ id: 'PasswordReset' });
 export type PasswordReset = z.infer<typeof PasswordReset>;

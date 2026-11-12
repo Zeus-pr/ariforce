@@ -7,8 +7,14 @@ import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
 import { api, apiReady, toApiError } from '@/lib/api';
-import { INVITE_PASSWORD_MIN as MIN } from '@ariforce/contracts';
-import { strength } from '@/lib/signup/adapter';
+import {
+  PASSWORD_MAX,
+  PASSWORD_MIN,
+  PASSWORD_PATTERN,
+  passwordAccepted,
+  passwordRuleMessage,
+} from '@ariforce/contracts';
+import { PasswordRules } from '@/components/auth/password-rules';
 import { authLimitMessage } from '@/lib/auth-errors';
 
 type Dead = 'missing' | 'invalid' | 'used' | 'expired';
@@ -60,10 +66,9 @@ export function AcceptInviteForm() {
     } else setState(t ? 'invalid' : 'missing');
   }, []);
 
-  const st = strength(pw);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pw.length < MIN) return setErr(`Use at least ${MIN} characters.`);
+    if (!passwordAccepted(pw)) return setErr(passwordRuleMessage(pw));
     if (pw !== pw2) return setErr('The two passwords do not match.');
     setErr(null);
     setBusy(true);
@@ -99,7 +104,11 @@ export function AcceptInviteForm() {
     if (limit) return setErr(limit);
     if (status === 422)
       return setErr(
-        r ? toApiError(r).message || `Password must be at least ${MIN} characters.` : '',
+        r
+          ? toApiError(r).message ||
+              passwordRuleMessage(pw) ||
+              'Choose a password that meets every requirement.'
+          : '',
       );
     setErr('Could not reach the server. Check your connection and try again.');
   };
@@ -153,6 +162,7 @@ export function AcceptInviteForm() {
       <input type="text" name="username" autoComplete="username" hidden readOnly value="" />
       <div className="grid gap-1.5">
         <Label htmlFor={`${id}-pw`}>New password</Label>
+        <PasswordRules password={pw} id={`${id}-rules`} />
         <div className="relative">
           <Input
             id={`${id}-pw`}
@@ -160,7 +170,10 @@ export function AcceptInviteForm() {
             autoComplete="new-password"
             value={pw}
             onChange={(e) => setPw(e.target.value)}
-            aria-describedby={`${id}-hint`}
+            aria-describedby={`${id}-rules`}
+            minLength={PASSWORD_MIN}
+            maxLength={PASSWORD_MAX}
+            pattern={PASSWORD_PATTERN}
             className="h-10 pr-10 text-base md:text-base"
             data-testid="invite-password"
           />
@@ -176,19 +189,6 @@ export function AcceptInviteForm() {
             {show ? <EyeOff /> : <Eye />}
           </Button>
         </div>
-        <div id={`${id}-hint`} className="flex items-center gap-2" aria-live="polite">
-          <div className="flex flex-1 gap-1" aria-hidden>
-            {[1, 2, 3, 4].map((i) => (
-              <span
-                key={i}
-                className={`h-1 flex-1 rounded-full ${i <= st.score ? (st.score >= 3 ? 'bg-success' : 'bg-warning') : 'bg-muted'}`}
-              />
-            ))}
-          </div>
-          <span className="text-xs text-muted-foreground" data-testid="pw-strength">
-            {pw ? st.label : `At least ${MIN} characters`}
-          </span>
-        </div>
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor={`${id}-pw2`}>Type it again</Label>
@@ -198,6 +198,7 @@ export function AcceptInviteForm() {
           autoComplete="new-password"
           value={pw2}
           onChange={(e) => setPw2(e.target.value)}
+          maxLength={PASSWORD_MAX}
           className="h-10 text-base md:text-base"
           data-testid="invite-password2"
         />

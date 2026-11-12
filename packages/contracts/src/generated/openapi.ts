@@ -3823,6 +3823,7 @@ export interface components {
     };
     InviteAccept: {
       token: string;
+      /** @description 12–128 characters, with one uppercase letter, one lowercase letter, one number, and one symbol */
       password: string;
     };
     /** @enum {string} */
@@ -4211,6 +4212,7 @@ export interface components {
       /** Format: email */
       email: string;
       code: string;
+      /** @description 12–128 characters, with one uppercase letter, one lowercase letter, one number, and one symbol */
       password: string;
     };
     SignupRequestCreate: {
@@ -4219,6 +4221,7 @@ export interface components {
       email: string;
       /** @default null */
       phone: string | null;
+      /** @description 12–128 characters, with one uppercase letter, one lowercase letter, one number, and one symbol */
       password: string;
       requestedRole: components['schemas']['SignupRoleKey'];
       /**
@@ -14910,7 +14913,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description VALIDATION: password shorter than 12 characters (or token malformed) */
+      /** @description VALIDATION: password must be 12–128 characters with one uppercase letter, one lowercase letter, one number, and one symbol (or token malformed) */
       422: {
         headers: {
           [name: string]: unknown;
@@ -18611,7 +18614,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Validation failed (email, 6-digit code, password 12-128) */
+      /** @description Validation failed (email, 6-digit code, password: 12–128 characters with upper, lower, number, and symbol) */
       422: {
         headers: {
           [name: string]: unknown;
@@ -18671,7 +18674,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Validation failed (password min 12; system_admin cannot be requested) */
+      /** @description Validation failed (password needs 12–128 characters with upper, lower, number, and symbol; system_admin cannot be requested) */
       422: {
         headers: {
           [name: string]: unknown;

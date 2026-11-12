@@ -1427,7 +1427,9 @@ function buildDocument(): OpenApiDocument {
             '404': err('INVITE_INVALID: unknown token, or replaced by a newer invite'),
             '409': err('INVITE_USED: already redeemed (or the account already exists)'),
             '410': err('INVITE_EXPIRED: past its expiry; ask for a new invite'),
-            '422': err('VALIDATION: password shorter than 12 characters (or token malformed)'),
+            '422': err(
+              'VALIDATION: password must be 12–128 characters with one uppercase letter, one lowercase letter, one number, and one symbol (or token malformed)',
+            ),
             '429': err('RATE_LIMITED: too many attempts from this IP; Retry-After header'),
           },
         },
@@ -2334,7 +2336,9 @@ function buildDocument(): OpenApiDocument {
             '403': err(
               'PASSWORD_RESET_TOO_MANY_ATTEMPTS: 3 wrong codes already used up this code (even the right code is refused); request a new one',
             ),
-            '422': err('Validation failed (email, 6-digit code, password 12-128)'),
+            '422': err(
+              'Validation failed (email, 6-digit code, password: 12–128 characters with upper, lower, number, and symbol)',
+            ),
             '429': err('RATE_LIMITED: 20 per IP per hour (Retry-After)'),
           },
         },
@@ -2353,7 +2357,9 @@ function buildDocument(): OpenApiDocument {
             },
             '403': err('CAPTCHA_FAILED (only when TURNSTILE_SECRET is set)'),
             '409': err('SIGNUP_UNAVAILABLE: generic, also for emails that already have a login'),
-            '422': err('Validation failed (password min 12; system_admin cannot be requested)'),
+            '422': err(
+              'Validation failed (password needs 12–128 characters with upper, lower, number, and symbol; system_admin cannot be requested)',
+            ),
             '429': err('RATE_LIMITED (per IP and per email)'),
             '503': err('SIGNUP_DISABLED: company not configured'),
           },

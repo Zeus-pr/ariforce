@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { Id, Timestamp } from './common';
+import { NewPassword, PASSWORD_MIN } from './password';
 import { NON_HIERARCHY_ROLE_KEYS, ROLE_RANK, RoleKey } from './roles';
 
 /**
@@ -151,14 +152,11 @@ export const EmployeeCreated = z
   .meta({ id: 'EmployeeCreated' });
 
 /** Minimum password length when accepting an invite (#26). */
-export const INVITE_PASSWORD_MIN = 12;
+export const INVITE_PASSWORD_MIN = PASSWORD_MIN;
 export const InviteAccept = z
   .object({
     token: z.string().min(20).max(200),
-    password: z
-      .string()
-      .min(INVITE_PASSWORD_MIN, `Password must be at least ${INVITE_PASSWORD_MIN} characters`)
-      .max(128),
+    password: NewPassword,
   })
   .meta({ id: 'InviteAccept' });
 /** Distinct invite-accept failures (#26): unknown or superseded token, already redeemed, expired. */

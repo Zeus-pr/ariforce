@@ -28,6 +28,8 @@ import {
   ROLE_KEYS,
   ROLE_NAMES,
   ROLE_RANK,
+  passwordAccepted,
+  passwordRuleMessage,
   type RoleKey,
 } from '@ariforce/contracts';
 
@@ -78,7 +80,7 @@ function prompt(label: string): Promise<string> {
 }
 async function password(env: string, label: string) {
   const v = process.env[env] || (await prompt(`${label} (input hidden)`));
-  if (v.length < 12) fail(`${label} must be at least 12 characters`);
+  if (!passwordAccepted(v)) fail(`${label}: ${passwordRuleMessage(v) ?? 'is not strong enough'}`);
   return v;
 }
 

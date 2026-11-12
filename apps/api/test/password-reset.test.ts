@@ -16,7 +16,7 @@ import { MAIL_SENDER, type MailMessage, type MailSender } from '../src/mail/mail
 const OWNER = process.env.DIRECT_URL;
 const APP = process.env.DATABASE_URL;
 const RUN = Date.now().toString(36);
-const NEW_PW = 'a-brand-new-password-1';
+const NEW_PW = 'A-brand-new-password-1';
 
 /** Captures mail instead of sending it (nothing leaves the test). */
 class FakeSender implements MailSender {
