@@ -50,12 +50,12 @@ describe('mock team + employees (same rules as the API)', () => {
     const token = new URL(created.invite.inviteUrl, BASE).searchParams.get('token');
     const acc = await call('none', 'POST', '/v1/invites/accept', {
       token,
-      password: 'long-enough-12',
+      password: 'Good-Pass-12a',
     });
     expect(acc.status).toBe(200);
     const again = await call('none', 'POST', '/v1/invites/accept', {
       token,
-      password: 'long-enough-12',
+      password: 'Good-Pass-12a',
     });
     expect(again.status).toBe(409);
     expect(((await again.json()) as any).error.code).toBe('INVITE_USED');
@@ -66,7 +66,7 @@ describe('mock team + employees (same rules as the API)', () => {
     expect(short.status).toBe(422);
     const unknown = await call('none', 'POST', '/v1/invites/accept', {
       token: 'mock-invite-00000000-0000-0000-0000-000000000000',
-      password: 'long-enough-12',
+      password: 'Good-Pass-12a',
     });
     expect(((await unknown.json()) as any).error.code).toBe('INVITE_INVALID');
     const bulk = await call('abm', 'POST', '/v1/employees/invite-bulk', {

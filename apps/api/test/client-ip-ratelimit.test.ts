@@ -113,7 +113,7 @@ describe.skipIf(!process.env.DATABASE_URL)('rate limits over HTTP', () => {
       request(app.getHttpServer())
         .post('/v1/invites/accept')
         .set('x-forwarded-for', '192.0.2.1')
-        .send({ token: 'x'.repeat(43), password: 'long-enough-pw' });
+        .send({ token: 'x'.repeat(43), password: 'Good-Pass-12a' });
     expect((await send()).status).not.toBe(429);
     expect((await send()).status).not.toBe(429);
     const r = await send();

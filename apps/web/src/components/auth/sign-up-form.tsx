@@ -8,14 +8,13 @@ import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
 import { REAL } from '@/lib/api';
-import { ROLE_RANK } from '@ariforce/contracts';
+import { PASSWORD_MAX, PASSWORD_MIN, PASSWORD_PATTERN, ROLE_RANK } from '@ariforce/contracts';
 import { ROLE_LABEL } from '@/lib/roles';
+import { PasswordRules } from '@/components/auth/password-rules';
 import {
-  SIGNUP_PASSWORD_MIN,
   SIGNUP_ROLES,
   SignupError,
   signupAdapter,
-  strength,
   signupOptions,
   takesManager,
   validate,
@@ -128,7 +127,6 @@ export function SignUpForm() {
       </div>
     );
 
-  const st = strength(v.password);
   return (
     <div className="af-page rounded-lg border bg-card p-5 shadow-xs sm:p-6">
       {!REAL && (
@@ -199,6 +197,7 @@ export function SignUpForm() {
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor={`${id}-password`}>Password</Label>
+          <PasswordRules password={v.password} id={`${id}-password-rules`} />
           <div className="relative">
             <Input
               ref={(el) => void (refs.current.password = el)}
@@ -209,7 +208,10 @@ export function SignUpForm() {
               value={v.password}
               onChange={set('password')}
               aria-invalid={!!err('password')}
-              aria-describedby={`${id}-password-hint${err('password') ? ` ${id}-password-err` : ''}`}
+              aria-describedby={`${id}-password-rules${err('password') ? ` ${id}-password-err` : ''}`}
+              minLength={PASSWORD_MIN}
+              maxLength={PASSWORD_MAX}
+              pattern={PASSWORD_PATTERN}
               className="h-10 pr-10 text-base md:text-base"
             />
             <Button
@@ -223,19 +225,6 @@ export function SignUpForm() {
             >
               {show ? <EyeOff /> : <Eye />}
             </Button>
-          </div>
-          <div id={`${id}-password-hint`} className="flex items-center gap-2" aria-live="polite">
-            <div className="flex flex-1 gap-1" aria-hidden>
-              {[1, 2, 3, 4].map((i) => (
-                <span
-                  key={i}
-                  className={`h-1 flex-1 rounded-full ${i <= st.score ? (st.score >= 3 ? 'bg-success' : 'bg-warning') : 'bg-muted'}`}
-                />
-              ))}
-            </div>
-            <span className="text-xs text-muted-foreground" data-testid="pw-strength">
-              {v.password ? st.label : `At least ${SIGNUP_PASSWORD_MIN} characters`}
-            </span>
           </div>
           <Err f="password" />
         </div>

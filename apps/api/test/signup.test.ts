@@ -14,7 +14,7 @@ const OWNER = process.env.DIRECT_URL;
 const APP = process.env.DATABASE_URL;
 const PASSWORD = process.env.DEMO_PASSWORD ?? 'ariforce-demo-pass';
 const RUN = Date.now().toString(36);
-const PW = `signup-${RUN}-pass`;
+const PW = `Signup-${RUN}-1!`;
 
 describe.skipIf(!OWNER || !APP)('Sign-up requests (real API)', () => {
   let app: INestApplication;

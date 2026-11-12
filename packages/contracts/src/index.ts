@@ -2,6 +2,7 @@ export * from './schemas/common';
 export * from './schemas/roles';
 export * from './schemas/territories';
 export * from './schemas/masters';
+export * from './schemas/password';
 export * from './schemas/auth';
 export * from './schemas/files';
 export * from './schemas/devices';

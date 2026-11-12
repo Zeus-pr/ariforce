@@ -102,7 +102,7 @@ describe.skipIf(!OWNER || !APP)('Team + employees (real API)', () => {
     const token = new URL(re.body.invite?.inviteUrl ?? re.body.inviteUrl).searchParams.get(
       'token',
     )!;
-    const pw = `pw-${RUN}-long`;
+    const pw = `Pw-${RUN}-long-1!`;
     const revoked = await http().post('/v1/invites/accept').send({ token: first, password: pw });
     expect(revoked.status).toBe(404);
     expect(revoked.body.error.code).toBe('INVITE_INVALID');
@@ -192,7 +192,7 @@ describe.skipIf(!OWNER || !APP)('Team + employees (real API)', () => {
     expect(re.status).toBe(201);
     const token = new URL(re.body.inviteUrl).searchParams.get('token')!;
     expect(re.body.inviteUrl).toMatch(/\/invite\?token=/);
-    const pw = `dir-${RUN}-long-pass`;
+    const pw = `Dir-${RUN}-long-1!`;
     expect((await http().post('/v1/invites/accept').send({ token, password: pw })).status).toBe(
       200,
     );
@@ -221,7 +221,7 @@ describe.skipIf(!OWNER || !APP)('Team + employees (real API)', () => {
   it('invalid invite token is a 404 INVITE_INVALID', async () => {
     const r = await http()
       .post('/v1/invites/accept')
-      .send({ token: 'x'.repeat(43), password: 'long-enough-pw' });
+      .send({ token: 'x'.repeat(43), password: 'Good-Pass-12a' });
     expect(r.status).toBe(404);
     expect(r.body.error.code).toBe('INVITE_INVALID');
   });
@@ -242,7 +242,7 @@ describe.skipIf(!OWNER || !APP)('Team + employees (real API)', () => {
     } finally {
       await owner.end();
     }
-    const exp = await http().post('/v1/invites/accept').send({ token, password: 'twelve-chars' });
+    const exp = await http().post('/v1/invites/accept').send({ token, password: 'Good-Pass-12a' });
     expect(exp.status).toBe(410);
     expect(exp.body.error.code).toBe('INVITE_EXPIRED');
   });
@@ -281,7 +281,7 @@ describe.skipIf(!OWNER || !APP)('Team + employees (real API)', () => {
       (
         await http()
           .post('/v1/invites/accept')
-          .send({ token, password: `bulk-${RUN}-pass` })
+          .send({ token, password: `Bulk-${RUN}-pass-1!` })
       ).status,
     ).toBe(200);
     const owner = new Pool({ connectionString: OWNER });

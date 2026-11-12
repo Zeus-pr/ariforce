@@ -65,7 +65,7 @@ pnpm -F @ariforce/api admin:create-first --company arighna --email <admin email>
   --demo-users --demo-domain demo.ariforce.in [--territory <code>]
 ```
 
-Non-interactive: set `ARIFORCE_ADMIN_PASSWORD` / `ARIFORCE_DEMO_PASSWORD` (min 12 chars) for that one
+Non-interactive: set `ARIFORCE_ADMIN_PASSWORD` / `ARIFORCE_DEMO_PASSWORD` (12+ characters, with one uppercase letter, one lowercase letter, one number, and one symbol) for that one
 command only. Re-running is safe; add `--reset-password` to change an existing password.
 Demo users without a territory see no field data until territories are assigned.
 
