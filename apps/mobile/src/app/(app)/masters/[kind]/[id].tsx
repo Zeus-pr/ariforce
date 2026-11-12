@@ -7,11 +7,14 @@ import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
 import { Icon } from '@/components/icon';
 import { ScrollView } from '@/components/scroll';
+import { OutletActivity } from '@/components/outlet-activity';
+import { OutletLocksCard } from '@/components/outlet-locks-card';
 import { TintedIcon } from '@/components/tinted-icon';
 import { SkeletonDetail } from '@/components/skeleton';
 import { useBottomSpace } from '@/components/floating-tab-bar';
 import { useAuth } from '@/lib/auth-context';
 import { FEATURES } from '@/lib/features';
+import type { OutletKind } from '@/lib/field';
 import {
   APPROVAL_LABEL,
   isMasterKind,
@@ -21,8 +24,15 @@ import {
   useMasterRecord,
   type MasterKind,
 } from '@/lib/masters';
+import { useOutletActivity } from '@/lib/outlet-activity';
 import { canWriteMasters } from '@/lib/roles';
 import { colors, layout, radius, spacing, touch } from '@/theme';
+
+const OUTLET_KIND: Record<MasterKind, OutletKind> = {
+  doctors: 'doctor',
+  chemists: 'chemist',
+  stockists: 'stockist',
+};
 
 export default function MasterDetailScreen() {
   const { kind, id } = useLocalSearchParams<{ kind: string; id: string }>();
@@ -31,6 +41,17 @@ export default function MasterDetailScreen() {
 }
 
 const LOOKUP_TYPES = ['territory', 'specialty', 'category'];
+
+function dayLabel(iso: string) {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
 
 /**
  * One record (web doctors-view.tsx Doctor360 header + record-sheet.tsx ReadOnlyDetails):
@@ -44,6 +65,7 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
   const canWrite = canWriteMasters(user?.roles ?? []);
   const lk = useLookups();
   const rec = useMasterRecord(kind, id);
+  const activity = useOutletActivity(OUTLET_KIND[kind], id);
   const row = rec.data;
   const title = `${cfg.singular[0]!.toUpperCase()}${cfg.singular.slice(1)}`;
 
@@ -84,7 +106,7 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
   return (
     <View style={styles.flex}>
       <Stack.Screen options={{ title }} />
-      <PullToRefresh onRefresh={() => rec.refetch()}>
+      <PullToRefresh onRefresh={() => Promise.all([rec.refetch(), activity.refetch()])}>
         <ScrollView
           style={styles.flex}
           contentContainerStyle={[styles.content, { paddingBottom: bottom }]}
@@ -130,6 +152,19 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
                 </AppText>
               </Pressable>
             ) : null}
+            {values.email ? (
+              <Pressable
+                onPress={() => void Linking.openURL(`mailto:${values.email}`)}
+                accessibilityRole="link"
+                accessibilityLabel={`Email ${values.email}`}
+                style={[styles.line, styles.call]}
+              >
+                <Icon name="email-outline" size={18} color={colors.tealDeep} />
+                <AppText variant="label" style={styles.callText}>
+                  {values.email}
+                </AppText>
+              </Pressable>
+            ) : null}
           </Card>
 
           {rejection ? (
@@ -144,7 +179,12 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
           <Card>
             {cfg.fields.map((f, i) => {
               const raw = values[f.key];
-              const v = raw && LOOKUP_TYPES.includes(f.type) ? (lk.byId.get(raw) ?? raw) : raw;
+              const v =
+                raw && LOOKUP_TYPES.includes(f.type)
+                  ? (lk.byId.get(raw) ?? raw)
+                  : raw && f.type === 'date'
+                    ? dayLabel(raw)
+                    : raw;
               return (
                 <View
                   key={f.key}
@@ -158,6 +198,14 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
               );
             })}
           </Card>
+
+          <OutletActivity kind={OUTLET_KIND[kind]} outletId={row.id} />
+
+          <OutletLocksCard
+            outletKind={OUTLET_KIND[kind]}
+            outletId={row.id}
+            roles={user?.roles ?? []}
+          />
 
           {canWrite ? (
             <Button

@@ -1,15 +1,17 @@
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View, type TextInputInstance } from 'react-native';
+import { Pressable, StyleSheet, View, type TextInputInstance } from 'react-native';
 import { KeyboardAwareScrollView } from '@/components/scroll';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
 import { LogoLockup } from '@/components/logo-lockup';
+import { OtpCode } from '@/components/otp-code';
 import { TextField } from '@/components/text-field';
 import { AuthError, type OtpChallenge } from '@/lib/auth-api';
 import { useAuth } from '@/lib/auth-context';
-import { colors, radius, spacing } from '@/theme';
+import { useMarkObserveInteractive } from '@/lib/observe';
+import { colors, fonts, radius, spacing } from '@/theme';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -23,6 +25,7 @@ const TITLES: Partial<Record<AuthError['kind'], string>> = {
 };
 
 export default function SignInScreen() {
+  useMarkObserveInteractive();
   const { signIn, completeOtp, resendOtp, notice, clearNotice } = useAuth();
   const insets = useSafeAreaInsets();
   const passwordRef = useRef<TextInputInstance>(null);
@@ -35,6 +38,7 @@ export default function SignInScreen() {
   const [code, setCode] = useState('');
   const [codeError, setCodeError] = useState<string | undefined>();
   const [cooldown, setCooldown] = useState(0);
+  const submitting = useRef(false);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -50,16 +54,17 @@ export default function SignInScreen() {
     if (message) setFormError({ title: TITLES['otp-expired'] ?? 'Sign-in expired', body: message });
   }
 
-  async function submitCode() {
-    if (busy || !challenge) return;
-    if (!/^\d{6}$/.test(code)) {
+  async function submitCode(next = code) {
+    if (busy || submitting.current || !challenge) return;
+    if (!/^\d{6}$/.test(next)) {
       setCodeError('Enter the 6-digit code from your email.');
       return;
     }
     setCodeError(undefined);
+    submitting.current = true;
     setBusy(true);
     try {
-      await completeOtp(challenge, code);
+      await completeOtp(challenge, next);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -71,6 +76,7 @@ export default function SignInScreen() {
         setCode('');
       }
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -150,40 +156,46 @@ export default function SignInScreen() {
           </AppText>
         </View>
         <View style={styles.form}>
-          <TextField
-            label="Sign-in code"
+          <OtpCode
             value={code}
-            onChangeText={(t) => {
-              setCode(t.replace(/\D/g, '').slice(0, 6));
+            onChange={(next) => {
+              setCode(next);
               if (codeError) setCodeError(undefined);
             }}
-            placeholder="123456"
-            keyboardType="number-pad"
-            autoComplete="one-time-code"
-            textContentType="oneTimeCode"
-            returnKeyType="go"
-            onSubmitEditing={submitCode}
-            editable={!busy}
+            onComplete={(next) => void submitCode(next)}
             error={codeError}
+            editable={!busy}
           />
           <Button
             label="Verify and sign in"
             loadingLabel="Verifying…"
             loading={busy}
-            onPress={submitCode}
+            onPress={() => void submitCode()}
           />
-          <Button
-            label={cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
-            variant="secondary"
+          <Pressable
             onPress={resend}
             disabled={busy || cooldown > 0}
-          />
-          <Button
-            label="Use a different account"
-            variant="tint"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: busy || cooldown > 0 }}
+            style={styles.linkHit}
+          >
+            <AppText
+              variant="label"
+              style={[styles.link, (busy || cooldown > 0) && styles.linkOff]}
+            >
+              {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
+            </AppText>
+          </Pressable>
+          <Pressable
             onPress={() => restart()}
             disabled={busy}
-          />
+            accessibilityRole="button"
+            style={styles.linkHit}
+          >
+            <AppText variant="caption" style={styles.switchAccount}>
+              Use a different account
+            </AppText>
+          </Pressable>
         </View>
       </KeyboardAwareScrollView>
     );
@@ -288,4 +300,8 @@ const styles = StyleSheet.create({
   },
   alertText: { color: colors.danger },
   help: { marginTop: spacing.xl, textAlign: 'center' },
+  linkHit: { alignSelf: 'center', minHeight: 44, justifyContent: 'center' },
+  link: { color: colors.canopyDeep, fontFamily: fonts.medium, textAlign: 'center' },
+  linkOff: { color: colors.subtle },
+  switchAccount: { textAlign: 'center' },
 });

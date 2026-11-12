@@ -232,7 +232,13 @@ function MasterForm({ kind, row }: { kind: MasterKind; row: MasterRow | null }) 
               error={errors[f.key]}
               placeholder={f.placeholder}
               keyboardType={
-                f.type === 'tel' ? 'phone-pad' : f.type === 'pincode' ? 'number-pad' : 'default'
+                f.type === 'tel'
+                  ? 'phone-pad'
+                  : f.type === 'pincode'
+                    ? 'number-pad'
+                    : f.type === 'email'
+                      ? 'email-address'
+                      : 'default'
               }
               autoCapitalize={
                 f.key === 'gstin' || f.key === 'drugLicenseNo'

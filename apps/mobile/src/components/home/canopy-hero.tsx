@@ -4,44 +4,105 @@ import { Alert, StyleSheet, View } from 'react-native';
 import { AppText } from '../app-text';
 import { Icon } from '../icon';
 import { PunchButton } from '../punch-button';
-import { dutyFromCheckIns, fieldErrorMessage, listTodayCheckIns, punch } from '@/lib/field';
+import { useAuth } from '@/lib/auth-context';
+import {
+  countTodayVisits,
+  fieldErrorMessage,
+  getDutyState,
+  punch,
+  readRememberedDuty,
+  rememberDuty,
+} from '@/lib/field';
 import { formatDate, formatTime } from '@/lib/format';
-import type { HomeData } from '@/mocks/home';
+import { dailyTargetFromMeToday, dutyFromMeToday, fetchMeToday } from '@/lib/me-today';
+import { PUNCH_OUT_CONFIRM, PUNCH_OUT_SUBMIT, punchOutAsk } from '@/lib/punch-out';
 import { colors, fonts, layout, radius, spacing } from '@/theme';
+
+type Target = {
+  done: number;
+  total: number;
+  cluster: string;
+  stp: string;
+  hasPlanTarget: boolean;
+};
 
 /**
  * Stitch Field Command canopy: identity, date, Punch In / Punch Out, daily target.
- * Punch uses real GPS + POST /v1/check-ins (mobile owns capture).
- * dailyTarget is still mock (see mocks/home.ts) until tour-plan + DCR calls are wired.
+ * Duty + target hydrate from GET /v1/me/today (caller-scoped — survives app reload).
  */
-export function CanopyHero({
-  name,
-  role,
-  now,
-  data,
-}: {
-  name: string;
-  role: string;
-  now: Date;
-  data: Pick<HomeData, 'attendance' | 'dailyTarget'>;
-}) {
+export function CanopyHero({ name, role, now }: { name: string; role: string; now: Date }) {
+  const { user } = useAuth();
   const [onDuty, setOnDuty] = useState(false);
   const [since, setSince] = useState<Date | null>(null);
   const [busy, setBusy] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [target, setTarget] = useState<Target | null>(null);
+  const [dcrLoaded, setDcrLoaded] = useState(false);
+  const [dcrStatus, setDcrStatus] = useState<
+    'draft' | 'submitted' | 'approved' | 'rejected' | null
+  >(null);
 
   const refreshDuty = useCallback(async () => {
+    // 1) Local cache first — unlock Punch without waiting on network/GPS.
+    // GPS only runs when the user taps Punch (see punch() → getFix()).
+    let cached: Awaited<ReturnType<typeof readRememberedDuty>> = null;
     try {
-      const items = await listTodayCheckIns();
-      const d = dutyFromCheckIns(items);
-      setOnDuty(d.onDuty);
-      setSince(d.punchedInAt);
+      cached = await readRememberedDuty();
+      if (cached?.onDuty) {
+        setOnDuty(true);
+        setSince(cached.punchedInAt);
+      }
     } catch {
-      // Keep last known local state if the list fails (offline / session).
+      // No cache yet.
     } finally {
       setHydrated(true);
     }
-  }, []);
+
+    // 2) Live MeToday once (duty + target). Do not block the button on this.
+    try {
+      const today = await fetchMeToday();
+      const d = dutyFromMeToday(today);
+      if (d.onDuty) {
+        setOnDuty(true);
+        setSince(d.punchedInAt);
+        void rememberDuty(true, d.punchedInAt);
+      } else if (cached?.onDuty) {
+        // Server still lagging; keep device cache until it catches up.
+        setOnDuty(true);
+        setSince(cached.punchedInAt);
+      } else {
+        setOnDuty(false);
+        setSince(null);
+        void rememberDuty(false, null);
+      }
+      let visits = today.dcr?.calls ?? 0;
+      if (user?.id) {
+        try {
+          visits = await countTodayVisits(user.id);
+        } catch {
+          /* keep dcr.calls */
+        }
+      }
+      setDcrLoaded(true);
+      setDcrStatus(today.dcr?.status ?? null);
+      setTarget(dailyTargetFromMeToday(today, visits));
+    } catch {
+      // Offline / slow: keep cache; fall back to check-ins when MeToday fails.
+      try {
+        const d = await getDutyState();
+        if (d.onDuty) {
+          setOnDuty(true);
+          setSince(d.punchedInAt);
+          void rememberDuty(true, d.punchedInAt);
+        } else if (!cached?.onDuty) {
+          setOnDuty(false);
+          setSince(null);
+        }
+      } catch {
+        // Keep last painted state.
+      }
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     void refreshDuty();
@@ -51,15 +112,50 @@ export function CanopyHero({
     setBusy(true);
     try {
       const row = await punch(kind);
-      setOnDuty(kind === 'punch_in');
-      setSince(kind === 'punch_in' ? new Date(row.capturedAt) : null);
+      const nextOn = kind === 'punch_in';
+      const nextSince = nextOn ? new Date(row.capturedAt) : null;
+      setOnDuty(nextOn);
+      setSince(nextSince);
+      await rememberDuty(nextOn, nextSince);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      // Unblock the button as soon as the punch lands; refresh duty/target in the background.
+      setBusy(false);
+      void (async () => {
+        try {
+          const d = await getDutyState();
+          if (kind === 'punch_in') {
+            if (d.onDuty) {
+              setOnDuty(true);
+              setSince(d.punchedInAt ?? nextSince);
+              await rememberDuty(true, d.punchedInAt ?? nextSince);
+            }
+          } else {
+            setOnDuty(false);
+            setSince(null);
+            await rememberDuty(false, null);
+          }
+          const today = await fetchMeToday();
+          let visits = 0;
+          if (user?.id) {
+            try {
+              visits = await countTodayVisits(user.id);
+            } catch {
+              visits = today.dcr?.calls ?? 0;
+            }
+          } else {
+            visits = today.dcr?.calls ?? 0;
+          }
+          setDcrLoaded(true);
+          setDcrStatus(today.dcr?.status ?? null);
+          setTarget(dailyTargetFromMeToday(today, visits));
+        } catch {
+          // Local success state already applied.
+        }
+      })();
     } catch (e) {
       const msg = fieldErrorMessage(e);
-      // Already punched in: sync local duty instead of a dead-end "punch in first" alert.
       await refreshDuty();
       Alert.alert(kind === 'punch_in' ? 'Punch in' : 'Punch out', msg);
-    } finally {
       setBusy(false);
     }
   }
@@ -70,15 +166,35 @@ export function CanopyHero({
       void runPunch('punch_in');
       return;
     }
-    Alert.alert('Punch out?', 'This ends your shift.', [
-      { text: 'Stay on duty', style: 'cancel' },
-      { text: 'Punch Out', style: 'destructive', onPress: () => void runPunch('punch_out') },
+    void askPunchOut();
+  }
+
+  async function askPunchOut() {
+    let ask = punchOutAsk(dcrLoaded, dcrStatus);
+    try {
+      const today = await fetchMeToday();
+      setDcrLoaded(true);
+      setDcrStatus(today.dcr?.status ?? null);
+      ask = punchOutAsk(true, today.dcr?.status ?? null);
+    } catch {
+      // Keep the last known report. A failed refresh still asks before punching out.
+    }
+    if (ask === 'submit_dcr') {
+      Alert.alert('Punch out', PUNCH_OUT_SUBMIT);
+      return;
+    }
+    Alert.alert('Punch out', PUNCH_OUT_CONFIRM, [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Punch out', style: 'destructive', onPress: () => void runPunch('punch_out') },
     ]);
   }
 
-  const { done, total, cluster, stp } = data.dailyTarget;
+  const done = target?.done ?? 0;
+  const total = target?.total ?? 0;
+  const hasPlan = target?.hasPlanTarget ?? false;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  const segments = Array.from({ length: Math.max(total, 1) }, (_, i) => i < done);
+  const segCount = hasPlan ? Math.max(total, 1) : Math.max(done, 1);
+  const segments = Array.from({ length: segCount }, (_, i) => i < done);
   const statusLine = busy
     ? 'Getting location…'
     : onDuty && since
@@ -123,10 +239,20 @@ export function CanopyHero({
             Daily Target
           </AppText>
           <AppText variant="action" style={styles.onCanopy}>
-            {done} of {total} Visits{' '}
-            <AppText variant="small" style={styles.onCanopyMuted}>
-              ({pct}%)
-            </AppText>
+            {hasPlan ? (
+              <>
+                {done} of {total} Visits{' '}
+                <AppText variant="small" style={styles.onCanopyMuted}>
+                  ({pct}%)
+                </AppText>
+              </>
+            ) : (
+              <AppText variant="small" style={styles.onCanopyMuted}>
+                {done > 0
+                  ? `${done} visit${done === 1 ? '' : 's'} today · No plan target`
+                  : 'No plan target'}
+              </AppText>
+            )}
           </AppText>
         </View>
         <View style={styles.segments}>
@@ -138,11 +264,11 @@ export function CanopyHero({
           <View style={styles.gps}>
             <Icon name="crosshairs-gps" size={14} color="#6EE7B7" />
             <AppText variant="small" style={styles.onCanopySoft} numberOfLines={1}>
-              {busy ? 'Capturing GPS…' : `GPS · ${cluster}`}
+              {busy ? 'Capturing GPS…' : `GPS · ${target?.cluster ?? '—'}`}
             </AppText>
           </View>
-          <AppText variant="small" style={styles.onCanopy}>
-            STP: {stp}
+          <AppText variant="small" style={styles.onCanopy} numberOfLines={1}>
+            {target?.stp ?? '—'}
           </AppText>
         </View>
       </View>

@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
 import { Icon } from '@/components/icon';
+import { LocatingButton } from '@/components/locating-button';
 import { TextField } from '@/components/text-field';
 import { formatHHmmLabel } from '@/lib/clock12';
 import type { CustomerScope } from '@/lib/dcr/api';
@@ -13,7 +15,14 @@ import {
   type DcrDetailProduct,
   type ProductOpt,
 } from '@/lib/dcr/adapter';
-import { capturePresentation, fieldErrorMessage, isOnDuty, visitCheckIn } from '@/lib/field';
+import {
+  capturePresentation,
+  fieldErrorMessage,
+  isOnDuty,
+  outletNeedsFirstLock,
+  visitCheckIn,
+  CheckInCancelled,
+} from '@/lib/field';
 import { KIND_LABEL, type CallDraft, type PobDraft } from '@/lib/dcr/model';
 import { formatINR } from '@/lib/money';
 import { colors, radius, spacing, touch } from '@/theme';
@@ -62,20 +71,23 @@ export function CallEditor({
   const isProd = (e: string) => /product|presentation|order|POB|check.?in/i.test(e);
   const checkedIn = !!call.checkInId;
 
-  useEffect(() => {
-    if (readOnly || !call.outletId || checkedIn) return;
-    let live = true;
-    void isOnDuty()
-      .then((v) => {
-        if (live) setOnDuty(v);
-      })
-      .catch(() => {
-        if (live) setOnDuty(null);
-      });
-    return () => {
-      live = false;
-    };
-  }, [readOnly, call.outletId, checkedIn]);
+  // Re-check when returning from Home punch — don't keep a stale "Punch in first".
+  useFocusEffect(
+    useCallback(() => {
+      if (readOnly || !call.outletId || checkedIn) return;
+      let live = true;
+      void isOnDuty()
+        .then((v) => {
+          if (live) setOnDuty(v);
+        })
+        .catch(() => {
+          if (live) setOnDuty(null);
+        });
+      return () => {
+        live = false;
+      };
+    }, [readOnly, call.outletId, checkedIn]),
+  );
 
   const onCheckIn = async () => {
     if (readOnly || checkedIn || !call.outletId || checkingIn) return;
@@ -83,12 +95,35 @@ export function CallEditor({
       Alert.alert('Punch in first', 'Punch in on Home before checking in at a call.');
       return;
     }
+    const outletId = call.outletId;
+    const kind = call.kind;
+    try {
+      if (await outletNeedsFirstLock(kind, outletId)) {
+        const go = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            'First check-in — lock location?',
+            kind === 'doctor'
+              ? 'This saves a GPS pin for this doctor. Checking in at another chamber later can lock that place too.'
+              : `This sets the GPS pin for this ${KIND_LABEL[kind].toLowerCase()}. Later check-ins and Presentation must be near this spot.`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Lock & check in', onPress: () => resolve(true) },
+            ],
+          );
+        });
+        if (!go) return;
+      }
+    } catch (e) {
+      Alert.alert('Check-in failed', fieldErrorMessage(e));
+      return;
+    }
     setCheckingIn(true);
     try {
-      const checkInId = await visitCheckIn(call.kind, call.outletId);
+      const checkInId = await visitCheckIn(kind, outletId);
       onChange({ checkInId });
       setOnDuty(true);
     } catch (e) {
+      if (e instanceof CheckInCancelled) return;
       Alert.alert('Check-in failed', fieldErrorMessage(e));
       void isOnDuty()
         .then(setOnDuty)
@@ -128,15 +163,25 @@ export function CallEditor({
         error={errors.find((e) => !isProd(e))}
       />
       {call.outletId ? (
-        <Button
-          label={checkedIn ? 'Checked in' : onDuty === false ? 'Punch in first' : 'Check in'}
-          variant={checkedIn ? 'success' : onDuty === false ? 'secondary' : 'primary'}
-          disabled={readOnly || checkedIn}
-          loading={checkingIn}
-          loadingLabel="Getting location…"
-          onPress={() => void onCheckIn()}
-          style={styles.presBtn}
-        />
+        onDuty === false && !checkedIn ? (
+          <Button
+            label="Punch in first"
+            variant="secondary"
+            disabled
+            onPress={() => {}}
+            style={styles.presBtn}
+          />
+        ) : (
+          <LocatingButton
+            label={checkedIn ? 'Checked in' : 'Check in'}
+            locatingLabel="Locating…"
+            done={checkedIn}
+            disabled={readOnly || checkedIn}
+            loading={checkingIn}
+            onPress={() => void onCheckIn()}
+            style={styles.presBtn}
+          />
+        )
       ) : null}
       {call.kind === 'doctor' ? (
         <DoctorProducts

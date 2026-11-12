@@ -2,25 +2,21 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '../app-text';
 import { Card } from '../card';
 import { Icon } from '../icon';
-import { formatTime } from '@/lib/format';
-import type { PlannedDoctor } from '@/mocks/home';
+import type { ScheduleRow } from '@/lib/home-schedule';
 import { colors, fonts, spacing } from '@/theme';
 
-function slotParts(d: Date) {
-  const label = formatTime(d);
-  const [clock, period] = label.split(' ');
-  return { clock, period: period ?? '' };
-}
-
-/** Stitch Today's Schedule: timed rows with Visited / Scheduled status. */
+/** Today's tour-plan doctors. No clock is shown: the plan has no visit time. */
 export function ScheduleToday({
   items,
+  pending,
+  error,
   onFullRoute,
 }: {
-  items: PlannedDoctor[];
+  items: ScheduleRow[];
+  pending: boolean;
+  error: boolean;
   onFullRoute: () => void;
 }) {
-  if (!items.length) return null;
   return (
     <View style={styles.wrap}>
       <View style={styles.head}>
@@ -39,40 +35,42 @@ export function ScheduleToday({
         </Pressable>
       </View>
       <Card style={styles.card}>
-        {items.map((d, i) => {
-          const { clock, period } = slotParts(d.plannedAt);
-          const visited = !!d.metAt;
-          return (
+        {pending ? (
+          <AppText variant="small" style={styles.empty}>
+            Loading today’s plan…
+          </AppText>
+        ) : error ? (
+          <AppText variant="small" style={styles.empty}>
+            Could not load today’s plan.
+          </AppText>
+        ) : items.length === 0 ? (
+          <AppText variant="small" style={styles.empty}>
+            No doctors on today’s tour plan.
+          </AppText>
+        ) : (
+          items.map((d, i) => (
             <View key={d.id} style={[styles.row, i < items.length - 1 && styles.divider]}>
-              <View style={styles.time}>
-                <AppText variant="action" style={styles.clock}>
-                  {clock}
-                </AppText>
-                <AppText variant="chip" style={styles.period}>
-                  {period}
-                </AppText>
-              </View>
               <View style={styles.copy}>
                 <AppText variant="rowTitle" numberOfLines={1}>
                   {d.name}
                 </AppText>
                 <AppText variant="small" numberOfLines={1}>
-                  {d.speciality} • {d.area}
+                  {d.detail}
                 </AppText>
               </View>
               <View style={styles.status}>
                 <Icon
-                  name={visited ? 'check-circle-outline' : 'clock-outline'}
+                  name={d.visited ? 'check-circle-outline' : 'clock-outline'}
                   size={16}
-                  color={visited ? colors.canopy : colors.subtle}
+                  color={d.visited ? colors.canopy : colors.subtle}
                 />
-                <AppText variant="small" style={visited ? styles.statusOn : styles.statusOff}>
-                  {visited ? 'Visited' : 'Scheduled'}
+                <AppText variant="small" style={d.visited ? styles.statusOn : styles.statusOff}>
+                  {d.visited ? 'Visited' : 'Scheduled'}
                 </AppText>
               </View>
             </View>
-          );
-        })}
+          ))
+        )}
       </Card>
     </View>
   );
@@ -93,6 +91,7 @@ const styles = StyleSheet.create({
   },
   link: { color: colors.canopy, fontFamily: fonts.semibold },
   card: { paddingVertical: 0, overflow: 'hidden' },
+  empty: { color: colors.muted, padding: spacing.md },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -100,14 +99,6 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator },
-  time: { width: 48 },
-  clock: { color: colors.ink, fontFamily: fonts.bold, fontSize: 13 },
-  period: {
-    color: colors.subtle,
-    fontFamily: fonts.semibold,
-    fontSize: 10,
-    textTransform: 'uppercase',
-  },
   copy: { flex: 1, minWidth: 0, gap: 2 },
   status: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   statusOn: { color: colors.ink, fontFamily: fonts.semibold },

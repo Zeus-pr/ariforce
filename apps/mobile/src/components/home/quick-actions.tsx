@@ -4,19 +4,17 @@ import { AppText } from '../app-text';
 import { Icon, type IconName } from '../icon';
 import { PressableScale } from '../pressable-scale';
 import { canOpenFeature, type FeatureKey } from '@/lib/features';
-import type { HomeData } from '@/mocks/home';
 import { colors, fonts, radius, spacing } from '@/theme';
 
 const ACTIONS: {
   key: FeatureKey;
   label: string;
   icon: IconName;
-  hintKey: keyof HomeData['quickHints'];
 }[] = [
-  { key: 'dcr', label: 'DCR Entry', icon: 'file-document-outline', hintKey: 'dcr' },
-  { key: 'tour-plan', label: 'Tour Plan', icon: 'map-outline', hintKey: 'tourPlan' },
-  { key: 'pob', label: 'POB', icon: 'cart-outline', hintKey: 'pob' },
-  { key: 'expenses', label: 'Expense', icon: 'receipt-text-outline', hintKey: 'expenses' },
+  { key: 'dcr', label: 'DCR Entry', icon: 'file-document-outline' },
+  { key: 'tour-plan', label: 'Tour Plan', icon: 'map-outline' },
+  { key: 'pob', label: 'POB', icon: 'cart-outline' },
+  { key: 'expenses', label: 'Expense', icon: 'receipt-text-outline' },
 ];
 
 const GAP = spacing.sm;
@@ -25,11 +23,9 @@ const GAP = spacing.sm;
 export function QuickActions({
   onOpen,
   roles,
-  hints,
 }: {
   onOpen: (feature: FeatureKey) => void;
   roles: readonly string[];
-  hints?: HomeData['quickHints'] | null;
 }) {
   // Measure the container (not the window) so tiles fill the column; 4 across on wide screens.
   const [w, setW] = useState(0);
@@ -47,7 +43,7 @@ export function QuickActions({
           <PressableScale
             key={a.key}
             onPress={() => onOpen(a.key)}
-            accessibilityLabel={`${a.label}. ${hints?.[a.hintKey] ?? ''}`}
+            accessibilityLabel={a.label}
             containerStyle={tileW ? { width: tileW } : styles.pending}
             style={styles.tile}
             pressedStyle={styles.pressed}
@@ -56,9 +52,6 @@ export function QuickActions({
             <View style={styles.copy}>
               <AppText variant="action" style={styles.title} numberOfLines={1}>
                 {a.label}
-              </AppText>
-              <AppText variant="small" style={styles.hint} numberOfLines={1}>
-                {hints?.[a.hintKey] ?? ''}
               </AppText>
             </View>
           </PressableScale>
@@ -81,7 +74,7 @@ const styles = StyleSheet.create({
     gap: GAP,
   },
   tile: {
-    height: 102,
+    height: 88,
     borderRadius: radius.md,
     borderCurve: 'continuous',
     backgroundColor: colors.navy,
@@ -94,5 +87,4 @@ const styles = StyleSheet.create({
   pressed: { backgroundColor: colors.navyPressed },
   copy: { alignItems: 'center', gap: 2 },
   title: { color: colors.onNavy, fontFamily: fonts.bold, fontSize: 14 },
-  hint: { color: 'rgba(203, 213, 225, 1)', fontSize: 11, lineHeight: 14 },
 });

@@ -49,8 +49,24 @@ export function roleLabel(roles: readonly string[]) {
   return r ? ROLE_LABEL[r] : 'Other role';
 }
 
+/** Sales level of the highest role (1 = Business Manager … 8 = Director, 0 = outside the ladder). */
+export function roleRank(roles: readonly string[]) {
+  return roles.reduce((best, r) => Math.max(best, level(r)), 0);
+}
+
 /** Same rule as the website's isApprover: level 2 (ABM) and above approve their team's work. */
 export const isApprover = (roles: readonly string[]) => roles.some((r) => level(r) >= 2);
+
+/** Team field activity (attendance + check-ins for direct reports). ABM+ and system admin. */
+export const canViewTeamField = (roles: readonly string[]) =>
+  isApprover(roles) || roles.includes('system_admin');
+
+/**
+ * Who may edit / deactivate GPS outlet locks (API: ABM→Director + system_admin).
+ * BMs create locks on Check in; only managers can fix a bad pin. Matches web canManageOutletLocks.
+ */
+export const canManageOutletLocks = (roles: readonly string[]) =>
+  isApprover(roles) || roles.includes('system_admin');
 
 /**
  * Who may change master data (doctors, chemists, stockists): same rule as the website's

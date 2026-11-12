@@ -65,13 +65,23 @@ export const MODE_LABEL: Record<string, string> = {
   other: 'Other',
 };
 
-/** One "Work On" choice. Field covers every work type with a band; the band picks the exact one. */
+/** Camp uses the field-work bands (HQ / ex-HQ / outstation) and is stored as its own work type. */
+export function isCampWorkType(w: { code: string }): boolean {
+  return w.code.toUpperCase().startsWith('CAMP_');
+}
+
+/** One "Work On" choice. Field and Camp each cover one work type per band; the band picks the exact one. */
 export type WorkOn = {
   key: string;
   label: string;
-  branch: 'field' | 'meeting' | 'training' | 'office' | 'leave' | 'other';
+  branch: 'field' | 'camp' | 'meeting' | 'training' | 'office' | 'leave' | 'other';
   workTypes: WorkTypeOption[];
 };
+
+/** Field work and Camp share band, territory, work-with and SFC. Only field work has calls. */
+export function isRouteDay(branch: WorkOn['branch'] | undefined): boolean {
+  return branch === 'field' || branch === 'camp';
+}
 
 /**
  * Work types with their band normalised (any case; 'ex'/'os' accepted). A field work type whose band
@@ -107,9 +117,12 @@ export function cleanSfcHqs(hqs: SfcHq[], band: DcrBand | null): SfcHq[] {
 
 export function workOnChoices(wts: WorkTypeOption[]): WorkOn[] {
   const out: WorkOn[] = [];
-  const field = wts.filter((w) => w.kind === 'field' && w.band);
+  const banded = wts.filter((w) => w.kind === 'field' && w.band);
+  const field = banded.filter((w) => !isCampWorkType(w));
+  const camp = banded.filter((w) => isCampWorkType(w));
   if (field.length)
     out.push({ key: 'field', label: 'Field work', branch: 'field', workTypes: field });
+  if (camp.length) out.push({ key: 'camp', label: 'Camp', branch: 'camp', workTypes: camp });
   const label = {
     meeting: 'Meeting',
     training: 'Training',
@@ -350,7 +363,7 @@ export function problems(
   const add = (key: string, text: string) => p.push({ key, text });
   const b = s.workOn?.branch;
   if (!s.workOn) add('workOn', 'Choose what you worked on.');
-  if (b === 'field') {
+  if (b === 'field' || b === 'camp') {
     if (!s.workTypeId) add('band', 'Choose the band: HQ, EX or OS.');
     else if (!s.territoryIds.length) add('territory', 'Choose the territory you worked.');
     else if (!s.workWithDone) add('workWith', 'Choose who you worked with, or Worked alone.');
@@ -363,7 +376,7 @@ export function problems(
       for (const h of s.sfc.hqs)
         if (!(s.routeChoice[h.hqTerritoryId] ?? h.autoSelectedId))
           add('sfc', `Pick the SFC route for ${h.hqName}.`);
-      if (opts.calls === false) return p;
+      if (opts.calls === false || b === 'camp') return p;
       if (!s.calls.length) add('calls', 'Add at least one Doctor, Chemist or Stockist call.');
       s.calls.forEach((c, i) => {
         if (!c.outletId)
@@ -443,7 +456,8 @@ export function draftBody(
   s: FlowState,
   saved?: { id: string; version: number } | null,
 ): DcrDraftPutV2 {
-  const field = s.workOn?.branch === 'field';
+  const field = isRouteDay(s.workOn?.branch);
+  const withCalls = s.workOn?.branch === 'field';
   const routes =
     field && s.sfc.state === 'ok'
       ? s.sfc.hqs
@@ -467,7 +481,7 @@ export function draftBody(
     deviationReason: s.deviationReason.trim() || null,
     // 28f8820: lets a future day in the item be drafted; omitted, the server links by date.
     ...(s.tourPlanItemId && tpCaps.live ? { tourPlanItemId: s.tourPlanItemId } : {}),
-    calls: field
+    calls: withCalls
       ? s.calls.filter(sendableCall).map((c) => ({
           clientId: c.clientId,
           outletKind: c.kind,
