@@ -117,6 +117,9 @@ export function OutletLocksCard({
           <AppText variant="label">Locked locations</AppText>
           <AppText variant="small" style={styles.desc}>
             GPS pins for check-in and Presentation.
+            {outletKind === 'doctor'
+              ? ' Checking in away from these pins can lock another chamber.'
+              : ''}
             {canManage
               ? ' Deactivate a wrong pin so the next Check in locks again.'
               : ' Ask your ABM or admin to fix a wrong pin.'}

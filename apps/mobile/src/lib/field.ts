@@ -11,13 +11,14 @@ import type {
 } from '@ariforce/contracts';
 import Constants from 'expo-constants';
 import * as DeviceInfo from 'expo-device';
-import { Platform } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import type { AuthUser } from './auth-api';
 import { ApiError, apiFetch, idempotencyKey } from './api';
 import type { PresentationCaptureDraft } from './dcr/adapter';
 import { todayIST } from './dcr/dates';
 import { getFix, type GpsFix } from './location';
+import { nearestLockMetres, shouldOfferAnotherChamber } from './outlet-lock';
 import { dutyFromMeToday, fetchMeToday } from './me-today';
 import { registerPush } from './push';
 import { tokenStore } from './token-store';
@@ -348,24 +349,58 @@ export async function patchOutletLocation(
   });
 }
 
-/** Create first lock at current fix when the outlet has none. */
-export async function ensureOutletLocked(
+/** The rep closed the “another chamber?” question. Check-in does not continue. */
+export class CheckInCancelled extends Error {
+  constructor() {
+    super('Check-in cancelled');
+    this.name = 'CheckInCancelled';
+  }
+}
+
+async function createOutletLock(
   outletKind: OutletKind,
   outletId: string,
-  fix?: GpsFix,
-  deviceId?: string | null,
+  fix: GpsFix,
+  deviceId: string | null | undefined,
+  label: string,
 ): Promise<string> {
-  const existing = await listOutletLocations(outletKind, outletId);
-  if (existing[0]) return existing[0].id;
-  const gps = fix ?? (await getFix());
   const lock = await apiFetch<OutletLocation>(`/v1/outlets/${outletKind}/${outletId}/locations`, {
     method: 'POST',
     body: {
-      ...captureBody(gps, deviceId),
-      label: LOCK_LABEL[outletKind],
+      ...captureBody(fix, deviceId),
+      label,
     },
   });
   return lock.id;
+}
+
+function confirmAnotherChamber(): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      'Another chamber?',
+      'You are away from this doctor’s saved locations. Lock this place as another chamber and check in here?',
+      [
+        { text: 'Not now', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Lock and check in', onPress: () => resolve(true) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) },
+    );
+  });
+}
+
+/** Company visit fence, or this doctor’s own fence when one is set. */
+async function visitRadiusM(outletKind: OutletKind, outletId: string): Promise<number | null> {
+  try {
+    const settings = await apiFetch<{ radiusM: number }>('/v1/settings/geofence');
+    if (typeof settings.radiusM !== 'number') return null;
+    if (outletKind !== 'doctor') return settings.radiusM;
+    const doctor = await apiFetch<{ geofenceRadiusM?: number | null }>(
+      `/v1/doctors/${outletId}`,
+    ).catch(() => null);
+    return typeof doctor?.geofenceRadiusM === 'number' ? doctor.geofenceRadiusM : settings.radiusM;
+  } catch {
+    return null;
+  }
 }
 
 /** Punch in/out with device ready + GPS (consent and GPS in parallel). */
@@ -449,13 +484,51 @@ export async function requireOnDuty(): Promise<void> {
   throw new ApiError(409, 'SEQUENCE', 'Punch in on Home first, then check in at the call.');
 }
 
-/** Visit check-in: on duty → field ready + GPS in parallel → lock if needed → visit. */
+/**
+ * Visit check-in. The first pin is saved when the outlet has none.
+ * A doctor standing outside every saved pin is asked before another chamber is locked.
+ * Chemists and stockists keep one pin.
+ */
 export async function visitCheckIn(outletKind: OutletKind, outletId: string): Promise<string> {
   await requireOnDuty();
   const [deviceId, fix] = await Promise.all([ensureFieldReady(), getFix()]);
-  await ensureOutletLocked(outletKind, outletId, fix, deviceId);
-  const visit = await postCheckIn('visit', { fix, outletKind, outletId, deviceId });
-  return visit.id;
+  const locks = await listOutletLocations(outletKind, outletId);
+  let addedChamber = false;
+  if (!locks.length) {
+    await createOutletLock(outletKind, outletId, fix, deviceId, LOCK_LABEL[outletKind]);
+  } else if (outletKind === 'doctor') {
+    const radiusM = await visitRadiusM(outletKind, outletId);
+    const nearestM = nearestLockMetres(fix.location, locks);
+    if (radiusM != null && shouldOfferAnotherChamber(outletKind, nearestM, radiusM)) {
+      if (!(await confirmAnotherChamber())) throw new CheckInCancelled();
+      await createOutletLock(outletKind, outletId, fix, deviceId, 'chamber');
+      addedChamber = true;
+    }
+  }
+  try {
+    const visit = await postCheckIn('visit', { fix, outletKind, outletId, deviceId });
+    // The company fence said "near", but this doctor's own fence said otherwise.
+    if (outletKind === 'doctor' && !addedChamber && locks.length > 0 && visit.inFence === false) {
+      if (await confirmAnotherChamber()) {
+        await createOutletLock(outletKind, outletId, fix, deviceId, 'chamber');
+      }
+    }
+    return visit.id;
+  } catch (e) {
+    if (
+      addedChamber ||
+      outletKind !== 'doctor' ||
+      !locks.length ||
+      !(e instanceof ApiError) ||
+      e.code !== 'OUT_OF_FENCE'
+    ) {
+      throw e;
+    }
+    if (!(await confirmAnotherChamber())) throw e;
+    await createOutletLock(outletKind, outletId, fix, deviceId, 'chamber');
+    const visit = await postCheckIn('visit', { fix, outletKind, outletId, deviceId });
+    return visit.id;
+  }
 }
 
 /** GPS proof body for opening Presentation (attach to draft call). */

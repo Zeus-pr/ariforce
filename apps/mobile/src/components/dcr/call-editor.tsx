@@ -21,6 +21,7 @@ import {
   isOnDuty,
   outletNeedsFirstLock,
   visitCheckIn,
+  CheckInCancelled,
 } from '@/lib/field';
 import { KIND_LABEL, type CallDraft, type PobDraft } from '@/lib/dcr/model';
 import { formatINR } from '@/lib/money';
@@ -101,7 +102,9 @@ export function CallEditor({
         const go = await new Promise<boolean>((resolve) => {
           Alert.alert(
             'First check-in — lock location?',
-            `This sets the GPS pin for this ${KIND_LABEL[kind].toLowerCase()}. Later check-ins and Presentation must be near this spot.`,
+            kind === 'doctor'
+              ? 'This saves a GPS pin for this doctor. Checking in at another chamber later can lock that place too.'
+              : `This sets the GPS pin for this ${KIND_LABEL[kind].toLowerCase()}. Later check-ins and Presentation must be near this spot.`,
             [
               { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
               { text: 'Lock & check in', onPress: () => resolve(true) },
@@ -120,6 +123,7 @@ export function CallEditor({
       onChange({ checkInId });
       setOnDuty(true);
     } catch (e) {
+      if (e instanceof CheckInCancelled) return;
       Alert.alert('Check-in failed', fieldErrorMessage(e));
       void isOnDuty()
         .then(setOnDuty)
