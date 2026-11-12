@@ -14,10 +14,11 @@ describe('another doctor chamber', () => {
   it('offers a new pin only for a doctor outside every saved pin', () => {
     const farM = nearestLockMetres(here, [far])!;
     expect(farM).toBeGreaterThan(300);
-    expect(shouldOfferAnotherChamber('doctor', farM, 300)).toBe(true);
-    expect(shouldOfferAnotherChamber('doctor', 40, 300)).toBe(false);
-    expect(shouldOfferAnotherChamber('doctor', null, 300)).toBe(false);
-    expect(shouldOfferAnotherChamber('chemist', farM, 300)).toBe(false);
-    expect(shouldOfferAnotherChamber('stockist', farM, 300)).toBe(false);
+    expect(shouldOfferAnotherChamber('doctor', farM, 300, 1)).toBe(true);
+    expect(shouldOfferAnotherChamber('doctor', farM, 300, 5)).toBe(false);
+    expect(shouldOfferAnotherChamber('doctor', 40, 300, 1)).toBe(false);
+    expect(shouldOfferAnotherChamber('doctor', null, 300, 0)).toBe(false);
+    expect(shouldOfferAnotherChamber('chemist', farM, 300, 1)).toBe(false);
+    expect(shouldOfferAnotherChamber('stockist', farM, 300, 1)).toBe(false);
   });
 });

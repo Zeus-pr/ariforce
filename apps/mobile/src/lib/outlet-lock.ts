@@ -19,14 +19,29 @@ export function nearestLockMetres(
   return Math.min(...locks.map((lock) => metres(here, lock.location)));
 }
 
+export const DOCTOR_LOCK_LIMIT = 5;
+
 /**
- * A doctor who is outside every saved pin should be offered a new chamber.
- * Chemists and stockists keep a single pin.
+ * A doctor who is outside every saved pin should be offered a new chamber,
+ * until they already have five active pins. Chemists and stockists keep a single pin.
  */
 export function shouldOfferAnotherChamber(
   outletKind: 'doctor' | 'chemist' | 'stockist',
   nearestM: number | null,
   radiusM: number,
+  activeLocks: number,
 ): boolean {
-  return outletKind === 'doctor' && nearestM != null && nearestM > radiusM;
+  return (
+    outletKind === 'doctor' &&
+    nearestM != null &&
+    nearestM > radiusM &&
+    activeLocks < DOCTOR_LOCK_LIMIT
+  );
+}
+
+export function doctorLockLimitReached(
+  outletKind: 'doctor' | 'chemist' | 'stockist',
+  activeLocks: number,
+): boolean {
+  return outletKind === 'doctor' && activeLocks >= DOCTOR_LOCK_LIMIT;
 }

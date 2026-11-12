@@ -18,7 +18,11 @@ import { ApiError, apiFetch, idempotencyKey } from './api';
 import type { PresentationCaptureDraft } from './dcr/adapter';
 import { todayIST } from './dcr/dates';
 import { getFix, type GpsFix } from './location';
-import { nearestLockMetres, shouldOfferAnotherChamber } from './outlet-lock';
+import {
+  doctorLockLimitReached,
+  nearestLockMetres,
+  shouldOfferAnotherChamber,
+} from './outlet-lock';
 import { dutyFromMeToday, fetchMeToday } from './me-today';
 import { registerPush } from './push';
 import { tokenStore } from './token-store';
@@ -109,6 +113,8 @@ export function fieldErrorMessage(e: unknown): string {
         return e.message || 'Submit today’s DCR before punching out.';
       case 'LOCATION_EXISTS':
         return 'This outlet already has a locked location.';
+      case 'LOCATION_LIMIT':
+        return 'This doctor already has 5 locked places. Check in near one of them.';
       case 'IDEMPOTENCY_CONFLICT':
         return 'This check-in was already recorded differently. Refresh and retry.';
       default:
@@ -499,17 +505,28 @@ export async function visitCheckIn(outletKind: OutletKind, outletId: string): Pr
   } else if (outletKind === 'doctor') {
     const radiusM = await visitRadiusM(outletKind, outletId);
     const nearestM = nearestLockMetres(fix.location, locks);
-    if (radiusM != null && shouldOfferAnotherChamber(outletKind, nearestM, radiusM)) {
+    if (radiusM != null && shouldOfferAnotherChamber(outletKind, nearestM, radiusM, locks.length)) {
       if (!(await confirmAnotherChamber())) throw new CheckInCancelled();
       await createOutletLock(outletKind, outletId, fix, deviceId, 'chamber');
       addedChamber = true;
+    } else if (
+      radiusM != null &&
+      nearestM != null &&
+      nearestM > radiusM &&
+      doctorLockLimitReached(outletKind, locks.length)
+    ) {
+      throw new ApiError(
+        409,
+        'LOCATION_LIMIT',
+        'This doctor already has 5 locked places. Check in near one of them.',
+      );
     }
   }
   try {
     const visit = await postCheckIn('visit', { fix, outletKind, outletId, deviceId });
     // The company fence said "near", but this doctor's own fence said otherwise.
     if (outletKind === 'doctor' && !addedChamber && locks.length > 0 && visit.inFence === false) {
-      if (await confirmAnotherChamber()) {
+      if (!doctorLockLimitReached(outletKind, locks.length) && (await confirmAnotherChamber())) {
         await createOutletLock(outletKind, outletId, fix, deviceId, 'chamber');
       }
     }
@@ -523,6 +540,13 @@ export async function visitCheckIn(outletKind: OutletKind, outletId: string): Pr
       e.code !== 'OUT_OF_FENCE'
     ) {
       throw e;
+    }
+    if (doctorLockLimitReached('doctor', locks.length)) {
+      throw new ApiError(
+        409,
+        'LOCATION_LIMIT',
+        'This doctor already has 5 locked places. Check in near one of them.',
+      );
     }
     if (!(await confirmAnotherChamber())) throw e;
     await createOutletLock(outletKind, outletId, fix, deviceId, 'chamber');

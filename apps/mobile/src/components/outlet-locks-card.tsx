@@ -118,7 +118,7 @@ export function OutletLocksCard({
           <AppText variant="small" style={styles.desc}>
             GPS pins for check-in and Presentation.
             {outletKind === 'doctor'
-              ? ' Checking in away from these pins can lock another chamber.'
+              ? ' A doctor can have up to 5 pins. Checking in away from these can lock another chamber until that cap.'
               : ''}
             {canManage
               ? ' Deactivate a wrong pin so the next Check in locks again.'
