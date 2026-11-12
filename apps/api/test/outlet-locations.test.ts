@@ -298,8 +298,42 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
       .post('/v1/check-ins')
       .set(as('cap'))
       .send(cap({ kind: 'visit', outletKind: 'chemist', outletId: chem.body.id, location: FAR }));
-    expect(chemFar.status, JSON.stringify(chemFar.body)).toBe(201);
-    expect(chemFar.body.inFence).toBe(false);
+    expect(chemFar.status, JSON.stringify(chemFar.body)).toBe(422);
+    expect(chemFar.body.error.code).toBe('OUT_OF_FENCE');
+    const chemNear = await http()
+      .post('/v1/check-ins')
+      .set(as('cap'))
+      .send(cap({ kind: 'visit', outletKind: 'chemist', outletId: chem.body.id }));
+    expect(chemNear.status, JSON.stringify(chemNear.body)).toBe(201);
+    expect(chemNear.body.inFence).toBe(true);
+
+    const stock = await http()
+      .post('/v1/stockists')
+      .set(as('director'))
+      .send({
+        territoryId: T.hq,
+        name: `Stock Far ${RUN}`,
+        location: null,
+        gstin: null,
+        drugLicenseNo: null,
+        addressLine: null,
+        city: null,
+        state: null,
+        pincode: null,
+        phone: null,
+      });
+    expect(stock.status, JSON.stringify(stock.body)).toBe(201);
+    const stockLock = await http()
+      .post(`/v1/outlets/stockist/${stock.body.id}/locations`)
+      .set(as('cap'))
+      .send(cap({ label: 'godown' }));
+    expect(stockLock.status, JSON.stringify(stockLock.body)).toBe(201);
+    const stockFar = await http()
+      .post('/v1/check-ins')
+      .set(as('cap'))
+      .send(cap({ kind: 'visit', outletKind: 'stockist', outletId: stock.body.id, location: FAR }));
+    expect(stockFar.status, JSON.stringify(stockFar.body)).toBe(422);
+    expect(stockFar.body.error.code).toBe('OUT_OF_FENCE');
   });
 
   it('presentation hard-blocks without lock / outside 300m; allows in fence', async () => {

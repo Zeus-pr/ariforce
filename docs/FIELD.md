@@ -18,8 +18,9 @@ Outlet locks live in `outlet_locations` (doctors: many; chemists/stockists: one 
 7. Distance (haversine, metres) to the **nearest active** `outlet_locations` row (else the master `location`);
    radius = doctor override, else company default. A doctor who is already at their pin cap
    (`doctors.max_active_locks`, default 1) and outside every active pin is `409 LOCATION_LIMIT`.
-   That visit is not stored. Otherwise, outside is `422 OUT_OF_FENCE` when `blockOutOfFence`, else
-   stored with `inFence: false`. Untagged outlet: `distanceM`/`inFence` null.
+   That visit is not stored. A chemist or stockist who already has an active pin and is outside it
+   is `422 OUT_OF_FENCE` and is not stored. Any other outside visit is `422 OUT_OF_FENCE` when
+   `blockOutOfFence`, else stored with `inFence: false`. Untagged outlet: `distanceM`/`inFence` null.
 
 `GET /v1/check-ins?unlinked=true` returns visit check-ins not referenced by any `dcr_calls.geo_capture_id` (DCR call picker, gap #9).
 Read scope: caller + reporting line (`field:read`); `userId` outside the team → `403`.
