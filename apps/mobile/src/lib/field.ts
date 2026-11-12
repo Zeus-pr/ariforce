@@ -517,7 +517,7 @@ export async function requireOnDuty(): Promise<void> {
  * Visit check-in. The first pin is saved when the outlet has none.
  * A doctor standing outside every saved pin is asked before another chamber is locked,
  * while they are under that doctor's cap (default 1). At the cap, a far check-in is refused.
- * Chemists and stockists keep one pin.
+ * A chemist or stockist who already has a pin is refused when they are outside it.
  */
 export async function visitCheckIn(outletKind: OutletKind, outletId: string): Promise<string> {
   await requireOnDuty();
@@ -527,6 +527,17 @@ export async function visitCheckIn(outletKind: OutletKind, outletId: string): Pr
   let cap = 1;
   if (!locks.length) {
     await createOutletLock(outletKind, outletId, fix, deviceId, LOCK_LABEL[outletKind]);
+  } else if (outletKind === 'chemist' || outletKind === 'stockist') {
+    const settings = await apiFetch<{ radiusM: number }>('/v1/settings/geofence').catch(() => null);
+    const radiusM = typeof settings?.radiusM === 'number' ? settings.radiusM : null;
+    const nearestM = nearestLockMetres(fix.location, locks);
+    if (radiusM != null && nearestM != null && nearestM > radiusM) {
+      throw new ApiError(
+        422,
+        'OUT_OF_FENCE',
+        'You are too far from this outlet. Move closer and try again.',
+      );
+    }
   } else if (outletKind === 'doctor') {
     const rules = await doctorVisitRules(outletId);
     cap = rules.cap;
@@ -549,6 +560,17 @@ export async function visitCheckIn(outletKind: OutletKind, outletId: string): Pr
   }
   try {
     const visit = await postCheckIn('visit', { fix, outletKind, outletId, deviceId });
+    if (
+      (outletKind === 'chemist' || outletKind === 'stockist') &&
+      locks.length > 0 &&
+      visit.inFence === false
+    ) {
+      throw new ApiError(
+        422,
+        'OUT_OF_FENCE',
+        'You are too far from this outlet. Move closer and try again.',
+      );
+    }
     // The company fence said "near", but this doctor's own fence said otherwise.
     if (outletKind === 'doctor' && !addedChamber && locks.length > 0 && visit.inFence === false) {
       if (doctorLockLimitReached(outletKind, locks.length, cap)) {
