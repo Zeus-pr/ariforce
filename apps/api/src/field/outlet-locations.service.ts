@@ -44,6 +44,9 @@ const LABELS: Record<OutletKind, readonly string[]> = {
   stockist: ['godown', 'depot', 'office', 'other'],
 };
 
+/** Active pins a doctor may have. A deactivated pin does not count. */
+const DOCTOR_LOCK_LIMIT = 5;
+
 type LocRow = typeof outletLocations.$inferSelect;
 
 /** ABM (rank 2) through director, plus system_admin. */
@@ -110,7 +113,7 @@ export class OutletLocationsService {
   }
 
   /**
-   * First lock / add location. Reps may add (doctors: unlimited; chem/stockist: one active).
+   * First lock / add location. Doctors may have 5 active pins; chem/stockist: one active.
    * Idempotent on clientId. Stricter accuracy than visit check-ins.
    */
   create(p: Principal, outletKind: OutletKind, outletId: string, b: OutletLocationCreate) {
@@ -163,6 +166,8 @@ export class OutletLocationsService {
             'This outlet already has a locked location; ask a manager to edit it',
             { locationId: existing.id },
           );
+      } else {
+        await this.assertDoctorLockRoom(tx, outletId);
       }
 
       const lockedAt = new Date(b.capturedAt);
@@ -280,6 +285,9 @@ export class OutletLocationsService {
             'Another active location already exists for this outlet',
           );
       }
+      if (b.active === true && !row.active && row.outletKind === 'doctor') {
+        await this.assertDoctorLockRoom(tx, row.outletId);
+      }
 
       const before = {
         label: row.label,
@@ -364,6 +372,28 @@ export class OutletLocationsService {
       );
     const want = new Set(pairs.map((p) => `${p.outletKind}:${p.outletId}`));
     return rows.filter((r) => want.has(`${r.outletKind}:${r.outletId}`));
+  }
+
+  /** Active doctor pins, not counting a row that is about to be reactivated. */
+  private async assertDoctorLockRoom(tx: Tx, outletId: string) {
+    const [row] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(outletLocations)
+      .where(
+        and(
+          eq(outletLocations.outletKind, 'doctor'),
+          eq(outletLocations.outletId, outletId),
+          eq(outletLocations.active, true),
+          isNull(outletLocations.deletedAt),
+        ),
+      );
+    if ((row?.n ?? 0) >= DOCTOR_LOCK_LIMIT)
+      throw err(
+        409,
+        'LOCATION_LIMIT',
+        `A doctor can have at most ${DOCTOR_LOCK_LIMIT} locked places`,
+        { limit: DOCTOR_LOCK_LIMIT },
+      );
   }
 
   nearest(

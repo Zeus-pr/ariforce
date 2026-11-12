@@ -27,7 +27,8 @@ Read scope: caller + reporting line (`field:read`); `userId` outside the team �
 - `GET /v1/outlets/{kind}/{id}/locations` — active locks (`field:read`).
 - `POST /v1/outlets/{kind}/{id}/locations` — first lock / add (`field:write`). Idempotent on `clientId`.
   Accuracy must be ≤ `lockMaxAccuracyM` (default 80). Chemist/stockist: `409 LOCATION_EXISTS` if one is already active.
-  Doctor labels: `clinic|hospital|chamber|residence|nursing_home|other`. Chemist: `retail_shop|distributor_counter|other`.
+  Doctor labels: `clinic|hospital|chamber|residence|nursing_home|other`. A doctor may have 5 active pins;
+  a sixth lock is `409 LOCATION_LIMIT`. Chemist: `retail_shop|distributor_counter|other`.
   Stockist: `godown|depot|office|other`.
 - `PATCH /v1/outlet-locations/{id}` — ABM→Director and system_admin only (403 for BM). Edit label/coords or deactivate.
   Append-only `geo_lock_events` + audit.

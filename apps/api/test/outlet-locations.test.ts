@@ -190,6 +190,29 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
     expect(abmPatch.body.label).toBe('chamber');
   });
 
+  it('a doctor cannot have a sixth active lock', async () => {
+    await enrolBmDevice();
+    const docId = await makeDoctor(`Dr Five ${RUN}`);
+    for (let i = 0; i < 5; i++) {
+      const ok = await http()
+        .post(`/v1/outlets/doctor/${docId}/locations`)
+        .set(as('bm'))
+        .send(
+          cap({
+            label: i === 0 ? 'clinic' : 'chamber',
+            location: { lat: HOME.lat + i * 0.01, lng: HOME.lng },
+          }),
+        );
+      expect(ok.status, JSON.stringify(ok.body)).toBe(201);
+    }
+    const sixth = await http()
+      .post(`/v1/outlets/doctor/${docId}/locations`)
+      .set(as('bm'))
+      .send(cap({ label: 'chamber', location: { lat: HOME.lat + 0.06, lng: HOME.lng } }));
+    expect(sixth.status).toBe(409);
+    expect(sixth.body.error.code).toBe('LOCATION_LIMIT');
+  });
+
   it('presentation hard-blocks without lock / outside 300m; allows in fence', async () => {
     // Own BM so seed-bm DCR submits in other files cannot 409 DAY_ALREADY_SUBMITTED.
     const staff = await insertStaff(`outlet-pres-${RUN}@example.test`, 'business_manager', U.area, [
