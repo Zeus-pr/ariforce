@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Res } from '@nestjs/common';
 import {
+  DoctorLockCap,
   OutletKind as OutletKindSchema,
   OutletLocationCreate,
   OutletLocationPatch,
@@ -38,6 +39,16 @@ export class OutletLocationsController {
     const r = await this.svc.create(p, path.kind, path.id, b);
     res.status(r.replay ? 200 : 201);
     return r.body;
+  }
+
+  @Patch('outlets/:kind/:id/lock-cap')
+  @RequirePermissions('field:write')
+  setLockCap(
+    @CurrentPrincipal() p: Principal,
+    @Param(new ZodPipe(KindParam)) path: z.infer<typeof KindParam>,
+    @Body(new ZodPipe(DoctorLockCap)) b: DoctorLockCap,
+  ) {
+    return this.svc.setLockCap(p, path.kind, path.id, b.maxActiveLocks);
   }
 
   @Patch('outlet-locations/:id')

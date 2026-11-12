@@ -470,6 +470,13 @@
       "when": 1794200000000,
       "tag": "0066_system_admin_field_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794300000000,
+      "tag": "0067_doctor_lock_cap",
+      "breakpoints": true
     }
   ]
 }

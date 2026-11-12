@@ -3,6 +3,12 @@ import { eq } from 'drizzle-orm';
 import type { Principal } from '../auth/principal';
 
 export const NOTICE_VERSION = '2026-10-v1';
+
+/** Wording shared by a new pin and a far check-in that is already at the doctor's cap. */
+export function doctorLockLimitMessage(limit: number) {
+  const n = limit === 1 ? '1 locked place' : `${limit} locked places`;
+  return `This doctor already has ${n}. Check in near one of them.`;
+}
 export const MAX_RANGE_DAYS = 62;
 
 export interface CompanySettings {

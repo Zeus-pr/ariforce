@@ -94,6 +94,16 @@ export function OutletLocksCard({
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [drop, setDrop] = useState<OutletLocation | null>(null);
+  const [cap, setCap] = useState<number | null>(null);
+  const [capBusy, setCapBusy] = useState(false);
+
+  const loadCap = useCallback(async () => {
+    const doctor = await api.GET('/v1/doctors/{id}', {
+      params: { path: { id: outletId } },
+    });
+    const n = doctor.data?.maxActiveLocks;
+    setCap(typeof n === 'number' ? n : 1);
+  }, [outletId]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -105,6 +115,7 @@ export function OutletLocksCard({
       // Prefer HTTP ok + items even when openapi-fetch leaves a parse `error`.
       if (r.response?.ok) {
         setItems(r.data?.items ?? []);
+        if (outletKind === 'doctor') await loadCap();
         return;
       }
       // 403 used to surface as NETWORK → false “No lock yet” (sysadmin lacked field:read).
@@ -120,12 +131,13 @@ export function OutletLocksCard({
       }
       if (r.error) throw toApiError(r);
       setItems(r.data?.items ?? []);
+      if (outletKind === 'doctor') await loadCap();
     } catch (e) {
       const apiErr = e instanceof Error ? { code: 'NETWORK', message: e.message } : toApiError(e);
       setItems([]);
       setError(apiErr.message || 'Could not load locks.');
     }
-  }, [outletKind, outletId]);
+  }, [loadCap, outletKind, outletId]);
 
   useEffect(() => {
     setItems(null);
@@ -151,6 +163,28 @@ export function OutletLocksCard({
       toast.error(toApiError(e).message);
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function saveCap(next: number) {
+    setCapBusy(true);
+    try {
+      await apiReady();
+      const r = await api.PATCH('/v1/outlets/{kind}/{id}/lock-cap', {
+        params: { path: { kind: 'doctor', id: outletId } },
+        body: { maxActiveLocks: next },
+      });
+      if (r.error) throw toApiError(r);
+      setCap(r.data?.maxActiveLocks ?? next);
+      toast.success(
+        next === 1
+          ? 'This doctor can have 1 active pin'
+          : `This doctor can have ${next} active pins`,
+      );
+    } catch (e) {
+      toast.error(toApiError(e).message);
+    } finally {
+      setCapBusy(false);
     }
   }
 
@@ -263,10 +297,36 @@ export function OutletLocksCard({
           <CardTitle className="text-base">Locked locations</CardTitle>
           <CardDescription>
             GPS pins for check-in and Presentation.
+            {outletKind === 'doctor' && cap != null
+              ? cap === 1
+                ? ' This doctor can have 1 active pin.'
+                : ` This doctor can have ${cap} active pins.`
+              : ''}
             {canManage
               ? ' Deactivate a wrong pin so the next Check in on mobile locks again.'
               : ' Ask your ABM or admin to fix a wrong pin.'}
           </CardDescription>
+          {outletKind === 'doctor' && canManage && cap != null ? (
+            <div className="mt-3 flex items-center gap-3">
+              <Label htmlFor="doctor-lock-cap">Active pins allowed</Label>
+              <Select
+                value={String(cap)}
+                disabled={capBusy}
+                onValueChange={(value) => void saveCap(Number(value))}
+              >
+                <SelectTrigger id="doctor-lock-cap" className="w-24" data-testid="doctor-lock-cap">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
         </CardHeader>
         <div className={compact ? 'px-0 pb-0' : 'px-4 py-3'}>{body}</div>
       </Card>

@@ -140,11 +140,31 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
     expect(replay.status).toBe(200);
     expect(replay.body.id).toBe(lock.body.id);
 
+    const created = await http().get(`/v1/doctors/${docId}`).set(as('bm'));
+    expect(created.body.maxActiveLocks).toBe(1);
+    const secondBlocked = await http()
+      .post(`/v1/outlets/doctor/${docId}/locations`)
+      .set(as('bm'))
+      .send(cap({ label: 'hospital', location: { lat: 22.571, lng: 88.361 } }));
+    expect(secondBlocked.status).toBe(409);
+    expect(secondBlocked.body.error.code).toBe('LOCATION_LIMIT');
+    const bmCap = await http()
+      .patch(`/v1/outlets/doctor/${docId}/lock-cap`)
+      .set(as('bm'))
+      .send({ maxActiveLocks: 2 });
+    expect(bmCap.status).toBe(403);
+    const abmCap = await http()
+      .patch(`/v1/outlets/doctor/${docId}/lock-cap`)
+      .set(as('abm'))
+      .send({ maxActiveLocks: 2 });
+    expect(abmCap.status, JSON.stringify(abmCap.body)).toBe(200);
+    expect(abmCap.body.maxActiveLocks).toBe(2);
+
     const second = await http()
       .post(`/v1/outlets/doctor/${docId}/locations`)
       .set(as('bm'))
       .send(cap({ label: 'hospital', location: { lat: 22.571, lng: 88.361 } }));
-    expect(second.status).toBe(201);
+    expect(second.status, JSON.stringify(second.body)).toBe(201);
     const listed = await http().get(`/v1/outlets/doctor/${docId}/locations`).set(as('bm'));
     expect(listed.body.items.length).toBeGreaterThanOrEqual(2);
 
@@ -190,13 +210,22 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
     expect(abmPatch.body.label).toBe('chamber');
   });
 
-  it('a doctor cannot have a sixth active lock', async () => {
-    await enrolBmDevice();
-    const docId = await makeDoctor(`Dr Five ${RUN}`);
+  it('a doctor at the pin cap cannot check in away from a saved pin', async () => {
+    const staff = await insertStaff(`outlet-cap-${RUN}@example.test`, 'business_manager', U.area, [
+      T.hq,
+    ]);
+    tok.cap = staff.bearer;
+    await ensureFieldReady(http, tok.cap);
+    const docId = await makeDoctor(`Dr Cap ${RUN}`);
+    const raised = await http()
+      .patch(`/v1/outlets/doctor/${docId}/lock-cap`)
+      .set(as('abm'))
+      .send({ maxActiveLocks: 5 });
+    expect(raised.status, JSON.stringify(raised.body)).toBe(200);
     for (let i = 0; i < 5; i++) {
       const ok = await http()
         .post(`/v1/outlets/doctor/${docId}/locations`)
-        .set(as('bm'))
+        .set(as('cap'))
         .send(
           cap({
             label: i === 0 ? 'clinic' : 'chamber',
@@ -207,10 +236,70 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
     }
     const sixth = await http()
       .post(`/v1/outlets/doctor/${docId}/locations`)
-      .set(as('bm'))
+      .set(as('cap'))
       .send(cap({ label: 'chamber', location: { lat: HOME.lat + 0.06, lng: HOME.lng } }));
     expect(sixth.status).toBe(409);
     expect(sixth.body.error.code).toBe('LOCATION_LIMIT');
+
+    const one = await makeDoctor(`Dr One ${RUN}`);
+    const lock = await http()
+      .post(`/v1/outlets/doctor/${one}/locations`)
+      .set(as('cap'))
+      .send(cap({ label: 'clinic' }));
+    expect(lock.status, JSON.stringify(lock.body)).toBe(201);
+    const far = await http()
+      .post('/v1/check-ins')
+      .set(as('cap'))
+      .send(cap({ kind: 'visit', outletKind: 'doctor', outletId: one, location: FAR }));
+    expect(far.status, JSON.stringify(far.body)).toBe(409);
+    expect(far.body.error.code).toBe('LOCATION_LIMIT');
+    const near = await http()
+      .post('/v1/check-ins')
+      .set(as('cap'))
+      .send(cap({ kind: 'visit', outletKind: 'doctor', outletId: one }));
+    expect(near.status, JSON.stringify(near.body)).toBe(201);
+    expect(near.body.inFence).toBe(true);
+
+    const off = await http()
+      .patch(`/v1/outlet-locations/${lock.body.id}`)
+      .set(as('abm'))
+      .send({ version: lock.body.version, active: false });
+    expect(off.status, JSON.stringify(off.body)).toBe(200);
+    const replaced = await http()
+      .post(`/v1/outlets/doctor/${one}/locations`)
+      .set(as('cap'))
+      .send(cap({ label: 'chamber', location: FAR }));
+    expect(replaced.status, JSON.stringify(replaced.body)).toBe(201);
+
+    const fence = await http().get('/v1/settings/geofence').set(as('director'));
+    expect(fence.body.blockOutOfFence).toBe(false);
+    const chem = await http()
+      .post('/v1/chemists')
+      .set(as('director'))
+      .send({
+        territoryId: T.hq,
+        name: `Chem Far ${RUN}`,
+        location: null,
+        gstin: null,
+        drugLicenseNo: null,
+        addressLine: null,
+        city: null,
+        state: null,
+        pincode: null,
+        phone: null,
+      });
+    expect(chem.status, JSON.stringify(chem.body)).toBe(201);
+    const chemLock = await http()
+      .post(`/v1/outlets/chemist/${chem.body.id}/locations`)
+      .set(as('cap'))
+      .send(cap({ label: 'retail_shop' }));
+    expect(chemLock.status, JSON.stringify(chemLock.body)).toBe(201);
+    const chemFar = await http()
+      .post('/v1/check-ins')
+      .set(as('cap'))
+      .send(cap({ kind: 'visit', outletKind: 'chemist', outletId: chem.body.id, location: FAR }));
+    expect(chemFar.status, JSON.stringify(chemFar.body)).toBe(201);
+    expect(chemFar.body.inFence).toBe(false);
   });
 
   it('presentation hard-blocks without lock / outside 300m; allows in fence', async () => {

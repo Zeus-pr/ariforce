@@ -16,7 +16,9 @@ Outlet locks live in `outlet_locations` (doctors: many; chemists/stockists: one 
    5c. Open punches on **prior** local days are auto-closed with a system `punch_out` (`source: manual`, end of that local day) on the next `punch_in` or `GET /v1/me/today` (covers IST midnight without a separate cron).
 6. Visit outlet must be in the caller's territory scope → `404`.
 7. Distance (haversine, metres) to the **nearest active** `outlet_locations` row (else the master `location`);
-   radius = doctor override, else company default. Outside: `422 OUT_OF_FENCE` when `blockOutOfFence`, else
+   radius = doctor override, else company default. A doctor who is already at their pin cap
+   (`doctors.max_active_locks`, default 1) and outside every active pin is `409 LOCATION_LIMIT`.
+   That visit is not stored. Otherwise, outside is `422 OUT_OF_FENCE` when `blockOutOfFence`, else
    stored with `inFence: false`. Untagged outlet: `distanceM`/`inFence` null.
 
 `GET /v1/check-ins?unlinked=true` returns visit check-ins not referenced by any `dcr_calls.geo_capture_id` (DCR call picker, gap #9).
@@ -27,8 +29,10 @@ Read scope: caller + reporting line (`field:read`); `userId` outside the team �
 - `GET /v1/outlets/{kind}/{id}/locations` — active locks (`field:read`).
 - `POST /v1/outlets/{kind}/{id}/locations` — first lock / add (`field:write`). Idempotent on `clientId`.
   Accuracy must be ≤ `lockMaxAccuracyM` (default 80). Chemist/stockist: `409 LOCATION_EXISTS` if one is already active.
-  Doctor labels: `clinic|hospital|chamber|residence|nursing_home|other`. A doctor may have 5 active pins;
-  a sixth lock is `409 LOCATION_LIMIT`. Chemist: `retail_shop|distributor_counter|other`.
+  Doctor labels: `clinic|hospital|chamber|residence|nursing_home|other`. Each doctor starts with
+  **1** active pin. ABM and above, and system admin, set 1–5 with
+  `PATCH /v1/outlets/doctor/{id}/lock-cap`. A pin past that cap is `409 LOCATION_LIMIT`.
+  A deactivated pin does not count. Chemist: `retail_shop|distributor_counter|other`.
   Stockist: `godown|depot|office|other`.
 - `PATCH /v1/outlet-locations/{id}` — ABM→Director and system_admin only (403 for BM). Edit label/coords or deactivate.
   Append-only `geo_lock_events` + audit.

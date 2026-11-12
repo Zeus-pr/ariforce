@@ -20,7 +20,13 @@ import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { autoCloseOpenPunches } from './auto-punch-out';
-import { companySettings, localDate, metres, punchOnCompanyToday } from './field.util';
+import {
+  companySettings,
+  doctorLockLimitMessage,
+  localDate,
+  metres,
+  punchOnCompanyToday,
+} from './field.util';
 
 type Row = typeof geoCaptures.$inferSelect;
 const OUTLETS = { doctor: doctors, chemist: chemists, stockist: stockists } as const;
@@ -273,6 +279,8 @@ export class CheckInsService {
             territoryId: t.territoryId,
             location: t.location,
             radius: b.outletKind === 'doctor' ? doctors.geofenceRadiusM : sql<null>`null`,
+            maxActiveLocks:
+              b.outletKind === 'doctor' ? doctors.maxActiveLocks : sql<number | null>`null`,
           })
           .from(t)
           .innerJoin(territories, eq(territories.id, t.territoryId))
@@ -299,6 +307,14 @@ export class CheckInsService {
         if (centres.length) {
           distanceM = Math.min(...centres.map((c) => metres(b.location, c)));
           inFence = distanceM <= (o.radius ?? s.radiusM);
+          const atDoctorCap = b.outletKind === 'doctor' && locks.length >= (o.maxActiveLocks ?? 1);
+          if (!inFence && atDoctorCap) {
+            const limit = o.maxActiveLocks ?? 1;
+            throw err(409, 'LOCATION_LIMIT', doctorLockLimitMessage(limit), {
+              limit,
+              distanceM,
+            });
+          }
           if (!inFence && s.blockOutOfFence)
             throw err(422, 'OUT_OF_FENCE', `You are ${distanceM} m from the outlet`, {
               distanceM,
