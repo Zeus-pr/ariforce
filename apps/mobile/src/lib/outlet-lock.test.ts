@@ -1,5 +1,11 @@
 /// <reference types="jest" />
-import { metres, nearestLockMetres, shouldOfferAnotherChamber } from '@/lib/outlet-lock';
+import {
+  clampDoctorLockCap,
+  doctorLockLimitReached,
+  metres,
+  nearestLockMetres,
+  shouldOfferAnotherChamber,
+} from '@/lib/outlet-lock';
 
 describe('another doctor chamber', () => {
   const here = { lat: 23.23, lng: 87.07 };
@@ -14,10 +20,16 @@ describe('another doctor chamber', () => {
   it('offers a new pin only for a doctor outside every saved pin', () => {
     const farM = nearestLockMetres(here, [far])!;
     expect(farM).toBeGreaterThan(300);
-    expect(shouldOfferAnotherChamber('doctor', farM, 300, 1)).toBe(true);
-    expect(shouldOfferAnotherChamber('doctor', farM, 300, 5)).toBe(false);
-    expect(shouldOfferAnotherChamber('doctor', 40, 300, 1)).toBe(false);
-    expect(shouldOfferAnotherChamber('doctor', null, 300, 0)).toBe(false);
+    expect(shouldOfferAnotherChamber('doctor', farM, 300, 1, 1)).toBe(false);
+    expect(shouldOfferAnotherChamber('doctor', farM, 300, 1, 2)).toBe(true);
+    expect(shouldOfferAnotherChamber('doctor', farM, 300, 5, 5)).toBe(false);
+    expect(shouldOfferAnotherChamber('doctor', 40, 300, 1, 2)).toBe(false);
+    expect(shouldOfferAnotherChamber('doctor', null, 300, 0, 1)).toBe(false);
+    expect(clampDoctorLockCap(undefined)).toBe(1);
+    expect(clampDoctorLockCap(5)).toBe(5);
+    expect(clampDoctorLockCap(9)).toBe(5);
+    expect(doctorLockLimitReached('doctor', 1, 1)).toBe(true);
+    expect(doctorLockLimitReached('doctor', 1, 2)).toBe(false);
     expect(shouldOfferAnotherChamber('chemist', farM, 300, 1)).toBe(false);
     expect(shouldOfferAnotherChamber('stockist', farM, 300, 1)).toBe(false);
   });

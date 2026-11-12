@@ -19,6 +19,8 @@ import type { PresentationCaptureDraft } from './dcr/adapter';
 import { todayIST } from './dcr/dates';
 import { getFix, type GpsFix } from './location';
 import {
+  clampDoctorLockCap,
+  doctorLockLimitMessage,
   doctorLockLimitReached,
   nearestLockMetres,
   shouldOfferAnotherChamber,
@@ -114,7 +116,10 @@ export function fieldErrorMessage(e: unknown): string {
       case 'LOCATION_EXISTS':
         return 'This outlet already has a locked location.';
       case 'LOCATION_LIMIT':
-        return 'This doctor already has 5 locked places. Check in near one of them.';
+        return (
+          e.message ||
+          'This doctor already has the allowed locked places. Check in near one of them.'
+        );
       case 'IDEMPOTENCY_CONFLICT':
         return 'This check-in was already recorded differently. Refresh and retry.';
       default:
@@ -355,6 +360,19 @@ export async function patchOutletLocation(
   });
 }
 
+export async function getDoctorLockCap(outletId: string): Promise<number> {
+  const doctor = await apiFetch<{ maxActiveLocks?: number | null }>(`/v1/doctors/${outletId}`);
+  return clampDoctorLockCap(doctor?.maxActiveLocks);
+}
+
+export async function setDoctorLockCap(outletId: string, maxActiveLocks: number): Promise<number> {
+  const saved = await apiFetch<{ maxActiveLocks: number }>(
+    `/v1/outlets/doctor/${outletId}/lock-cap`,
+    { method: 'PATCH', body: { maxActiveLocks } },
+  );
+  return clampDoctorLockCap(saved.maxActiveLocks);
+}
+
 /** The rep closed the “another chamber?” question. Check-in does not continue. */
 export class CheckInCancelled extends Error {
   constructor() {
@@ -394,18 +412,23 @@ function confirmAnotherChamber(): Promise<boolean> {
   });
 }
 
-/** Company visit fence, or this doctor’s own fence when one is set. */
-async function visitRadiusM(outletKind: OutletKind, outletId: string): Promise<number | null> {
+/** Company visit fence, this doctor’s own fence, and how many pins they may have. */
+async function doctorVisitRules(
+  outletId: string,
+): Promise<{ radiusM: number | null; cap: number }> {
   try {
     const settings = await apiFetch<{ radiusM: number }>('/v1/settings/geofence');
-    if (typeof settings.radiusM !== 'number') return null;
-    if (outletKind !== 'doctor') return settings.radiusM;
-    const doctor = await apiFetch<{ geofenceRadiusM?: number | null }>(
-      `/v1/doctors/${outletId}`,
-    ).catch(() => null);
-    return typeof doctor?.geofenceRadiusM === 'number' ? doctor.geofenceRadiusM : settings.radiusM;
+    const companyRadius = typeof settings.radiusM === 'number' ? settings.radiusM : null;
+    const doctor = await apiFetch<{
+      geofenceRadiusM?: number | null;
+      maxActiveLocks?: number | null;
+    }>(`/v1/doctors/${outletId}`).catch(() => null);
+    return {
+      radiusM: typeof doctor?.geofenceRadiusM === 'number' ? doctor.geofenceRadiusM : companyRadius,
+      cap: clampDoctorLockCap(doctor?.maxActiveLocks),
+    };
   } catch {
-    return null;
+    return { radiusM: null, cap: 1 };
   }
 }
 
@@ -492,7 +515,8 @@ export async function requireOnDuty(): Promise<void> {
 
 /**
  * Visit check-in. The first pin is saved when the outlet has none.
- * A doctor standing outside every saved pin is asked before another chamber is locked.
+ * A doctor standing outside every saved pin is asked before another chamber is locked,
+ * while they are under that doctor's cap (default 1). At the cap, a far check-in is refused.
  * Chemists and stockists keep one pin.
  */
 export async function visitCheckIn(outletKind: OutletKind, outletId: string): Promise<string> {
@@ -500,33 +524,37 @@ export async function visitCheckIn(outletKind: OutletKind, outletId: string): Pr
   const [deviceId, fix] = await Promise.all([ensureFieldReady(), getFix()]);
   const locks = await listOutletLocations(outletKind, outletId);
   let addedChamber = false;
+  let cap = 1;
   if (!locks.length) {
     await createOutletLock(outletKind, outletId, fix, deviceId, LOCK_LABEL[outletKind]);
   } else if (outletKind === 'doctor') {
-    const radiusM = await visitRadiusM(outletKind, outletId);
+    const rules = await doctorVisitRules(outletId);
+    cap = rules.cap;
     const nearestM = nearestLockMetres(fix.location, locks);
-    if (radiusM != null && shouldOfferAnotherChamber(outletKind, nearestM, radiusM, locks.length)) {
+    if (
+      rules.radiusM != null &&
+      shouldOfferAnotherChamber(outletKind, nearestM, rules.radiusM, locks.length, cap)
+    ) {
       if (!(await confirmAnotherChamber())) throw new CheckInCancelled();
       await createOutletLock(outletKind, outletId, fix, deviceId, 'chamber');
       addedChamber = true;
     } else if (
-      radiusM != null &&
+      rules.radiusM != null &&
       nearestM != null &&
-      nearestM > radiusM &&
-      doctorLockLimitReached(outletKind, locks.length)
+      nearestM > rules.radiusM &&
+      doctorLockLimitReached(outletKind, locks.length, cap)
     ) {
-      throw new ApiError(
-        409,
-        'LOCATION_LIMIT',
-        'This doctor already has 5 locked places. Check in near one of them.',
-      );
+      throw new ApiError(409, 'LOCATION_LIMIT', doctorLockLimitMessage(cap));
     }
   }
   try {
     const visit = await postCheckIn('visit', { fix, outletKind, outletId, deviceId });
     // The company fence said "near", but this doctor's own fence said otherwise.
     if (outletKind === 'doctor' && !addedChamber && locks.length > 0 && visit.inFence === false) {
-      if (!doctorLockLimitReached(outletKind, locks.length) && (await confirmAnotherChamber())) {
+      if (doctorLockLimitReached(outletKind, locks.length, cap)) {
+        throw new ApiError(409, 'LOCATION_LIMIT', doctorLockLimitMessage(cap));
+      }
+      if (await confirmAnotherChamber()) {
         await createOutletLock(outletKind, outletId, fix, deviceId, 'chamber');
       }
     }
@@ -541,12 +569,8 @@ export async function visitCheckIn(outletKind: OutletKind, outletId: string): Pr
     ) {
       throw e;
     }
-    if (doctorLockLimitReached('doctor', locks.length)) {
-      throw new ApiError(
-        409,
-        'LOCATION_LIMIT',
-        'This doctor already has 5 locked places. Check in near one of them.',
-      );
+    if (doctorLockLimitReached('doctor', locks.length, cap)) {
+      throw new ApiError(409, 'LOCATION_LIMIT', doctorLockLimitMessage(cap));
     }
     if (!(await confirmAnotherChamber())) throw e;
     await createOutletLock(outletKind, outletId, fix, deviceId, 'chamber');

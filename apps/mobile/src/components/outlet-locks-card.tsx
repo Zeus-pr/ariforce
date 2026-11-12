@@ -10,10 +10,12 @@ import { ApiError } from '@/lib/api';
 import {
   OUTLET_LOCK_LABELS,
   fieldErrorMessage,
+  getDoctorLockCap,
   googleMapsUrl,
   listOutletLocations,
   outletLockLabelText,
   patchOutletLocation,
+  setDoctorLockCap,
   type OutletKind,
   type OutletLocation,
 } from '@/lib/field';
@@ -49,11 +51,14 @@ export function OutletLocksCard({
   const [items, setItems] = useState<OutletLocation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [cap, setCap] = useState<number | null>(null);
+  const [capBusy, setCapBusy] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
     try {
       setItems(await listOutletLocations(outletKind, outletId));
+      if (outletKind === 'doctor') setCap(await getDoctorLockCap(outletId));
     } catch (e) {
       setItems([]);
       if (e instanceof ApiError && e.status === 403) {
@@ -100,6 +105,17 @@ export function OutletLocksCard({
     );
   }
 
+  async function saveCap(next: number) {
+    setCapBusy(true);
+    try {
+      setCap(await setDoctorLockCap(outletId, next));
+    } catch (e) {
+      Alert.alert('Couldn’t update the pin cap', fieldErrorMessage(e));
+    } finally {
+      setCapBusy(false);
+    }
+  }
+
   function cycleLabel(loc: OutletLocation) {
     const opts = OUTLET_LOCK_LABELS[outletKind];
     const i = opts.findIndex((o) => o.value === loc.label);
@@ -117,8 +133,10 @@ export function OutletLocksCard({
           <AppText variant="label">Locked locations</AppText>
           <AppText variant="small" style={styles.desc}>
             GPS pins for check-in and Presentation.
-            {outletKind === 'doctor'
-              ? ' A doctor can have up to 5 pins. Checking in away from these can lock another chamber until that cap.'
+            {outletKind === 'doctor' && cap != null
+              ? cap === 1
+                ? ' This doctor can have 1 active pin. A check-in away from it is refused.'
+                : ` This doctor can have ${cap} active pins. Checking in away from these can lock another chamber until that cap.`
               : ''}
             {canManage
               ? ' Deactivate a wrong pin so the next Check in locks again.'
@@ -126,6 +144,37 @@ export function OutletLocksCard({
           </AppText>
         </View>
       </View>
+
+      {outletKind === 'doctor' && canManage && cap != null ? (
+        <View style={styles.capRow}>
+          <AppText variant="small" style={styles.desc}>
+            Active pins allowed
+          </AppText>
+          <View style={styles.capChoices}>
+            {[1, 2, 3, 4, 5].map((n) => {
+              const on = n === cap;
+              return (
+                <PressableScale
+                  key={n}
+                  onPress={() => void saveCap(n)}
+                  disabled={capBusy || on}
+                  accessibilityLabel={`Allow ${n} active pins`}
+                  accessibilityState={{ selected: on }}
+                  scaleTo={0.96}
+                  style={[styles.capChoice, on && styles.capChoiceOn]}
+                >
+                  <AppText
+                    variant="label"
+                    style={on ? styles.capChoiceOnText : styles.capChoiceText}
+                  >
+                    {n}
+                  </AppText>
+                </PressableScale>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
 
       {items === null ? (
         <SkeletonList count={1} />
@@ -229,6 +278,20 @@ const styles = StyleSheet.create({
   },
   headText: { flex: 1, gap: 2 },
   desc: { color: colors.muted },
+  capRow: { gap: spacing.sm },
+  capChoices: { flexDirection: 'row', gap: spacing.sm },
+  capChoice: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    borderCurve: 'continuous',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.ground,
+  },
+  capChoiceOn: { backgroundColor: colors.canopyDeep },
+  capChoiceText: { color: colors.ink },
+  capChoiceOnText: { color: colors.surface },
   err: { color: colors.danger },
   empty: { paddingVertical: spacing.xs },
   list: { gap: 0 },

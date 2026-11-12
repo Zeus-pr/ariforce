@@ -1,5 +1,9 @@
 /** Distance and “another chamber” decision. No React Native imports, so tests can load it. */
 
+export const DOCTOR_LOCK_CAP_MIN = 1;
+export const DOCTOR_LOCK_CAP_MAX = 5;
+export const DEFAULT_DOCTOR_LOCK_CAP = 1;
+
 export function metres(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6_371_000;
   const rad = (x: number) => (x * Math.PI) / 180;
@@ -19,29 +23,41 @@ export function nearestLockMetres(
   return Math.min(...locks.map((lock) => metres(here, lock.location)));
 }
 
-export const DOCTOR_LOCK_LIMIT = 5;
+/** Missing or out-of-range values stay at the default of one pin. */
+export function clampDoctorLockCap(value: number | null | undefined): number {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return DEFAULT_DOCTOR_LOCK_CAP;
+  return Math.min(DOCTOR_LOCK_CAP_MAX, Math.max(DOCTOR_LOCK_CAP_MIN, value));
+}
+
+export function doctorLockLimitMessage(cap: number): string {
+  const n = clampDoctorLockCap(cap);
+  const places = n === 1 ? 'place' : 'places';
+  return `This doctor already has ${n} locked ${places}. Check in near one of them.`;
+}
 
 /**
  * A doctor who is outside every saved pin should be offered a new chamber,
- * until they already have five active pins. Chemists and stockists keep a single pin.
+ * while they are still under that doctor's cap. Chemists and stockists keep a single pin.
  */
 export function shouldOfferAnotherChamber(
   outletKind: 'doctor' | 'chemist' | 'stockist',
   nearestM: number | null,
   radiusM: number,
   activeLocks: number,
+  cap: number = DEFAULT_DOCTOR_LOCK_CAP,
 ): boolean {
   return (
     outletKind === 'doctor' &&
     nearestM != null &&
     nearestM > radiusM &&
-    activeLocks < DOCTOR_LOCK_LIMIT
+    activeLocks < clampDoctorLockCap(cap)
   );
 }
 
 export function doctorLockLimitReached(
   outletKind: 'doctor' | 'chemist' | 'stockist',
   activeLocks: number,
+  cap: number = DEFAULT_DOCTOR_LOCK_CAP,
 ): boolean {
-  return outletKind === 'doctor' && activeLocks >= DOCTOR_LOCK_LIMIT;
+  return outletKind === 'doctor' && activeLocks >= clampDoctorLockCap(cap);
 }
