@@ -785,13 +785,15 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '201': { description: 'Recorded', ...json(CheckIn) },
             '200': { description: 'Already recorded (same clientId)', ...json(CheckIn) },
-            '409': err('Sequence error (e.g. visit before punch-in, second punch-in)'),
+            '409': err(
+              'Sequence error, or LOCATION_LIMIT when a doctor is already at their pin cap and outside every saved pin',
+            ),
             '404': err('Outlet not found or outside your territories'),
             '412': err(
               'No active enrolled device (DEVICE_NOT_ACTIVE) or consent missing (CONSENT_REQUIRED)',
             ),
             '422': err(
-              'Validation failed; LOW_ACCURACY, MOCK_LOCATION or OUT_OF_FENCE when the company policy blocks',
+              'Validation failed; LOW_ACCURACY, MOCK_LOCATION, or OUT_OF_FENCE. A chemist or stockist with a locked pin is refused outside that pin',
             ),
           },
         }),

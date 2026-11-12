@@ -12333,7 +12333,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Sequence error (e.g. visit before punch-in, second punch-in) */
+      /** @description Sequence error, or LOCATION_LIMIT when a doctor is already at their pin cap and outside every saved pin */
       409: {
         headers: {
           [name: string]: unknown;
@@ -12351,7 +12351,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Validation failed; LOW_ACCURACY, MOCK_LOCATION or OUT_OF_FENCE when the company policy blocks */
+      /** @description Validation failed; LOW_ACCURACY, MOCK_LOCATION, or OUT_OF_FENCE. A chemist or stockist with a locked pin is refused outside that pin */
       422: {
         headers: {
           [name: string]: unknown;

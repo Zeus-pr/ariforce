@@ -5473,7 +5473,7 @@
             }
           },
           "409": {
-            "description": "Sequence error (e.g. visit before punch-in, second punch-in)",
+            "description": "Sequence error, or LOCATION_LIMIT when a doctor is already at their pin cap and outside every saved pin",
             "content": {
               "application/json": {
                 "schema": {
@@ -5493,7 +5493,7 @@
             }
           },
           "422": {
-            "description": "Validation failed; LOW_ACCURACY, MOCK_LOCATION or OUT_OF_FENCE when the company policy blocks",
+            "description": "Validation failed; LOW_ACCURACY, MOCK_LOCATION, or OUT_OF_FENCE. A chemist or stockist with a locked pin is refused outside that pin",
             "content": {
               "application/json": {
                 "schema": {

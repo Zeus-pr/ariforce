@@ -308,6 +308,7 @@ export class CheckInsService {
           distanceM = Math.min(...centres.map((c) => metres(b.location, c)));
           inFence = distanceM <= (o.radius ?? s.radiusM);
           const atDoctorCap = b.outletKind === 'doctor' && locks.length >= (o.maxActiveLocks ?? 1);
+          const lockedOutlet = b.outletKind === 'chemist' || b.outletKind === 'stockist';
           if (!inFence && atDoctorCap) {
             const limit = o.maxActiveLocks ?? 1;
             throw err(409, 'LOCATION_LIMIT', doctorLockLimitMessage(limit), {
@@ -315,6 +316,12 @@ export class CheckInsService {
               distanceM,
             });
           }
+          // A chemist or stockist with a saved pin cannot check in away from it.
+          if (!inFence && lockedOutlet && locks.length > 0)
+            throw err(422, 'OUT_OF_FENCE', `You are ${distanceM} m from the outlet`, {
+              distanceM,
+              radiusM: o.radius ?? s.radiusM,
+            });
           if (!inFence && s.blockOutOfFence)
             throw err(422, 'OUT_OF_FENCE', `You are ${distanceM} m from the outlet`, {
               distanceM,
