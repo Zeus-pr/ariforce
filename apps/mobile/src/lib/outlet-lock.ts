@@ -1,9 +1,6 @@
 /** Distance and “another chamber” decision. No React Native imports, so tests can load it. */
 
-export function metres(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number },
-): number {
+export function metres(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6_371_000;
   const rad = (x: number) => (x * Math.PI) / 180;
   const dLat = rad(b.lat - a.lat);
