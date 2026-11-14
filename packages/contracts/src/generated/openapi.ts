@@ -3386,6 +3386,8 @@ export interface components {
        * @default null
        */
       details: components['schemas']['DcrDetails'] | null;
+      /** @default [] */
+      sections: components['schemas']['TourPlanSection'][];
     };
     DcrSfcRouteChoice: {
       /**
@@ -3495,6 +3497,22 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       leaveRequestId: string;
+    };
+    TourPlanSection: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      /** @default [] */
+      territoryIds: string[];
+      /** @default [] */
+      workWithUserIds: string[];
+      /** @default [] */
+      sfcRoutes: components['schemas']['DcrSfcRouteChoice'][];
+      /** @default null */
+      details: components['schemas']['DcrDetails'] | null;
     };
     TourPlanItemDecision: {
       /** @enum {string} */
@@ -3745,6 +3763,8 @@ export interface components {
       /** @description The approved TourPlanItem this day is filed from. The date must lie in its from..to and it must be yours and approved, else 422 VALIDATION (details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date in the range may be drafted (submit still opens on the day). Omitted: the server links the approved item covering the date, if any. No deviation reason is ever required */
       tourPlanItemId?: string | null;
       calls?: components['schemas']['DcrCallInput'][];
+      /** @description Every section of the day, in order. When sent, this replaces the day. The first section is also stored on the header fields. Omit to save a single section from the header fields. */
+      sections?: components['schemas']['DcrSectionInput'][];
       /** @description Day expenses (any work type), replaces the saved list. Omit to keep it. Categories travel/hotel/food/other (else 422 DCR_EXPENSE_CATEGORY_INVALID). Receipt files go on the linked claim line */
       expenses?: components['schemas']['DcrExpenseItem'][];
       /** @description Row version from the last read */
@@ -3752,6 +3772,22 @@ export interface components {
     };
     /** @enum {string} */
     DcrBand: 'hq' | 'ex_hq' | 'outstation';
+    DcrSectionInput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      /** @default [] */
+      territoryIds: string[];
+      /** @default [] */
+      workWithUserIds: string[];
+      /** @default [] */
+      sfcRoutes: components['schemas']['DcrSfcRouteChoice'][];
+      details?: components['schemas']['DcrDetails'] | null;
+      calls?: components['schemas']['DcrCallInput'][];
+    };
     DcrExpenseItem: {
       /** @description One of travel, hotel, food, other. allowance and mileage stay with TA/DA: 422 DCR_EXPENSE_CATEGORY_INVALID */
       category: components['schemas']['ExpenseCategory'];
@@ -5825,6 +5861,10 @@ export interface components {
       submittedAt: string | null;
       decidedAt: string | null;
       decidedBy: string | null;
+      /** @description Both-way TA of the selected SFC routes, each route once across every section */
+      ta?: number;
+      /** @description The greatest DA among those routes */
+      da?: number;
     };
     StandardTourPlan: {
       /**
@@ -6016,6 +6056,8 @@ export interface components {
       expenseCount?: number;
       /** @description Live calls on this DCR (GET /v1/dcrs list only) */
       callCount?: number;
+      /** @description Every section of the day. Absent on older responses: the header is the only section */
+      sections?: components['schemas']['DcrSection'][];
     };
     DcrCall: {
       /**
@@ -6115,6 +6157,20 @@ export interface components {
      * @enum {string}
      */
     DcrSfcSource: 'own' | 'hq';
+    DcrSection: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      band: components['schemas']['DcrBand'] | null;
+      territoryIds: string[];
+      workWithUserIds: string[];
+      sfcRoutes: components['schemas']['DcrSfcRoute'][];
+      details: components['schemas']['DcrDetailsOutput'] | null;
+      calls: components['schemas']['DcrCall'][];
+    };
     CompetitorBrandList: {
       items: components['schemas']['CompetitorBrand'][];
     };
@@ -6364,6 +6420,10 @@ export interface components {
       submittedAt: string | null;
       decidedAt: string | null;
       decidedBy: string | null;
+      /** @description Both-way TA of the selected SFC routes, each route once across every section */
+      ta?: number;
+      /** @description The greatest DA among those routes */
+      da?: number;
       /** @description Unfiled days from today (IST) on; the card is listed only while this is non-empty */
       pendingDates: string[];
       /** @description pendingDates that already have a DCR draft */
@@ -6635,6 +6695,8 @@ export interface components {
       expenseCount?: number;
       /** @description Live calls on this DCR (GET /v1/dcrs list only) */
       callCount?: number;
+      /** @description Every section of the day. Absent on older responses: the header is the only section */
+      sections?: components['schemas']['DcrSection'][];
       /**
        * @description Server TA/DA auto-draft outcome; null when the company setting autoExpenseOnDcrSubmit is off or on an idempotent retry. Clients: non-null means the server drafted (do not draft client-side)
        * @default null
@@ -8915,6 +8977,8 @@ export interface components {
        * @default null
        */
       details: components['schemas']['DcrDetailsOutput'] | null;
+      /** @default [] */
+      sections: components['schemas']['TourPlanSectionOutput'][];
     };
     DcrSfcRouteChoiceOutput: {
       /**
@@ -9024,6 +9088,22 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       leaveRequestId: string;
+    };
+    TourPlanSectionOutput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      /** @default [] */
+      territoryIds: string[];
+      /** @default [] */
+      workWithUserIds: string[];
+      /** @default [] */
+      sfcRoutes: components['schemas']['DcrSfcRouteChoiceOutput'][];
+      /** @default null */
+      details: components['schemas']['DcrDetailsOutput'] | null;
     };
     StandardTourPlanDayOutput: {
       week: number;

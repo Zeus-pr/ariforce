@@ -155,6 +155,14 @@ export class TourPlanItemsService {
         .map((c) => c.sfcRouteId);
       if (m.length) bad['plan.sfcRoutes'] = m;
     }
+    for (const [i, section] of plan.sections.entries()) {
+      const [swt] = await tx
+        .select({ id: workTypes.id, active: workTypes.active, kind: workTypes.kind })
+        .from(workTypes)
+        .where(and(eq(workTypes.id, section.workTypeId), isNull(workTypes.deletedAt)));
+      if (!swt?.active || swt.kind === 'leave' || swt.kind === 'holiday')
+        bad[`plan.sections.${i}.workTypeId`] = [section.workTypeId];
+    }
     if (Object.keys(bad).length)
       throw err(422, 'VALIDATION', 'Unknown or out-of-scope references', bad);
   }

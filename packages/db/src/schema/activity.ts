@@ -186,6 +186,11 @@ export const dcrs = pgTable(
       .$type<{ category: string; amount: number; note?: string | null }[]>()
       .notNull()
       .default(sql`'[]'::jsonb`),
+    /** One day, many sections. Empty means the header columns are the only section. */
+    sections: jsonb('sections')
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     /** Day-level Work With (0043): anyone in the company. */
     workWithUserIds: uuid('work_with_user_ids')
       .array()
@@ -241,11 +246,12 @@ export const dcrSfcRoutes = pgTable(
       .notNull()
       .references(() => sfcRoutes.id),
     snapshot: jsonb('snapshot'),
+    sectionIndex: integer('section_index').notNull().default(0),
     ...syncCols(),
   },
   (t) => [
-    uniqueIndex('dcr_sfc_routes_dcr_hq_uq')
-      .on(t.companyId, t.dcrId, t.hqTerritoryId)
+    uniqueIndex('dcr_sfc_routes_dcr_section_hq_uq')
+      .on(t.companyId, t.dcrId, t.sectionIndex, t.hqTerritoryId)
       .where(sql`deleted_at IS NULL`),
     index('dcr_sfc_routes_route_idx').on(t.companyId, t.sfcRouteId),
     check('dcr_sfc_routes_snapshot_ck', sql`snapshot IS NULL OR jsonb_typeof(snapshot) = 'object'`),
@@ -284,6 +290,7 @@ export const dcrCalls = pgTable(
     /** Server-computed metres from the capture to presentationLocationId. */
     presentationDistanceM: bigint('presentation_distance_m', { mode: 'number' }),
     presentationAccuracyM: real('presentation_accuracy_m'),
+    sectionIndex: integer('section_index').notNull().default(0),
     ...syncCols(),
   },
   (t) => [
