@@ -1,5 +1,5 @@
 import { companies, type Tx } from '@ariforce/db';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { Principal } from '../auth/principal';
 
 export const NOTICE_VERSION = '2026-10-v1';
@@ -10,6 +10,20 @@ export function doctorLockLimitMessage(limit: number) {
   return `This doctor already has ${n}. Check in near one of them.`;
 }
 export const MAX_RANGE_DAYS = 62;
+
+/** Company weekly off from leave settings. Sunday when the company has no row. */
+export async function isWeeklyOff(tx: Tx, companyId: string, date: string) {
+  const r = await tx.execute(sql`
+    select 1
+    where coalesce(
+      (select extract(dow from ${date}::date)::int = any (coalesce(weekly_off_days, '{0}'::int[]))
+         from leave_settings
+        where company_id = ${companyId}::uuid and deleted_at is null
+        limit 1),
+      extract(dow from ${date}::date)::int = 0
+    )`);
+  return r.rows.length > 0;
+}
 
 export interface CompanySettings {
   timezone: string;

@@ -24,6 +24,7 @@ import { leaveBlocksWork } from '../leave/leave.util';
 import {
   companySettings,
   doctorLockLimitMessage,
+  isWeeklyOff,
   localDate,
   metres,
   punchOnCompanyToday,
@@ -252,10 +253,13 @@ export class CheckInsService {
       if (b.kind !== 'punch_in' && !has('punch_in')) throw err(409, 'SEQUENCE', 'Punch in first');
       if (!relaxSequence && has('punch_out'))
         throw err(409, 'SEQUENCE', 'Already punched out today');
+      const weeklyOff = await isWeeklyOff(tx, p.companyId, day);
+      if (b.kind === 'punch_in' && weeklyOff)
+        throw err(422, 'WEEKLY_OFF', 'Punch in stays closed on a weekly off');
       if (b.kind === 'punch_in' && (await leaveBlocksWork(tx, p.userId, day)))
         throw err(422, 'LEAVE_DAY_BLOCKED', 'Leave covers this day, so punch in stays closed');
 
-      if (b.kind === 'punch_out') {
+      if (b.kind === 'punch_out' && !weeklyOff) {
         const [dcr] = await tx
           .select({ id: dcrs.id, status: dcrs.status })
           .from(dcrs)
