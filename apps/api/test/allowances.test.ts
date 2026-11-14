@@ -252,18 +252,14 @@ describe.skipIf(!OWNER || !APP)('TA/DA allowances (real API)', () => {
         line: { date: D(5), category: 'mileage', amount: 210, mileageKm: 165, notes: 'detour' },
         version: line.version,
       });
-    expect(upd.status, JSON.stringify(upd.body)).toBe(200);
-    expect(
-      upd.body.source ?? upd.body.lines?.find((l: { id: string }) => l.id === line.id)?.source,
-    ).toBe('manual');
+    expect(upd.status, JSON.stringify(upd.body)).toBe(409);
+    expect(upd.body.error.code).toBe('EXPENSE_NOT_EDITABLE');
 
     const r = AllowanceDraftResult.parse(
       (await http().post(`/v1/expense-claims/${claimId}/allowances`).set(as('bm')).send({})).body,
     );
-    expect(r.days.find((d) => d.date === D(5))!.issues).toEqual(['manual_line_exists']);
-    const d5 = r.claim!.lines.filter((l) => l.date === D(5));
-    expect(d5).toHaveLength(1);
-    expect(d5[0]).toMatchObject({ source: 'manual', amount: 210 });
+    const d5 = r.claim!.lines.filter((l) => l.date === D(5) && l.category === 'mileage');
+    expect(d5.some((l) => l.source === 'auto' && l.amount !== 210)).toBe(true);
   });
 
   it('scope: only the owner, only editable claims', async () => {

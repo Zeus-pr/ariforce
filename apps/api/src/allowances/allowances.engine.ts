@@ -198,7 +198,7 @@ export async function computeAllowances(
         (l) =>
           l.date === d.date &&
           l.source === 'manual' &&
-          (l.category === 'allowance' || l.category === 'mileage'),
+          (l.category === 'allowance' || l.category === 'mileage' || l.category === 'travel'),
       )
     ) {
       day.issues.push('manual_line_exists');

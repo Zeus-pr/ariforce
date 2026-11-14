@@ -38,6 +38,7 @@ import { and, asc, eq, gte, inArray, isNull, lt, ne, or, sql, type SQL } from 'd
 import { v7 as uuidv7 } from 'uuid';
 import type * as z from 'zod';
 import type { Principal } from '../auth/principal';
+import { ExpenseAutoDraftService } from './auto-draft.service';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
@@ -101,6 +102,7 @@ export class ExpensesService implements OnModuleInit {
     private readonly approvals: ApprovalsService,
     private readonly storage: StorageService,
     private readonly notifications: NotificationsService,
+    private readonly autoDraft: ExpenseAutoDraftService,
   ) {}
 
   onModuleInit() {
@@ -129,6 +131,13 @@ export class ExpensesService implements OnModuleInit {
           dedupeKey: `expense.decided:${req.id}`,
           data: { ...(req.payload ?? {}), comment, ...(approved ? {} : { reason: comment }) },
         });
+        if (!approved) {
+          const [c] = await tx
+            .select()
+            .from(expenseClaims)
+            .where(eq(expenseClaims.id, req.entityId));
+          if (c) await this.autoDraft.backfillMonth(tx, p, c);
+        }
       },
       {
         levels: approvalLevels(),
@@ -656,6 +665,25 @@ export class ExpensesService implements OnModuleInit {
       throw err(422, 'VALIDATION', `date must be in ${m}`, { field: 'date' });
     if (l.date > localDate(new Date(), (await companySettings(tx, p)).timezone))
       throw err(422, 'VALIDATION', 'date cannot be in the future', { field: 'date' });
+    if (l.category === 'allowance' || l.category === 'mileage' || l.category === 'travel') {
+      const [auto] = await tx
+        .select({ id: expenseLines.id })
+        .from(expenseLines)
+        .where(
+          and(
+            eq(expenseLines.claimId, c.id),
+            eq(expenseLines.date, l.date),
+            eq(expenseLines.origin, 'ta_da'),
+            eq(expenseLines.category, l.category),
+            isNull(expenseLines.deletedAt),
+          ),
+        )
+        .limit(1);
+      if (auto)
+        throw err(422, 'VALIDATION', 'This day already has that allowance from the DCR', {
+          field: 'category',
+        });
+    }
     if (l.dcrId) {
       const [d] = await tx
         .select({ date: dcrs.date })
@@ -732,13 +760,15 @@ export class ExpensesService implements OnModuleInit {
 
   /** Lines copied from a DCR are edited on the DCR (resubmit replaces them), never here. */
   private notDcrLine(l: LineRow) {
-    if (l.origin === 'dcr')
+    if (l.origin === 'dcr' || l.origin === 'ta_da')
       throw err(
         409,
         'EXPENSE_NOT_EDITABLE',
-        'This line comes from your DCR; change the DCR expenses',
+        l.origin === 'dcr'
+          ? 'This line comes from your DCR; change the DCR expenses'
+          : 'This TA/DA comes from the DCR and cannot be edited',
         {
-          reason: 'DCR_LINE',
+          reason: l.origin === 'dcr' ? 'DCR_LINE' : 'TA_DA_LINE',
           dcrId: l.dcrId,
         },
       );
@@ -897,7 +927,10 @@ export class ExpensesService implements OnModuleInit {
       const dto = await this.toDto(tx, c, p);
       if (!dto.lines.length) throw err(422, 'EXPENSE_EMPTY', 'Add at least one line first');
       const noReceipt = dto.lines.filter(
-        (l) => l.category === 'hotel' && !l.attachments.some((a) => a.status === 'confirmed'),
+        (l) =>
+          !l.dcrRejectedAt &&
+          l.category === 'hotel' &&
+          !l.attachments.some((a) => a.status === 'confirmed'),
       );
       if (noReceipt.length)
         throw err(422, 'RECEIPT_REQUIRED', 'Hotel lines need a confirmed receipt', {
@@ -1007,17 +1040,6 @@ export class ExpensesService implements OnModuleInit {
           uploadedBy: p.userId,
         })
         .returning();
-      // A receipt on a drafted TA/DA line makes it the rep's own (kept on re-run).
-      await tx
-        .update(expenseLines)
-        .set({ source: 'manual', autoTrigger: null, origin: 'manual' })
-        .where(
-          and(
-            eq(expenseLines.id, lineId),
-            eq(expenseLines.source, 'auto'),
-            ne(expenseLines.origin, 'dcr'),
-          ),
-        );
       await this.audit.record(tx, p, 'expense.attachment_requested', {
         entityType: 'expense_attachment',
         entityId: a!.id,
@@ -1335,7 +1357,7 @@ function reconcileClaim(
     claimId: c.id,
     userId: c.userId,
     month: m,
-    total: r2(lines.reduce((s, l) => s + Number(l.amount), 0)),
+    total: r2(payable.reduce((s, l) => s + Number(l.amount), 0)),
     claimedDays: out.length,
     dcrDays: days.filter((d) => d.status === 'submitted' || d.status === 'approved').length,
     matchedDays: out.filter((d) => !d.flags.length).length,

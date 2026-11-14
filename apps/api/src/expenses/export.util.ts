@@ -64,7 +64,7 @@ export async function toXlsx(
     { header: 'Flags', key: 'flags', width: 30 },
   ];
   for (const d of data)
-    for (const x of d.lines) {
+    for (const x of d.lines.filter((line) => !line.dcrRejectedAt)) {
       const day = d.rec.days.find((y) => y.date === x.date);
       l.addRow({
         name: d.userName,

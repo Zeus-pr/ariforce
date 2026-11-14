@@ -411,7 +411,9 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
       .set(as('rbm'))
       .send({ decision: 'reject', comment: 'no receipt' });
     expect(r.body).toMatchObject({ status: 'rejected', decisionComment: 'no receipt' });
-    const lineId = r.body.lines[0].id as string;
+    const lineId = (r.body.lines as { id: string; amount: number }[]).find(
+      (l) => l.amount === 99,
+    )!.id;
     r = await http()
       .put(`/v1/expense-claims/${id}/lines/${lineId}`)
       .set(as('bm2'))
@@ -421,6 +423,7 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
       .put(`/v1/expense-claims/${id}/lines/${lineId}`)
       .set(as('bm2'))
       .send({ line: line({ amount: 80 }), version: 1 });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect(r.body.total).toBe(80);
     r = await http().post(`/v1/expense-claims/${id}/submit`).set(as('bm2'));
     expect(r.body.status).toBe('submitted');
