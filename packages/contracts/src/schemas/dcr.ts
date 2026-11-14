@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { DateOnly, Id, Timestamp } from './common';
 import { DcrBand, DcrDetails, DcrExpenses, DcrSfcRouteChoice, DcrSfcSource } from './dcr-parts';
-import { Dcr, DcrCallInput } from './field';
+import { Dcr, DcrCallInput, DcrSectionInput } from './field';
 import { TourPlanItem } from './tp-items';
 import { Product } from './products';
 import { SfcCategory, SfcTravelMode } from './sfc';
@@ -307,6 +307,10 @@ export const DcrDraftPut = z
         'The approved TourPlanItem this day is filed from. The date must lie in its from..to and it must be yours and approved, else 422 VALIDATION (details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date in the range may be drafted (submit still opens on the day). Omitted: the server links the approved item covering the date, if any. No deviation reason is ever required',
     }),
     calls: z.array(DcrCallInput).max(60).default([]),
+    sections: z.array(DcrSectionInput).max(8).optional().meta({
+      description:
+        'Every section of the day, in order. When sent, this replaces the day. The first section is also stored on the header fields. Omit to save a single section from the header fields.',
+    }),
     expenses: DcrExpenses.optional().meta({
       description:
         'Day expenses (any work type), replaces the saved list. Omit to keep it. Categories travel/hotel/food/other (else 422 DCR_EXPENSE_CATEGORY_INVALID). Receipt files go on the linked claim line',

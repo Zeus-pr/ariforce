@@ -4,8 +4,9 @@ import {
   tpItemFiledDates,
   type TourPlanItem,
 } from '@ariforce/contracts';
-import { dcrs, tourPlanItems, users, type Tx } from '@ariforce/db';
+import { dcrs, sfcRoutes, tourPlanItems, users, type Tx } from '@ariforce/db';
 import { and, asc, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
+import { dayTaDa } from '../allowances/section-ta-da';
 
 export type ItemRow = typeof tourPlanItems.$inferSelect;
 type Report = { userId: string; date: string; status: string };
@@ -42,28 +43,69 @@ export async function itemsOut(tx: Tx, rows: ItemRow[]): Promise<TourPlanItem[]>
   const from = rows.reduce((m, r) => (r.fromDate < m ? r.fromDate : m), rows[0]!.fromDate);
   const to = rows.reduce((m, r) => (r.toDate > m ? r.toDate : m), rows[0]!.toDate);
   const reps = await reportsOf(tx, uids, from, to);
-  return rows.map((r) => ({
-    id: r.id,
-    companyId: r.companyId,
-    userId: r.userId,
-    userName: names.find((n) => n.id === r.userId)?.name ?? '',
-    from: r.fromDate,
-    to: r.toDate,
-    status: apiStatus(r.status),
-    rejectionReason: r.status === 'rejected' ? r.decisionComment : null,
-    plan: TourPlanItemPlan.parse(r.plan),
-    filedDates: tpItemFiledDates(
-      r.fromDate,
-      r.toDate,
-      reps.filter((x) => x.userId === r.userId),
-    ),
-    version: r.version,
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-    submittedAt: r.submittedAt?.toISOString() ?? null,
-    decidedAt: r.decidedAt?.toISOString() ?? null,
-    decidedBy: r.decidedBy,
-  }));
+  const groups = rows.map((r) => routeGroups(r.plan));
+  const routeIds = [...new Set(groups.flat(2))];
+  const fares = routeIds.length
+    ? await tx
+        .select({
+          id: sfcRoutes.id,
+          bothWayAmount: sfcRoutes.bothWayAmount,
+          da: sfcRoutes.da,
+        })
+        .from(sfcRoutes)
+        .where(inArray(sfcRoutes.id, routeIds))
+    : [];
+  const fareOf = new Map(
+    fares.map((f) => [
+      f.id,
+      {
+        id: f.id,
+        bothWayAmount: f.bothWayAmount == null ? null : Number(f.bothWayAmount),
+        da: f.da == null ? null : Number(f.da),
+      },
+    ]),
+  );
+  return rows.map((r, i) => {
+    const money = dayTaDa(
+      groups[i]!.map((ids) =>
+        ids.map((id) => fareOf.get(id) ?? { id, bothWayAmount: null, da: null }),
+      ),
+    );
+    return {
+      id: r.id,
+      companyId: r.companyId,
+      userId: r.userId,
+      userName: names.find((n) => n.id === r.userId)?.name ?? '',
+      from: r.fromDate,
+      to: r.toDate,
+      status: apiStatus(r.status),
+      rejectionReason: r.status === 'rejected' ? r.decisionComment : null,
+      plan: TourPlanItemPlan.parse(r.plan),
+      filedDates: tpItemFiledDates(
+        r.fromDate,
+        r.toDate,
+        reps.filter((x) => x.userId === r.userId),
+      ),
+      version: r.version,
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+      submittedAt: r.submittedAt?.toISOString() ?? null,
+      decidedAt: r.decidedAt?.toISOString() ?? null,
+      decidedBy: r.decidedBy,
+      ta: money.ta,
+      da: money.da,
+    };
+  });
+}
+
+function routeGroups(plan: unknown): string[][] {
+  const p = (plan ?? {}) as {
+    sfcRoutes?: { sfcRouteId?: string }[];
+    sections?: { sfcRoutes?: { sfcRouteId?: string }[] }[];
+  };
+  const ids = (rows?: { sfcRouteId?: string }[]) =>
+    (rows ?? []).map((r) => r.sfcRouteId).filter((id): id is string => !!id);
+  return [ids(p.sfcRoutes), ...(p.sections ?? []).map((s) => ids(s.sfcRoutes))];
 }
 
 /** The user's approved item covering `date` (the most recently approved if several), or null. */
