@@ -37,6 +37,7 @@ type Summary = TrailClaim & {
   status: ExpenseStatus;
   total: number;
   lineCount: number;
+  canDecide?: boolean;
   userRole?: keyof typeof ROLE_SHORT | null;
 };
 const PAGE = 50;
@@ -107,7 +108,11 @@ export function ExpensesView() {
       if (r.error || !r.data) return setError(messageFor(toApiError(r)));
       const items = (r.data.items as Summary[]).sort((a, b) => b.month.localeCompare(a.month));
       const list =
-        scope === 'mine' || scope === 'all' ? items : items.filter((c) => c.userId !== me);
+        scope === 'team'
+          ? items.filter((c) => c.userId !== me && c.canDecide)
+          : scope === 'mine' || scope === 'all'
+            ? items
+            : items.filter((c) => c.userId !== me);
       setCursor(scope === 'all' ? (r.data.nextCursor ?? null) : null);
       setRows(list);
       // Approver queue: category totals and DCR status per claim.

@@ -42,7 +42,7 @@ export function ApprovalsQueue({ className, bare }: { className?: string; bare?:
     const r = await api.GET('/v1/approvals', {
       params: { query: { status: 'pending', mine: 'to_decide', limit: 50 } },
     });
-    setItems(r.data?.items ?? []);
+    setItems((r.data?.items ?? []).filter((a) => a.canDecide === true));
   }, []);
   useEffect(() => {
     void load();
