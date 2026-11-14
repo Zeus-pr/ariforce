@@ -201,7 +201,10 @@ function DcrDay({ today }: { today: string }) {
         territoryIds: field && terr ? [terr] : [],
         deviationReason: deviates ? reason.trim() : null,
         // PobLine.value is computed by the server from PTR; never send it.
-        calls: calls.map((c) => ({ ...c, pob: stripPobValue(c.pob) })),
+        calls: calls.map((c) => ({
+          ...c,
+          pob: c.outletKind === 'chemist' ? stripPobValue(c.pob) : [],
+        })),
         submit,
         ...(dcr ? { version: dcr.version } : {}),
       },
@@ -641,13 +644,15 @@ function CallDialog({
                 ))}
             </fieldset>
           )}
-          <PobEditor
-            rows={pob}
-            onChange={setPob}
-            products={orderProducts}
-            stockists={stockists}
-            showStockist={kind !== 'stockist'}
-          />
+          {kind === 'chemist' ? (
+            <PobEditor
+              rows={pob}
+              onChange={setPob}
+              products={orderProducts}
+              stockists={stockists}
+              showStockist
+            />
+          ) : null}
           {kind === 'chemist' && (
             <RcpaEditor rows={rcpa} onChange={setRcpa} products={orderProducts} />
           )}
@@ -679,7 +684,7 @@ function CallDialog({
                   samples: Object.entries(samples)
                     .filter(([id, q]) => Number(q) > 0 && detailed.includes(id))
                     .map(([productId, q]) => ({ productId, quantity: Number(q) })),
-                  pob: pobPayload(pob),
+                  pob: kind === 'chemist' ? pobPayload(pob) : [],
                   rcpa: kind === 'chemist' ? rcpaPayload(rcpa) : [],
                   remarks: remarks.trim() || null,
                   calledAt: new Date().toISOString(),

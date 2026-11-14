@@ -437,15 +437,15 @@ export function draftBody(
             productsDetailed: c.productIds.map((productId, i) => ({ productId, order: i + 1 })),
             samples: [],
             pob:
-              c.kind === 'doctor'
-                ? []
-                : c.pob
+              c.kind === 'chemist'
+                ? c.pob
                     .filter((r) => r.productId && Number(r.quantity) > 0)
                     .map((r) => ({
                       productId: r.productId,
                       quantity: Number(r.quantity),
                       stockistId: r.stockistId || null,
-                    })),
+                    }))
+                : [],
             rcpa: [],
             remarks: c.remarks.trim() || null,
             ...(c.kind === 'doctor' ? { presentationOpenedAt: c.presentationOpenedAt } : {}),
