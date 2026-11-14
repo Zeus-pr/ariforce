@@ -84,7 +84,7 @@ export function ApprovalsInbox() {
         (a) => (a.subjectType === 'dcr' || a.subjectType === 'signup') && a.canDecide !== false,
       );
       const approvals = (mine.data.items as Approval[]).filter(
-        (a) => a.subjectType !== 'dcr' && a.subjectType !== 'signup',
+        (a) => a.subjectType !== 'dcr' && a.subjectType !== 'signup' && a.canDecide === true,
       );
       return [
         ...[...approvals, ...reviews].map((a): Entry => ({
@@ -202,7 +202,7 @@ export function ApprovalsInbox() {
               <ApprovalLine
                 key={e.key}
                 approval={e.approval}
-                decidable
+                decidable={e.approval.canDecide === true}
                 meta={`Submitted ${rangeLabel(dayOf(e.at), dayOf(e.at))}`}
                 onDone={() => void q.refetch()}
               />
