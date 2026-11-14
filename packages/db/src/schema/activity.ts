@@ -250,8 +250,8 @@ export const dcrSfcRoutes = pgTable(
     ...syncCols(),
   },
   (t) => [
-    uniqueIndex('dcr_sfc_routes_dcr_section_hq_uq')
-      .on(t.companyId, t.dcrId, t.sectionIndex, t.hqTerritoryId)
+    uniqueIndex('dcr_sfc_routes_dcr_section_route_uq')
+      .on(t.companyId, t.dcrId, t.sectionIndex, t.sfcRouteId)
       .where(sql`deleted_at IS NULL`),
     index('dcr_sfc_routes_route_idx').on(t.companyId, t.sfcRouteId),
     check('dcr_sfc_routes_snapshot_ck', sql`snapshot IS NULL OR jsonb_typeof(snapshot) = 'object'`),

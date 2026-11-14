@@ -31,7 +31,7 @@ export const TourPlanItemPlan = z
     territoryIds: z.array(Id).max(20).default([]),
     workWithUserIds: z.array(Id).max(20).default([]),
     sfcRoutes: z.array(DcrSfcRouteChoice).max(20).default([]).meta({
-      description: 'One route per HQ of the day (as DCR sfcRoutes); fully checked at DCR submit',
+      description: 'Every selected SFC route. Both-way TA is summed and the greatest DA is kept.',
     }),
     details: DcrDetails.nullable().default(null).meta({
       description:

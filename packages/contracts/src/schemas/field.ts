@@ -649,13 +649,10 @@ export const Dcr = Syncable.extend({
     .min(0)
     .optional()
     .meta({ description: 'Live calls on this DCR (GET /v1/dcrs list only)' }),
-  sections: z
-    .array(DcrSection)
-    .optional()
-    .meta({
-      description:
-        'Every section of the day. Absent on older responses: the header is the only section',
-    }),
+  sections: z.array(DcrSection).optional().meta({
+    description:
+      'Every section of the day. Absent on older responses: the header is the only section',
+  }),
 }).meta({ id: 'Dcr' });
 export type Dcr = z.infer<typeof Dcr>;
 export const DcrUpsert = z

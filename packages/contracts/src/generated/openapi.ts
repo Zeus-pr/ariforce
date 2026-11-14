@@ -3377,7 +3377,7 @@ export interface components {
       /** @default [] */
       workWithUserIds: string[];
       /**
-       * @description One route per HQ of the day (as DCR sfcRoutes); fully checked at DCR submit
+       * @description Every selected SFC route. Both-way TA is summed and the greatest DA is kept.
        * @default []
        */
       sfcRoutes: components['schemas']['DcrSfcRouteChoice'][];
@@ -8968,7 +8968,7 @@ export interface components {
       /** @default [] */
       workWithUserIds: string[];
       /**
-       * @description One route per HQ of the day (as DCR sfcRoutes); fully checked at DCR submit
+       * @description Every selected SFC route. Both-way TA is summed and the greatest DA is kept.
        * @default []
        */
       sfcRoutes: components['schemas']['DcrSfcRouteChoiceOutput'][];

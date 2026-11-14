@@ -507,9 +507,6 @@ export class DcrFlowService {
       throw err(422, 'VALIDATION', 'SFC applies to field work types only (Meeting never)', {
         field: 'sfcRoutes',
       });
-    const hqDup = choices.map((c) => c.hqTerritoryId);
-    if (new Set(hqDup).size !== hqDup.length)
-      throw err(422, 'VALIDATION', 'One SFC route per HQ', { field: 'sfcRoutes' });
     const foreignHq = choices.filter((c) => !hqs.some((h) => h.id === c.hqTerritoryId));
     if (foreignHq.length)
       throw err(422, 'SFC_MISMATCH', 'Route HQ is not an HQ of the chosen territories', {
@@ -557,17 +554,17 @@ export class DcrFlowService {
     if (miss.length) throw err(422, 'VALIDATION', 'Unknown users', { workWithUserIds: miss });
   }
 
-  /** Soft-delete route rows of HQs no longer on the day; upsert `choices` (snapshot cleared). */
+  /** Soft-delete route rows no longer selected; insert the newly chosen routes. */
   private async writeChoices(
     tx: Tx,
     p: Principal,
     dcrId: string,
     choices: { hqTerritoryId: string; sfcRouteId: string }[] | undefined,
-    hqIds: string[],
     sectionIndex = 0,
   ) {
     const now = new Date();
-    const keepHqs = choices ? choices.map((c) => c.hqTerritoryId) : hqIds;
+    const wanted = choices ?? [];
+    const keepIds = [...new Set(wanted.map((c) => c.sfcRouteId))];
     await tx
       .update(dcrSfcRoutes)
       .set({ deletedAt: now })
@@ -576,17 +573,12 @@ export class DcrFlowService {
           eq(dcrSfcRoutes.dcrId, dcrId),
           eq(dcrSfcRoutes.sectionIndex, sectionIndex),
           isNull(dcrSfcRoutes.deletedAt),
-          keepHqs.length ? notInArray(dcrSfcRoutes.hqTerritoryId, keepHqs) : sql`true`,
+          keepIds.length ? notInArray(dcrSfcRoutes.sfcRouteId, keepIds) : sql`true`,
         ),
       );
-    // One read of the live rows for this DCR instead of a select per HQ.
-    const live = choices?.length
+    const live = keepIds.length
       ? await tx
-          .select({
-            id: dcrSfcRoutes.id,
-            hq: dcrSfcRoutes.hqTerritoryId,
-            sfcRouteId: dcrSfcRoutes.sfcRouteId,
-          })
+          .select({ sfcRouteId: dcrSfcRoutes.sfcRouteId })
           .from(dcrSfcRoutes)
           .where(
             and(
@@ -596,29 +588,18 @@ export class DcrFlowService {
             ),
           )
       : [];
-    const byHq = new Map(live.map((r) => [r.hq, { id: r.id, sfcRouteId: r.sfcRouteId }]));
-    for (const c of choices ?? []) {
-      const old = byHq.get(c.hqTerritoryId);
-      if (old && old.sfcRouteId === c.sfcRouteId) continue;
-      if (old) {
-        await tx
-          .update(dcrSfcRoutes)
-          .set({ sfcRouteId: c.sfcRouteId, snapshot: null })
-          .where(eq(dcrSfcRoutes.id, old.id));
-        byHq.set(c.hqTerritoryId, { id: old.id, sfcRouteId: c.sfcRouteId });
-      } else {
-        const row = {
-          id: uuidv7(),
-          companyId: p.companyId,
-          dcrId,
-          hqTerritoryId: c.hqTerritoryId,
-          sfcRouteId: c.sfcRouteId,
-          sectionIndex,
-        };
-        await tx.insert(dcrSfcRoutes).values(row);
-        // Same HQ twice in one payload behaves as before (second one updates the first).
-        byHq.set(c.hqTerritoryId, { id: row.id, sfcRouteId: row.sfcRouteId });
-      }
+    const have = new Set(live.map((r) => r.sfcRouteId));
+    for (const c of wanted) {
+      if (have.has(c.sfcRouteId)) continue;
+      have.add(c.sfcRouteId);
+      await tx.insert(dcrSfcRoutes).values({
+        id: uuidv7(),
+        companyId: p.companyId,
+        dcrId,
+        hqTerritoryId: c.hqTerritoryId,
+        sfcRouteId: c.sfcRouteId,
+        sectionIndex,
+      });
     }
   }
 
@@ -762,7 +743,6 @@ export class DcrFlowService {
           p,
           dcrId,
           rowSec.band ? (rowSec.part.sfcRoutes ?? []) : [],
-          rowSec.hqs.map((h) => h.id),
           index,
         );
       }
@@ -940,10 +920,14 @@ export class DcrFlowService {
         const none: string[] = [];
         const many: { hqTerritoryId: string; candidates: number }[] = [];
         for (const h of hqs) {
-          const pick = chosen.find((c) => c.hqTerritoryId === h.id);
+          const picks = chosen.filter((c) => c.hqTerritoryId === h.id);
           const c = all.filter((r) => r.hqTerritoryId === h.id);
-          if (pick) routes.push(c.find((r) => r.id === pick.sfcRouteId)!);
-          else if (c.length === 1) routes.push(c[0]!);
+          if (picks.length) {
+            for (const pick of picks) {
+              const row = c.find((r) => r.id === pick.sfcRouteId);
+              if (row) routes.push(row);
+            }
+          } else if (c.length === 1) routes.push(c[0]!);
           else if (!c.length) none.push(h.id);
           else many.push({ hqTerritoryId: h.id, candidates: c.length });
         }
@@ -953,7 +937,9 @@ export class DcrFlowService {
             band,
           });
         if (many.length)
-          throw err(422, 'SFC_ROUTE_REQUIRED', 'Choose one SFC route for each HQ', { hqs: many });
+          throw err(422, 'SFC_ROUTE_REQUIRED', 'Choose at least one SFC route for each HQ', {
+            hqs: many,
+          });
       }
       const [co] = await tx
         .select({ rate: companies.sfcRatePerKm })
@@ -965,7 +951,6 @@ export class DcrFlowService {
         p,
         cur.id,
         routes.map((r) => ({ hqTerritoryId: r.hqTerritoryId, sfcRouteId: r.id })),
-        [],
       );
       for (const r of routes) {
         const snapshot: DcrSfcSnapshot = {
@@ -986,7 +971,7 @@ export class DcrFlowService {
             and(
               eq(dcrSfcRoutes.dcrId, cur.id),
               eq(dcrSfcRoutes.sectionIndex, 0),
-              eq(dcrSfcRoutes.hqTerritoryId, r.hqTerritoryId),
+              eq(dcrSfcRoutes.sfcRouteId, r.id),
               isNull(dcrSfcRoutes.deletedAt),
             ),
           );
@@ -1026,7 +1011,7 @@ export class DcrFlowService {
               and(
                 eq(dcrSfcRoutes.dcrId, cur.id),
                 eq(dcrSfcRoutes.sectionIndex, index),
-                eq(dcrSfcRoutes.hqTerritoryId, r.hqTerritoryId),
+                eq(dcrSfcRoutes.sfcRouteId, r.id),
                 isNull(dcrSfcRoutes.deletedAt),
               ),
             );
