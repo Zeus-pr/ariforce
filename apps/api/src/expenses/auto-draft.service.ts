@@ -5,7 +5,7 @@ import type {
   ExpenseAutoDraft,
   ExpenseStatus,
 } from '@ariforce/contracts';
-import { companies, expenseClaims, expenseLines, type Tx } from '@ariforce/db';
+import { companies, dcrs, expenseClaims, expenseLines, type Tx } from '@ariforce/db';
 import { and, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
@@ -136,6 +136,7 @@ export class ExpenseAutoDraftService {
               and(
                 eq(expenseLines.claimId, c!.id),
                 eq(expenseLines.date, d.date),
+                isNotNull(expenseLines.dcrRejectedAt),
                 isNull(expenseLines.deletedAt),
               ),
             );
@@ -224,30 +225,18 @@ export class ExpenseAutoDraftService {
         const mode = claimWriteMode(c!.deletedAt ? 'paid' : c!.status, flagged.length);
         if (mode === 'locked') return { ...out, reason: 'claim_locked' as const };
         const now = new Date();
-        const old =
-          mode === 'replace'
-            ? await sp
-                .update(expenseLines)
-                .set({ deletedAt: now })
-                .where(
-                  inArray(
-                    expenseLines.id,
-                    flagged.map((f) => f.id),
-                  ),
-                )
-                .returning({ id: expenseLines.id })
-            : await sp
-                .update(expenseLines)
-                .set({ deletedAt: now })
-                .where(
-                  and(
-                    eq(expenseLines.claimId, c!.id),
-                    eq(expenseLines.dcrId, d.id),
-                    eq(expenseLines.origin, 'dcr'),
-                    isNull(expenseLines.deletedAt),
-                  ),
-                )
-                .returning({ id: expenseLines.id });
+        const old = await sp
+          .update(expenseLines)
+          .set({ deletedAt: now })
+          .where(
+            and(
+              eq(expenseLines.claimId, c!.id),
+              eq(expenseLines.dcrId, d.id),
+              eq(expenseLines.origin, 'dcr'),
+              isNull(expenseLines.deletedAt),
+            ),
+          )
+          .returning({ id: expenseLines.id });
         if (items.length)
           await sp.insert(expenseLines).values(
             items.map((it, i) => ({
@@ -264,6 +253,17 @@ export class ExpenseAutoDraftService {
               origin: 'dcr' as const,
               dcrItemIndex: i,
             })),
+          );
+        await sp
+          .update(expenseLines)
+          .set({ dcrRejectedAt: null })
+          .where(
+            and(
+              eq(expenseLines.claimId, c!.id),
+              eq(expenseLines.date, d.date),
+              isNotNull(expenseLines.dcrRejectedAt),
+              isNull(expenseLines.deletedAt),
+            ),
           );
         await recomputeTotal(sp, c!.id);
         const total = Math.round(items.reduce((t, it) => t + it.amount, 0) * 100) / 100;
@@ -347,6 +347,46 @@ export class ExpenseAutoDraftService {
       after: { actor: 'system', trigger: 'dcr_reject', dcrId: d.id, date: d.date, ...out },
     });
     return out;
+  }
+
+  /**
+   * After a claim is rejected, copy submitted DCR expenses and TA/DA for days that were
+   * skipped while the claim was submitted.
+   */
+  async backfillMonth(
+    tx: Tx,
+    p: Principal,
+    claim: { userId: string; month: string; status: string; deletedAt: Date | null },
+  ) {
+    if (claim.deletedAt || !claimEditable(claim.status)) return;
+    const start = String(claim.month).slice(0, 10);
+    const rows = await tx
+      .select({
+        id: dcrs.id,
+        userId: dcrs.userId,
+        date: dcrs.date,
+        expenses: dcrs.expenses,
+      })
+      .from(dcrs)
+      .where(
+        and(
+          eq(dcrs.userId, claim.userId),
+          sql`${dcrs.date} >= ${start}::date`,
+          sql`${dcrs.date} < (${start}::date + interval '1 month')`,
+          inArray(dcrs.status, ['submitted', 'approved']),
+          isNull(dcrs.deletedAt),
+        ),
+      );
+    for (const d of rows) {
+      const items = Array.isArray(d.expenses) ? d.expenses : [];
+      await this.linkDcrExpenses(
+        tx,
+        p,
+        { id: d.id, userId: d.userId, date: d.date },
+        items as DcrExpenseItem[],
+      );
+      await this.onDcrSubmit(tx, p, { id: d.id, userId: d.userId, date: d.date });
+    }
   }
 }
 

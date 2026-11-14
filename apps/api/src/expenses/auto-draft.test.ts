@@ -118,8 +118,8 @@ describe('claimWriteMode', () => {
     expect(claimWriteMode('draft', 0)).toBe('edit');
     expect(claimWriteMode('rejected', 2)).toBe('edit');
   });
-  it('lets a submitted claim take a replacement only for a day whose DCR lines were rejected', () => {
-    expect(claimWriteMode('submitted', 1)).toBe('replace');
+  it('leaves a submitted claim locked even when a day was rejected', () => {
+    expect(claimWriteMode('submitted', 1)).toBe('locked');
     expect(claimWriteMode('submitted', 0)).toBe('locked');
   });
   it('leaves an approved or paid claim locked', () => {
