@@ -156,7 +156,7 @@ export function OutletLocksCard({
         body: { version: loc.version, ...body },
       });
       if (r.error) throw toApiError(r);
-      toast.success(body.active === false ? 'Location deactivated' : 'Location updated');
+      toast.success(body.active === false ? 'Location deleted' : 'Location updated');
       setDrop(null);
       await load();
     } catch (e) {
@@ -336,8 +336,8 @@ export function OutletLocksCard({
           <DialogHeader>
             <DialogTitle>Deactivate this lock?</DialogTitle>
             <DialogDescription>
-              The pin is removed from check-in. The next Check in on mobile will lock a new location
-              at the rep&apos;s GPS. History keeps the old coordinates.
+              The pin is deleted. It is not kept. The next Check in on mobile can lock a new
+              location at the rep&apos;s GPS.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
