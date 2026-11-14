@@ -19596,7 +19596,7 @@
           },
           "sfcRoutes": {
             "default": [],
-            "description": "One route per HQ of the day (as DCR sfcRoutes); fully checked at DCR submit",
+            "description": "Every selected SFC route. Both-way TA is summed and the greatest DA is kept.",
             "maxItems": 20,
             "type": "array",
             "items": {
@@ -19614,6 +19614,14 @@
                 "type": "null"
               }
             ]
+          },
+          "sections": {
+            "default": [],
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TourPlanSection"
+            }
           }
         },
         "required": [
@@ -19995,6 +20003,64 @@
         "required": [
           "kind",
           "leaveRequestId"
+        ]
+      },
+      "TourPlanSection": {
+        "type": "object",
+        "properties": {
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "territoryIds": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "workWithUserIds": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "sfcRoutes": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrSfcRouteChoice"
+            }
+          },
+          "details": {
+            "default": null,
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DcrDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "workTypeId"
         ]
       },
       "TourPlanItemDecision": {
@@ -20783,6 +20849,14 @@
               "$ref": "#/components/schemas/DcrCallInput"
             }
           },
+          "sections": {
+            "description": "Every section of the day, in order. When sent, this replaces the day. The first section is also stored on the header fields. Omit to save a single section from the header fields.",
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrSectionInput"
+            }
+          },
           "expenses": {
             "description": "Day expenses (any work type), replaces the saved list. Omit to keep it. Categories travel/hotel/food/other (else 422 DCR_EXPENSE_CATEGORY_INVALID). Receipt files go on the linked claim line",
             "maxItems": 20,
@@ -20809,6 +20883,70 @@
           "hq",
           "ex_hq",
           "outstation"
+        ]
+      },
+      "DcrSectionInput": {
+        "type": "object",
+        "properties": {
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "territoryIds": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "workWithUserIds": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "sfcRoutes": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrSfcRouteChoice"
+            }
+          },
+          "details": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DcrDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "calls": {
+            "maxItems": 60,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrCallInput"
+            }
+          }
+        },
+        "required": [
+          "workTypeId"
         ]
       },
       "DcrExpenseItem": {
@@ -27489,6 +27627,14 @@
                 "type": "null"
               }
             ]
+          },
+          "ta": {
+            "description": "Both-way TA of the selected SFC routes, each route once across every section",
+            "type": "number"
+          },
+          "da": {
+            "description": "The greatest DA among those routes",
+            "type": "number"
           }
         },
         "required": [
@@ -28065,6 +28211,13 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
+          },
+          "sections": {
+            "description": "Every section of the day. Absent on older responses: the header is the only section",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrSection"
+            }
           }
         },
         "required": [
@@ -28405,6 +28558,80 @@
           "hq"
         ],
         "description": "own = the filer's route; hq = the filer has no live route on that HQ, so the HQ's routes (any owner) are offered"
+      },
+      "DcrSection": {
+        "type": "object",
+        "properties": {
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "band": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DcrBand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "territoryIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "workWithUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "sfcRoutes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrSfcRoute"
+            }
+          },
+          "details": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DcrDetailsOutput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrCall"
+            }
+          }
+        },
+        "required": [
+          "workTypeId",
+          "band",
+          "territoryIds",
+          "workWithUserIds",
+          "sfcRoutes",
+          "details",
+          "calls"
+        ],
+        "additionalProperties": false
       },
       "CompetitorBrandList": {
         "type": "object",
@@ -29123,6 +29350,14 @@
                 "type": "null"
               }
             ]
+          },
+          "ta": {
+            "description": "Both-way TA of the selected SFC routes, each route once across every section",
+            "type": "number"
+          },
+          "da": {
+            "description": "The greatest DA among those routes",
+            "type": "number"
           },
           "pendingDates": {
             "type": "array",
@@ -30062,6 +30297,13 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
+          },
+          "sections": {
+            "description": "Every section of the day. Absent on older responses: the header is the only section",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrSection"
+            }
           },
           "expenseDraft": {
             "default": null,
@@ -38090,7 +38332,7 @@
           },
           "sfcRoutes": {
             "default": [],
-            "description": "One route per HQ of the day (as DCR sfcRoutes); fully checked at DCR submit",
+            "description": "Every selected SFC route. Both-way TA is summed and the greatest DA is kept.",
             "maxItems": 20,
             "type": "array",
             "items": {
@@ -38108,6 +38350,14 @@
                 "type": "null"
               }
             ]
+          },
+          "sections": {
+            "default": [],
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TourPlanSectionOutput"
+            }
           }
         },
         "required": [
@@ -38115,7 +38365,8 @@
           "territoryIds",
           "workWithUserIds",
           "sfcRoutes",
-          "details"
+          "details",
+          "sections"
         ],
         "additionalProperties": false
       },
@@ -38498,6 +38749,69 @@
         "required": [
           "kind",
           "leaveRequestId"
+        ],
+        "additionalProperties": false
+      },
+      "TourPlanSectionOutput": {
+        "type": "object",
+        "properties": {
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "territoryIds": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "workWithUserIds": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          "sfcRoutes": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DcrSfcRouteChoiceOutput"
+            }
+          },
+          "details": {
+            "default": null,
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DcrDetailsOutput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "workTypeId",
+          "territoryIds",
+          "workWithUserIds",
+          "sfcRoutes",
+          "details"
         ],
         "additionalProperties": false
       },

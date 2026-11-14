@@ -352,7 +352,7 @@ export class DcrService {
         expenseCount: e?.count ?? 0,
         workWithUserIds: r.workWithUserIds,
         sfcRoutes: routes
-          .filter((x) => x.dcrId === r.id)
+          .filter((x) => x.dcrId === r.id && (x.sectionIndex ?? 0) === 0)
           .map((x) => ({
             hqTerritoryId: x.hqTerritoryId,
             sfcRouteId: x.sfcRouteId,
@@ -402,6 +402,13 @@ export class DcrService {
               calledAt: (c.calledAt ?? c.createdAt).toISOString(),
             };
           }),
+        sections: daySections(
+          r,
+          calls.filter((c) => c.dcrId === r.id),
+          lines,
+          rcpa,
+          routes.filter((x) => x.dcrId === r.id),
+        ),
       });
     }
     return out;
@@ -825,7 +832,7 @@ export class DcrService {
     p: Principal,
     dcrId: string,
     date: string,
-    calls: Upsert['calls'],
+    calls: (Upsert['calls'][number] & { sectionIndex?: number })[],
     pts: Map<string, string | null>,
   ) {
     const now = new Date();
@@ -1031,6 +1038,7 @@ export class DcrService {
         presentationLocationId,
         presentationDistanceM,
         presentationAccuracyM,
+        sectionIndex: c.sectionIndex ?? 0,
       };
       await tx
         .insert(dcrCalls)
@@ -1196,4 +1204,94 @@ export class DcrService {
       return this.approvals.byId(tx, id);
     });
   }
+}
+
+type StoredSection = {
+  workTypeId?: string;
+  territoryIds?: string[];
+  workWithUserIds?: string[];
+  band?: Dcr['band'];
+  details?: Dcr['details'];
+};
+
+function daySections(
+  r: {
+    workTypeId: string;
+    band: Dcr['band'];
+    territoryIds: string[];
+    territoryId: string | null;
+    workWithUserIds: string[];
+    details: unknown;
+    sections: unknown;
+  },
+  dayCalls: (typeof dcrCalls.$inferSelect)[],
+  lines: (typeof dcrCallProducts.$inferSelect)[],
+  rcpa: (typeof dcrCallRcpa.$inferSelect)[],
+  dayRoutes: (typeof dcrSfcRoutes.$inferSelect)[],
+): NonNullable<Dcr['sections']> {
+  const meta = Array.isArray(r.sections) ? (r.sections as StoredSection[]) : [];
+  const indexes = new Set<number>([0]);
+  for (const c of dayCalls) indexes.add(c.sectionIndex ?? 0);
+  for (const route of dayRoutes) indexes.add(route.sectionIndex ?? 0);
+  const last = Math.max(meta.length - 1, ...indexes);
+  const territories = r.territoryIds.length ? r.territoryIds : r.territoryId ? [r.territoryId] : [];
+  const callOf = (c: (typeof dayCalls)[number]): DcrCall => {
+    const l = lines.filter((x) => x.callId === c.id);
+    return {
+      id: c.id,
+      outletKind: c.outletKind,
+      outletId: c.outletId,
+      checkInId: c.geoCaptureId,
+      jointWorkUserIds: c.jointWorkUserIds,
+      productsDetailed: l
+        .filter((x) => x.kind === 'detailed')
+        .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+        .map((x) => ({ productId: x.productId, order: x.seq ?? 1 })),
+      samples: l
+        .filter((x) => x.kind === 'sample')
+        .map((x) => ({ productId: x.productId, quantity: x.quantity ?? 0 })),
+      pob: l
+        .filter((x) => x.kind === 'pob')
+        .map((x) => ({
+          productId: x.productId,
+          quantity: x.quantity ?? 0,
+          stockistId: x.stockistId,
+          value: x.value === null ? null : Number(x.value),
+        })),
+      rcpa: rcpa
+        .filter((x) => x.callId === c.id)
+        .map((x) => ({
+          productId: x.productId,
+          competitorBrand: x.competitorBrand,
+          competitorCompany: x.competitorCompany,
+          quantity: x.quantity,
+          prescriptions: x.prescriptions,
+          doctorId: x.doctorId,
+        })),
+      remarks: c.remarks,
+      presentationOpenedAt: c.presentationOpenedAt?.toISOString() ?? null,
+      presentationLocationId: c.presentationLocationId ?? null,
+      presentationDistanceM: c.presentationDistanceM ?? null,
+      presentationAccuracyM: c.presentationAccuracyM ?? null,
+      calledAt: (c.calledAt ?? c.createdAt).toISOString(),
+    };
+  };
+  return Array.from({ length: last + 1 }, (_, i) => {
+    const m = meta[i];
+    return {
+      workTypeId: m?.workTypeId ?? r.workTypeId,
+      band: m?.band ?? (i === 0 ? r.band : null),
+      territoryIds: m?.territoryIds ?? (i === 0 ? territories : []),
+      workWithUserIds: m?.workWithUserIds ?? (i === 0 ? r.workWithUserIds : []),
+      details: (m?.details ?? (i === 0 ? r.details : null)) as Dcr['details'],
+      sfcRoutes: dayRoutes
+        .filter((x) => (x.sectionIndex ?? 0) === i)
+        .map((x) => ({
+          hqTerritoryId: x.hqTerritoryId,
+          sfcRouteId: x.sfcRouteId,
+          snapshot: (x.snapshot as Dcr['sfcRoutes'][number]['snapshot']) ?? null,
+        })),
+      calls: dayCalls.filter((c) => (c.sectionIndex ?? 0) === i).map(callOf),
+    };
+  });
 }

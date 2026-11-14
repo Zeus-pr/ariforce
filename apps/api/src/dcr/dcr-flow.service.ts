@@ -507,9 +507,6 @@ export class DcrFlowService {
       throw err(422, 'VALIDATION', 'SFC applies to field work types only (Meeting never)', {
         field: 'sfcRoutes',
       });
-    const hqDup = choices.map((c) => c.hqTerritoryId);
-    if (new Set(hqDup).size !== hqDup.length)
-      throw err(422, 'VALIDATION', 'One SFC route per HQ', { field: 'sfcRoutes' });
     const foreignHq = choices.filter((c) => !hqs.some((h) => h.id === c.hqTerritoryId));
     if (foreignHq.length)
       throw err(422, 'SFC_MISMATCH', 'Route HQ is not an HQ of the chosen territories', {
@@ -557,59 +554,52 @@ export class DcrFlowService {
     if (miss.length) throw err(422, 'VALIDATION', 'Unknown users', { workWithUserIds: miss });
   }
 
-  /** Soft-delete route rows of HQs no longer on the day; upsert `choices` (snapshot cleared). */
+  /** Soft-delete route rows no longer selected; insert the newly chosen routes. */
   private async writeChoices(
     tx: Tx,
     p: Principal,
     dcrId: string,
     choices: { hqTerritoryId: string; sfcRouteId: string }[] | undefined,
-    hqIds: string[],
+    sectionIndex = 0,
   ) {
     const now = new Date();
-    const keepHqs = choices ? choices.map((c) => c.hqTerritoryId) : hqIds;
+    const wanted = choices ?? [];
+    const keepIds = [...new Set(wanted.map((c) => c.sfcRouteId))];
     await tx
       .update(dcrSfcRoutes)
       .set({ deletedAt: now })
       .where(
         and(
           eq(dcrSfcRoutes.dcrId, dcrId),
+          eq(dcrSfcRoutes.sectionIndex, sectionIndex),
           isNull(dcrSfcRoutes.deletedAt),
-          keepHqs.length ? notInArray(dcrSfcRoutes.hqTerritoryId, keepHqs) : sql`true`,
+          keepIds.length ? notInArray(dcrSfcRoutes.sfcRouteId, keepIds) : sql`true`,
         ),
       );
-    // One read of the live rows for this DCR instead of a select per HQ.
-    const live = choices?.length
+    const live = keepIds.length
       ? await tx
-          .select({
-            id: dcrSfcRoutes.id,
-            hq: dcrSfcRoutes.hqTerritoryId,
-            sfcRouteId: dcrSfcRoutes.sfcRouteId,
-          })
+          .select({ sfcRouteId: dcrSfcRoutes.sfcRouteId })
           .from(dcrSfcRoutes)
-          .where(and(eq(dcrSfcRoutes.dcrId, dcrId), isNull(dcrSfcRoutes.deletedAt)))
+          .where(
+            and(
+              eq(dcrSfcRoutes.dcrId, dcrId),
+              eq(dcrSfcRoutes.sectionIndex, sectionIndex),
+              isNull(dcrSfcRoutes.deletedAt),
+            ),
+          )
       : [];
-    const byHq = new Map(live.map((r) => [r.hq, { id: r.id, sfcRouteId: r.sfcRouteId }]));
-    for (const c of choices ?? []) {
-      const old = byHq.get(c.hqTerritoryId);
-      if (old && old.sfcRouteId === c.sfcRouteId) continue;
-      if (old) {
-        await tx
-          .update(dcrSfcRoutes)
-          .set({ sfcRouteId: c.sfcRouteId, snapshot: null })
-          .where(eq(dcrSfcRoutes.id, old.id));
-        byHq.set(c.hqTerritoryId, { id: old.id, sfcRouteId: c.sfcRouteId });
-      } else {
-        const row = {
-          id: uuidv7(),
-          companyId: p.companyId,
-          dcrId,
-          hqTerritoryId: c.hqTerritoryId,
-          sfcRouteId: c.sfcRouteId,
-        };
-        await tx.insert(dcrSfcRoutes).values(row);
-        // Same HQ twice in one payload behaves as before (second one updates the first).
-        byHq.set(c.hqTerritoryId, { id: row.id, sfcRouteId: row.sfcRouteId });
-      }
+    const have = new Set(live.map((r) => r.sfcRouteId));
+    for (const c of wanted) {
+      if (have.has(c.sfcRouteId)) continue;
+      have.add(c.sfcRouteId);
+      await tx.insert(dcrSfcRoutes).values({
+        id: uuidv7(),
+        companyId: p.companyId,
+        dcrId,
+        hqTerritoryId: c.hqTerritoryId,
+        sfcRouteId: c.sfcRouteId,
+        sectionIndex,
+      });
     }
   }
 
@@ -665,44 +655,71 @@ export class DcrFlowService {
       }
       const cur = target.action === 'update' ? target.row : undefined;
 
-      const wt = await this.workType(tx, b.workTypeId);
-      const band = workTypeBand(wt);
-      if (b.band && b.band !== band)
-        throw err(422, 'VALIDATION', 'band must match the work type', {
-          field: 'band',
-          expected: band,
-        });
-      if (
-        (wt.kind === 'field' || wt.kind === 'non_field') &&
-        (await leaveBlocksWork(tx, p.userId, b.date))
-      )
-        throw err(422, 'LEAVE_DAY_BLOCKED', 'Leave covers this day, so this report stays closed');
-      if (isCampWorkType(wt.code) && b.calls.length)
-        throw err(422, 'VALIDATION', 'Camp does not take doctor, chemist or stockist calls', {
-          field: 'calls',
-        });
-      if (wt.kind !== 'field' && b.calls.length)
-        throw err(422, 'VALIDATION', 'Calls need a field work type', { field: 'calls' });
-      this.checkDetailsKind(wt, b.details);
-      const details = normaliseDetails(b.details);
+      const parts = b.sections?.length
+        ? b.sections
+        : [
+            {
+              workTypeId: b.workTypeId,
+              territoryIds: b.territoryIds,
+              workWithUserIds: b.workWithUserIds,
+              sfcRoutes: b.sfcRoutes ?? [],
+              details: b.details,
+              calls: b.calls,
+            },
+          ];
+      const prepared = [];
+      for (const [index, part] of parts.entries()) {
+        const wt = await this.workType(tx, part.workTypeId);
+        const band = workTypeBand(wt);
+        if (
+          (wt.kind === 'field' || wt.kind === 'non_field') &&
+          (await leaveBlocksWork(tx, p.userId, b.date))
+        )
+          throw err(422, 'LEAVE_DAY_BLOCKED', 'Leave covers this day, so this report stays closed');
+        const camp = isCampWorkType(wt.code);
+        if ((camp || wt.kind !== 'field') && part.calls.length)
+          throw err(
+            422,
+            'VALIDATION',
+            camp
+              ? 'Camp does not take doctor, chemist or stockist calls'
+              : 'Calls need a field work type',
+            { field: 'calls', section: index },
+          );
+        this.checkDetailsKind(wt, part.details);
+        const hqs = await this.resolveHqs(tx, p, part.territoryIds);
+        await this.checkWorkWith(tx, p, part.workWithUserIds);
+        await this.checkChoices(tx, p, part.sfcRoutes ?? [], hqs, band);
+        prepared.push({ wt, band, hqs, part, details: normaliseDetails(part.details) });
+      }
+      const head = prepared[0]!;
       // Omitted: the saved list is kept; sent (even []): replaces it.
       const expenses = b.expenses ? checkDcrExpenses(b.expenses) : undefined;
-      const hqs = await this.resolveHqs(tx, p, b.territoryIds);
-      await this.checkWorkWith(tx, p, b.workWithUserIds);
-      await this.checkChoices(tx, p, b.sfcRoutes ?? [], hqs, band);
-      const { pts } = await this.dcr.validateCalls(tx, p, b, cur?.id, b.date);
+      const calls = prepared.flatMap((row, index) =>
+        row.part.calls.map((call) => ({ ...call, sectionIndex: index })),
+      );
+      const { pts } = await this.dcr.validateCalls(tx, p, { calls }, cur?.id, b.date);
       const plan = await this.dcr.plan(tx, p.userId, b.date);
 
       const vals = {
-        workTypeId: b.workTypeId,
-        territoryId: b.territoryIds[0] ?? null,
-        territoryIds: b.territoryIds,
+        workTypeId: head.part.workTypeId,
+        territoryId: head.part.territoryIds[0] ?? null,
+        territoryIds: head.part.territoryIds,
         tourPlanId: plan.tourPlanId,
         tourPlanItemId: item?.id ?? null,
         deviationReason: b.deviationReason?.trim() || null,
-        band,
-        details: details ?? null,
-        workWithUserIds: b.workWithUserIds,
+        band: head.band,
+        details: head.details ?? null,
+        workWithUserIds: head.part.workWithUserIds,
+        sections: b.sections?.length
+          ? prepared.map((row) => ({
+              workTypeId: row.part.workTypeId,
+              territoryIds: row.part.territoryIds,
+              workWithUserIds: row.part.workWithUserIds,
+              band: row.band,
+              details: row.details ?? null,
+            }))
+          : [],
         status: 'draft' as const,
         ...(expenses ? { expenses } : {}),
       };
@@ -719,18 +736,30 @@ export class DcrFlowService {
             })
             .returning();
       const dcrId = row!.id;
-      await this.dcr.writeCalls(tx, p, dcrId, b.date, b.calls, pts);
-      await this.writeChoices(
-        tx,
-        p,
-        dcrId,
-        band ? b.sfcRoutes : [],
-        hqs.map((h) => h.id),
-      );
+      await this.dcr.writeCalls(tx, p, dcrId, b.date, calls, pts);
+      for (const [index, rowSec] of prepared.entries()) {
+        await this.writeChoices(
+          tx,
+          p,
+          dcrId,
+          rowSec.band ? (rowSec.part.sfcRoutes ?? []) : [],
+          index,
+        );
+      }
+      await tx
+        .update(dcrSfcRoutes)
+        .set({ deletedAt: new Date() })
+        .where(
+          and(
+            eq(dcrSfcRoutes.dcrId, dcrId),
+            sql`${dcrSfcRoutes.sectionIndex} >= ${prepared.length}`,
+            isNull(dcrSfcRoutes.deletedAt),
+          ),
+        );
       await this.audit.record(tx, p, 'dcr.draft_save', {
         entityType: 'dcr',
         entityId: dcrId,
-        after: { date: b.date, calls: b.calls.length, hqs: hqs.length, created: !cur },
+        after: { date: b.date, calls: calls.length, hqs: head.hqs.length, created: !cur },
       });
       const [fresh] = await tx.select().from(dcrs).where(eq(dcrs.id, dcrId));
       return (await this.dcr.toDto(tx, s, [fresh!]))[0]!;
@@ -816,20 +845,45 @@ export class DcrFlowService {
       )
         throw err(422, 'LEAVE_DAY_BLOCKED', 'Leave covers this day, so this report stays closed');
       const dto = (await this.dcr.toDto(tx, s, [cur]))[0]!;
-      const field = wt.kind === 'field';
-      const camp = isCampWorkType(wt.code);
-      if (field && !cur.territoryIds.length)
-        throw err(422, 'VALIDATION', 'Pick at least one territory', { field: 'territoryIds' });
-      if (camp && dto.calls.length)
-        throw err(422, 'VALIDATION', 'Camp does not take doctor, chemist or stockist calls', {
-          field: 'calls',
-        });
-      if (field && !camp && !dto.calls.length)
-        throw err(422, 'VALIDATION', 'Field work needs at least one call', { field: 'calls' });
-      if (!field && dto.calls.length)
-        throw err(422, 'VALIDATION', 'Calls need a field work type', { field: 'calls' });
-      this.dcr.assertCheckIns(dto.calls);
-      this.dcr.assertPresentations(dto.calls);
+      const sections = dto.sections?.length
+        ? dto.sections
+        : [
+            {
+              workTypeId: cur.workTypeId,
+              band: cur.band,
+              territoryIds: cur.territoryIds,
+              workWithUserIds: cur.workWithUserIds,
+              sfcRoutes: dto.sfcRoutes,
+              details: dto.details,
+              calls: dto.calls,
+            },
+          ];
+      for (const [index, section] of sections.entries()) {
+        const secWt = index === 0 ? wt : await this.workType(tx, section.workTypeId);
+        const field = secWt.kind === 'field';
+        const camp = isCampWorkType(secWt.code);
+        if (field && !section.territoryIds.length)
+          throw err(422, 'VALIDATION', 'Pick at least one territory', {
+            field: 'territoryIds',
+            section: index,
+          });
+        if ((camp || !field) && section.calls.length)
+          throw err(
+            422,
+            'VALIDATION',
+            camp
+              ? 'Camp does not take doctor, chemist or stockist calls'
+              : 'Calls need a field work type',
+            { field: 'calls', section: index },
+          );
+        if (field && !camp && !section.calls.length)
+          throw err(422, 'VALIDATION', 'Field work needs at least one call', {
+            field: 'calls',
+            section: index,
+          });
+        this.dcr.assertCheckIns(section.calls);
+        this.dcr.assertPresentations(section.calls);
+      }
       const hqs = await this.resolveHqs(tx, p, cur.territoryIds);
       await this.checkWorkWith(tx, p, cur.workWithUserIds);
       await this.details(tx, p, wt, cur);
@@ -866,10 +920,14 @@ export class DcrFlowService {
         const none: string[] = [];
         const many: { hqTerritoryId: string; candidates: number }[] = [];
         for (const h of hqs) {
-          const pick = chosen.find((c) => c.hqTerritoryId === h.id);
+          const picks = chosen.filter((c) => c.hqTerritoryId === h.id);
           const c = all.filter((r) => r.hqTerritoryId === h.id);
-          if (pick) routes.push(c.find((r) => r.id === pick.sfcRouteId)!);
-          else if (c.length === 1) routes.push(c[0]!);
+          if (picks.length) {
+            for (const pick of picks) {
+              const row = c.find((r) => r.id === pick.sfcRouteId);
+              if (row) routes.push(row);
+            }
+          } else if (c.length === 1) routes.push(c[0]!);
           else if (!c.length) none.push(h.id);
           else many.push({ hqTerritoryId: h.id, candidates: c.length });
         }
@@ -879,7 +937,9 @@ export class DcrFlowService {
             band,
           });
         if (many.length)
-          throw err(422, 'SFC_ROUTE_REQUIRED', 'Choose one SFC route for each HQ', { hqs: many });
+          throw err(422, 'SFC_ROUTE_REQUIRED', 'Choose at least one SFC route for each HQ', {
+            hqs: many,
+          });
       }
       const [co] = await tx
         .select({ rate: companies.sfcRatePerKm })
@@ -891,7 +951,6 @@ export class DcrFlowService {
         p,
         cur.id,
         routes.map((r) => ({ hqTerritoryId: r.hqTerritoryId, sfcRouteId: r.id })),
-        [],
       );
       for (const r of routes) {
         const snapshot: DcrSfcSnapshot = {
@@ -911,10 +970,52 @@ export class DcrFlowService {
           .where(
             and(
               eq(dcrSfcRoutes.dcrId, cur.id),
-              eq(dcrSfcRoutes.hqTerritoryId, r.hqTerritoryId),
+              eq(dcrSfcRoutes.sectionIndex, 0),
+              eq(dcrSfcRoutes.sfcRouteId, r.id),
               isNull(dcrSfcRoutes.deletedAt),
             ),
           );
+      }
+      for (const [index, section] of sections.entries()) {
+        if (index === 0 || !section.band) continue;
+        const secHqs = await this.resolveHqs(tx, p, section.territoryIds);
+        const secChosen = section.sfcRoutes.map((r) => ({
+          hqTerritoryId: r.hqTerritoryId,
+          sfcRouteId: r.sfcRouteId,
+        }));
+        await this.checkChoices(tx, p, secChosen, secHqs, section.band);
+        const secAll = await this.candidates(
+          tx,
+          p.userId,
+          secHqs.map((h) => h.id),
+          section.band,
+        );
+        for (const choice of secChosen) {
+          const r = secAll.find((row) => row.id === choice.sfcRouteId);
+          if (!r) continue;
+          const snapshot: DcrSfcSnapshot = {
+            ...candidate(r),
+            sfcRouteId: r.id,
+            routeVersion: r.version,
+            hqTerritoryId: r.hqTerritoryId,
+            band: section.band,
+            ratePerKm: Number(co!.rate),
+            frozenAt,
+          };
+          delete (snapshot as Partial<{ id: string; version: number }>).id;
+          delete (snapshot as Partial<{ id: string; version: number }>).version;
+          await tx
+            .update(dcrSfcRoutes)
+            .set({ snapshot })
+            .where(
+              and(
+                eq(dcrSfcRoutes.dcrId, cur.id),
+                eq(dcrSfcRoutes.sectionIndex, index),
+                eq(dcrSfcRoutes.sfcRouteId, r.id),
+                isNull(dcrSfcRoutes.deletedAt),
+              ),
+            );
+        }
       }
       try {
         // Savepoint: a race with another submit of the same day trips the partial unique index.

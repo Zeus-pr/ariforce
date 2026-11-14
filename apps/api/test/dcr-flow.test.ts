@@ -211,7 +211,10 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
         workTypeId: wt.FIELD_HQ,
         territoryIds: [T.hq, hq2],
         deviationReason: 'test',
-        sfcRoutes: [{ hqTerritoryId: T.hq, sfcRouteId: r2 }],
+        sfcRoutes: [
+          { hqTerritoryId: T.hq, sfcRouteId: r1 },
+          { hqTerritoryId: T.hq, sfcRouteId: r2 },
+        ],
         calls: [call()],
         version: d.version,
       });
@@ -225,11 +228,19 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     const s = Dcr.parse(r.body);
     expect(s.status).toBe('submitted');
-    expect(s.sfcRoutes).toHaveLength(2);
-    const byHq = Object.fromEntries(s.sfcRoutes.map((x) => [x.hqTerritoryId, x]));
-    expect(byHq[T.hq]!.sfcRouteId).toBe(r2);
-    expect(byHq[hq2]!.sfcRouteId).toBe(r3);
-    expect(byHq[T.hq]!.snapshot).toMatchObject({ toPlace: 'Beta', category: 'hq', band: 'hq' });
+    expect(s.sfcRoutes).toHaveLength(3);
+    expect(
+      s.sfcRoutes
+        .filter((x) => x.hqTerritoryId === T.hq)
+        .map((x) => x.sfcRouteId)
+        .sort(),
+    ).toEqual([r1, r2].sort());
+    expect(s.sfcRoutes.find((x) => x.hqTerritoryId === hq2)!.sfcRouteId).toBe(r3);
+    expect(s.sfcRoutes.find((x) => x.sfcRouteId === r2)!.snapshot).toMatchObject({
+      toPlace: 'Beta',
+      category: 'hq',
+      band: 'hq',
+    });
     version = s.version;
     const again = await http()
       .post(`/v1/dcrs/${id}/submit`)

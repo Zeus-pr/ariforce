@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { DcrBand, DcrDetails, DcrSfcRoute, DcrExpenses } from './dcr-parts';
+import { DcrBand, DcrDetails, DcrSfcRoute, DcrSfcRouteChoice, DcrExpenses } from './dcr-parts';
 import { UserRef, DateOnly, GeoPoint, Id, Month, Syncable, Timestamp, listQuery } from './common';
 import { RoleKey } from './roles';
 import { ExpenseApprovalLevel, ExpenseApprover } from './expenses';
@@ -543,6 +543,31 @@ export const CompetitorBrandList = z
   .object({ items: z.array(CompetitorBrand) })
   .meta({ id: 'CompetitorBrandList' });
 
+export const DcrSectionInput = z
+  .object({
+    workTypeId: Id,
+    territoryIds: z.array(Id).max(20).default([]),
+    workWithUserIds: z.array(Id).max(20).default([]),
+    sfcRoutes: z.array(DcrSfcRouteChoice).max(20).default([]),
+    details: DcrDetails.nullable().optional(),
+    calls: z.array(DcrCallInput).max(60).default([]),
+  })
+  .meta({ id: 'DcrSectionInput' });
+export type DcrSectionInput = z.infer<typeof DcrSectionInput>;
+
+export const DcrSection = z
+  .object({
+    workTypeId: Id,
+    band: DcrBand.nullable(),
+    territoryIds: z.array(Id),
+    workWithUserIds: z.array(Id),
+    sfcRoutes: z.array(DcrSfcRoute),
+    details: DcrDetails.nullable(),
+    calls: z.array(DcrCall),
+  })
+  .meta({ id: 'DcrSection' });
+export type DcrSection = z.infer<typeof DcrSection>;
+
 export const Dcr = Syncable.extend({
   userId: Id,
   date: DateOnly,
@@ -624,6 +649,10 @@ export const Dcr = Syncable.extend({
     .min(0)
     .optional()
     .meta({ description: 'Live calls on this DCR (GET /v1/dcrs list only)' }),
+  sections: z.array(DcrSection).optional().meta({
+    description:
+      'Every section of the day. Absent on older responses: the header is the only section',
+  }),
 }).meta({ id: 'Dcr' });
 export type Dcr = z.infer<typeof Dcr>;
 export const DcrUpsert = z

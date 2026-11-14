@@ -2,6 +2,17 @@ import * as z from 'zod';
 import { DateOnly, Id, Timestamp } from './common';
 import { DcrDetails, DcrSfcRouteChoice } from './dcr-parts';
 
+export const TourPlanSection = z
+  .object({
+    workTypeId: Id,
+    territoryIds: z.array(Id).max(20).default([]),
+    workWithUserIds: z.array(Id).max(20).default([]),
+    sfcRoutes: z.array(DcrSfcRouteChoice).max(20).default([]),
+    details: DcrDetails.nullable().default(null),
+  })
+  .meta({ id: 'TourPlanSection' });
+export type TourPlanSection = z.infer<typeof TourPlanSection>;
+
 /**
  * Tour plan items (TP feature): a one-day or from-to plan carrying the DCR's day fields, sent for
  * approval (reporting line, approvals:decide, never your own) and, once approved, offered on the
@@ -20,12 +31,13 @@ export const TourPlanItemPlan = z
     territoryIds: z.array(Id).max(20).default([]),
     workWithUserIds: z.array(Id).max(20).default([]),
     sfcRoutes: z.array(DcrSfcRouteChoice).max(20).default([]).meta({
-      description: 'One route per HQ of the day (as DCR sfcRoutes); fully checked at DCR submit',
+      description: 'Every selected SFC route. Both-way TA is summed and the greatest DA is kept.',
     }),
     details: DcrDetails.nullable().default(null).meta({
       description:
         "Meeting/training/office details; kind must match the work type's detailsKind. Never leave",
     }),
+    sections: z.array(TourPlanSection).max(8).default([]),
   })
   .meta({ id: 'TourPlanItemPlan' });
 export type TourPlanItemPlan = z.infer<typeof TourPlanItemPlan>;
@@ -51,6 +63,12 @@ export const TourPlanItem = z
     submittedAt: Timestamp.nullable(),
     decidedAt: Timestamp.nullable(),
     decidedBy: Id.nullable(),
+    ta: z.number().optional().meta({
+      description: 'Both-way TA of the selected SFC routes, each route once across every section',
+    }),
+    da: z.number().optional().meta({
+      description: 'The greatest DA among those routes',
+    }),
   })
   .meta({ id: 'TourPlanItem' });
 export type TourPlanItem = z.infer<typeof TourPlanItem>;
