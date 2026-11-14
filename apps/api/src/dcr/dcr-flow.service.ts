@@ -43,6 +43,7 @@ import { checkDcrExpenses } from './expense-rules';
 import type { DcrExpenseItem } from '@ariforce/contracts';
 import { companySettings, localDate } from '../field/field.util';
 import { leaveBlocksWork, lockDcrLeave } from '../leave/leave.util';
+import { presentationRequired } from './dcr-rules';
 import { IMAGE_URL_WINDOW_S, StorageService } from '../files/storage.service';
 import {
   SUBMITTED_STATUSES,
@@ -637,7 +638,28 @@ export class DcrFlowService {
         });
       // Then today only (IST); a past day only while unlocked (dcr-date.ts).
       assertDcrDateWritable(b.date, { unlocked: !!li.unlockedUntil });
-      const target = resolveDraftTarget(b, byId, day);
+      let draftInput = b;
+      let draftRow = byId;
+      const filed = submittedOf(day);
+      if (li.unlockedUntil && filed) {
+        await tx
+          .update(dcrs)
+          .set({
+            status: 'draft',
+            submittedAt: null,
+            submittedBy: null,
+            submitIdempotencyKey: null,
+            approvedAt: null,
+            approvedBy: null,
+          })
+          .where(eq(dcrs.id, filed.id));
+        filed.status = 'draft';
+        if (!draftInput.id || draftInput.id === filed.id) {
+          draftInput = { ...draftInput, id: filed.id, version: filed.version };
+          draftRow = filed;
+        }
+      }
+      const target = resolveDraftTarget(draftInput, draftRow, day);
       if (target.action === 'error') {
         if (target.status === 404) throw new NotFoundException('Draft not found');
         const stale =
@@ -881,8 +903,13 @@ export class DcrFlowService {
             field: 'calls',
             section: index,
           });
+        if (
+          (secWt.kind === 'field' || secWt.kind === 'non_field') &&
+          (await leaveBlocksWork(tx, p.userId, cur.date))
+        )
+          throw err(422, 'LEAVE_DAY_BLOCKED', 'Leave covers this day, so this report stays closed');
         this.dcr.assertCheckIns(section.calls);
-        this.dcr.assertPresentations(section.calls);
+        if (presentationRequired(p.roles)) this.dcr.assertPresentations(section.calls);
       }
       const hqs = await this.resolveHqs(tx, p, cur.territoryIds);
       await this.checkWorkWith(tx, p, cur.workWithUserIds);
@@ -990,9 +1017,40 @@ export class DcrFlowService {
           secHqs.map((h) => h.id),
           section.band,
         );
-        for (const choice of secChosen) {
-          const r = secAll.find((row) => row.id === choice.sfcRouteId);
-          if (!r) continue;
+        const secRoutes: RouteRow[] = [];
+        const none: string[] = [];
+        const many: { hqTerritoryId: string; candidates: number }[] = [];
+        for (const h of secHqs) {
+          const picks = secChosen.filter((c) => c.hqTerritoryId === h.id);
+          const c = secAll.filter((r) => r.hqTerritoryId === h.id);
+          if (picks.length) {
+            for (const pick of picks) {
+              const row = c.find((r) => r.id === pick.sfcRouteId);
+              if (row) secRoutes.push(row);
+            }
+          } else if (c.length === 1) secRoutes.push(c[0]!);
+          else if (!c.length) none.push(h.id);
+          else many.push({ hqTerritoryId: h.id, candidates: c.length });
+        }
+        if (none.length)
+          throw err(422, 'SFC_NO_MATCH', 'No SFC route for some HQ of the day', {
+            hqTerritoryIds: none,
+            band: section.band,
+            section: index,
+          });
+        if (many.length)
+          throw err(422, 'SFC_ROUTE_REQUIRED', 'Choose at least one SFC route for each HQ', {
+            hqs: many,
+            section: index,
+          });
+        await this.writeChoices(
+          tx,
+          p,
+          cur.id,
+          secRoutes.map((r) => ({ hqTerritoryId: r.hqTerritoryId, sfcRouteId: r.id })),
+          index,
+        );
+        for (const r of secRoutes) {
           const snapshot: DcrSfcSnapshot = {
             ...candidate(r),
             sfcRouteId: r.id,

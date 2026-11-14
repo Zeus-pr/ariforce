@@ -52,6 +52,7 @@ import {
   missingCheckIns,
   missingPresentation,
   pobValue,
+  presentationRequired,
 } from './dcr-rules';
 
 type Upsert = z.infer<typeof DcrUpsert>;
@@ -761,7 +762,7 @@ export class DcrService {
       const { pts } = await this.validateCalls(tx, p, b, cur?.id, b.date);
       if (b.submit) {
         this.assertCheckIns(b.calls);
-        this.assertPresentations(b.calls);
+        if (presentationRequired(p.roles)) this.assertPresentations(b.calls);
       }
 
       const vals = {

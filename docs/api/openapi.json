@@ -28334,7 +28334,7 @@
           },
           "presentationOpenedAt": {
             "default": null,
-            "description": "When the product presentation was shown to the doctor (client time). Drafts may omit it; submit requires it on every doctor call with productsDetailed (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED). Setting it requires presentationCapture (hard geofence).",
+            "description": "When the product presentation was shown to the doctor (client time). Drafts may omit it. A business manager must set it on every doctor call with productsDetailed before submit (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED). Area business manager and above may submit after check-in. Setting it requires presentationCapture (hard geofence).",
             "anyOf": [
               {
                 "type": "string",
