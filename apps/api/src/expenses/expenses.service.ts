@@ -665,7 +665,13 @@ export class ExpensesService implements OnModuleInit {
       throw err(422, 'VALIDATION', `date must be in ${m}`, { field: 'date' });
     if (l.date > localDate(new Date(), (await companySettings(tx, p)).timezone))
       throw err(422, 'VALIDATION', 'date cannot be in the future', { field: 'date' });
-    if (l.category === 'allowance' || l.category === 'mileage' || l.category === 'travel') {
+    const taDaCategories: ExpenseCategory[] | null =
+      l.category === 'travel'
+        ? ['travel', 'mileage']
+        : l.category === 'allowance' || l.category === 'mileage'
+          ? [l.category]
+          : null;
+    if (taDaCategories) {
       const [auto] = await tx
         .select({ id: expenseLines.id })
         .from(expenseLines)
@@ -674,7 +680,7 @@ export class ExpensesService implements OnModuleInit {
             eq(expenseLines.claimId, c.id),
             eq(expenseLines.date, l.date),
             eq(expenseLines.origin, 'ta_da'),
-            eq(expenseLines.category, l.category),
+            inArray(expenseLines.category, taDaCategories),
             isNull(expenseLines.deletedAt),
           ),
         )

@@ -48,9 +48,18 @@ export interface ComputeOptions {
   dates?: string[];
 }
 
-/** Round-trip km from the DCR's frozen SFC snapshots (one per HQ of the day); null when none. */
-export const sfcKm = (snaps: { bothWayKm?: unknown }[]) => {
-  const ks = snaps.map((x) => Number(x.bothWayKm)).filter((n) => Number.isFinite(n) && n > 0);
+/** Round-trip km from the DCR's frozen SFC snapshots. Each route counts once. */
+export const sfcKm = (snaps: { bothWayKm?: unknown; sfcRouteId?: string }[]) => {
+  const seen = new Set<string>();
+  const ks: number[] = [];
+  for (const s of snaps) {
+    if (s.sfcRouteId) {
+      if (seen.has(s.sfcRouteId)) continue;
+      seen.add(s.sfcRouteId);
+    }
+    const n = Number(s.bothWayKm);
+    if (Number.isFinite(n) && n > 0) ks.push(n);
+  }
   return ks.length ? r2(ks.reduce((a, b) => a + b, 0)) : null;
 };
 
@@ -108,6 +117,7 @@ export async function computeAllowances(
             bothWayAmount?: unknown;
             da?: unknown;
             sfcRouteId?: string;
+            actualFare?: boolean;
           } | null;
         }>(
           sql`select dcr_id, section_index, sfc_route_id, snapshot from dcr_sfc_routes
@@ -198,7 +208,7 @@ export async function computeAllowances(
         (l) =>
           l.date === d.date &&
           l.source === 'manual' &&
-          (l.category === 'allowance' || l.category === 'mileage' || l.category === 'travel'),
+          (l.category === 'allowance' || l.category === 'mileage'),
       )
     ) {
       day.issues.push('manual_line_exists');
@@ -216,14 +226,18 @@ export async function computeAllowances(
       list.push(fare);
       bySection.set(row.section_index ?? 0, list);
     }
-    const fromRoutes = [...bySection.values()].some((list) =>
-      list.some((f) => f.bothWayAmount != null || f.da != null),
-    );
+    const daySnaps = snapRows.filter((x) => x.dcr_id === d.id);
+    const actualFare = daySnaps.some((x) => x.snapshot?.actualFare === true);
+    const fromRoutes =
+      actualFare ||
+      [...bySection.values()].some((list) =>
+        list.some((f) => f.bothWayAmount != null || f.da != null),
+      );
     if (fromRoutes) {
       const rolled = dayTaDa([...bySection.values()]);
       day.da = rolled.da;
       day.ta = rolled.ta;
-      day.km = sfcKm(snapRows.filter((x) => x.dcr_id === d.id).map((x) => x.snapshot ?? {}));
+      day.km = sfcKm(daySnaps.map((x) => x.snapshot ?? {}));
       if (day.da > 0)
         out.push({
           date: d.date,

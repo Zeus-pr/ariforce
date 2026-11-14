@@ -5,7 +5,14 @@ import type {
   ExpenseAutoDraft,
   ExpenseStatus,
 } from '@ariforce/contracts';
-import { companies, dcrs, expenseClaims, expenseLines, type Tx } from '@ariforce/db';
+import {
+  companies,
+  dcrs,
+  expenseAttachments,
+  expenseClaims,
+  expenseLines,
+  type Tx,
+} from '@ariforce/db';
 import { and, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
@@ -237,23 +244,64 @@ export class ExpenseAutoDraftService {
             ),
           )
           .returning({ id: expenseLines.id });
-        if (items.length)
-          await sp.insert(expenseLines).values(
-            items.map((it, i) => ({
+        const manuals = items.length
+          ? await sp
+              .select({
+                id: expenseLines.id,
+                category: expenseLines.category,
+                amount: expenseLines.amount,
+              })
+              .from(expenseLines)
+              .where(
+                and(
+                  eq(expenseLines.claimId, c!.id),
+                  eq(expenseLines.date, d.date),
+                  eq(expenseLines.origin, 'manual'),
+                  isNull(expenseLines.deletedAt),
+                  sql`exists (select 1 from ${expenseAttachments} a where a.line_id = ${expenseLines.id} and a.deleted_at is null)`,
+                ),
+              )
+          : [];
+        const used = new Set<string>();
+        const fresh: (typeof expenseLines.$inferInsert)[] = [];
+        for (const [i, it] of items.entries()) {
+          const hit = manuals.find(
+            (m) =>
+              !used.has(m.id) &&
+              m.category === it.category &&
+              Number(m.amount).toFixed(2) === it.amount.toFixed(2),
+          );
+          const notes = it.note?.trim() || null;
+          if (hit) {
+            used.add(hit.id);
+            await sp
+              .update(expenseLines)
+              .set({
+                notes,
+                dcrId: d.id,
+                source: 'auto',
+                autoTrigger: 'dcr_submit',
+                origin: 'dcr',
+                dcrItemIndex: i,
+              })
+              .where(eq(expenseLines.id, hit.id));
+          } else
+            fresh.push({
               id: uuidv7(),
               companyId: p.companyId,
               claimId: c!.id,
               date: d.date,
               category: it.category,
               amount: it.amount.toFixed(2),
-              notes: it.note?.trim() || null,
+              notes,
               dcrId: d.id,
-              source: 'auto' as const,
-              autoTrigger: 'dcr_submit' as const,
-              origin: 'dcr' as const,
+              source: 'auto',
+              autoTrigger: 'dcr_submit',
+              origin: 'dcr',
               dcrItemIndex: i,
-            })),
-          );
+            });
+        }
+        if (fresh.length) await sp.insert(expenseLines).values(fresh);
         await sp
           .update(expenseLines)
           .set({ dcrRejectedAt: null })
