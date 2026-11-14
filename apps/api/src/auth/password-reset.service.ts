@@ -87,8 +87,12 @@ export class PasswordResetService {
   }
 
   async reset(b: PasswordReset, ip: string | null): Promise<PasswordResetDone> {
-    await enforce([{ key: `pwreset-reset:ip:${ipRateKey(ip)}`, ...LIMITS.passwordResetIp() }]);
     const email = b.email.trim().toLowerCase();
+    const emailKey = createHash('sha256').update(email).digest('hex').slice(0, 32);
+    await enforce([
+      { key: `pwreset-reset:email:${emailKey}`, ...LIMITS.passwordResetIp() },
+      { key: `pwreset-reset:ip:${ipRateKey(ip)}`, ...LIMITS.passwordResetIp() },
+    ]);
     const id = await this.eligible(email);
     if (!id) throw fail(400, CODES.invalid, 'The code is not valid');
     // better-auth answers an expired code with INVALID_OTP; tell the user it expired instead.

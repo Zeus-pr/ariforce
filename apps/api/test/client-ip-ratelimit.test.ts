@@ -29,6 +29,11 @@ describe('clientIp (#77)', () => {
     expect(clientIp(req('10.0.0.5', { 'x-forwarded-for': '1.2.3.4' }))).toBe('10.0.0.5');
     expect(clientIp(req('10.0.0.5', { 'cf-connecting-ip': 'not-an-ip' }))).toBe('10.0.0.5');
   });
+  it('uses the Railway edge IP when the process runs on Railway and no mode is set', () => {
+    process.env.RAILWAY_ENVIRONMENT = 'production';
+    expect(clientIp(req('10.0.0.5', { 'x-real-ip': '203.0.113.9' }))).toBe('203.0.113.9');
+    delete process.env.RAILWAY_ENVIRONMENT;
+  });
   it('railway mode uses only a valid X-Real-IP supplied by the Railway edge', () => {
     process.env.CLIENT_IP_MODE = 'railway';
     expect(
