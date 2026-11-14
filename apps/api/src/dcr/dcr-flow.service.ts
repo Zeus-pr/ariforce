@@ -24,25 +24,13 @@ import {
   sfcRoutes,
   territories,
   isCampWorkType,
+  roles,
+  userRoles,
   users,
   workTypes,
   type Tx,
 } from '@ariforce/db';
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  ilike,
-  inArray,
-  isNull,
-  lte,
-  gte,
-  ne,
-  notInArray,
-  or,
-  sql,
-} from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lte, gte, ne, notInArray, sql } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
@@ -373,33 +361,94 @@ export class DcrFlowService {
     });
   }
 
-  /** Anyone can work with anyone: active users of the company except the caller. */
+  /** Reporting line: people below you, and managers above you up to the Director. Not peers.
+   * Director sees everyone. System admin, distribution head, and accountant are excluded.
+   */
+  private async workWithPeople(tx: Tx, p: Principal) {
+    const excluded = new Set(['system_admin', 'distribution_head', 'accountant']);
+    const rows = await tx
+      .select({
+        id: users.id,
+        name: users.name,
+        employeeCode: users.employeeCode,
+        designation: users.designation,
+        managerId: users.managerId,
+        role: roles.key,
+      })
+      .from(users)
+      .leftJoin(userRoles, eq(userRoles.userId, users.id))
+      .leftJoin(roles, eq(roles.id, userRoles.roleId))
+      .where(and(eq(users.status, 'active'), isNull(users.deletedAt)));
+    const byId = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        employeeCode: string | null;
+        designation: string | null;
+        managerId: string | null;
+        roles: string[];
+      }
+    >();
+    for (const row of rows) {
+      const cur = byId.get(row.id) ?? {
+        id: row.id,
+        name: row.name,
+        employeeCode: row.employeeCode,
+        designation: row.designation,
+        managerId: row.managerId,
+        roles: [],
+      };
+      if (row.role) cur.roles.push(row.role);
+      byId.set(row.id, cur);
+    }
+    const visible = [...byId.values()].filter((u) => !u.roles.some((k) => excluded.has(k)));
+    const me = byId.get(p.userId);
+    if (me?.roles.includes('director')) return visible.filter((u) => u.id !== p.userId);
+    const ids = new Set<string>();
+    const seen = new Set<string>();
+    for (let up = me?.managerId; up && !seen.has(up); up = byId.get(up)?.managerId) {
+      seen.add(up);
+      ids.add(up);
+    }
+    const kids = new Map<string, string[]>();
+    for (const u of visible) {
+      if (!u.managerId) continue;
+      const list = kids.get(u.managerId) ?? [];
+      list.push(u.id);
+      kids.set(u.managerId, list);
+    }
+    const stack = [...(kids.get(p.userId) ?? [])];
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (id === p.userId || ids.has(id)) continue;
+      ids.add(id);
+      stack.push(...(kids.get(id) ?? []));
+    }
+    return visible.filter((u) => ids.has(u.id));
+  }
+
+  /** Anyone on your reporting line, not the whole company. */
   workWith(p: Principal, q: { q?: string; ids?: string[]; limit: number }) {
     return this.tenant.run(p, async (tx) => {
-      const term = q.q?.replace(/[\\%_]/g, (m) => `\\${m}`);
-      const rows = await tx
-        .select({
-          id: users.id,
-          name: users.name,
-          employeeCode: users.employeeCode,
-          designation: users.designation,
-        })
-        .from(users)
-        .where(
-          and(
-            eq(users.status, 'active'),
-            isNull(users.deletedAt),
-            ne(users.id, p.userId),
-            q.ids
-              ? inArray(users.id, q.ids)
-              : term
-                ? or(ilike(users.name, `%${term}%`), ilike(users.employeeCode, `${term}%`))
-                : undefined,
-          ),
-        )
-        .orderBy(asc(users.name), asc(users.id))
-        .limit(q.limit);
-      return { items: rows };
+      const term = q.q?.trim().toLowerCase();
+      let items = await this.workWithPeople(tx, p);
+      if (q.ids) items = items.filter((u) => q.ids!.includes(u.id));
+      else if (term)
+        items = items.filter(
+          (u) =>
+            u.name.toLowerCase().includes(term) ||
+            (u.employeeCode ?? '').toLowerCase().startsWith(term),
+        );
+      items.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+      return {
+        items: items.slice(0, q.limit).map(({ id, name, employeeCode, designation }) => ({
+          id,
+          name,
+          employeeCode,
+          designation,
+        })),
+      };
     });
   }
 
@@ -501,13 +550,10 @@ export class DcrFlowService {
       );
   }
 
-  private async checkWorkWith(tx: Tx, ids: string[]) {
+  private async checkWorkWith(tx: Tx, p: Principal, ids: string[]) {
     if (!ids.length) return;
-    const found = await tx
-      .select({ id: users.id })
-      .from(users)
-      .where(and(inArray(users.id, ids), isNull(users.deletedAt)));
-    const miss = ids.filter((i) => !found.some((f) => f.id === i));
+    const allowed = new Set((await this.workWithPeople(tx, p)).map((u) => u.id));
+    const miss = ids.filter((i) => !allowed.has(i));
     if (miss.length) throw err(422, 'VALIDATION', 'Unknown users', { workWithUserIds: miss });
   }
 
@@ -641,7 +687,7 @@ export class DcrFlowService {
       // Omitted: the saved list is kept; sent (even []): replaces it.
       const expenses = b.expenses ? checkDcrExpenses(b.expenses) : undefined;
       const hqs = await this.resolveHqs(tx, p, b.territoryIds);
-      await this.checkWorkWith(tx, b.workWithUserIds);
+      await this.checkWorkWith(tx, p, b.workWithUserIds);
       await this.checkChoices(tx, p, b.sfcRoutes ?? [], hqs, band);
       const { pts } = await this.dcr.validateCalls(tx, p, b, cur?.id, b.date);
       const plan = await this.dcr.plan(tx, p.userId, b.date);
@@ -783,7 +829,7 @@ export class DcrFlowService {
       this.dcr.assertCheckIns(dto.calls);
       this.dcr.assertPresentations(dto.calls);
       const hqs = await this.resolveHqs(tx, p, cur.territoryIds);
-      await this.checkWorkWith(tx, cur.workWithUserIds);
+      await this.checkWorkWith(tx, p, cur.workWithUserIds);
       await this.details(tx, p, wt, cur);
       await this.dcr.validateCalls(
         tx,
