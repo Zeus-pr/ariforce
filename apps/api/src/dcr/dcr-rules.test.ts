@@ -23,15 +23,19 @@ describe('dcr rules', () => {
     expect(pobValue(3, '12.345')).toBe('37.04');
     expect(pobValue(3, null)).toBeNull();
   });
-  it('rejects POB on doctor calls only', () => {
+  it('rejects POB on doctor and stockist calls', () => {
     expect(
       doctorPob([call({ outletKind: 'chemist', pob: [1] }), call({ clientId: 'd', pob: [1] })]),
     ).toEqual({
-      reason: 'POB_NOT_ALLOWED_FOR_DOCTOR',
+      reason: 'POB_CHEMIST_ONLY',
       callIndexes: [1],
       callIds: ['d'],
     });
-    expect(doctorPob([call({ outletKind: 'stockist', pob: [1] })])).toBeNull();
+    expect(doctorPob([call({ outletKind: 'stockist', clientId: 's', pob: [1] })])).toEqual({
+      reason: 'POB_CHEMIST_ONLY',
+      callIndexes: [0],
+      callIds: ['s'],
+    });
   });
   it('rejects a visit check-in from another day and keeps one from this day', () => {
     expect(

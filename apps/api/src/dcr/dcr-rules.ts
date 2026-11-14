@@ -18,14 +18,14 @@ type CallLike = {
 };
 const idOf = (c: CallLike) => c.clientId ?? c.id ?? null;
 
-/** POB is for chemist and stockist calls only. Returns the offending calls, or null. */
+/** POB is for chemist calls only. Returns the offending calls, or null. */
 export function doctorPob(calls: CallLike[]) {
   const bad = calls.flatMap((c, i) =>
-    c.outletKind === 'doctor' && c.pob.length ? [{ index: i, id: idOf(c) }] : [],
+    c.outletKind !== 'chemist' && c.pob.length ? [{ index: i, id: idOf(c) }] : [],
   );
   return bad.length
     ? {
-        reason: 'POB_NOT_ALLOWED_FOR_DOCTOR' as const,
+        reason: 'POB_CHEMIST_ONLY' as const,
         callIndexes: bad.map((b) => b.index),
         callIds: bad.map((b) => b.id),
       }

@@ -261,6 +261,62 @@ export class OutletLocationsService {
       if (b.label && !LABELS[kind].includes(b.label))
         throw err(422, 'VALIDATION', `Invalid label for ${row.outletKind}`, { label: b.label });
 
+      if (b.active === false) {
+        const [current] = await tx
+          .select({ id: outletLocations.id })
+          .from(outletLocations)
+          .where(and(eq(outletLocations.id, id), eq(outletLocations.version, b.version)));
+        if (!current)
+          throw new ConflictException({
+            code: 'VERSION_CONFLICT',
+            message: 'Stale version',
+          });
+        await tx
+          .update(geoLockEvents)
+          .set({ locationId: null, before: null, after: null })
+          .where(eq(geoLockEvents.locationId, id));
+        await tx.delete(outletLocations).where(eq(outletLocations.id, id));
+        const [next] = await tx
+          .select({
+            location: outletLocations.location,
+            lockedAt: outletLocations.lockedAt,
+            lockedBy: outletLocations.lockedBy,
+          })
+          .from(outletLocations)
+          .where(
+            and(
+              eq(outletLocations.outletKind, kind),
+              eq(outletLocations.outletId, row.outletId),
+              eq(outletLocations.active, true),
+              isNull(outletLocations.deletedAt),
+            ),
+          )
+          .orderBy(asc(outletLocations.lockedAt), asc(outletLocations.id))
+          .limit(1);
+        const point = next?.location ?? null;
+        if (kind === 'doctor') {
+          await tx
+            .update(doctors)
+            .set({
+              location: point,
+              geoTaggedAt: next?.lockedAt ?? null,
+              geoTaggedBy: next?.lockedBy ?? null,
+            })
+            .where(eq(doctors.id, row.outletId));
+        } else {
+          await tx
+            .update(OUTLETS[kind])
+            .set({ location: point })
+            .where(eq(OUTLETS[kind].id, row.outletId));
+        }
+        await this.audit.record(tx, p, 'outlet.location.deactivate', {
+          entityType: 'outlet_location',
+          entityId: id,
+          after: { outletKind: kind, outletId: row.outletId, removed: true },
+        });
+        return toDto({ ...row, active: false, deletedAt: new Date() });
+      }
+
       if (b.active === true && !row.active && row.outletKind !== 'doctor') {
         const [clash] = await tx
           .select({ id: outletLocations.id })
@@ -315,12 +371,7 @@ export class OutletLocationsService {
           details: before,
         });
 
-      const action =
-        b.active === false && row.active
-          ? ('deactivate' as const)
-          : b.active === true && !row.active
-            ? ('reactivate' as const)
-            : ('edit' as const);
+      const action = b.active === true && !row.active ? ('reactivate' as const) : ('edit' as const);
 
       await tx.insert(geoLockEvents).values({
         companyId: p.companyId,
