@@ -42,7 +42,7 @@ import { normaliseDetails } from './details-rules';
 import { checkDcrExpenses } from './expense-rules';
 import type { DcrExpenseItem } from '@ariforce/contracts';
 import { companySettings, localDate } from '../field/field.util';
-import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leave.util';
+import { leaveBlocksWork, lockDcrLeave } from '../leave/leave.util';
 import { IMAGE_URL_WINDOW_S, StorageService } from '../files/storage.service';
 import {
   SUBMITTED_STATUSES,
@@ -672,10 +672,11 @@ export class DcrFlowService {
           field: 'band',
           expected: band,
         });
-      if (wt.kind === 'field' || wt.kind === 'non_field')
-        assertNotOnLeave(await approvedLeaveDays(tx, [p.userId], b.date, b.date), [
-          { date: b.date, session: 'full', kind: wt.kind },
-        ]);
+      if (
+        (wt.kind === 'field' || wt.kind === 'non_field') &&
+        (await leaveBlocksWork(tx, p.userId, b.date))
+      )
+        throw err(422, 'LEAVE_DAY_BLOCKED', 'Leave covers this day, so this report stays closed');
       if (isCampWorkType(wt.code) && b.calls.length)
         throw err(422, 'VALIDATION', 'Camp does not take doctor, chemist or stockist calls', {
           field: 'calls',
@@ -809,10 +810,11 @@ export class DcrFlowService {
 
       const wt = await this.workType(tx, cur.workTypeId);
       const band = workTypeBand(wt);
-      if (wt.kind === 'field' || wt.kind === 'non_field')
-        assertNotOnLeave(await approvedLeaveDays(tx, [p.userId], cur.date, cur.date), [
-          { date: cur.date, session: 'full', kind: wt.kind },
-        ]);
+      if (
+        (wt.kind === 'field' || wt.kind === 'non_field') &&
+        (await leaveBlocksWork(tx, p.userId, cur.date))
+      )
+        throw err(422, 'LEAVE_DAY_BLOCKED', 'Leave covers this day, so this report stays closed');
       const dto = (await this.dcr.toDto(tx, s, [cur]))[0]!;
       const field = wt.kind === 'field';
       const camp = isCampWorkType(wt.code);

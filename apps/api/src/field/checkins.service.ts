@@ -20,6 +20,7 @@ import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { autoCloseOpenPunches } from './auto-punch-out';
+import { leaveBlocksWork } from '../leave/leave.util';
 import {
   companySettings,
   doctorLockLimitMessage,
@@ -251,6 +252,8 @@ export class CheckInsService {
       if (b.kind !== 'punch_in' && !has('punch_in')) throw err(409, 'SEQUENCE', 'Punch in first');
       if (!relaxSequence && has('punch_out'))
         throw err(409, 'SEQUENCE', 'Already punched out today');
+      if (b.kind === 'punch_in' && (await leaveBlocksWork(tx, p.userId, day)))
+        throw err(422, 'LEAVE_DAY_BLOCKED', 'Leave covers this day, so punch in stays closed');
 
       if (b.kind === 'punch_out') {
         const [dcr] = await tx

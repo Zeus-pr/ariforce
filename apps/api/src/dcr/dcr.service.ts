@@ -44,7 +44,7 @@ import { ApprovalsService } from '../plans/approvals.service';
 import { autoApproveAudit, isDirector, systemPrincipal } from '../plans/auto-approve';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ExceptionRecheck } from '../jobs/exception-recheck';
-import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leave.util';
+import { leaveBlocksWork, lockDcrLeave } from '../leave/leave.util';
 import {
   DCR_LOCK_TZ,
   doctorPob,
@@ -720,10 +720,11 @@ export class DcrService {
       if (!wt) throw err(422, 'VALIDATION', 'Unknown work type', { workTypeId: b.workTypeId });
       // Legacy submit: serialise with leave approval before the approved-leave check.
       if (b.submit) await lockDcrLeave(tx, p.userId);
-      if (wt.kind === 'field' || wt.kind === 'non_field')
-        assertNotOnLeave(await approvedLeaveDays(tx, [p.userId], b.date, b.date), [
-          { date: b.date, session: 'full', kind: wt.kind },
-        ]);
+      if (
+        (wt.kind === 'field' || wt.kind === 'non_field') &&
+        (await leaveBlocksWork(tx, p.userId, b.date))
+      )
+        throw err(422, 'LEAVE_DAY_BLOCKED', 'Leave covers this day, so this report stays closed');
       const field = wt.kind === 'field';
       const camp = isCampWorkType(wt.code);
       if (camp && b.calls.length)
