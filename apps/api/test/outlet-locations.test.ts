@@ -265,6 +265,8 @@ describe.skipIf(!OWNER || !APP)('outlet locations + presentation hard gate', () 
       .set(as('abm'))
       .send({ version: lock.body.version, active: false });
     expect(off.status, JSON.stringify(off.body)).toBe(200);
+    const afterOff = await http().get(`/v1/outlets/doctor/${one}/locations`).set(as('cap'));
+    expect(afterOff.body.items.find((x: { id: string }) => x.id === lock.body.id)).toBeUndefined();
     const replaced = await http()
       .post(`/v1/outlets/doctor/${one}/locations`)
       .set(as('cap'))
