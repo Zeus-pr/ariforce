@@ -548,22 +548,20 @@ export function CallCard({
           )}
         </>
       )}
-      {(call.kind === 'chemist' || call.kind === 'stockist') && !readOnly && (
+      {call.kind === 'chemist' && !readOnly && (
         <PobEditor
           rows={call.pob ?? []}
           onChange={(pob) => onChange({ pob })}
           products={productOpts}
           stockists={stockistList}
-          showStockist={call.kind === 'chemist'}
+          showStockist
         />
       )}
-      {(call.kind === 'chemist' || call.kind === 'stockist') &&
-        readOnly &&
-        (call.pob?.length ?? 0) > 0 && (
-          <p className="text-sm text-muted-foreground" data-testid="dcr-call-pob-ro">
-            Order booked: {call.pob.length} line{call.pob.length === 1 ? '' : 's'}
-          </p>
-        )}
+      {call.kind === 'chemist' && readOnly && (call.pob?.length ?? 0) > 0 && (
+        <p className="text-sm text-muted-foreground" data-testid="dcr-call-pob-ro">
+          Order booked: {call.pob.length} line{call.pob.length === 1 ? '' : 's'}
+        </p>
+      )}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`rem-${call.clientId}`}>
           Remarks <span className="font-normal text-muted-foreground">(optional)</span>
