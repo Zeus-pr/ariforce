@@ -7,6 +7,7 @@ import {
   missingCheckIns,
   missingPresentation,
   pobValue,
+  presentationRequired,
 } from './dcr-rules';
 import { draftsNewestFirst, rejectedNewestFirst, reviewable, submittedOf } from './day-report';
 
@@ -58,6 +59,12 @@ describe('dcr rules', () => {
       ]),
     ).toEqual({ reason: 'CALL_NOT_CHECKED_IN', callIndexes: [0, 2], callIds: ['a', 'c'] });
     expect(missingCheckIns([call({ checkInId: 'v1' })])).toBeNull();
+  });
+  it('requires the presentation only from a business manager', () => {
+    expect(presentationRequired(['business_manager'])).toBe(true);
+    expect(presentationRequired(['area_business_manager'])).toBe(false);
+    expect(presentationRequired(['director'])).toBe(false);
+    expect(presentationRequired(['business_manager', 'area_business_manager'])).toBe(false);
   });
   it('needs presentationOpenedAt on doctor calls with products detailed', () => {
     expect(

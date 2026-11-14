@@ -61,6 +61,21 @@ export function missingCheckIns(calls: CallLike[]) {
     : null;
 }
 
+const ABOVE_BM = new Set([
+  'area_business_manager',
+  'regional_business_manager',
+  'zonal_business_manager',
+  'sales_manager',
+  'general_manager',
+  'vice_president',
+  'director',
+]);
+
+/** A business manager must open the presentation. ABM and above check in and submit. */
+export function presentationRequired(roles: readonly string[]) {
+  return roles.includes('business_manager') && !roles.some((r) => ABOVE_BM.has(r));
+}
+
 /** On submit: every doctor call with products detailed needs presentationOpenedAt. */
 export function missingPresentation(calls: CallLike[]) {
   const bad = calls.flatMap((c, i) =>

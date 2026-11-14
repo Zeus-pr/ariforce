@@ -487,7 +487,7 @@ export const DcrCall = z
     remarks: z.string().max(1000).nullable(),
     presentationOpenedAt: Timestamp.nullable().default(null).meta({
       description:
-        'When the product presentation was shown to the doctor (client time). Drafts may omit it; submit requires it on every doctor call with productsDetailed (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED). Setting it requires presentationCapture (hard geofence).',
+        'When the product presentation was shown to the doctor (client time). Drafts may omit it. A business manager must set it on every doctor call with productsDetailed before submit (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED). Area business manager and above may submit after check-in. Setting it requires presentationCapture (hard geofence).',
     }),
     presentationLocationId: Id.nullable()
       .optional()
