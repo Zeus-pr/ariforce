@@ -78,6 +78,21 @@ describe.skipIf(!OWNER || !APP)(
       tok.bm = `Bearer ${si.headers['set-auth-token']}`;
     });
     afterAll(async () => {
+      if (app && tok.director) {
+        const cur = await http().get('/v1/leave/settings').set(as('director'));
+        if (cur.status === 200 && JSON.stringify(cur.body.weeklyOffDays) !== '[0]') {
+          await http()
+            .put('/v1/leave/settings')
+            .set(as('director'))
+            .send({
+              approvalLevels: cur.body.approvalLevels,
+              backdateDays: cur.body.backdateDays,
+              maxFutureDays: cur.body.maxFutureDays,
+              version: cur.body.version,
+              weeklyOffDays: [0],
+            });
+        }
+      }
       await app?.close();
     });
 
@@ -155,6 +170,37 @@ describe.skipIf(!OWNER || !APP)(
         .set(as('bm'))
         .send(cap({ kind: 'punch_in', accuracyM: 900 }));
       expect(blurry.status).toBe(422);
+
+      const istDay = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+      const dow = new Date(`${istDay}T00:00:00Z`).getUTCDay();
+      const settings = await http().get('/v1/leave/settings').set(as('director'));
+      expect(settings.status, JSON.stringify(settings.body)).toBe(200);
+      const savedOff = settings.body.weeklyOffDays as number[];
+      let version = settings.body.version as number;
+      const putOff = async (days: number[]) => {
+        const res = await http().put('/v1/leave/settings').set(as('director')).send({
+          approvalLevels: settings.body.approvalLevels,
+          backdateDays: settings.body.backdateDays,
+          maxFutureDays: settings.body.maxFutureDays,
+          version,
+          weeklyOffDays: days,
+        });
+        expect(res.status, JSON.stringify(res.body)).toBe(200);
+        version = res.body.version;
+      };
+      await putOff([dow]);
+      const closed = await http()
+        .post('/v1/check-ins')
+        .set(as('bm'))
+        .send(cap({ kind: 'punch_in' }));
+      expect(closed.status, JSON.stringify(closed.body)).toBe(422);
+      expect(closed.body.error.code).toBe('WEEKLY_OFF');
+      await putOff(savedOff.filter((d) => d !== dow));
 
       const pin = cap({ kind: 'punch_in' });
       const p1 = await http().post('/v1/check-ins').set(as('bm')).send(pin);
@@ -272,6 +318,35 @@ describe.skipIf(!OWNER || !APP)(
         'absent',
         'absent',
       ]);
+    });
+
+    it('punch-out on a weekly off does not wait for a DCR', async () => {
+      const istDay = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+      const dow = new Date(`${istDay}T00:00:00Z`).getUTCDay();
+      const settings = await http().get('/v1/leave/settings').set(as('director'));
+      expect(settings.status, JSON.stringify(settings.body)).toBe(200);
+      const off = await http()
+        .put('/v1/leave/settings')
+        .set(as('director'))
+        .send({
+          approvalLevels: settings.body.approvalLevels,
+          backdateDays: settings.body.backdateDays,
+          maxFutureDays: settings.body.maxFutureDays,
+          version: settings.body.version,
+          weeklyOffDays: [dow],
+        });
+      expect(off.status, JSON.stringify(off.body)).toBe(200);
+      const out = await http()
+        .post('/v1/check-ins')
+        .set(as('bm'))
+        .send(cap({ kind: 'punch_out' }));
+      expect(out.status, JSON.stringify(out.body)).toBe(201);
+      expect(out.body.kind).toBe('punch_out');
     });
   },
 );

@@ -50,10 +50,52 @@ export async function ensureFieldReady(http: Http, auth: string): Promise<string
     }
     deviceId = dev.body.id as string;
   }
-  const pin = await http()
+  let pin = await http()
     .post('/v1/check-ins')
     .set(hdr)
     .send(geoCap({ kind: 'punch_in' }));
+  if (pin.status === 422 && pin.body?.error?.code === 'WEEKLY_OFF') {
+    const si = await http()
+      .post('/v1/auth/sign-in/email')
+      .send({
+        email: 'director@demo.ariforce.in',
+        password: process.env.DEMO_PASSWORD ?? 'ariforce-demo-pass',
+      });
+    if (si.status !== 200) throw new Error(`director sign-in failed: ${si.status}`);
+    const director = { authorization: `Bearer ${si.headers['set-auth-token']}` };
+    const settings = await http().get('/v1/leave/settings').set(director);
+    if (settings.status !== 200) throw new Error(JSON.stringify(settings.body));
+    const ymd = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    const dow = new Date(`${ymd}T00:00:00Z`).getUTCDay();
+    const saved = settings.body.weeklyOffDays as number[];
+    const put = (version: number, days: number[]) =>
+      http().put('/v1/leave/settings').set(director).send({
+        approvalLevels: settings.body.approvalLevels,
+        backdateDays: settings.body.backdateDays,
+        maxFutureDays: settings.body.maxFutureDays,
+        version,
+        weeklyOffDays: days,
+      });
+    const opened = await put(
+      settings.body.version,
+      saved.filter((d) => d !== dow),
+    );
+    if (opened.status !== 200) throw new Error(JSON.stringify(opened.body));
+    try {
+      pin = await http()
+        .post('/v1/check-ins')
+        .set(hdr)
+        .send(geoCap({ kind: 'punch_in' }));
+    } finally {
+      const cur = await http().get('/v1/leave/settings').set(director);
+      await put(cur.body.version, saved);
+    }
+  }
   if (![201, 409].includes(pin.status))
     throw new Error(`punch_in failed: ${pin.status} ${JSON.stringify(pin.body)}`);
   if (!deviceId) throw new Error('no deviceId after field ready');
