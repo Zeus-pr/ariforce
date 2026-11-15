@@ -217,6 +217,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     // Outlet locks / check-ins on Doctor 360 (list requires field:read; manage needs write).
     'field:read',
     'field:write',
+    'leave:read',
+    'leave:approve',
   ],
   // Accepted by lead: read-only, company-wide; no doctors/chemists; never masters write.
   distribution_head: [

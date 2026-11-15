@@ -74,3 +74,54 @@ export const TerritoryCompactList = z
   .object({ items: z.array(TerritoryCompact), nextCursor: z.string().nullable() })
   .meta({ id: 'TerritoryCompactList' });
 export type TerritoryCompactList = z.infer<typeof TerritoryCompactList>;
+
+const TerritoryName = z.string().trim().min(1).max(120);
+const TerritoryCode = z.string().trim().min(1).max(32);
+
+export const TerritoryCreate = z
+  .object({
+    name: TerritoryName,
+    code: TerritoryCode.optional(),
+    level: TerritoryLevel,
+    parentId: Id.nullable(),
+  })
+  .meta({ id: 'TerritoryCreate' });
+export type TerritoryCreate = z.infer<typeof TerritoryCreate>;
+
+export const TerritoryUpdate = z
+  .object({
+    version: z.int().min(1),
+    name: TerritoryName.optional(),
+    code: TerritoryCode.optional(),
+  })
+  .meta({ id: 'TerritoryUpdate' });
+export type TerritoryUpdate = z.infer<typeof TerritoryUpdate>;
+
+export const TerritoryMove = z
+  .object({ version: z.int().min(1), parentId: Id })
+  .meta({ id: 'TerritoryMove' });
+export type TerritoryMove = z.infer<typeof TerritoryMove>;
+
+export const TERRITORY_HEALTH_CODES = [
+  'no_territory',
+  'sfc_hq_invisible',
+  'bm_without_hq',
+  'hq_without_bm',
+  'area_without_holder',
+  'assignment_to_deleted',
+] as const;
+export const TerritoryHealth = z
+  .object({
+    items: z.array(
+      z.object({
+        code: z.enum(TERRITORY_HEALTH_CODES),
+        count: z.int().min(0),
+        people: z
+          .array(z.object({ id: Id, name: z.string(), territoryId: Id.nullable() }))
+          .default([]),
+        places: z.array(z.object({ id: Id, name: z.string() })).default([]),
+      }),
+    ),
+  })
+  .meta({ id: 'TerritoryHealth' });
+export type TerritoryHealth = z.infer<typeof TerritoryHealth>;

@@ -223,6 +223,28 @@ describe.skipIf(!OWNER || !APP)('SFC routes (real API)', () => {
     expect(emp.items.some((e) => e.id === U.otherRep)).toBe(false);
   });
 
+  it('area manager is listed on the headquarter under their area, and the chart saves there', async () => {
+    const emp = SfcEmployeeList.parse(
+      (await http().get(`/v1/sfc/employees?territoryId=${T.hq}`).set(as('director'))).body,
+    );
+    expect(emp.items.some((e) => e.id === U.area)).toBe(true);
+    expect(emp.items.some((e) => e.id === U.rep)).toBe(true);
+    expect(emp.items.some((e) => e.id === U.regional)).toBe(false);
+    const g = await http().get(url(U.area)).set(as('director'));
+    expect(g.status).toBe(200);
+    const put = await http()
+      .put(url(U.area))
+      .set(as('director'))
+      .send({ etag: g.body.etag, hqTerritoryId: T.hq, routes: [] });
+    expect(put.status).toBe(200);
+    const wrong = await http()
+      .put(url(U.area))
+      .set(as('director'))
+      .send({ etag: put.body.etag, hqTerritoryId: T.otherArea, routes: [] });
+    expect(wrong.status).toBe(422);
+    expect(wrong.body.error.code).toBe('SFC_HQ_NOT_ASSIGNED');
+  });
+
   it('rate change: settings:write only, version checked', async () => {
     const s = (await http().get('/v1/sfc/settings').set(as('director'))).body;
     expect((await http().put('/v1/sfc/settings').set(as('abm')).send(s)).status).toBe(403);

@@ -24,6 +24,7 @@ export * from './schemas/signup';
 export * from './schemas/expenses';
 export * from './schemas/allowances';
 export * from './schemas/leave';
+export * from './schemas/holidays';
 export * from './schemas/team-profile';
 export * from './schemas/health';
 export * from './schemas/notifications';

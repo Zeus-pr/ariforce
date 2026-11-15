@@ -420,10 +420,11 @@ export class LeaveService implements OnModuleInit {
 
   /** Manager over the user (leave:approve and the user in your subtree), never yourself. */
   private managesUser(p: Principal, userId: string) {
+    const admin = p.roles.includes('system_admin') && p.permissions.includes('leave:approve');
     return (
       userId !== p.userId &&
       p.permissions.includes('leave:approve') &&
-      (p.teamUserIds === null || p.teamUserIds.includes(userId))
+      (admin || p.teamUserIds === null || p.teamUserIds.includes(userId))
     );
   }
 
@@ -431,7 +432,11 @@ export class LeaveService implements OnModuleInit {
     const parts: SQL[] = [];
     if (p.permissions.includes('leave:read')) parts.push(eq(leaveRequests.userId, p.userId));
     if (p.permissions.includes('leave:approve'))
-      parts.push(p.teamUserIds ? inArray(leaveRequests.userId, p.teamUserIds) : sql`true`);
+      parts.push(
+        p.roles.includes('system_admin') || !p.teamUserIds
+          ? sql`true`
+          : inArray(leaveRequests.userId, p.teamUserIds),
+      );
     return parts.length ? or(...parts)! : sql`false`;
   }
 

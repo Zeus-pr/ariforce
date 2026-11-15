@@ -84,7 +84,7 @@ All three are re-runnable.
 ## Assumptions (to confirm)
 
 - Leave year = calendar year; full quota up front (no pro-rata for joiners); a request cannot span years.
-- No company holiday master exists yet, so only `weekly_off_days` are excluded from counted days. Holidays inside a leave range are counted as leave.
+- No company holiday master existed before this screen. Holidays are names on the DCR and tour-plan calendars. They do not close punch-in, DCR, or tour plans. A leave range still counts a holiday as a leave day. Weekly offs are still excluded from counted leave days.
 - Comp-off is granted manually by a manager (`POST grants`, kind `grant`, `workedDate`); no automatic rule from Sunday DCRs.
 - Carry-forward is run by a `settings:write` holder (`POST carry-forward`); carries `min(cap, available)` of carry-forward types into a `carry_forward` grant for the next year. No lapse/encashment.
 - Approval levels are per company in `leave_settings` (default 2), not an env var.
