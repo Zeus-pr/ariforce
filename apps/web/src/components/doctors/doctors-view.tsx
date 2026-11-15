@@ -23,6 +23,7 @@ import { DataTable } from '@/components/data-table/data-table';
 import type { Column } from '@/components/data-table/types';
 import { OutletLocksCard } from '@/components/field/outlet-locks-card';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
+import { MasterExport } from '@/components/masters/master-export';
 import { masterSource } from '@/components/masters/source';
 import { api, apiReady } from '@/lib/api';
 import { addDays, monthLabel, shortDate, thisMonth, todayYmd } from '@/lib/period';
@@ -130,18 +131,21 @@ function DoctorList() {
         onRowClick={(d) => router.push(`/doctors?id=${d.id}`)}
         searchPlaceholder="Search doctors"
         actions={
-          canWrite ? (
-            <>
-              <Button variant="outline" asChild>
-                <Link href="/doctors/import" data-testid="master-import">
-                  <FileSpreadsheet /> Import
-                </Link>
-              </Button>
-              <Button data-testid="master-add" onClick={() => setAdding(true)}>
-                <Plus /> Add doctor
-              </Button>
-            </>
-          ) : undefined
+          <>
+            <MasterExport kind="doctors" />
+            {canWrite && (
+              <>
+                <Button variant="outline" asChild>
+                  <Link href="/doctors/import" data-testid="master-import">
+                    <FileSpreadsheet /> Import
+                  </Link>
+                </Button>
+                <Button data-testid="master-add" onClick={() => setAdding(true)}>
+                  <Plus /> Add doctor
+                </Button>
+              </>
+            )}
+          </>
         }
         empty={<p className="py-10 text-center text-sm text-muted-foreground">No doctors match.</p>}
       />
