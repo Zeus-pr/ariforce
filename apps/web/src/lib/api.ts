@@ -6,7 +6,11 @@ import { createApiClient } from '@ariforce/contracts';
  * NEXT_PUBLIC_API_MODE=real (production-only)
  */
 export const API_MODE = 'real' as const;
-export const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+const LIVE_API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+export const API_URL =
+  typeof window !== 'undefined' && window.location.hostname === 'localhost'
+    ? window.location.origin
+    : LIVE_API;
 export const API_BASE_URL = API_URL;
 export const MOCKING = false;
 export const REAL = true;
