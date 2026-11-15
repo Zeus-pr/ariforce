@@ -132,7 +132,7 @@ export class StockStatementsService implements OnModuleInit {
   open(p: Principal, stockistId: string, month: string) {
     this.blockAdmin(p);
     return this.tenant.run(p, async (tx) => {
-      const stockist = await this.visibleStockist(tx, p, stockistId);
+      await this.visibleStockist(tx, p, stockistId);
       const start = monthStart(month);
       const today = localDate(new Date(), (await companySettings(tx, p)).timezone);
       if (start > monthStart(today.slice(0, 7)))
