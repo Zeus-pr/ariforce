@@ -27,7 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ariforce/ui/component
 import { toast } from '@ariforce/ui/components/sonner';
 import { dateLabel, todayIST } from '@/components/attendance/format';
 import { dcrDateClosedText } from '@/lib/dcr/date-rule';
-import { thisMonthIST } from '@/components/tour-plans/month';
+import { datesOf, thisMonthIST } from '@/components/tour-plans/month';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { useSession } from '@/lib/auth';
 import {
@@ -211,6 +211,26 @@ function CalendarPanel({
   const initialDate =
     link.get('date') && /^\d{4}-\d{2}-\d{2}$/.test(link.get('date')!) ? link.get('date')! : today;
   const [month, setMonth] = useState(() => initialDate.slice(0, 7) || thisMonthIST());
+  const [holidayNames, setHolidayNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const ac = new AbortController();
+    const to = datesOf(month).at(-1);
+    if (!to) return;
+    void (async () => {
+      await apiReady();
+      const r = await api.GET('/v1/holidays', {
+        params: { query: { from: `${month}-01`, to } },
+        signal: ac.signal,
+      });
+      if (ac.signal.aborted) return;
+      if (r.error || !r.data) {
+        setHolidayNames({});
+        return;
+      }
+      setHolidayNames(Object.fromEntries(r.data.items.map((h) => [h.date.slice(0, 10), h.name])));
+    })();
+    return () => ac.abort();
+  }, [month]);
   const [selected, setSelected] = useState<string | null>(initialDate);
   const [items, setItems] = useState<Dcr[] | null>(null);
   const [outletName, setOutletName] = useState<Map<string, string>>(() => new Map());
@@ -694,6 +714,7 @@ function CalendarPanel({
             today={today}
             selected={selected}
             pills={pills}
+            holidays={holidayNames}
             onMonthChange={setMonth}
             onSelectDay={onSelectDay}
           />

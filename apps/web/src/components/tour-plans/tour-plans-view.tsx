@@ -218,8 +218,12 @@ function Planner({ initialMonth }: { initialMonth: string }) {
         params: { query: { from, to } },
         signal: ac.signal,
       });
-      if (ac.signal.aborted || r.error || !r.data) return;
-      setHolidayNames(Object.fromEntries(r.data.items.map((h) => [h.date, h.name])));
+      if (ac.signal.aborted) return;
+      if (r.error || !r.data) {
+        setHolidayNames({});
+        return;
+      }
+      setHolidayNames(Object.fromEntries(r.data.items.map((h) => [h.date.slice(0, 10), h.name])));
     })();
     return () => ac.abort();
   }, [dates]);
@@ -634,7 +638,7 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                         data-empty={empty}
                         data-optional={nr ? nr.toLowerCase().replaceAll(' ', '-') : undefined}
                         data-status={empty ? undefined : ds}
-                        disabled={dayDisabled}
+                        disabled={dayDisabled && !holidayNames[date]}
                         title={
                           greyed
                             ? (monthBlockReason ?? 'Not open for planning')
@@ -653,12 +657,13 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                           setSelectedTp(null);
                           setSelectedTpDate(date);
                         }}
-                        aria-label={`${dayLabel(date)}: ${empty ? (nr ? `${nr.toLowerCase()}, not required` : 'not planned') : placeLabels.join(', ') || 'planned'}${greyed ? ', not available to plan' : ''}`}
+                        aria-label={`${dayLabel(date)}${holidayNames[date] ? `, ${holidayNames[date]}` : ''}: ${empty ? (nr ? `${nr.toLowerCase()}, not required` : 'not planned') : placeLabels.join(', ') || 'planned'}${greyed ? ', not available to plan' : ''}`}
                         className={cn(
-                          'flex h-24 w-full flex-col items-start gap-0.5 overflow-hidden rounded-md border px-2 py-1.5 text-left text-sm transition-[transform,background-color] duration-150 active:scale-[0.98] disabled:cursor-default sm:h-24',
+                          'flex min-h-24 w-full flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left text-sm transition-[transform,background-color] duration-150 active:scale-[0.98] disabled:cursor-default',
                           empty ? 'border-dashed' : 'bg-card',
                           empty && nr && 'border-transparent bg-muted/40',
                           greyed &&
+                            !holidayNames[date] &&
                             'border-transparent bg-muted/50 text-muted-foreground opacity-60',
                           editable && !greyed && 'hover:bg-muted/60',
                         )}
@@ -668,7 +673,7 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                           <span className="hidden sm:inline">{Number(date.slice(8))}</span>
                         </span>
                         {holidayNames[date] && (
-                          <span className="line-clamp-2 text-xs font-medium">
+                          <span className="line-clamp-2 shrink-0 text-xs font-medium text-foreground">
                             {holidayNames[date]}
                           </span>
                         )}
