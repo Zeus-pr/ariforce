@@ -573,13 +573,13 @@ export function AwsSsScreen() {
         .af-sheet { animation: af-sheet-in 480ms cubic-bezier(0.16, 1, 0.3, 1); }
         @keyframes af-sheet-in { from { opacity: 0; transform: translateY(10px); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
         .aws-history {
+          position: fixed; top: 0; right: 0; bottom: 0; left: auto; width: 50vw; height: 100%; max-height: none; margin: 0; border: 0; overflow: auto;
+          box-shadow: -24px 0 48px rgb(0 0 0 / 0.08);
           transform: translateX(100%);
           transition: transform 480ms cubic-bezier(0.16, 1, 0.3, 1), overlay 480ms allow-discrete, display 480ms allow-discrete;
         }
         .aws-history[open] {
-          position: fixed; top: 0; right: 0; bottom: 0; left: auto; width: 50vw; height: 100%; max-height: none; margin: 0; border: 0; overflow: auto;
           transform: translateX(0);
-          box-shadow: -24px 0 48px rgb(0 0 0 / 0.08);
         }
         @starting-style { .aws-history[open] { transform: translateX(100%); } }
         dialog:modal { overscroll-behavior: contain; }
