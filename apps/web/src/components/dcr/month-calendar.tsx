@@ -128,14 +128,16 @@ export function DcrMonthCalendar({
                 data-date={date}
                 data-empty={empty || undefined}
                 data-status={status ?? undefined}
-                disabled={closed}
+                disabled={closed && !holiday}
                 onClick={() => onSelectDay(date, dayPills)}
                 aria-label={`${dayLabel(date)}${holiday ? `, holiday ${holiday}` : ''}${dayPills.length ? `: ${dayPills.map((p) => p.label).join(', ')}` : ', no report'}`}
                 aria-pressed={isSelected}
                 className={cn(
                   'flex min-h-14 w-full flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left text-sm transition-[transform,background-color] duration-150 active:scale-[0.98] sm:min-h-20',
                   empty ? 'border-dashed hover:bg-muted/60' : 'bg-card hover:bg-muted/60',
-                  closed && 'cursor-not-allowed opacity-50 hover:bg-transparent active:scale-100',
+                  closed &&
+                    !holiday &&
+                    'cursor-not-allowed opacity-50 hover:bg-transparent active:scale-100',
                   isToday && 'border-primary',
                   isSelected && 'ring-2 ring-ring/40',
                 )}
@@ -144,7 +146,11 @@ export function DcrMonthCalendar({
                   <span className="sm:hidden">{dayLabel(date)}</span>
                   <span className="hidden sm:inline">{Number(date.slice(8))}</span>
                 </span>
-                {holiday && <span className="line-clamp-2 text-xs font-medium">{holiday}</span>}
+                {holiday && (
+                  <span className="line-clamp-2 text-xs font-medium text-foreground">
+                    {holiday}
+                  </span>
+                )}
                 {empty ? (
                   <span className="text-muted-foreground">
                     {closedEmptyDays
