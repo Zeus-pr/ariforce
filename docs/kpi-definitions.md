@@ -36,6 +36,8 @@ over the manager's team (self + reporting-line subtree) and then dividing. Never
 
 A manager's own field work (joint work, own calls) is counted under their own user row and is not
 double-counted in the team row; joint-work calls count for the rep who owns the DCR.
+MSL size, doctors seen, and frequency count each doctor once in a rollup: a doctor on an ABM's
+list and again on a BM's list is one doctor. Those three are still summed across months.
 
 ## KPIs
 
