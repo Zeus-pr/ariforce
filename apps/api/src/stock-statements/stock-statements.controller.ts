@@ -48,7 +48,7 @@ export class StockStatementsController {
   }
 
   @Post(':id/lines')
-  @RequirePermissions('stock_statements:write')
+  @RequirePermissions('stock_statements:read')
   save(
     @CurrentPrincipal() p: Principal,
     @Param('id') id: string,
@@ -58,7 +58,7 @@ export class StockStatementsController {
   }
 
   @Post(':id/submit')
-  @RequirePermissions('stock_statements:write')
+  @RequirePermissions('stock_statements:read')
   submit(
     @CurrentPrincipal() p: Principal,
     @Param('id') id: string,
@@ -68,7 +68,7 @@ export class StockStatementsController {
   }
 
   @Post(':id/files')
-  @RequirePermissions('stock_statements:write')
+  @RequirePermissions('stock_statements:read')
   presign(
     @CurrentPrincipal() p: Principal,
     @Param('id') id: string,
@@ -78,7 +78,7 @@ export class StockStatementsController {
   }
 
   @Post(':id/files/confirm')
-  @RequirePermissions('stock_statements:write')
+  @RequirePermissions('stock_statements:read')
   confirm(
     @CurrentPrincipal() p: Principal,
     @Param('id') id: string,

@@ -14,10 +14,26 @@ type Row = {
   frsQty: number;
 };
 
+type Box = { x: number; w: number };
+
+const left = 18;
+const item: Box = { x: left, w: 206 };
+const pack: Box = { x: 224, w: 46 };
+const qtyW = 42;
+const valW = 84;
+const pair = qtyW + valW;
+const groupX = 270;
+const groups = ['OPENING', 'RECEIPT', 'ISSUE', 'CLOSING'].map((name, i) => {
+  const x = groupX + i * pair;
+  return { name, qty: { x, w: qtyW }, value: { x: x + qtyW, w: valW } };
+});
+const dump: Box = { x: groupX + groups.length * pair, w: 44 };
+const right = dump.x + dump.w;
+
 const n = (v: number | null) => (v == null ? '' : v.toFixed(2));
 const q = (v: number | null) => (v == null ? '' : String(v));
 
-/** Stock & sales analysis in the sample layout. Values are the stored paise amounts. */
+/** Stock & sales analysis. Every figure is placed on the right edge of its own column. */
 export function statementPdf(input: {
   company: string;
   stockist: string;
@@ -25,7 +41,7 @@ export function statementPdf(input: {
   month: string;
   lines: Row[];
 }): Promise<Buffer> {
-  const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 28 });
+  const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 18 });
   const chunks: Buffer[] = [];
   doc.on('data', (c: Buffer) => chunks.push(c));
   const done = new Promise<Buffer>((resolve) =>
@@ -36,9 +52,32 @@ export function statementPdf(input: {
   const period = `01-${pad(m)}-${y} - ${pad(last)}-${pad(m)}-${y}`;
   let page = 1;
   let cursor = header(doc, input, period, page);
-  const cols = [28, 220, 270, 310, 370, 410, 470, 510, 570, 610, 670, 720];
+  let ruleTop = cursor - 6;
   const run = emptyRun();
-  const add = (row: Row) => {
+  for (const row of input.lines) {
+    if (cursor > 540) {
+      rules(doc, ruleTop, cursor);
+      total(doc, cursor, run, false);
+      doc.addPage();
+      page += 1;
+      cursor = header(doc, input, period, page);
+      ruleTop = cursor - 6;
+    }
+    doc.fontSize(7);
+    at(doc, row.name, item, cursor, 'left');
+    at(doc, row.pack ?? '', pack, cursor, 'left');
+    const cells = [
+      q(row.openingQty),
+      n(row.openingValue),
+      q(row.purchaseQty),
+      n(row.purchaseValue),
+      q(row.secondaryQty),
+      n(row.secondaryValue),
+      q(row.closingQty),
+      n(row.closingValue),
+      q(row.frsQty),
+    ];
+    figureBoxes().forEach((box, i) => at(doc, cells[i] ?? '', box, cursor, 'right'));
     run.oq += row.openingQty ?? 0;
     run.ov += row.openingValue ?? 0;
     run.pq += row.purchaseQty;
@@ -48,37 +87,10 @@ export function statementPdf(input: {
     run.cq += row.closingQty ?? 0;
     run.cv += row.closingValue ?? 0;
     run.fq += row.frsQty;
-  };
-  for (const row of input.lines) {
-    if (cursor > 520) {
-      total(doc, cursor, cols, run, false);
-      doc.addPage();
-      page += 1;
-      cursor = header(doc, input, period, page);
-    }
-    doc.fontSize(7).text(row.name, cols[0], cursor, { width: 180, lineBreak: false });
-    doc.text(row.pack ?? '', cols[1], cursor, { width: 48, lineBreak: false });
-    doc.text(q(row.openingQty), cols[2], cursor, { width: 36, align: 'right', lineBreak: false });
-    doc.text(n(row.openingValue), cols[3], cursor, { width: 52, align: 'right', lineBreak: false });
-    doc.text(q(row.purchaseQty), cols[4], cursor, { width: 36, align: 'right', lineBreak: false });
-    doc.text(n(row.purchaseValue), cols[5], cursor, {
-      width: 52,
-      align: 'right',
-      lineBreak: false,
-    });
-    doc.text(q(row.secondaryQty), cols[6], cursor, { width: 36, align: 'right', lineBreak: false });
-    doc.text(n(row.secondaryValue), cols[7], cursor, {
-      width: 52,
-      align: 'right',
-      lineBreak: false,
-    });
-    doc.text(q(row.closingQty), cols[8], cursor, { width: 36, align: 'right', lineBreak: false });
-    doc.text(n(row.closingValue), cols[9], cursor, { width: 52, align: 'right', lineBreak: false });
-    doc.text(q(row.frsQty), cols[10], cursor, { width: 36, align: 'right', lineBreak: false });
-    add(row);
-    cursor += 12;
+    cursor += 11;
   }
-  total(doc, cursor + 4, cols, run, true);
+  rules(doc, ruleTop, cursor);
+  total(doc, cursor + 2, run, true);
   doc.end();
   return done;
 }
@@ -89,47 +101,82 @@ function header(
   period: string,
   page: number,
 ) {
-  doc.fontSize(11).text(input.stockist, 28, 28, { lineBreak: false });
-  doc.fontSize(8).text(input.address, 28, 44, { lineBreak: false });
-  doc.fontSize(10).text(`STOCK & SALES ANALYSIS (${input.company})`, 280, 28, { lineBreak: false });
-  doc.fontSize(8).text(period, 620, 28, { lineBreak: false });
-  doc.text(`Page ${page}`, 760, 44, { lineBreak: false });
-  const y = 68;
+  doc.fontSize(11);
+  at(doc, input.stockist, { x: left, w: 300 }, 20, 'left');
+  doc.fontSize(10);
+  at(doc, `STOCK & SALES ANALYSIS (${input.company})`, { x: 300, w: 280 }, 20, 'center');
+  doc.fontSize(8);
+  at(doc, period, { x: 620, w: 198 }, 20, 'right');
+  const addressH = input.address ? doc.heightOfString(input.address, { width: 500 }) : 0;
+  if (input.address) doc.text(input.address, left, 36, { width: 500 });
+  at(doc, `Page ${page}`, { x: 740, w: 78 }, 36, 'right');
+  const y = 44 + Math.max(addressH, 12);
   doc.fontSize(7);
-  doc.text('ITEM DESCRIPTION', 28, y);
-  doc.text('OPENING', 310, y);
-  doc.text('RECEIPT', 430, y);
-  doc.text('ISSUE', 530, y);
-  doc.text('CLOSING', 630, y);
-  doc.text('DUMP', 730, y);
-  doc.text('QTY    VALUE', 300, y + 12);
-  doc.text('QTY    VALUE', 400, y + 12);
-  doc.text('QTY    VALUE', 500, y + 12);
-  doc.text('QTY    VALUE', 600, y + 12);
-  doc.text('QTY', 730, y + 12);
+  at(doc, 'ITEM DESCRIPTION', item, y, 'left');
+  for (const group of groups) {
+    at(doc, group.name, { x: group.qty.x, w: pair }, y, 'center');
+    at(doc, 'QTY', group.qty, y + 11, 'right');
+    at(doc, 'VALUE', group.value, y + 11, 'right');
+  }
+  at(doc, 'DUMP', dump, y, 'right');
+  at(doc, 'QTY', dump, y + 11, 'right');
   doc
-    .moveTo(28, y + 24)
-    .lineTo(800, y + 24)
+    .moveTo(left, y + 23)
+    .lineTo(right, y + 23)
     .stroke();
-  return y + 30;
+  return y + 29;
+}
+
+function rules(doc: InstanceType<typeof PDFDocument>, top: number, bottom: number) {
+  const xs = [left, pack.x, ...groups.flatMap((g) => [g.qty.x, g.value.x]), dump.x, right];
+  doc.save().strokeColor('#bbbbbb').lineWidth(0.4);
+  for (const x of xs) {
+    doc.moveTo(x, top).lineTo(x, bottom).stroke();
+  }
+  doc.restore();
 }
 
 function total(
   doc: InstanceType<typeof PDFDocument>,
   y: number,
-  cols: number[],
   run: ReturnType<typeof emptyRun>,
   last: boolean,
 ) {
-  doc.fontSize(8).text(last ? 'TOTAL' : 'Continued', cols[0]!, y);
-  const cells = [run.oq, run.ov, run.pq, run.pv, run.sq, run.sv, run.cq, run.cv, run.fq];
-  cells.forEach((v, i) => {
-    doc.text(typeof v === 'number' && i % 2 === 1 ? v.toFixed(2) : String(v), cols[i + 2]!, y, {
-      width: i % 2 === 1 ? 52 : 36,
-      align: 'right',
-      lineBreak: false,
-    });
-  });
+  doc.fontSize(8);
+  at(doc, last ? 'TOTAL' : 'Continued', item, y, 'left');
+  const cells = [
+    String(run.oq),
+    run.ov.toFixed(2),
+    String(run.pq),
+    run.pv.toFixed(2),
+    String(run.sq),
+    run.sv.toFixed(2),
+    String(run.cq),
+    run.cv.toFixed(2),
+    String(run.fq),
+  ];
+  figureBoxes().forEach((box, i) => at(doc, cells[i] ?? '', box, y, 'right'));
+}
+
+function figureBoxes() {
+  return groups.flatMap((group) => [group.qty, group.value]).concat(dump);
+}
+
+function at(
+  doc: InstanceType<typeof PDFDocument>,
+  value: string,
+  box: Box,
+  y: number,
+  align: 'left' | 'right' | 'center',
+) {
+  const width = doc.widthOfString(value);
+  const x =
+    align === 'right'
+      ? box.x + box.w - width
+      : align === 'center'
+        ? box.x + (box.w - width) / 2
+        : box.x;
+  doc.text(value, x, y, { lineBreak: false });
 }
 
 function emptyRun() {
