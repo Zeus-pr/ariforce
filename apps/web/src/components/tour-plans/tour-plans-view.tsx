@@ -642,7 +642,7 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                         data-empty={empty}
                         data-optional={nr ? nr.toLowerCase().replaceAll(' ', '-') : undefined}
                         data-status={empty ? undefined : ds}
-                        disabled={dayDisabled && !holidayNames[date]}
+                        disabled={dayDisabled}
                         title={
                           greyed
                             ? (monthBlockReason ?? 'Not open for planning')
@@ -667,7 +667,6 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                           empty ? 'border-dashed' : 'bg-card',
                           empty && nr && 'border-transparent bg-muted/40',
                           greyed &&
-                            !holidayNames[date] &&
                             'border-transparent bg-muted/50 text-muted-foreground opacity-60',
                           editable && !greyed && 'hover:bg-muted/60',
                         )}
