@@ -268,8 +268,8 @@ export class KpisService {
              where user_id = any(${u}) and date between ${from}::date and ${upto}::date
           ), off as (
             select coalesce(sum(fraction), 0) as off_days from (
-              select user_id, date, max(fraction) as fraction from off_rows
-               where extract(dow from date) <> 0 group by user_id, date
+              select user_id, date, least(sum(fraction), 1) as fraction from off_rows
+               group by user_id, date
             ) days_off
           ), monthly as (
             select coalesce(sum(msl_size), 0) as msl,

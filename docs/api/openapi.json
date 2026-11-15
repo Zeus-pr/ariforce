@@ -27635,6 +27635,10 @@
           "da": {
             "description": "The greatest DA among those routes",
             "type": "number"
+          },
+          "canDecide": {
+            "description": "True when this pending plan is waiting for you",
+            "type": "boolean"
           }
         },
         "required": [
@@ -29358,6 +29362,10 @@
           "da": {
             "description": "The greatest DA among those routes",
             "type": "number"
+          },
+          "canDecide": {
+            "description": "True when this pending plan is waiting for you",
+            "type": "boolean"
           },
           "pendingDates": {
             "type": "array",
@@ -33132,6 +33140,10 @@
               }
             ],
             "description": "Current step while pending"
+          },
+          "canDecide": {
+            "description": "True when this pending request is waiting for you",
+            "type": "boolean"
           },
           "createdAt": {
             "type": "string",

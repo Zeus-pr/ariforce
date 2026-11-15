@@ -103,6 +103,9 @@ export const LeaveRequest = z
     status: LeaveStatus,
     approvalId: Id.nullable(),
     approvalStep: z.int().nullable().meta({ description: 'Current step while pending' }),
+    canDecide: z.boolean().optional().meta({
+      description: 'True when this pending request is waiting for you',
+    }),
     createdAt: Timestamp,
     decidedAt: Timestamp.nullable(),
     decidedBy: Id.nullable(),

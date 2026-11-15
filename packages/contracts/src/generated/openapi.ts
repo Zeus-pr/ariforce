@@ -5865,6 +5865,8 @@ export interface components {
       ta?: number;
       /** @description The greatest DA among those routes */
       da?: number;
+      /** @description True when this pending plan is waiting for you */
+      canDecide?: boolean;
     };
     StandardTourPlan: {
       /**
@@ -6424,6 +6426,8 @@ export interface components {
       ta?: number;
       /** @description The greatest DA among those routes */
       da?: number;
+      /** @description True when this pending plan is waiting for you */
+      canDecide?: boolean;
       /** @description Unfiled days from today (IST) on; the card is listed only while this is non-empty */
       pendingDates: string[];
       /** @description pendingDates that already have a DCR draft */
@@ -7502,6 +7506,8 @@ export interface components {
       approvalId: string | null;
       /** @description Current step while pending */
       approvalStep: number | null;
+      /** @description True when this pending request is waiting for you */
+      canDecide?: boolean;
       /**
        * Format: date-time
        * @description ISO-8601 timestamp (UTC)

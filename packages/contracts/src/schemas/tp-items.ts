@@ -69,6 +69,9 @@ export const TourPlanItem = z
     da: z.number().optional().meta({
       description: 'The greatest DA among those routes',
     }),
+    canDecide: z.boolean().optional().meta({
+      description: 'True when this pending plan is waiting for you',
+    }),
   })
   .meta({ id: 'TourPlanItem' });
 export type TourPlanItem = z.infer<typeof TourPlanItem>;
