@@ -714,6 +714,7 @@ export const Approval = z
         'expense',
         'dcr',
         'signup',
+        'stock_statement',
       ])
       .meta({
         description:
