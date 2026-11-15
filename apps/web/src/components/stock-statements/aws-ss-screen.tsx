@@ -78,10 +78,11 @@ export function AwsSsScreen() {
     setBusy('open');
     setError(null);
     setSaved(false);
+    setSheet(null);
+    setDrafts({});
     try {
       const next = await openStatement(id, m);
       setSheet(next);
-      setDrafts({});
     } catch (e) {
       setError(messageOf(e));
     } finally {
@@ -207,7 +208,7 @@ export function AwsSsScreen() {
     setError(null);
     try {
       let current = sheet;
-      if (Object.keys(drafts).length) {
+      if (decision === 'approve' && Object.keys(drafts).length) {
         current = await saveLines(
           sheet.id,
           sheet.version,
