@@ -157,19 +157,63 @@ export class StockStatementsService implements OnModuleInit {
       if (existing) return this.sheet(tx, p, existing);
       if (!p.roles.includes('business_manager'))
         throw err(422, 'NOT_STARTED', 'The business manager has not opened this month');
+      const priorMonth = this.previous(start);
+      const [prior] = await tx
+        .select()
+        .from(stockStatements)
+        .where(
+          and(
+            eq(stockStatements.stockistId, stockistId),
+            eq(stockStatements.month, priorMonth),
+            isNull(stockStatements.deletedAt),
+          ),
+        )
+        .limit(1);
       const [latest] = await tx
         .select()
         .from(stockStatements)
         .where(and(eq(stockStatements.stockistId, stockistId), isNull(stockStatements.deletedAt)))
         .orderBy(desc(stockStatements.month))
         .limit(1);
-      if (latest && (latest.month !== this.previous(start) || latest.status !== 'approved')) {
+      const latestMonth = latest ? String(latest.month).slice(0, 10) : null;
+      if (latest && start > latestMonth!) {
+        if (latestMonth !== priorMonth || latest.status !== 'approved') {
+          throw err(
+            422,
+            latest.status === 'approved' ? 'MONTH_OUT_OF_SEQUENCE' : 'PREVIOUS_MONTH_OPEN',
+            latest.status === 'approved'
+              ? `The next month is ${nextMonth(latest.month).slice(0, 7)}`
+              : `${latest.month.slice(0, 7)} has to be approved before the next month opens`,
+          );
+        }
+      } else if (latest && start < latestMonth!) {
+        const [later] = await tx
+          .select({ month: stockStatements.month, status: stockStatements.status })
+          .from(stockStatements)
+          .where(
+            and(
+              eq(stockStatements.stockistId, stockistId),
+              isNull(stockStatements.deletedAt),
+              sql`${stockStatements.month} > ${start}`,
+              sql`${stockStatements.status} <> 'draft'`,
+            ),
+          )
+          .orderBy(desc(stockStatements.month))
+          .limit(1);
+        if (later) {
+          const word = later.status === 'approved' ? 'approved' : 'submitted';
+          throw err(
+            422,
+            'LATER_MONTH_CLOSED',
+            `${String(later.month).slice(0, 7)} is already ${word}, so an earlier month cannot be opened`,
+          );
+        }
+      }
+      if (prior && prior.status !== 'approved') {
         throw err(
           422,
-          latest.status === 'approved' ? 'MONTH_OUT_OF_SEQUENCE' : 'PREVIOUS_MONTH_OPEN',
-          latest.status === 'approved'
-            ? `The next month is ${nextMonth(latest.month).slice(0, 7)}`
-            : `${latest.month.slice(0, 7)} has to be approved before the next month opens`,
+          'PREVIOUS_MONTH_OPEN',
+          `${String(prior.month).slice(0, 7)} has to be approved before the next month opens`,
         );
       }
       const id = uuidv7();
@@ -177,7 +221,7 @@ export class StockStatementsService implements OnModuleInit {
         .insert(stockStatements)
         .values({ id, companyId: p.companyId, stockistId, month: start })
         .returning();
-      if (latest) await this.carry(tx, p, latest, created!);
+      if (prior?.status === 'approved') await this.carry(tx, p, prior, created!);
       await this.audit.record(tx, p, 'stock_statement.opened', {
         entityType: 'stock_statement',
         entityId: id,
