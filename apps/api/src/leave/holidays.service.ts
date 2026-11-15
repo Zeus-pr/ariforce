@@ -14,6 +14,7 @@ import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
+import { holidayDate } from './holiday-date';
 
 const isAdmin = (p: Principal) =>
   (p.roles.includes('system_admin') || p.roles.includes('director')) &&
@@ -42,7 +43,7 @@ export class HolidaysService {
   private dto(r: Row): Holiday {
     return {
       id: r.id,
-      date: r.date,
+      date: holidayDate(r.date),
       name: r.name,
       version: r.version,
       updatedAt: r.updatedAt.toISOString(),
