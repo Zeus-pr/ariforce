@@ -1109,7 +1109,7 @@ function ApprovalsPanel({ onDecided }: { onDecided: () => void }) {
         query: { subjectType: 'tour_plan', status: 'pending', mine: 'to_decide', limit: 50 },
       },
     });
-    setItems(r.data?.items ?? []);
+    setItems((r.data?.items ?? []).filter((a) => a.canDecide));
   }, []);
   useEffect(() => {
     void load();
