@@ -47,7 +47,7 @@ export function LeaveApprovals({ levels, onDecided }: { levels: number; onDecide
       setError(null);
       setRows(
         (r.data?.items ?? [])
-          .filter((x) => x.userId !== me)
+          .filter((x) => x.userId !== me && (x as { canDecide?: boolean }).canDecide !== false)
           .sort((a, z) => a.fromDate.localeCompare(z.fromDate)),
       );
     })().catch(() => {});

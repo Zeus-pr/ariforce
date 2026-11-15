@@ -137,13 +137,9 @@ function Planner({ initialMonth }: { initialMonth: string }) {
   const other = !!person && person !== user?.id;
   // Deep link from a notification: /tour-plans?plan=<id> opens that plan's month.
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get('plan');
-    if (!id) return;
-    void (async () => {
-      await apiReady();
-      const r = await api.GET('/v1/tour-plans/{month}', { params: { path: { month: id } } });
-      if (r.data?.month) setMonth(r.data.month);
-    })().catch(() => {});
+    const params = new URLSearchParams(window.location.search);
+    const plan = params.get('plan');
+    if (plan && /^\d{4}-\d{2}/.test(plan)) setMonth(plan.slice(0, 7));
   }, []);
   const [plan, setPlan] = useState<TourPlan | null | undefined>(undefined);
   const [tpItems, setTpItems] = useState<TpItem[]>([]);
@@ -1113,7 +1109,7 @@ function ApprovalsPanel({ onDecided }: { onDecided: () => void }) {
         query: { subjectType: 'tour_plan', status: 'pending', mine: 'to_decide', limit: 50 },
       },
     });
-    setItems(r.data?.items ?? []);
+    setItems((r.data?.items ?? []).filter((a) => a.canDecide));
   }, []);
   useEffect(() => {
     void load();
