@@ -84,8 +84,13 @@ html.af-splash [data-af-header-logo] {
     opacity: 0;
   }
 }
-.af-fade {
-  animation: af-fade var(--duration-fast) var(--ease-out);
+dialog:modal {
+  overscroll-behavior: contain;
+}
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgb(0 0 0 / 0.4);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -119,6 +124,46 @@ html.af-splash [data-af-header-logo] {
 @media (prefers-reduced-motion: reduce) {
   .af-reveal {
     transition: none;
+  }
+}
+
+.org-place summary {
+  list-style: none;
+  cursor: pointer;
+}
+.org-place summary::-webkit-details-marker {
+  display: none;
+}
+.org-place summary::before {
+  content: '';
+  inline-size: 0.4em;
+  block-size: 0.4em;
+  flex-shrink: 0;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  rotate: -45deg;
+}
+.org-place details[open] > summary::before {
+  rotate: 45deg;
+}
+.org-place details::details-content {
+  interpolate-size: allow-keywords;
+  overflow: clip;
+  contain: layout;
+}
+.org-place details:not([open])::details-content {
+  block-size: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .org-place summary::before {
+    transition: rotate 0.2s;
+  }
+  .org-place details::details-content {
+    transition:
+      block-size 0.2s ease-in-out,
+      content-visibility 0.2s ease-in-out,
+      display 0.2s ease-in-out;
+    transition-behavior: allow-discrete;
   }
 }
 

@@ -3,11 +3,11 @@
 const HIDDEN_LEVEL = 'territory';
 
 const LEVEL_WORD: Record<string, string> = {
-  national: 'national',
-  zone: 'zone',
-  region: 'region',
-  area: 'area',
-  headquarter: 'HQ',
+  national: 'country',
+  zone: 'state',
+  region: 'RBM HQ',
+  area: 'ABM HQ',
+  headquarter: 'BM HQ',
 };
 
 export type TerritoryOptionRow = {

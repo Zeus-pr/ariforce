@@ -785,6 +785,7 @@ function Flow({
           <p className="text-sm text-muted-foreground" data-testid="dcr-date-label">
             {dateLabel(s.date)}
           </p>
+          <HolidayLine date={s.date} />
           <p className="text-sm" data-testid="dcr-status">
             <span
               className={cn(
@@ -1408,5 +1409,28 @@ function Flow({
         </div>
       )}
     </div>
+  );
+}
+
+function HolidayLine({ date }: { date: string }) {
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    const ac = new AbortController();
+    void (async () => {
+      await apiReady();
+      const r = await api.GET('/v1/holidays', {
+        params: { query: { from: date, to: date } },
+        signal: ac.signal,
+      });
+      if (ac.signal.aborted || r.error) return;
+      setName(r.data?.items[0]?.name ?? null);
+    })();
+    return () => ac.abort();
+  }, [date]);
+  if (!name) return null;
+  return (
+    <p className="text-sm" data-testid="dcr-holiday">
+      Holiday: {name}. This day stays open for the report.
+    </p>
   );
 }

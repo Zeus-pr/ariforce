@@ -499,6 +499,22 @@ function PersonSheet({
     if (isFunctional) {
       if (base.territoryIds.length) p.territoryIds = [];
       if (base.managerId) p.managerId = null;
+    } else if ((base.territoryIds?.length ?? 0) > 1) {
+      if (
+        p.role === 'business_manager' &&
+        (base.territories ?? []).some((t) => t.level !== 'headquarter')
+      ) {
+        setError({
+          code: 'TERRITORY_LEVEL_INVALID',
+          kind: 'invalid',
+          message:
+            'A business manager can only hold a headquarter. Change the other places on Organization first.',
+        });
+        return null;
+      }
+      if (p.role) p.territoryIds = base.territoryIds;
+      const m = f.role === 'director' ? null : f.managerId;
+      if (m !== base.managerId) p.managerId = m;
     } else {
       if (f.territoryId !== orig.territoryId || p.role)
         p.territoryIds = f.territoryId ? [f.territoryId] : [];
@@ -762,6 +778,20 @@ function PersonSheet({
               <p className="text-sm text-muted-foreground" data-testid="edit-functional">
                 {ROLE_LABEL[f.role]} works company-wide: no HQ and no manager.
               </p>
+            ) : (base.territoryIds?.length ?? 0) > 1 ? (
+              <div className="text-sm" data-testid="edit-places-readonly">
+                <p className="font-medium">Places</p>
+                <ul className="mt-1 text-muted-foreground">
+                  {(base.territories ?? []).map((t) => (
+                    <li key={t.id}>
+                      {t.name} ({t.level})
+                    </li>
+                  ))}
+                </ul>
+                <a className="mt-2 inline-block underline" href="/admin/organization">
+                  Change these on Organization
+                </a>
+              </div>
             ) : (
               <>
                 <TerritoryPick

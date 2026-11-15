@@ -34,10 +34,10 @@ const TeamCoverageChart = dynamic(() => import('./team-charts').then((m) => m.Te
 
 const LEVEL: Record<Territory['level'], string> = {
   national: 'Country',
-  zone: 'Zone',
-  region: 'Region',
-  area: 'Area',
-  headquarter: 'HQ',
+  zone: 'State',
+  region: 'RBM HQ',
+  area: 'ABM HQ',
+  headquarter: 'BM HQ',
   territory: 'Territory',
 };
 const COLS = [...TEAM_COLUMNS, 'dcr_compliance_pct', 'pob_value'] as const;

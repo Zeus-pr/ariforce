@@ -24,7 +24,7 @@ export type LeaveStatus = LeaveReq['status'];
 export const canLeave = (role: Role, p: Permission) =>
   (DEFAULT_ROLE_PERMISSIONS[role] ?? []).includes(p);
 /** Everyone with a reporting line applies; System Admin has no leave. */
-export const seesLeave = (role: Role) => canLeave(role, 'leave:read');
+export const seesLeave = (role: Role) => canLeave(role, 'leave:read') && role !== 'system_admin';
 
 export const STATUS_LABEL: Record<LeaveStatus, string> = {
   pending: 'Waiting for approval',
