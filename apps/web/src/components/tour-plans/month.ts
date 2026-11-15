@@ -21,6 +21,9 @@ export function datesOf(month: string) {
   return Array.from({ length: n }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`);
 }
 
+/** First 10 characters, so a timestamp from the API still matches the calendar day. */
+export const calendarDate = (value: string) => value.slice(0, 10);
+
 /** Monday-first weekday index (0 = Mon) for a YYYY-MM-DD date. */
 export const weekdayMon = (ymd: string) => (new Date(`${ymd}T00:00:00Z`).getUTCDay() + 6) % 7;
 

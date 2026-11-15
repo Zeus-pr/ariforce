@@ -44,6 +44,7 @@ export function DcrMonthCalendar({
   today,
   selected,
   pills,
+  holidays = {},
   onMonthChange,
   onSelectDay,
   closedEmptyDays = false,
@@ -54,6 +55,7 @@ export function DcrMonthCalendar({
   today: string;
   selected: string | null;
   pills: Map<string, DayPill[]>;
+  holidays?: Record<string, string>;
   onMonthChange: (month: string) => void;
   onSelectDay: (date: string, dayPills: DayPill[]) => void;
 }) {
@@ -116,6 +118,7 @@ export function DcrMonthCalendar({
           const status = dominant(dayPills);
           const isToday = date === today;
           const isSelected = date === selected;
+          const holiday = holidays[date];
           const closed = closedEmptyDays && empty && !isToday;
           return (
             <li key={date}>
@@ -127,7 +130,7 @@ export function DcrMonthCalendar({
                 data-status={status ?? undefined}
                 disabled={closed}
                 onClick={() => onSelectDay(date, dayPills)}
-                aria-label={`${dayLabel(date)}${dayPills.length ? `: ${dayPills.map((p) => p.label).join(', ')}` : ', no report'}`}
+                aria-label={`${dayLabel(date)}${holiday ? `, holiday ${holiday}` : ''}${dayPills.length ? `: ${dayPills.map((p) => p.label).join(', ')}` : ', no report'}`}
                 aria-pressed={isSelected}
                 className={cn(
                   'flex min-h-14 w-full flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left text-sm transition-[transform,background-color] duration-150 active:scale-[0.98] sm:min-h-20',
@@ -141,6 +144,7 @@ export function DcrMonthCalendar({
                   <span className="sm:hidden">{dayLabel(date)}</span>
                   <span className="hidden sm:inline">{Number(date.slice(8))}</span>
                 </span>
+                {holiday && <span className="line-clamp-2 text-xs font-medium">{holiday}</span>}
                 {empty ? (
                   <span className="text-muted-foreground">
                     {closedEmptyDays

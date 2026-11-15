@@ -44,7 +44,15 @@ import { ApprovalReview } from '@/components/approvals/approval-review';
 import { RejectDialog } from '@/components/approvals/reject-dialog';
 import { RejectionNote } from '@/components/approvals/rejection-note';
 import { TourPlanItemApprovals } from './tour-plan-item-approvals';
-import { datesOf, dayLabel, monthLabel, shiftMonth, thisMonthIST, weekdayMon } from './month';
+import {
+  calendarDate,
+  datesOf,
+  dayLabel,
+  monthLabel,
+  shiftMonth,
+  thisMonthIST,
+  weekdayMon,
+} from './month';
 import { territoryLabel, workTerritories } from '@/lib/territories';
 import {
   monthNameOf,
@@ -219,7 +227,7 @@ function Planner({ initialMonth }: { initialMonth: string }) {
         signal: ac.signal,
       });
       if (ac.signal.aborted || r.error || !r.data) return;
-      setHolidayNames(Object.fromEntries(r.data.items.map((h) => [h.date, h.name])));
+      setHolidayNames(Object.fromEntries(r.data.items.map((h) => [calendarDate(h.date), h.name])));
     })();
     return () => ac.abort();
   }, [dates]);
