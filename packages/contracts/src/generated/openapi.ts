@@ -7502,6 +7502,8 @@ export interface components {
       approvalId: string | null;
       /** @description Current step while pending */
       approvalStep: number | null;
+      /** @description True when this pending request is waiting for you */
+      canDecide?: boolean;
       /**
        * Format: date-time
        * @description ISO-8601 timestamp (UTC)

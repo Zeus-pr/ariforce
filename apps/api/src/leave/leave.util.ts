@@ -65,6 +65,7 @@ export async function leaveBlocksWork(tx: Tx, userId: string, date: string) {
       and r.status in ('pending', 'approved')
       and r.from_date <= ${date}::date
       and r.to_date >= ${date}::date
+      and r.half is null
       and not (extract(dow from ${date}::date)::int = any (coalesce(s.weekly_off_days, '{0}'::int[])))
     limit 1`);
   return r.rows.length > 0;
@@ -133,8 +134,10 @@ export async function assertNoSubmittedDcr(
   await lockDcrLeave(tx, userId);
   const r = await tx.execute<{ id: string; date: string }>(sql`
     select d.id, to_char(d.date, 'YYYY-MM-DD') as date from dcrs d
+    left join leave_settings s on s.company_id = d.company_id and s.deleted_at is null
     where d.user_id = ${userId} and ${submittedReportSql('d')}
       and d.date between ${fromDate}::date and ${toDate}::date
+      and not (extract(dow from d.date)::int = any (coalesce(s.weekly_off_days, '{0}'::int[])))
     order by d.date, d.id`);
   const c = leaveDcrConflict(r.rows);
   if (c)

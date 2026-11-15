@@ -35,6 +35,23 @@ export interface TpItemQuery {
 }
 type Decision = { decision: 'approve' | 'reject'; comment?: string };
 
+/** Next calendar month only, and only before the 22nd of this month at 12:00 AM IST. */
+function assertTpWindow(from: string) {
+  const today = istDate();
+  const currentYm = today.slice(0, 7);
+  const [y, m] = currentYm.split('-').map(Number);
+  const nextYm = m! === 12 ? `${y! + 1}-01` : `${y}-${String(m! + 1).padStart(2, '0')}`;
+  const planYm = from.slice(0, 7);
+  if (planYm !== nextYm)
+    throw err(422, 'TP_CUTOFF', 'Tour plans are only for the next calendar month');
+  if (Date.now() >= new Date(`${currentYm}-22T00:00:00+05:30`).getTime())
+    throw err(
+      422,
+      'TP_CUTOFF',
+      'Tour plans for that month closed after the 22nd of the previous month at 12:00 AM IST',
+    );
+}
+
 /**
  * Tour plan items (TP feature, 0050). Owner: create/edit while draft or rejected, submit (one
  * approval request, entity_type 'tour_plan_item', routed to the reporting manager), delete while
@@ -277,6 +294,7 @@ export class TourPlanItemsService {
       const cur = await this.row(tx, p, id, true);
       this.own(p, cur);
       this.editable(cur);
+      assertTpWindow(cur.fromDate);
       if (cur.fromDate < istDate())
         throw err(422, 'TP_IN_PAST', 'A tour plan must start today or later', {
           field: 'from',
