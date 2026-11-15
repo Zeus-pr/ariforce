@@ -134,6 +134,21 @@ export function render(type: NotificationType, d: NotifyData): { title: string; 
         title: s(d.title).slice(0, 120) || 'Company message',
         body: s(d.body).slice(0, 500) || 'You have a company message.',
       };
+    case 'stock_statement.submitted':
+      return {
+        title: 'Stock statement to review',
+        body: `${who} submitted the ${s(d.month)} stock statement for ${s(d.stockistName) || 'a stockist'}.`,
+      };
+    case 'stock_statement.approved':
+      return {
+        title: 'Stock statement approved',
+        body: `The ${s(d.month)} stock statement for ${s(d.stockistName) || 'the stockist'} was approved by ${who}.`,
+      };
+    case 'stock_statement.rejected':
+      return {
+        title: 'Stock statement rejected',
+        body: `The ${s(d.month)} stock statement for ${s(d.stockistName) || 'the stockist'} was rejected by ${who}.${reason(d)}`,
+      };
     case 'doctor.occasion':
       return {
         title: s(d.title).slice(0, 120) || 'Doctor dates coming up',

@@ -125,6 +125,12 @@ export const PERMISSIONS = [
   'dcr:review',
   /** Decide DCR unlock/correction requests (director only, 2026-10-29); other approvals keep approvals:decide. */
   'dcr_unlock:decide',
+  /** Read stock statements in the caller's territory. Not granted to system_admin. */
+  'stock_statements:read',
+  /** File and submit a stock statement for a stockist you cover. Business managers. */
+  'stock_statements:write',
+  /** Approve the named step of a stock statement. Area manager, then regional manager. */
+  'stock_statements:approve',
 ] as const;
 export const Permission = z.enum(PERMISSIONS).meta({ id: 'Permission' });
 export type Permission = z.infer<typeof Permission>;
@@ -173,8 +179,8 @@ const MANAGER: Permission[] = [
   'sfc:write',
   'dcr:review',
 ];
-/** RBM and above. */
-const SENIOR: Permission[] = [...MANAGER, ...MASTERS_WRITE];
+/** RBM and above. Stock-statement read, not approve: approve stays on the area and regional managers. */
+const SENIOR: Permission[] = [...MANAGER, ...MASTERS_WRITE, 'stock_statements:read'];
 /** Default permissions per role (seeded into roles.permissions; editable per company). */
 export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
   business_manager: [
@@ -185,9 +191,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     ...EXPENSES_OWN,
     ...LEAVE_OWN,
     'sfc:read',
+    'stock_statements:read',
+    'stock_statements:write',
   ],
-  area_business_manager: MANAGER,
-  regional_business_manager: SENIOR,
+  area_business_manager: [...MANAGER, 'stock_statements:read', 'stock_statements:approve'],
+  regional_business_manager: [...SENIOR, 'stock_statements:read', 'stock_statements:approve'],
   zonal_business_manager: SENIOR,
   sales_manager: SENIOR,
   general_manager: SENIOR,
@@ -228,6 +236,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'stockists:read',
     'products:read',
     'sales:read',
+    'stock_statements:read',
   ],
   accountant: [
     'me:read',
@@ -236,6 +245,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'products:read',
     'finance:read',
     'finance:write',
+    'stock_statements:read',
   ],
 };
 

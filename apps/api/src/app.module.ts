@@ -16,6 +16,7 @@ import { LeaveModule } from './leave/leave.module';
 import { AllowancesModule } from './allowances/allowances.module';
 import { SalesModule } from './sales/sales.module';
 import { SfcModule } from './sfc/sfc.module';
+import { StockStatementsModule } from './stock-statements/stock-statements.module';
 import { AuditLogModule } from './audit/audit-log.module';
 import { ExceptionsModule } from './exceptions/exceptions.module';
 import { HomeModule } from './home/home.module';
@@ -43,6 +44,7 @@ import { OpenApiController } from './openapi/openapi.controller';
     AllowancesModule,
     SalesModule,
     SfcModule,
+    StockStatementsModule,
     AuditLogModule,
   ],
   controllers: [HealthController, OpenApiController, MeController],

@@ -26,6 +26,9 @@ export const NOTIFICATION_TYPES = [
   'dcr_unlock.rejected',
   'company.message',
   'doctor.occasion',
+  'stock_statement.submitted',
+  'stock_statement.approved',
+  'stock_statement.rejected',
 ] as const;
 export const NotificationType = z.enum(NOTIFICATION_TYPES).meta({ id: 'NotificationType' });
 export type NotificationType = z.infer<typeof NotificationType>;
@@ -39,6 +42,7 @@ export const NOTIFICATION_ENTITY_TYPES = [
   'doctor',
   'dcr',
   'approval_request',
+  'stock_statement',
 ] as const;
 
 export const Notification = z

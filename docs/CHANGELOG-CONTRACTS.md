@@ -10,6 +10,12 @@ messages. Anything not checked that way is marked **unverified**.
 can fail or misbehave (removed fields, new required request fields, changed status codes, widened
 response enums, or changed server behaviour for the same request).
 
+## perf/dcrs-doctor-filter (2026-11-03): Doctor 360 filter on GET /v1/dcrs
+
+Additive, no migration. GET /v1/dcrs: new optional `doctorId` (uuid); only DCRs with at least one
+non-deleted call at that doctor. User scope unchanged (own DCRs; reporting line for dcr:review);
+`limit` (default 50, max 200) and `cursor` as before.
+
 ## feat/phone-notifications (2026-11-06): phone push, company message, doctor dates
 
 Additive. Existing notification calls are unchanged. Two new event types and two new routes.

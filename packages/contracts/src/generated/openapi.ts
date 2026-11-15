@@ -2961,6 +2961,123 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/stock-statements/stockists': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Stockists the caller can file or read a statement for */
+    get: operations['listStockStatementStockists'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/stock-statements': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Statements in scope, optionally one stockist, one status, or waiting on the caller */
+    get: operations['listStockStatements'];
+    put?: never;
+    /** Open the month for a stockist, creating the draft when it does not exist */
+    post: operations['openStockStatement'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/stock-statements/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['getStockStatement'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/stock-statements/{id}/lines': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Save the changed product rows of a draft or rejected statement */
+    post: operations['saveStockStatement'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/stock-statements/{id}/submit': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['submitStockStatement'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/stock-statements/{id}/files': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Presign an AWS or SS upload. The file does not fill the sheet. */
+    post: operations['presignStockStatementFile'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/stock-statements/{id}/files/confirm': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['confirmStockStatementFile'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/admin/products/{id}/price-history': {
     parameters: {
       query?: never;
@@ -3059,7 +3176,9 @@ export interface components {
       | 'expense_receipt'
       | 'avatar'
       | 'import_source'
-      | 'product_image';
+      | 'product_image'
+      | 'stock_statement_aws'
+      | 'stock_statement_ss';
     DownloadUrlRequest: {
       fileKey: string;
     };
@@ -4523,6 +4642,51 @@ export interface components {
       /** @description Current product version; mismatch = 409 VERSION_CONFLICT */
       version?: number;
     };
+    /** @enum {string} */
+    StockStatementStatus: 'draft' | 'pending' | 'approved' | 'rejected';
+    StockStatementOpen: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      stockistId: string;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+    };
+    StockStatementSave: {
+      version: number;
+      lines: components['schemas']['StockStatementLineInput'][];
+    };
+    StockStatementLineInput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      openingQty: number | null;
+      purchaseQty: number;
+      secondaryQty: number;
+      frsQty: number;
+    };
+    StockStatementSubmit: {
+      version: number;
+    };
+    StockStatementFileRequest: {
+      /** @enum {string} */
+      kind: 'aws' | 'ss';
+      /** @enum {string} */
+      contentType: 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf';
+      sizeBytes: number;
+    };
+    StockStatementFileConfirm: {
+      /** @enum {string} */
+      kind: 'aws' | 'ss';
+    };
     Health: {
       /** @constant */
       status: 'ok';
@@ -4631,7 +4795,10 @@ export interface components {
       | 'sfc:read'
       | 'sfc:write'
       | 'dcr:review'
-      | 'dcr_unlock:decide';
+      | 'dcr_unlock:decide'
+      | 'stock_statements:read'
+      | 'stock_statements:write'
+      | 'stock_statements:approve';
     RoleList: {
       items: components['schemas']['Role'][];
     };
@@ -6409,7 +6576,8 @@ export interface components {
         | 'device'
         | 'expense'
         | 'dcr'
-        | 'signup';
+        | 'signup'
+        | 'stock_statement';
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -7608,6 +7776,7 @@ export interface components {
             | 'doctor'
             | 'dcr'
             | 'approval_request'
+            | 'stock_statement'
           )
         | null;
       /** @description Deep link target id */
@@ -7647,7 +7816,10 @@ export interface components {
       | 'dcr_unlock.approved'
       | 'dcr_unlock.rejected'
       | 'company.message'
-      | 'doctor.occasion';
+      | 'doctor.occasion'
+      | 'stock_statement.submitted'
+      | 'stock_statement.approved'
+      | 'stock_statement.rejected';
     UnreadCount: {
       count: number;
     };
@@ -8496,7 +8668,8 @@ export interface components {
         | 'device'
         | 'expense'
         | 'dcr'
-        | 'signup';
+        | 'signup'
+        | 'stock_statement';
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -9062,6 +9235,118 @@ export interface components {
        */
       code: string | null;
       message: string | null;
+    };
+    StockStatementStockists: {
+      items: components['schemas']['StockStatementStockist'][];
+    };
+    StockStatementStockist: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      city: string | null;
+    };
+    StockStatementList: {
+      items: components['schemas']['StockStatementHistoryItem'][];
+    };
+    StockStatementHistoryItem: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      stockistId: string;
+      stockistName: string;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      status: components['schemas']['StockStatementStatus'];
+      actualSecondary: number;
+      submittedByName: string | null;
+    };
+    StockStatement: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      stockistId: string;
+      stockistName: string;
+      address: string | null;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      status: components['schemas']['StockStatementStatus'];
+      version: number;
+      editable: boolean;
+      canSubmit: boolean;
+      canDecide: boolean;
+      approvalRequestId: string | null;
+      rejectionReason: string | null;
+      currentApproverName: string | null;
+      totals: components['schemas']['StockStatementTotals'];
+      lines: components['schemas']['StockStatementLine'][];
+      aws: components['schemas']['StockStatementFile'];
+      ss: components['schemas']['StockStatementFile'];
+      history: components['schemas']['StockStatementHistoryItem'][];
+    };
+    StockStatementTotals: {
+      openingQty: number;
+      openingValue: number;
+      purchaseQty: number;
+      purchaseValue: number;
+      secondaryQty: number;
+      secondaryValue: number;
+      closingQty: number;
+      closingValue: number;
+      frsQty: number;
+      frsValue: number;
+      actualSecondary: number;
+    };
+    StockStatementLine: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      name: string;
+      packSize: string | null;
+      pts: number | null;
+      openingQty: number | null;
+      openingLocked: boolean;
+      purchaseQty: number;
+      secondaryQty: number;
+      frsQty: number;
+      openingValue: number | null;
+      purchaseValue: number | null;
+      secondaryValue: number | null;
+      frsValue: number | null;
+      closingQty: number | null;
+      closingValue: number | null;
+    };
+    StockStatementFile: {
+      status: ('pending' | 'confirmed') | null;
+      contentType: string | null;
     };
     ProductPriceHistory: {
       items: components['schemas']['ProductPriceHistoryEntry'][];
@@ -15433,7 +15718,8 @@ export interface operations {
           | 'device'
           | 'expense'
           | 'dcr'
-          | 'signup';
+          | 'signup'
+          | 'stock_statement';
         /** @description to_decide = pending requests from your reporting line that you may decide (never your own); requested = yours */
         mine?: 'to_decide' | 'requested';
         /** @description org: every request of your reporting subtree in any state (Director: the whole company), with trail/level fields. Needs approvals:decide (else 403). Ignored with mine */
@@ -21068,6 +21354,430 @@ export interface operations {
       };
       /** @description PRODUCT_NOT_FOUND */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listStockStatementStockists: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StockStatementStockists'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listStockStatements: {
+    parameters: {
+      query?: {
+        stockistId?: string;
+        status?: components['schemas']['StockStatementStatus'];
+        waiting?: 'true' | 'false';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StockStatementList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  openStockStatement: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['StockStatementOpen'];
+      };
+    };
+    responses: {
+      /** @description The sheet */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StockStatement'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description MONTH_IN_FUTURE, MONTH_OUT_OF_SEQUENCE or PREVIOUS_MONTH_OPEN */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getStockStatement: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The sheet */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StockStatement'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  saveStockStatement: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['StockStatementSave'];
+      };
+    };
+    responses: {
+      /** @description Saved sheet */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StockStatement'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT or STATEMENT_LOCKED */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description PRODUCT_NOT_ON_SHEET */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  submitStockStatement: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['StockStatementSubmit'];
+      };
+    };
+    responses: {
+      /** @description Submitted */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StockStatement'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT or STATEMENT_LOCKED */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description OPENING_REQUIRED, CLOSING_NEGATIVE, PTS_REQUIRED or APPROVER_MISSING */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  presignStockStatementFile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['StockStatementFileRequest'];
+      };
+    };
+    responses: {
+      /** @description PUT the bytes here */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['UploadUrlResponse'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description STATEMENT_LOCKED */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  confirmStockStatementFile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['StockStatementFileConfirm'];
+      };
+    };
+    responses: {
+      /** @description Confirmed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StockStatement'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description UPLOAD_MISSING or STATEMENT_LOCKED */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description UPLOAD_SIZE_MISMATCH or UPLOAD_FORMAT_INVALID */
+      422: {
         headers: {
           [name: string]: unknown;
         };
