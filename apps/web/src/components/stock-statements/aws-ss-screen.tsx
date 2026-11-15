@@ -233,7 +233,7 @@ export function AwsSsScreen() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-start">
+      <div className="relative z-50 grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-start">
         <StockistDropdown
           stockists={stockists}
           selected={selected}
@@ -647,7 +647,7 @@ function StockistDropdown({
         />
       </button>
       {open && (
-        <div className="absolute top-full z-20 mt-1 flex w-full flex-col gap-2 rounded-md border bg-background p-2 shadow-md">
+        <div className="absolute top-full z-50 mt-1 flex w-full flex-col gap-2 rounded-md border bg-background p-2 shadow-md">
           <Input
             autoFocus
             value={q}
