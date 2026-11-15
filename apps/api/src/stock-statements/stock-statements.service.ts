@@ -85,6 +85,13 @@ export class StockStatementsService implements OnModuleInit {
       {
         permission: 'stock_statements:approve',
         exactSteps: true,
+        beforeApprove: async (tx, _p, req) => {
+          const [row] = await tx
+            .select()
+            .from(stockStatements)
+            .where(eq(stockStatements.id, req.entityId));
+          if (row) await this.assertReady(tx, row);
+        },
         onStep: async (tx, p, req, _step, nextApproverId) => {
           const [row] = await tx
             .select({ month: stockStatements.month, stockistId: stockStatements.stockistId })
@@ -148,6 +155,8 @@ export class StockStatementsService implements OnModuleInit {
           ),
         );
       if (existing) return this.sheet(tx, p, existing);
+      if (!p.roles.includes('business_manager'))
+        throw err(422, 'NOT_STARTED', 'The business manager has not opened this month');
       const [latest] = await tx
         .select()
         .from(stockStatements)
@@ -234,38 +243,14 @@ export class StockStatementsService implements OnModuleInit {
   submit(p: Principal, id: string, version: number) {
     this.blockAdmin(p);
     return this.tenant.run(p, async (tx) => {
-      const row = await this.editable(tx, p, id, version);
-      const lines = await this.merged(tx, row.id);
-      const blank = lines.filter((l) => l.openingQty == null).map((l) => l.name);
-      if (blank.length)
-        throw err(
-          422,
-          'OPENING_REQUIRED',
-          'Type an opening for every product, using 0 where there is none',
-          {
-            products: blank.slice(0, 20),
-          },
-        );
-      const negative = lines.filter((l) => (l.closingQty ?? 0) < 0).map((l) => l.name);
-      if (negative.length)
-        throw err(422, 'CLOSING_NEGATIVE', 'Closing cannot be negative', {
-          products: negative.slice(0, 20),
+      const row = await this.owned(tx, p, id);
+      if (!this.bmDraft(p, row))
+        throw err(409, 'STATEMENT_LOCKED', 'This statement cannot be edited');
+      if (row.version !== version)
+        throw err(409, 'VERSION_CONFLICT', 'This statement was saved somewhere else. Reload it.', {
+          version: row.version,
         });
-      const unpriced = lines
-        .filter(
-          (l) =>
-            l.pts == null && (l.openingQty != null || l.purchaseQty || l.secondaryQty || l.frsQty),
-        )
-        .map((l) => l.name);
-      if (unpriced.length)
-        throw err(
-          422,
-          'PTS_REQUIRED',
-          'These products have no PTS, so the value cannot be calculated',
-          {
-            products: unpriced.slice(0, 20),
-          },
-        );
+      await this.assertReady(tx, row);
       const chain = await this.approvers(tx, p.userId);
       await tx
         .update(approvalRequests)
@@ -345,7 +330,7 @@ export class StockStatementsService implements OnModuleInit {
     this.blockAdmin(p);
     return this.tenant.run(p, async (tx) => {
       const row = await this.owned(tx, p, id);
-      if (!this.canEdit(p, row))
+      if (!(await this.mayEdit(tx, p, row)))
         throw err(409, 'STATEMENT_LOCKED', 'This statement cannot be edited');
       const up = await this.storage.presignPut(
         p.companyId,
@@ -378,7 +363,7 @@ export class StockStatementsService implements OnModuleInit {
     this.blockAdmin(p);
     return this.tenant.run(p, async (tx) => {
       const row = await this.owned(tx, p, id);
-      if (!this.canEdit(p, row))
+      if (!(await this.mayEdit(tx, p, row)))
         throw err(409, 'STATEMENT_LOCKED', 'This statement cannot be edited');
       const key = kind === 'aws' ? row.awsFileKey : row.ssFileKey;
       const type = kind === 'aws' ? row.awsContentType : row.ssContentType;
@@ -440,10 +425,54 @@ export class StockStatementsService implements OnModuleInit {
       throw new ForbiddenException('System admin cannot open stock statements');
   }
 
-  private canEdit(p: Principal, row: StatementRow) {
+  private bmDraft(p: Principal, row: StatementRow) {
     return (
-      !p.roles.includes('system_admin') && (row.status === 'draft' || row.status === 'rejected')
+      p.roles.includes('business_manager') && (row.status === 'draft' || row.status === 'rejected')
     );
+  }
+
+  private async mayEdit(tx: Tx, p: Principal, row: StatementRow) {
+    if (p.roles.includes('system_admin')) return false;
+    if (this.bmDraft(p, row)) return true;
+    if (row.status !== 'pending' || !row.approvalRequestId) return false;
+    const [req] = await tx
+      .select({ step: approvalRequests.currentStep, state: approvalRequests.state })
+      .from(approvalRequests)
+      .where(eq(approvalRequests.id, row.approvalRequestId));
+    if (!req || req.state !== 'pending') return false;
+    return (await this.stepUser(tx, row.approvalRequestId, req.step)) === p.userId;
+  }
+
+  private async assertReady(tx: Tx, row: StatementRow) {
+    const lines = await this.merged(tx, row.id);
+    const blank = lines.filter((l) => l.openingQty == null).map((l) => l.name);
+    if (blank.length)
+      throw err(
+        422,
+        'OPENING_REQUIRED',
+        'Type an opening for every product, using 0 where there is none',
+        { products: blank.slice(0, 20) },
+      );
+    const negative = lines.filter((l) => (l.closingQty ?? 0) < 0).map((l) => l.name);
+    if (negative.length)
+      throw err(422, 'CLOSING_NEGATIVE', 'Closing cannot be negative', {
+        products: negative.slice(0, 20),
+      });
+    const unpriced = lines
+      .filter(
+        (l) =>
+          l.pts == null && (l.openingQty != null || l.purchaseQty || l.secondaryQty || l.frsQty),
+      )
+      .map((l) => l.name);
+    if (unpriced.length)
+      throw err(
+        422,
+        'PTS_REQUIRED',
+        'These products have no PTS, so the value cannot be calculated',
+        {
+          products: unpriced.slice(0, 20),
+        },
+      );
   }
 
   private previous(month: string) {
@@ -483,7 +512,7 @@ export class StockStatementsService implements OnModuleInit {
 
   private async editable(tx: Tx, p: Principal, id: string, version: number) {
     const row = await this.owned(tx, p, id);
-    if (!this.canEdit(p, row))
+    if (!(await this.mayEdit(tx, p, row)))
       throw err(409, 'STATEMENT_LOCKED', 'This statement cannot be edited');
     if (row.version !== version)
       throw err(409, 'VERSION_CONFLICT', 'This statement was saved somewhere else. Reload it.', {
@@ -670,8 +699,8 @@ export class StockStatementsService implements OnModuleInit {
       month: row.month.slice(0, 7),
       status: row.status,
       version: row.version,
-      editable: this.canEdit(p, row),
-      canSubmit: this.canEdit(p, row),
+      editable: this.bmDraft(p, row) || canDecide,
+      canSubmit: this.bmDraft(p, row),
       canDecide,
       approvalRequestId: row.status === 'pending' ? row.approvalRequestId : null,
       rejectionReason: row.status === 'rejected' ? row.decisionComment : null,
