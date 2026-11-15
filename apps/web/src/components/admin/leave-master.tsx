@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { datesOf, monthLabel, thisMonthIST, weekdayMon } from '@/components/tour-plans/month';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
@@ -43,6 +43,8 @@ export function LeaveMaster() {
   const [types, setTypes] = useState<LeaveType[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [savingHolidays, setSavingHolidays] = useState(false);
 
   async function load(yearNum: number) {
     await apiReady();
@@ -54,7 +56,11 @@ export function LeaveMaster() {
     const failed = [h, s, t].find((r) => r.error);
     if (failed?.error) setError(adminMessage(toApiError(failed).code, toApiError(failed).message));
     else setError(null);
-    if (!h.error) setHolidays(h.data?.items ?? []);
+    if (!h.error) {
+      const items = h.data?.items ?? [];
+      setHolidays(items);
+      setNames(Object.fromEntries(items.map((item) => [item.date, item.name])));
+    }
     if (!s.error) setSettings(s.data ?? null);
     if (!t.error) setTypes(t.data?.items ?? []);
   }
@@ -74,30 +80,54 @@ export function LeaveMaster() {
     setError(adminMessage(a.code, a.message));
   }
 
-  async function saveDay(date: string, name: string) {
-    const existing = byDate.get(date);
-    const trimmed = name.trim();
-    if (!trimmed && !existing) return;
-    if (!trimmed && existing) {
-      if (!window.confirm(`Remove ${existing.name} on ${date}?`)) return;
-      const r = await api.DELETE('/v1/holidays/{id}', { params: { path: { id: existing.id } } });
-      if (r.error) return fail(r);
-      setNotice(`${existing.name} removed.`);
-    } else if (existing) {
-      if (trimmed === existing.name) return;
-      const r = await api.PATCH('/v1/holidays/{id}', {
-        params: { path: { id: existing.id } },
-        body: { version: existing.version, name: trimmed },
-      });
-      if (r.error) return fail(r);
-      setNotice(`Saved ${trimmed}.`);
-    } else {
-      const r = await api.POST('/v1/holidays', { body: { date, name: trimmed } });
-      if (r.error) return fail(r);
-      setNotice(`Saved ${trimmed}.`);
+  const holidayDirty = useMemo(() => {
+    const dates = new Set([...Object.keys(names), ...holidays.map((h) => h.date)]);
+    for (const date of dates) {
+      if ((names[date] ?? '').trim() !== (byDate.get(date)?.name ?? '')) return true;
     }
+    return false;
+  }, [names, holidays, byDate]);
+
+  async function saveHolidays() {
+    setSavingHolidays(true);
     setError(null);
+    const dates = new Set([...Object.keys(names), ...holidays.map((h) => h.date)]);
+    let saved = 0;
+    for (const date of dates) {
+      const trimmed = (names[date] ?? '').trim();
+      const existing = byDate.get(date);
+      if (trimmed === (existing?.name ?? '')) continue;
+      if (!trimmed && existing) {
+        const r = await api.DELETE('/v1/holidays/{id}', { params: { path: { id: existing.id } } });
+        if (r.error) {
+          setSavingHolidays(false);
+          return fail(r);
+        }
+      } else if (existing) {
+        const r = await api.PATCH('/v1/holidays/{id}', {
+          params: { path: { id: existing.id } },
+          body: { version: existing.version, name: trimmed },
+        });
+        if (r.error) {
+          setSavingHolidays(false);
+          return fail(r);
+        }
+      } else if (trimmed) {
+        const r = await api.POST('/v1/holidays', { body: { date, name: trimmed } });
+        if (r.error) {
+          setSavingHolidays(false);
+          return fail(r);
+        }
+      }
+      saved += 1;
+    }
     await load(y);
+    setSavingHolidays(false);
+    setNotice(
+      saved
+        ? 'Holidays saved. They show on the DCR and tour plan calendars.'
+        : 'No holiday changes to save.',
+    );
   }
 
   async function toggleOff(dow: number) {
@@ -218,10 +248,18 @@ export function LeaveMaster() {
         <div>
           <h3 className="text-base font-medium">{monthLabel(active)}</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Click a weekday to mark the weekly off. Type a holiday name in a date, then leave the
-            box to save it.
+            Click a weekday to mark the weekly off. Type a holiday name on a date, then press Save
+            holidays. The DCR and tour plan calendars read the saved names.
           </p>
         </div>
+        <Button
+          type="button"
+          className="w-fit"
+          disabled={!holidayDirty || savingHolidays}
+          onClick={() => void saveHolidays()}
+        >
+          {savingHolidays ? 'Saving…' : 'Save holidays'}
+        </Button>
         <div className="grid grid-cols-7 gap-2 text-sm">
           {WEEK.map((label, i) => {
             const off = settings?.weeklyOffDays.includes(DOW[i]!);
@@ -244,7 +282,13 @@ export function LeaveMaster() {
             <div key={`p${i}`} />
           ))}
           {dates.map((date) => (
-            <DayBox key={date} date={date} holiday={byDate.get(date)} onSave={saveDay} />
+            <DayBox
+              key={date}
+              date={date}
+              value={names[date] ?? ''}
+              saved={!!byDate.get(date)}
+              onChange={(value) => setNames((current) => ({ ...current, [date]: value }))}
+            />
           ))}
         </div>
       </section>
@@ -287,43 +331,27 @@ export function LeaveMaster() {
 
 function DayBox({
   date,
-  holiday,
-  onSave,
+  value,
+  saved,
+  onChange,
 }: {
   date: string;
-  holiday: Holiday | undefined;
-  onSave: (date: string, name: string) => Promise<void>;
+  value: string;
+  saved: boolean;
+  onChange: (value: string) => void;
 }) {
-  const [name, setName] = useState(holiday?.name ?? '');
-  const skipSave = useRef(false);
-  useEffect(() => setName(holiday?.name ?? ''), [holiday?.name]);
   return (
     <label
-      className={`flex min-h-24 flex-col gap-1 rounded-md border p-2 text-sm ${holiday ? 'bg-muted/60' : ''}`}
+      className={`flex min-h-24 flex-col gap-1 rounded-md border p-2 text-sm ${saved || value.trim() ? 'bg-muted/60' : ''}`}
     >
       <span className="font-medium">{Number(date.slice(8))}</span>
       <input
         aria-label={`Holiday on ${date}`}
-        value={name}
+        value={value}
         maxLength={80}
         placeholder="Holiday"
         className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground focus-visible:outline focus-visible:outline-2"
-        onChange={(e) => setName(e.target.value)}
-        onBlur={() => {
-          if (skipSave.current) {
-            skipSave.current = false;
-            return;
-          }
-          void onSave(date, name);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') e.currentTarget.blur();
-          if (e.key === 'Escape') {
-            skipSave.current = true;
-            setName(holiday?.name ?? '');
-            e.currentTarget.blur();
-          }
-        }}
+        onChange={(e) => onChange(e.target.value)}
       />
     </label>
   );
