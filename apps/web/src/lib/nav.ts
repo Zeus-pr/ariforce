@@ -19,9 +19,11 @@ import {
   LayoutDashboard,
   ReceiptText,
   CalendarOff,
+  CalendarDays,
   Tags,
   Route,
   Megaphone,
+  Map,
 } from 'lucide-react';
 
 import { seesExpenses } from './expenses/model';
@@ -219,6 +221,30 @@ export const NAV: NavItem[] = [
     href: '/admin/people',
     icon: UserCog,
     // Same gate as Invite people: system admin or director with users:write.
+    roles: ROLES.filter(
+      (r) =>
+        (isSystemAdmin(r) || r === 'director') &&
+        (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
+    ),
+    section: 'admin',
+  },
+  {
+    slug: 'organization',
+    title: 'Organization',
+    href: '/admin/organization',
+    icon: Map,
+    roles: ROLES.filter(
+      (r) =>
+        (isSystemAdmin(r) || r === 'director') &&
+        (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
+    ),
+    section: 'admin',
+  },
+  {
+    slug: 'leave-setup',
+    title: 'Leave setup',
+    href: '/admin/leave',
+    icon: CalendarDays,
     roles: ROLES.filter(
       (r) =>
         (isSystemAdmin(r) || r === 'director') &&

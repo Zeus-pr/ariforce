@@ -18,7 +18,6 @@ import { EmptyOptions } from '@/components/forms/empty-options';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { leaveMessage, today } from '@/lib/leave/model';
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const box = 'rounded-lg border bg-card p-4 flex flex-col gap-4';
 
 /** Company leave rules (settings:write). Types are listed read-only here. */
@@ -36,7 +35,6 @@ export function LeaveSettingsPanel({
   const [future, setFuture] = useState(
     settings.maxFutureDays == null ? '' : String(settings.maxFutureDays),
   );
-  const [off, setOff] = useState<number[]>(settings.weeklyOffDays);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,7 +55,7 @@ export function LeaveSettingsPanel({
         approvalLevels: lv,
         backdateDays: bd,
         maxFutureDays: fd,
-        weeklyOffDays: [...off].sort(),
+        weeklyOffDays: [...settings.weeklyOffDays].sort(),
         version: settings.version,
       },
     });
@@ -111,23 +109,9 @@ export function LeaveSettingsPanel({
         </div>
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1 text-sm font-medium">Weekly off</legend>
-          <div className="flex flex-wrap gap-2">
-            {DAYS.map((d, i) => (
-              <label
-                key={d}
-                className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5"
-              >
-                <input
-                  type="checkbox"
-                  checked={off.includes(i)}
-                  onChange={(e) =>
-                    setOff((o) => (e.target.checked ? [...o, i] : o.filter((x) => x !== i)))
-                  }
-                />
-                {d}
-              </label>
-            ))}
-          </div>
+          <p className="text-sm text-muted-foreground">
+            Set on Leave setup. Saving these rules keeps the current weekly off.
+          </p>
         </fieldset>
         {error && (
           <p className="text-sm text-destructive" role="alert" data-testid="ls-error">

@@ -206,6 +206,23 @@ function Planner({ initialMonth }: { initialMonth: string }) {
   }, [tpItemsReload]);
 
   const dates = useMemo(() => datesOf(month), [month]);
+  const [holidayNames, setHolidayNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const ac = new AbortController();
+    const from = dates[0];
+    const to = dates.at(-1);
+    if (!from || !to) return;
+    void (async () => {
+      await apiReady();
+      const r = await api.GET('/v1/holidays', {
+        params: { query: { from, to } },
+        signal: ac.signal,
+      });
+      if (ac.signal.aborted || r.error || !r.data) return;
+      setHolidayNames(Object.fromEntries(r.data.items.map((h) => [h.date, h.name])));
+    })();
+    return () => ac.abort();
+  }, [dates]);
   const byDate = useMemo(() => new Map((plan?.days ?? []).map((d) => [d.date, d])), [plan]);
   const { doctorIds, chemistIds } = useMemo(() => {
     const doctors = new Set<string>();
@@ -650,6 +667,11 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                           <span className="sm:hidden">{dayLabel(date)}</span>
                           <span className="hidden sm:inline">{Number(date.slice(8))}</span>
                         </span>
+                        {holidayNames[date] && (
+                          <span className="line-clamp-2 text-xs font-medium">
+                            {holidayNames[date]}
+                          </span>
+                        )}
                         {empty ? (
                           nr ? (
                             <span
