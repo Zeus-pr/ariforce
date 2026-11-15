@@ -287,22 +287,15 @@ export class StockStatementsService implements OnModuleInit {
         requestedBy: p.userId,
         payload: { month: row.month.slice(0, 7), stockistName: stockist },
       });
-      await tx.insert(approvalSteps).values([
-        {
+      await tx.insert(approvalSteps).values(
+        chain.map((person, i) => ({
           id: uuidv7(),
           companyId: p.companyId,
           requestId,
-          stepNo: 1,
-          approverUserId: chain.area.id,
-        },
-        {
-          id: uuidv7(),
-          companyId: p.companyId,
-          requestId,
-          stepNo: 2,
-          approverUserId: chain.regional.id,
-        },
-      ]);
+          stepNo: i + 1,
+          approverUserId: person.id,
+        })),
+      );
       await tx
         .update(stockStatements)
         .set({
@@ -315,7 +308,7 @@ export class StockStatementsService implements OnModuleInit {
         .where(eq(stockStatements.id, row.id));
       await this.notifications.notify(tx, p, {
         type: 'stock_statement.submitted',
-        recipientId: chain.area.id,
+        recipientId: chain[0]!.id,
         entityType: 'stock_statement',
         entityId: row.id,
         dedupeKey: `stock_statement.submitted:${requestId}:1`,
@@ -324,7 +317,7 @@ export class StockStatementsService implements OnModuleInit {
       await this.audit.record(tx, p, 'stock_statement.submitted', {
         entityType: 'stock_statement',
         entityId: row.id,
-        after: { requestId, area: chain.area.id, regional: chain.regional.id },
+        after: { requestId, approvers: chain.map((person) => person.id) },
       });
       const [fresh] = await tx.select().from(stockStatements).where(eq(stockStatements.id, row.id));
       return this.sheet(tx, p, fresh!);
@@ -449,8 +442,7 @@ export class StockStatementsService implements OnModuleInit {
 
   private canEdit(p: Principal, row: StatementRow) {
     return (
-      (row.status === 'draft' || row.status === 'rejected') &&
-      p.permissions.includes('stock_statements:write')
+      !p.roles.includes('system_admin') && (row.status === 'draft' || row.status === 'rejected')
     );
   }
 
@@ -780,6 +772,20 @@ export class StockStatementsService implements OnModuleInit {
 
   private async approvers(tx: Tx, userId: string) {
     const me = await this.person(tx, userId);
+    if (me?.role === 'area_business_manager') {
+      if (!me.managerId)
+        throw err(422, 'APPROVER_MISSING', 'You have no regional manager to send this to');
+      const regional = await this.person(tx, me.managerId);
+      if (
+        !regional ||
+        regional.status !== 'active' ||
+        regional.role !== 'regional_business_manager'
+      )
+        throw err(422, 'APPROVER_MISSING', 'Your regional manager is not active', {
+          name: regional?.name ?? null,
+        });
+      return [regional];
+    }
     if (!me?.managerId)
       throw err(422, 'APPROVER_MISSING', 'You have no area manager to send this to');
     const area = await this.person(tx, me.managerId);
@@ -794,7 +800,7 @@ export class StockStatementsService implements OnModuleInit {
       throw err(422, 'APPROVER_MISSING', 'Your regional manager is not active', {
         name: regional?.name ?? null,
       });
-    return { area, regional };
+    return [area, regional];
   }
 
   private async person(tx: Tx, id: string) {
