@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException, type OnModuleInit } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  type OnModuleInit,
+} from '@nestjs/common';
 import type { StockStatementFileBody, StockStatementLineInput } from '@ariforce/contracts';
 import {
   approvalRequests,
@@ -116,7 +121,10 @@ export class StockStatementsService implements OnModuleInit {
     });
   }
 
-  list(p: Principal, q: { stockistId?: string; status?: StatementRow['status']; waiting?: string }) {
+  list(
+    p: Principal,
+    q: { stockistId?: string; status?: StatementRow['status']; waiting?: string },
+  ) {
     this.blockAdmin(p);
     return this.tenant.run(p, async (tx) => ({ items: await this.history(tx, p, q) }));
   }
@@ -218,10 +226,7 @@ export class StockStatementsService implements OnModuleInit {
           });
       }
       await this.retotal(tx, row);
-      const [fresh] = await tx
-        .select()
-        .from(stockStatements)
-        .where(eq(stockStatements.id, row.id));
+      const [fresh] = await tx.select().from(stockStatements).where(eq(stockStatements.id, row.id));
       return this.sheet(tx, p, fresh!);
     });
   }
@@ -233,21 +238,34 @@ export class StockStatementsService implements OnModuleInit {
       const lines = await this.merged(tx, row.id);
       const blank = lines.filter((l) => l.openingQty == null).map((l) => l.name);
       if (blank.length)
-        throw err(422, 'OPENING_REQUIRED', 'Type an opening for every product, using 0 where there is none', {
-          products: blank.slice(0, 20),
-        });
+        throw err(
+          422,
+          'OPENING_REQUIRED',
+          'Type an opening for every product, using 0 where there is none',
+          {
+            products: blank.slice(0, 20),
+          },
+        );
       const negative = lines.filter((l) => (l.closingQty ?? 0) < 0).map((l) => l.name);
       if (negative.length)
         throw err(422, 'CLOSING_NEGATIVE', 'Closing cannot be negative', {
           products: negative.slice(0, 20),
         });
       const unpriced = lines
-        .filter((l) => l.pts == null && (l.openingQty != null || l.purchaseQty || l.secondaryQty || l.frsQty))
+        .filter(
+          (l) =>
+            l.pts == null && (l.openingQty != null || l.purchaseQty || l.secondaryQty || l.frsQty),
+        )
         .map((l) => l.name);
       if (unpriced.length)
-        throw err(422, 'PTS_REQUIRED', 'These products have no PTS, so the value cannot be calculated', {
-          products: unpriced.slice(0, 20),
-        });
+        throw err(
+          422,
+          'PTS_REQUIRED',
+          'These products have no PTS, so the value cannot be calculated',
+          {
+            products: unpriced.slice(0, 20),
+          },
+        );
       const chain = await this.approvers(tx, p.userId);
       await tx
         .update(approvalRequests)
@@ -319,8 +337,14 @@ export class StockStatementsService implements OnModuleInit {
       const row = await this.owned(tx, p, id);
       const key = kind === 'aws' ? row.awsFileKey : row.ssFileKey;
       const status = kind === 'aws' ? row.awsStatus : row.ssStatus;
-      if (!key || status !== 'confirmed') throw err(409, 'UPLOAD_NOT_CONFIRMED', 'That file is not ready');
-      return this.storage.downloadUrl(p.companyId, key, new Date(), `${kind}-${row.month.slice(0, 7)}.pdf`);
+      if (!key || status !== 'confirmed')
+        throw err(409, 'UPLOAD_NOT_CONFIRMED', 'That file is not ready');
+      return this.storage.downloadUrl(
+        p.companyId,
+        key,
+        new Date(),
+        `${kind}-${row.month.slice(0, 7)}.pdf`,
+      );
     });
   }
 
@@ -328,7 +352,8 @@ export class StockStatementsService implements OnModuleInit {
     this.blockAdmin(p);
     return this.tenant.run(p, async (tx) => {
       const row = await this.owned(tx, p, id);
-      if (!this.canEdit(p, row)) throw err(409, 'STATEMENT_LOCKED', 'This statement cannot be edited');
+      if (!this.canEdit(p, row))
+        throw err(409, 'STATEMENT_LOCKED', 'This statement cannot be edited');
       const up = await this.storage.presignPut(
         p.companyId,
         body.kind === 'aws' ? 'stock_statement_aws' : 'stock_statement_ss',
@@ -360,7 +385,8 @@ export class StockStatementsService implements OnModuleInit {
     this.blockAdmin(p);
     return this.tenant.run(p, async (tx) => {
       const row = await this.owned(tx, p, id);
-      if (!this.canEdit(p, row)) throw err(409, 'STATEMENT_LOCKED', 'This statement cannot be edited');
+      if (!this.canEdit(p, row))
+        throw err(409, 'STATEMENT_LOCKED', 'This statement cannot be edited');
       const key = kind === 'aws' ? row.awsFileKey : row.ssFileKey;
       const type = kind === 'aws' ? row.awsContentType : row.ssContentType;
       const size = kind === 'aws' ? row.awsSizeBytes : row.ssSizeBytes;
@@ -391,7 +417,9 @@ export class StockStatementsService implements OnModuleInit {
         .where(eq(companies.id, p.companyId));
       const stockist = await this.visibleStockist(tx, p, row.stockistId);
       const lines = await this.merged(tx, row.id);
-      const address = [stockist.addressLine, stockist.city, stockist.state].filter(Boolean).join(', ');
+      const address = [stockist.addressLine, stockist.city, stockist.state]
+        .filter(Boolean)
+        .join(', ');
       return statementPdf({
         company: company?.name ?? 'Arighna Pharmaceutical',
         stockist: stockist.name,
@@ -463,7 +491,8 @@ export class StockStatementsService implements OnModuleInit {
 
   private async editable(tx: Tx, p: Principal, id: string, version: number) {
     const row = await this.owned(tx, p, id);
-    if (!this.canEdit(p, row)) throw err(409, 'STATEMENT_LOCKED', 'This statement cannot be edited');
+    if (!this.canEdit(p, row))
+      throw err(409, 'STATEMENT_LOCKED', 'This statement cannot be edited');
     if (row.version !== version)
       throw err(409, 'VERSION_CONFLICT', 'This statement was saved somewhere else. Reload it.', {
         version: row.version,
@@ -475,7 +504,12 @@ export class StockStatementsService implements OnModuleInit {
     const lines = await tx
       .select()
       .from(stockStatementLines)
-      .where(and(eq(stockStatementLines.statementId, previous.id), isNull(stockStatementLines.deletedAt)));
+      .where(
+        and(
+          eq(stockStatementLines.statementId, previous.id),
+          isNull(stockStatementLines.deletedAt),
+        ),
+      );
     const catalog = await this.productRows(tx);
     const prev = new Map(lines.map((l) => [l.productId, l]));
     const rows = catalog.flatMap((product) => {
@@ -535,7 +569,10 @@ export class StockStatementsService implements OnModuleInit {
         .select()
         .from(stockStatementLines)
         .where(
-          and(eq(stockStatementLines.statementId, statementId), isNull(stockStatementLines.deletedAt)),
+          and(
+            eq(stockStatementLines.statementId, statementId),
+            isNull(stockStatementLines.deletedAt),
+          ),
         ),
       this.productRows(tx),
     ]);
@@ -544,15 +581,17 @@ export class StockStatementsService implements OnModuleInit {
     const extras = stored.filter((l) => !ids.has(l.productId));
     const rows = [
       ...catalog.map((product) => this.mergeOne(product, byProduct.get(product.id))),
-      ...extras.map((line) => this.mergeOne(
-        {
-          id: line.productId,
-          name: line.productName,
-          packSize: line.packSize,
-          pts: line.pts,
-        },
-        line,
-      )),
+      ...extras.map((line) =>
+        this.mergeOne(
+          {
+            id: line.productId,
+            name: line.productName,
+            packSize: line.packSize,
+            pts: line.pts,
+          },
+          line,
+        ),
+      ),
     ];
     rows.sort((a, b) => a.name.localeCompare(b.name));
     return rows;
@@ -598,7 +637,9 @@ export class StockStatementsService implements OnModuleInit {
         pts: products.pts,
       })
       .from(products)
-      .where(and(isNull(products.deletedAt), eq(products.active, true), eq(products.isSample, false)))
+      .where(
+        and(isNull(products.deletedAt), eq(products.active, true), eq(products.isSample, false)),
+      )
       .orderBy(asc(products.name));
   }
 
@@ -607,7 +648,11 @@ export class StockStatementsService implements OnModuleInit {
     const lines = await this.merged(tx, row.id);
     const [approver] = row.approvalRequestId
       ? await tx
-          .select({ name: users.name, step: approvalRequests.currentStep, state: approvalRequests.state })
+          .select({
+            name: users.name,
+            step: approvalRequests.currentStep,
+            state: approvalRequests.state,
+          })
           .from(approvalRequests)
           .innerJoin(
             approvalSteps,
@@ -628,7 +673,8 @@ export class StockStatementsService implements OnModuleInit {
       id: row.id,
       stockistId: row.stockistId,
       stockistName: stockist.name,
-      address: [stockist.addressLine, stockist.city, stockist.state].filter(Boolean).join(', ') || null,
+      address:
+        [stockist.addressLine, stockist.city, stockist.state].filter(Boolean).join(', ') || null,
       month: row.month.slice(0, 7),
       status: row.status,
       version: row.version,
@@ -768,7 +814,10 @@ export class StockStatementsService implements OnModuleInit {
   }
 
   private async stockistName(tx: Tx, id: string) {
-    const [row] = await tx.select({ name: stockists.name }).from(stockists).where(eq(stockists.id, id));
+    const [row] = await tx
+      .select({ name: stockists.name })
+      .from(stockists)
+      .where(eq(stockists.id, id));
     return row?.name ?? '';
   }
 

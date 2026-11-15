@@ -1300,10 +1300,7 @@ export class ApprovalsService {
           entityId: req.entityId,
           after: { requestId: id, comment },
         });
-        const [fresh] = await tx
-          .select()
-          .from(approvalRequests)
-          .where(eq(approvalRequests.id, id));
+        const [fresh] = await tx.select().from(approvalRequests).where(eq(approvalRequests.id, id));
         return (await this.toDto(tx, [fresh!]))[0]!;
       }
       if (approved && req.currentStep < levels && cur?.approverUserId) {

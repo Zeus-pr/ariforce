@@ -28,7 +28,9 @@ export function statementPdf(input: {
   const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 28 });
   const chunks: Buffer[] = [];
   doc.on('data', (c: Buffer) => chunks.push(c));
-  const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+  const done = new Promise<Buffer>((resolve) =>
+    doc.on('end', () => resolve(Buffer.concat(chunks))),
+  );
   const [y, m] = input.month.slice(0, 7).split('-').map(Number) as [number, number];
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
   const period = `01-${pad(m)}-${y} - ${pad(last)}-${pad(m)}-${y}`;
@@ -59,9 +61,17 @@ export function statementPdf(input: {
     doc.text(q(row.openingQty), cols[2], cursor, { width: 36, align: 'right', lineBreak: false });
     doc.text(n(row.openingValue), cols[3], cursor, { width: 52, align: 'right', lineBreak: false });
     doc.text(q(row.purchaseQty), cols[4], cursor, { width: 36, align: 'right', lineBreak: false });
-    doc.text(n(row.purchaseValue), cols[5], cursor, { width: 52, align: 'right', lineBreak: false });
+    doc.text(n(row.purchaseValue), cols[5], cursor, {
+      width: 52,
+      align: 'right',
+      lineBreak: false,
+    });
     doc.text(q(row.secondaryQty), cols[6], cursor, { width: 36, align: 'right', lineBreak: false });
-    doc.text(n(row.secondaryValue), cols[7], cursor, { width: 52, align: 'right', lineBreak: false });
+    doc.text(n(row.secondaryValue), cols[7], cursor, {
+      width: 52,
+      align: 'right',
+      lineBreak: false,
+    });
     doc.text(q(row.closingQty), cols[8], cursor, { width: 36, align: 'right', lineBreak: false });
     doc.text(n(row.closingValue), cols[9], cursor, { width: 52, align: 'right', lineBreak: false });
     doc.text(q(row.frsQty), cols[10], cursor, { width: 36, align: 'right', lineBreak: false });
@@ -97,7 +107,10 @@ function header(
   doc.text('QTY    VALUE', 500, y + 12);
   doc.text('QTY    VALUE', 600, y + 12);
   doc.text('QTY', 730, y + 12);
-  doc.moveTo(28, y + 24).lineTo(800, y + 24).stroke();
+  doc
+    .moveTo(28, y + 24)
+    .lineTo(800, y + 24)
+    .stroke();
   return y + 30;
 }
 

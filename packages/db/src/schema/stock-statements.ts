@@ -45,7 +45,9 @@ export const stockStatements = pgTable(
     closingValue: numeric('closing_value', { precision: 14, scale: 2 }).notNull().default('0'),
     frsQty: integer('frs_qty').notNull().default(0),
     frsValue: numeric('frs_value', { precision: 14, scale: 2 }).notNull().default('0'),
-    actualSecondary: numeric('actual_secondary', { precision: 14, scale: 2 }).notNull().default('0'),
+    actualSecondary: numeric('actual_secondary', { precision: 14, scale: 2 })
+      .notNull()
+      .default('0'),
     awsFileKey: text('aws_file_key'),
     awsContentType: text('aws_content_type'),
     awsSizeBytes: bigint('aws_size_bytes', { mode: 'number' }),
@@ -102,9 +104,6 @@ export const stockStatementLines = pgTable(
       'stock_statement_lines_qty_ck',
       sql`(${t.openingQty} is null or ${t.openingQty} >= 0) and ${t.purchaseQty} >= 0 and ${t.secondaryQty} >= 0 and ${t.frsQty} >= 0`,
     ),
-    check(
-      'stock_statement_lines_source_ck',
-      sql`${t.openingSource} in ('typed', 'carried')`,
-    ),
+    check('stock_statement_lines_source_ck', sql`${t.openingSource} in ('typed', 'carried')`),
   ],
 );

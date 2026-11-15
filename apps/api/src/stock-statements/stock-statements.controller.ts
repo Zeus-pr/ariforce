@@ -89,7 +89,11 @@ export class StockStatementsController {
 
   @Get(':id/files/:kind')
   @RequirePermissions('stock_statements:read')
-  file(@CurrentPrincipal() p: Principal, @Param('id') id: string, @Param('kind') kind: 'aws' | 'ss') {
+  file(
+    @CurrentPrincipal() p: Principal,
+    @Param('id') id: string,
+    @Param('kind') kind: 'aws' | 'ss',
+  ) {
     return this.svc.fileUrl(p, id, kind === 'ss' ? 'ss' : 'aws');
   }
 

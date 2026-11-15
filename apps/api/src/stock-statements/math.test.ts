@@ -17,8 +17,13 @@ describe('stock statement maths', () => {
   });
 
   it('keeps a blank opening blank and a typed zero as zero', () => {
-    expect(figureLine({ openingQty: null, purchaseQty: 0, secondaryQty: 0, frsQty: 0, pts: 10 }).closingQty).toBeNull();
-    expect(figureLine({ openingQty: 0, purchaseQty: 0, secondaryQty: 0, frsQty: 0, pts: 10 }).closingQty).toBe(0);
+    expect(
+      figureLine({ openingQty: null, purchaseQty: 0, secondaryQty: 0, frsQty: 0, pts: 10 })
+        .closingQty,
+    ).toBeNull();
+    expect(
+      figureLine({ openingQty: 0, purchaseQty: 0, secondaryQty: 0, frsQty: 0, pts: 10 }).closingQty,
+    ).toBe(0);
   });
 
   it('actual secondary is secondary value minus FRS value', () => {

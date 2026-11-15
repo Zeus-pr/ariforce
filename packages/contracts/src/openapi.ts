@@ -2908,7 +2908,8 @@ function buildDocument(): OpenApiDocument {
         get: op({
           tags: ['Stock statements'],
           operationId: 'listStockStatements',
-          summary: 'Statements in scope, optionally one stockist, one status, or waiting on the caller',
+          summary:
+            'Statements in scope, optionally one stockist, one status, or waiting on the caller',
           requestParams: { query: StockStatementListQuery },
           responses: { '200': { description: 'OK', ...json(StockStatementList) } },
         }),

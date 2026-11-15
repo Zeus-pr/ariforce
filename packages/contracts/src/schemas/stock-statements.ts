@@ -144,7 +144,11 @@ export const StockStatementFileRequest = z
   .object({
     kind: z.enum(['aws', 'ss']),
     contentType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']),
-    sizeBytes: z.number().int().min(1).max(10 * 1024 * 1024),
+    sizeBytes: z
+      .number()
+      .int()
+      .min(1)
+      .max(10 * 1024 * 1024),
   })
   .meta({ id: 'StockStatementFileRequest' });
 
