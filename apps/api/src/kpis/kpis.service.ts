@@ -115,7 +115,7 @@ export class KpisService {
       throw new ForbiddenException('User is outside your team');
   }
 
-  private async groups(tx: Tx, p: Principal, q: Q): Promise<Group[]> {
+  private async groups(tx: Tx, p: Principal, q: Q, from: string, to: string): Promise<Group[]> {
     const team = await this.teamUsers(tx, p);
     const ownPaths = async (userId: string) =>
       (
@@ -205,31 +205,55 @@ export class KpisService {
         const ids = team.map((t) => t.id);
         const members =
           list.length && ids.length
-            ? await rows<{ group_id: number; user_id: string }>(
+            ? await rows<{ group_id: string; user_id: string }>(
                 tx,
-                sql`with target_territories(group_id, path) as (
-                    values ${sql.join(
-                      list.map((t, i) => sql`(${i}::int, ${t.path}::text)`),
-                      sql`, `,
-                    )}
+                sql`with recursive tree as (
+                    select t.id as group_id, t.id as node_id
+                      from territories t
+                     where t.id = any(${arr(list.map((t) => t.id))}) and t.deleted_at is null
+                    union all
+                    select tree.group_id, c.id
+                      from territories c
+                      join tree on c.parent_id = tree.node_id
+                     where c.deleted_at is null
+                  ),
+                  filed as (
+                    select r.user_id, r.territory_id, r.territory_ids, r.id
+                      from dcrs r
+                     where r.deleted_at is null
+                       and r.status in ('submitted', 'approved')
+                       and r.user_id = any(${arr(ids)})
+                       and r.date between ${from}::date and ${to}::date
                   )
-                  select tt.group_id, ut.user_id
-                    from target_territories tt
-                    join territories x on x.path = tt.path or starts_with(x.path, tt.path || '.')
-                    join user_territories ut on ut.territory_id = x.id
-                   where ut.user_id = any(${arr(ids)}) and x.deleted_at is null
-                   group by tt.group_id, ut.user_id`,
+                  select tree.group_id, ut.user_id
+                    from tree
+                    join user_territories ut on ut.territory_id = tree.node_id
+                   where ut.user_id = any(${arr(ids)})
+                  union
+                  select tree.group_id, filed.user_id
+                    from tree
+                    join filed on filed.territory_id = tree.node_id
+                       or tree.node_id = any(coalesce(filed.territory_ids, '{}'::uuid[]))
+                  union
+                  select tree.group_id, filed.user_id
+                    from tree
+                    join doctors doc on doc.deleted_at is null
+                     and (doc.territory_id = tree.node_id or doc.local_territory_id = tree.node_id)
+                    join dcr_calls c on c.outlet_id = doc.id
+                     and c.outlet_kind = 'doctor' and c.deleted_at is null
+                    join filed on filed.id = c.dcr_id
+                   group by tree.group_id, filed.user_id`,
               )
             : [];
-        const usersByGroup = new Map<number, string[]>();
+        const usersByGroup = new Map<string, string[]>();
         for (const row of members)
           usersByGroup.set(row.group_id, [...(usersByGroup.get(row.group_id) ?? []), row.user_id]);
-        return list.map((t, index) => ({
+        return list.map((t) => ({
           userId: null,
           territoryId: t.id,
           label: t.name,
           paths: [t.path],
-          users: usersByGroup.get(index) ?? [],
+          users: usersByGroup.get(t.id) ?? [],
         }));
       }
     }
@@ -249,16 +273,54 @@ export class KpisService {
               sql` or `,
             )})`
           : sql`false`;
+    const here = g.territoryId
+      ? sql`with recursive nodes as (
+            select id as node_id from territories
+             where id = ${g.territoryId}::uuid and deleted_at is null
+            union all
+            select c.id from territories c
+              join nodes on c.parent_id = nodes.node_id
+             where c.deleted_at is null
+          ), day as (`
+      : sql`with day as (`;
+    const touched = g.territoryId
+      ? sql`and exists (
+            select 1 from dcrs r
+             where r.user_id = d.user_id and r.date = d.date
+               and r.deleted_at is null and r.status in ('submitted', 'approved')
+               and (
+                 r.territory_id in (select node_id from nodes)
+                 or r.territory_ids && (select coalesce(array_agg(node_id), '{}'::uuid[]) from nodes)
+                 or (
+                   r.territory_id is null
+                   and cardinality(coalesce(r.territory_ids, '{}'::uuid[])) = 0
+                   and exists (
+                     select 1 from user_territories ut
+                      where ut.user_id = r.user_id
+                        and ut.territory_id in (select node_id from nodes)
+                   )
+                 )
+                 or exists (
+                   select 1 from dcr_calls c
+                     join doctors doc on doc.id = c.outlet_id and doc.deleted_at is null
+                    where c.dcr_id = r.id and c.deleted_at is null and c.outlet_kind = 'doctor'
+                      and (doc.territory_id in (select node_id from nodes)
+                        or doc.local_territory_id in (select node_id from nodes))
+                 )
+               )
+          )`
+      : sql``;
     const [data] = await rows<Record<string, string | null>>(
       tx,
-      sql`with day as (
-            select count(*) filter (where field_day) as field_days,
-                   coalesce(sum(doctor_calls) filter (where field_day), 0) as doctor_calls,
-                   coalesce(sum(chemist_calls) filter (where field_day), 0) as chemist_calls,
-                   count(*) filter (where dcr_submitted) as submitted,
-                   count(*) filter (where dcr_on_time) as on_time
-              from kpi_user_day
-             where user_id = any(${u}) and date between ${from}::date and ${upto}::date
+      sql`${here}
+            select count(*) filter (where d.field_day) as field_days,
+                   coalesce(sum(d.doctor_calls) filter (where d.field_day), 0) as doctor_calls,
+                   coalesce(sum(d.chemist_calls) filter (where d.field_day), 0) as chemist_calls,
+                   count(*) filter (where d.dcr_submitted) as submitted,
+                   count(*) filter (where d.dcr_on_time) as on_time
+              from kpi_user_day d
+             where d.user_id = any(${u}) and d.date between ${from}::date and ${upto}::date
+               ${touched}
           ), off_rows as (
             select user_id, date, 1::numeric as fraction from kpi_user_day
              where work_type_kind in ('leave','holiday') and user_id = any(${u})
@@ -276,6 +338,14 @@ export class KpisService {
                    coalesce(sum(unique_doctors_seen), 0) as seen,
                    coalesce(sum(frequency_met_doctors), 0) as freq
               from kpi_user_month where user_id = any(${u}) and month = any(${txt(ms)}::date[])
+               ${
+                 g.territoryId
+                   ? sql`and user_id in (
+                       select ut.user_id from user_territories ut
+                        where ut.territory_id in (select node_id from nodes)
+                     )`
+                   : sql``
+               }
           ), pob as (
             select coalesce(sum(p.value), 0) as value
               from dcr_day_calls c
@@ -412,7 +482,7 @@ export class KpisService {
       const { from, to } = this.period(q, today);
       const keys = q.kpis?.length ? q.kpis : [...KPI_KEYS];
       const out: KpiReport['rows'] = [];
-      for (const g of await this.groups(tx, p, q)) {
+      for (const g of await this.groups(tx, p, q, from, to)) {
         const r = await this.metrics(tx, g, from, to, today, keys);
         out.push({ userId: g.userId, territoryId: g.territoryId, label: g.label, ...r });
       }
