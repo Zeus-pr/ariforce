@@ -67,6 +67,7 @@ export class StockStatementsService implements OnModuleInit {
             decisionComment: comment,
           })
           .where(eq(stockStatements.id, row.id));
+        if (approved) await this.applyClosingToNext(tx, row);
         const stockist = await this.stockistName(tx, row.stockistId);
         await this.notifications.notify(tx, p, {
           type: approved ? 'stock_statement.approved' : 'stock_statement.rejected',
@@ -90,7 +91,10 @@ export class StockStatementsService implements OnModuleInit {
             .select()
             .from(stockStatements)
             .where(eq(stockStatements.id, req.entityId));
-          if (row) await this.assertReady(tx, row, 'sheet');
+          if (row) {
+            await this.fillBlankOpenings(tx, row);
+            await this.assertReady(tx, row, 'sheet');
+          }
         },
         onStep: async (tx, p, req, _step, nextApproverId) => {
           const [row] = await tx
@@ -300,6 +304,14 @@ export class StockStatementsService implements OnModuleInit {
         throw err(409, 'VERSION_CONFLICT', 'This statement was saved somewhere else. Reload it.', {
           version: row.version,
         });
+      const prior = await this.priorStatement(tx, row);
+      if (prior && prior.status !== 'approved')
+        throw err(
+          422,
+          'PREVIOUS_MONTH_OPEN',
+          `${String(prior.month).slice(0, 7)} has to be approved before this month can be submitted`,
+        );
+      await this.fillBlankOpenings(tx, row);
       await this.assertReady(tx, row, 'catalog');
       const chain = await this.approvers(tx, p.userId);
       await tx
@@ -509,21 +521,109 @@ export class StockStatementsService implements OnModuleInit {
       throw err(422, 'CLOSING_NEGATIVE', 'Closing cannot be negative', {
         products: negative.slice(0, 20),
       });
-    const unpriced = check
-      .filter(
-        (l) =>
-          l.pts == null && (l.openingQty != null || l.purchaseQty || l.secondaryQty || l.frsQty),
+  }
+
+  private async fillBlankOpenings(tx: Tx, row: StatementRow) {
+    const lines = await this.merged(tx, row.id);
+    const blanks = lines.filter((l) => l.openingQty == null);
+    if (!blanks.length) return;
+    const carried = await this.closingByProduct(tx, await this.priorStatement(tx, row));
+    for (const line of blanks) {
+      const fromClosing = carried.get(line.productId);
+      await tx
+        .insert(stockStatementLines)
+        .values({
+          id: uuidv7(),
+          companyId: row.companyId,
+          statementId: row.id,
+          productId: line.productId,
+          openingQty: fromClosing ?? 0,
+          openingSource: fromClosing == null ? 'typed' : 'carried',
+          purchaseQty: line.purchaseQty,
+          secondaryQty: line.secondaryQty,
+          frsQty: line.frsQty,
+          pts: line.pts == null ? null : money(line.pts),
+          productName: line.name,
+          packSize: line.packSize,
+        })
+        .onConflictDoUpdate({
+          target: [stockStatementLines.statementId, stockStatementLines.productId],
+          targetWhere: sql`${stockStatementLines.deletedAt} is null`,
+          set: {
+            openingQty: fromClosing ?? 0,
+            openingSource: fromClosing == null ? 'typed' : 'carried',
+          },
+        });
+    }
+    await this.retotal(tx, row);
+  }
+
+  private async applyClosingToNext(tx: Tx, row: StatementRow) {
+    const nextKey = nextMonth(String(row.month).slice(0, 10));
+    const [next] = await tx
+      .select()
+      .from(stockStatements)
+      .where(
+        and(
+          eq(stockStatements.stockistId, row.stockistId),
+          eq(stockStatements.month, nextKey),
+          isNull(stockStatements.deletedAt),
+        ),
       )
-      .map((l) => l.name);
-    if (unpriced.length)
-      throw err(
-        422,
-        'PTS_REQUIRED',
-        'These products have no PTS, so the value cannot be calculated',
-        {
-          products: unpriced.slice(0, 20),
-        },
-      );
+      .limit(1);
+    if (!next || next.status === 'pending' || next.status === 'approved') return;
+    const closings = await this.merged(tx, row.id);
+    let wrote = false;
+    for (const line of closings) {
+      if (line.closingQty == null) continue;
+      wrote = true;
+      await tx
+        .insert(stockStatementLines)
+        .values({
+          id: uuidv7(),
+          companyId: next.companyId,
+          statementId: next.id,
+          productId: line.productId,
+          openingQty: line.closingQty,
+          openingSource: 'carried',
+          purchaseQty: 0,
+          secondaryQty: 0,
+          frsQty: 0,
+          pts: line.pts == null ? null : money(line.pts),
+          productName: line.name,
+          packSize: line.packSize,
+        })
+        .onConflictDoUpdate({
+          target: [stockStatementLines.statementId, stockStatementLines.productId],
+          targetWhere: sql`${stockStatementLines.deletedAt} is null`,
+          set: { openingQty: line.closingQty, openingSource: 'carried' },
+        });
+    }
+    if (wrote) await this.retotal(tx, next);
+  }
+
+  private async priorStatement(tx: Tx, row: StatementRow) {
+    const [prior] = await tx
+      .select()
+      .from(stockStatements)
+      .where(
+        and(
+          eq(stockStatements.stockistId, row.stockistId),
+          eq(stockStatements.month, this.previous(String(row.month).slice(0, 10))),
+          isNull(stockStatements.deletedAt),
+        ),
+      )
+      .limit(1);
+    return prior;
+  }
+
+  private async closingByProduct(tx: Tx, prior: StatementRow | undefined) {
+    const carried = new Map<string, number>();
+    if (!prior || prior.status !== 'approved') return carried;
+    for (const line of await this.merged(tx, prior.id)) {
+      if (line.closingQty != null) carried.set(line.productId, line.closingQty);
+    }
+    return carried;
   }
 
   private previous(month: string) {

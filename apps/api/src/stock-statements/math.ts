@@ -26,7 +26,7 @@ export type FiguredLine = QtyLine & {
 
 export function figureLine(line: QtyLine): FiguredLine {
   const value = (qty: number | null) =>
-    qty == null || line.pts == null ? null : lineValue(qty, line.pts);
+    qty == null ? null : line.pts == null ? 0 : lineValue(qty, line.pts);
   const closingQty =
     line.openingQty == null
       ? null

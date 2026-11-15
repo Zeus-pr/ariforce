@@ -16,6 +16,21 @@ describe('stock statement maths', () => {
     expect(line.closingValue).toBe(12038.67);
   });
 
+  it('prices a missing PTS as zero', () => {
+    const line = figureLine({
+      openingQty: 0,
+      purchaseQty: 4,
+      secondaryQty: 1,
+      frsQty: 0,
+      pts: null,
+    });
+    expect(line.openingValue).toBe(0);
+    expect(line.purchaseValue).toBe(0);
+    expect(line.secondaryValue).toBe(0);
+    expect(line.closingQty).toBe(3);
+    expect(line.closingValue).toBe(0);
+  });
+
   it('keeps a blank opening blank and a typed zero as zero', () => {
     expect(
       figureLine({ openingQty: null, purchaseQty: 0, secondaryQty: 0, frsQty: 0, pts: 10 })
