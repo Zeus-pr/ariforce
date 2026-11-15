@@ -186,7 +186,30 @@ export class StockStatementsService implements OnModuleInit {
               : `${latest.month.slice(0, 7)} has to be approved before the next month opens`,
           );
         }
-      } else if (prior && prior.status !== 'approved') {
+      } else if (latest && start < latestMonth!) {
+        const [later] = await tx
+          .select({ month: stockStatements.month, status: stockStatements.status })
+          .from(stockStatements)
+          .where(
+            and(
+              eq(stockStatements.stockistId, stockistId),
+              isNull(stockStatements.deletedAt),
+              sql`${stockStatements.month} > ${start}`,
+              sql`${stockStatements.status} <> 'draft'`,
+            ),
+          )
+          .orderBy(desc(stockStatements.month))
+          .limit(1);
+        if (later) {
+          const word = later.status === 'approved' ? 'approved' : 'submitted';
+          throw err(
+            422,
+            'LATER_MONTH_CLOSED',
+            `${String(later.month).slice(0, 7)} is already ${word}, so an earlier month cannot be opened`,
+          );
+        }
+      }
+      if (prior && prior.status !== 'approved') {
         throw err(
           422,
           'PREVIOUS_MONTH_OPEN',
