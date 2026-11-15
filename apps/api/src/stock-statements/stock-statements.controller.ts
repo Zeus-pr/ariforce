@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, StreamableFile } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, StreamableFile } from '@nestjs/common';
 import {
   StockStatementFileConfirm,
   StockStatementFileRequest,
@@ -85,6 +85,16 @@ export class StockStatementsController {
     @Body(new ZodPipe(StockStatementFileConfirm)) b: z.infer<typeof StockStatementFileConfirm>,
   ) {
     return this.svc.confirmFile(p, id, b.kind);
+  }
+
+  @Delete(':id/files/:kind')
+  @RequirePermissions('stock_statements:read')
+  removeFile(
+    @CurrentPrincipal() p: Principal,
+    @Param('id') id: string,
+    @Param('kind') kind: 'aws' | 'ss',
+  ) {
+    return this.svc.removeFile(p, id, kind === 'ss' ? 'ss' : 'aws');
   }
 
   @Get(':id/files/:kind')

@@ -447,6 +447,25 @@ export class StockStatementsService implements OnModuleInit {
     });
   }
 
+  removeFile(p: Principal, id: string, kind: 'aws' | 'ss') {
+    this.blockAdmin(p);
+    return this.tenant.run(p, async (tx) => {
+      const row = await this.owned(tx, p, id);
+      if (!(await this.mayEdit(tx, p, row)))
+        throw err(409, 'STATEMENT_LOCKED', 'This statement cannot be edited');
+      await tx
+        .update(stockStatements)
+        .set(
+          kind === 'aws'
+            ? { awsFileKey: null, awsContentType: null, awsSizeBytes: null, awsStatus: null }
+            : { ssFileKey: null, ssContentType: null, ssSizeBytes: null, ssStatus: null },
+        )
+        .where(eq(stockStatements.id, row.id));
+      const [fresh] = await tx.select().from(stockStatements).where(eq(stockStatements.id, row.id));
+      return this.sheet(tx, p, fresh!);
+    });
+  }
+
   async pdf(p: Principal, id: string) {
     this.blockAdmin(p);
     return this.tenant.run(p, async (tx) => {
@@ -477,6 +496,7 @@ export class StockStatementsService implements OnModuleInit {
           closingQty: l.closingQty,
           closingValue: l.closingValue,
           frsQty: l.frsQty,
+          frsValue: l.frsValue,
         })),
       });
     });
