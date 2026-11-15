@@ -35,7 +35,7 @@ for (const view of ['desktop', 'mobile']) {
   await ctx.addInitScript(
     (s) => {
       sessionStorage.setItem('af:splash-seen', '1');
-      if (!localStorage.getItem('af:mock-session')) localStorage.setItem('af:mock-session', s);
+      if (!localStorage.getItem('af:session')) localStorage.setItem('af:session', s);
     },
     session({ userId: 'mock-director', role: 'director' }),
   );
@@ -178,7 +178,7 @@ for (const view of ['desktop', 'mobile']) {
   await page.screenshot({ path: path.join(OUT, `approved-${view}.png`), fullPage: true });
 
   await page.evaluate(
-    (s) => localStorage.setItem('af:mock-session', s),
+    (s) => localStorage.setItem('af:session', s),
     session({ userId: 'mock-bm', role: 'business_manager' }),
   );
   await page.reload({ waitUntil: 'networkidle' });

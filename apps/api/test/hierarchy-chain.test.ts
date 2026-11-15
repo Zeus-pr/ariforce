@@ -233,7 +233,9 @@ describe.skipIf(!OWNER || !APP)('hierarchy with skipped ranks (real API)', () =>
 
   it('tour plan submission with a skipped rank goes to the RBM; director can decide it too', async () => {
     const wt = await http().get('/v1/work-types?limit=50').set(as('bmx'));
-    const field = wt.body.items.find((w: { kind: string }) => w.kind === 'field');
+    const field = wt.body.items.find(
+      (w: { kind: string; code: string }) => w.kind === 'field' && w.code.startsWith('FIELD_'),
+    );
     const day = (date: string) => ({
       date,
       entries: [{ session: 'full', workTypeId: field.id, territoryIds: [T.hq], notes: 'P' }],

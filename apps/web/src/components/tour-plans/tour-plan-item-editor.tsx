@@ -18,6 +18,7 @@ import { api, apiReady, toApiError } from '@/lib/api';
 import {
   BANDS,
   cleanSfcHqs,
+  isRouteDay,
   detailsOf,
   emptyMeeting,
   emptyOffice,
@@ -37,6 +38,20 @@ import { ChoiceSelect } from '@/components/dcr/choice-select';
 import { MeetingFields, OfficeFields, SfcPanel } from '@/components/dcr/dcr-sections';
 import { SearchSelect, type SelectOption } from '@/components/dcr/search-select';
 import { saveTourPlanItem, submitTourPlanItem, type TpItem } from '@/lib/tour-plans/items';
+import { endTimeProblem, extraFormOf, spanMin } from '@/lib/dcr/times';
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+/** Start/end errors for the tour-plan editor (same rules as the DCR). */
+function timeErrors(f: { startTime: string; endTime: string }) {
+  const errors: Record<string, string[]> = {};
+  if (!HHMM.test(f.startTime)) errors.startTime = ['Enter a valid start time.'];
+  if (!HHMM.test(f.endTime)) errors.endTime = ['Enter a valid end time.'];
+  const bad = endTimeProblem(f.startTime, f.endTime);
+  if (bad) errors.endTime = [bad];
+  else if ((spanMin(f.startTime, f.endTime) ?? 0) > 720)
+    errors.endTime = ['A session can be at most 12 hours.'];
+  return errors;
+}
 
 type Props = {
   date: string | null;
@@ -63,7 +78,26 @@ const emptyFlow = (date: string): FlowState => ({
   office: emptyOffice(),
   leaveRequestId: '',
   deviationReason: '',
+  expenses: [],
+  expensesSent: false,
 });
+function keptRoutes(
+  previous: { hqTerritoryId: string; sfcRouteId: string }[],
+  picked: { hqTerritoryId: string; sfcRouteId: string }[],
+) {
+  const byHq = new Map<string, string[]>();
+  for (const route of previous) {
+    byHq.set(route.hqTerritoryId, [...(byHq.get(route.hqTerritoryId) ?? []), route.sfcRouteId]);
+  }
+  const out: { hqTerritoryId: string; sfcRouteId: string }[] = [];
+  for (const route of picked) {
+    const list = byHq.get(route.hqTerritoryId);
+    const ids = list?.includes(route.sfcRouteId) ? list : [route.sfcRouteId];
+    for (const sfcRouteId of ids) out.push({ hqTerritoryId: route.hqTerritoryId, sfcRouteId });
+  }
+  return out;
+}
+
 const itemDetails = (item: TpItem | null): DcrDetails | null =>
   isDetails(item?.plan.details) ? item.plan.details : null;
 
@@ -84,10 +118,10 @@ function flowFromItem(date: string, item: TpItem | null): FlowState {
       mode: details.mode,
       location: details.location ?? '',
       startTime: details.startTime,
-      durationMin: String(details.durationMin),
       attendees: details.attendees ?? '',
       remarks: details.remarks ?? '',
       trainer: details.kind === 'training' ? (details.trainer ?? '') : '',
+      ...extraFormOf(details),
     };
   }
   if (details?.kind === 'office') {
@@ -95,8 +129,8 @@ function flowFromItem(date: string, item: TpItem | null): FlowState {
       taskType: details.taskType,
       description: details.description,
       startTime: details.startTime ?? '',
-      durationMin: String(details.durationMin),
       remarks: details.remarks ?? '',
+      ...extraFormOf(details),
     };
   }
   return state;
@@ -170,7 +204,7 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
   }, [date, from, workTypesTick]);
 
   useEffect(() => {
-    if (!date || !state.workOn || state.workOn.branch !== 'field') return;
+    if (!date || !state.workOn || !isRouteDay(state.workOn.branch)) return;
     let live = true;
     setHqsError(null);
     setHqsLoading(true);
@@ -193,7 +227,7 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
   }, [date, state.workOn?.branch, hqsTick]);
 
   useEffect(() => {
-    if (!date || !state.workOn || state.workOn.branch !== 'field' || !state.territoryIds.length)
+    if (!date || !state.workOn || !isRouteDay(state.workOn.branch) || !state.territoryIds.length)
       return;
     let live = true;
     setPeopleError(null);
@@ -240,7 +274,7 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
     [workTypes],
   );
   const chosenWorkType = workTypes.find((workType) => workType.id === state.workTypeId);
-  const field = state.workOn?.branch === 'field';
+  const field = isRouteDay(state.workOn?.branch);
   const sfcKey =
     field && state.workTypeId && state.territoryIds.length && state.workWithDone
       ? `${from}|${state.workTypeId}|${state.territoryIds.join(',')}|${state.workWith.join(',')}|${sfcTick}`
@@ -294,21 +328,20 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
     const errors: Record<string, string[]> = {};
     if (showErrors && !selectedDetails) {
       if (state.workOn?.branch === 'meeting' || state.workOn?.branch === 'training') {
-        if (!state.meeting.title.trim()) errors.title = ['Choose or enter a type.'];
+        if (!state.meeting.title.trim())
+          errors.title = [
+            state.workOn.branch === 'meeting'
+              ? 'Choose the meeting type.'
+              : 'Choose or enter a type.',
+          ];
         if (state.meeting.mode === 'in_person' && !state.meeting.location.trim())
           errors.location = ['Enter the location.'];
-        if (!/^[0-2]\d:[0-5]\d$/.test(state.meeting.startTime))
-          errors.startTime = ['Enter a valid start time.'];
-        const duration = Number(state.meeting.durationMin);
-        if (!Number.isInteger(duration) || duration < 1 || duration > 720)
-          errors.durationMin = ['Enter 1 to 720 minutes.'];
+        Object.assign(errors, timeErrors(state.meeting));
       }
       if (state.workOn?.branch === 'office') {
         if (!state.office.taskType.trim()) errors.taskType = ['Choose or enter a task type.'];
         if (!state.office.description.trim()) errors.description = ['Describe the task.'];
-        const duration = Number(state.office.durationMin);
-        if (!Number.isInteger(duration) || duration < 1 || duration > 720)
-          errors.durationMin = ['Enter 1 to 720 minutes.'];
+        Object.assign(errors, timeErrors(state.office));
       }
     }
     return errors;
@@ -326,9 +359,7 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
     }));
   };
   const pickBand = (band: string) => {
-    const workType = workTypes.find(
-      (candidate) => candidate.kind === 'field' && candidate.band === band,
-    );
+    const workType = state.workOn?.workTypes.find((candidate) => candidate.band === band);
     if (!workType) return;
     setState((current) => ({
       ...current,
@@ -432,8 +463,9 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
           workTypeId: state.workTypeId,
           territoryIds: field ? state.territoryIds : [],
           workWithUserIds: field ? state.workWith : [],
-          sfcRoutes: routes,
+          sfcRoutes: field ? keptRoutes(existingItem?.plan.sfcRoutes ?? [], routes) : [],
           details: field ? null : selectedDetails,
+          sections: existingItem?.plan.sections ?? [],
         },
       });
       setWorkingItem(savedItem);
@@ -583,9 +615,7 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
                     value={chosenWorkType?.band ?? ''}
                     onValueChange={pickBand}
                     choices={BANDS.filter((band) =>
-                      workTypes.some(
-                        (workType) => workType.kind === 'field' && workType.band === band.band,
-                      ),
+                      state.workOn?.workTypes.some((workType) => workType.band === band.band),
                     ).map((band) => ({ value: band.band, label: band.label, hint: band.hint }))}
                     placeholder="Choose HQ, EX or OS"
                     disabled={!editable}

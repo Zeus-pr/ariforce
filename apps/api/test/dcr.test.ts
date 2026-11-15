@@ -8,7 +8,13 @@ import { monthDates } from '@ariforce/contracts';
 import { T } from '@ariforce/db';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
-import { ensureProduct } from './support';
+import {
+  ensureFieldReady,
+  ensureOutletLocked,
+  ensureProduct,
+  ensureVisitCheckIn,
+  geoCap,
+} from './support';
 
 const OWNER = process.env.DIRECT_URL;
 const APP = process.env.DATABASE_URL;
@@ -35,7 +41,7 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
   const tok: Record<string, string> = {};
   const http = () => request(app.getHttpServer());
   const as = (who: string) => ({ authorization: tok[who]! });
-  let field: string, leave: string, doctor: string, product: string;
+  let field: string, leave: string, doctor: string, product: string, visitId: string;
 
   beforeAll(async () => {
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -48,11 +54,17 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
       tok[who] = `Bearer ${res.headers['set-auth-token']}`;
     }
     const wt = (await http().get('/v1/work-types?limit=50').set(as('bm'))).body.items;
-    field = wt.find((w: { kind: string }) => w.kind === 'field').id;
+    field = wt.find(
+      (w: { kind: string; code: string }) => w.kind === 'field' && w.code.startsWith('FIELD_'),
+    ).id;
     leave = wt.find((w: { kind: string }) => w.kind !== 'field').id;
     doctor = (await http().get('/v1/doctors?approvalStatus=approved&limit=1').set(as('bm'))).body
       .items[0].id;
     product = await ensureProduct(http, tok.bm!, tok.director!);
+    // Call check-in + Presentation: punch-in, lock, visit before doctor calls.
+    await ensureFieldReady(http, tok.bm!);
+    await ensureOutletLocked(http, tok.bm!, 'doctor', doctor);
+    visitId = await ensureVisitCheckIn(http, tok.bm!, 'doctor', doctor);
     // Approved tour plan for this month: field work in T.hq every day.
     const entry = { session: 'full', workTypeId: field, territoryIds: [T.hq] };
     const days = monthDates(M).map((date) => ({ date, entries: [entry] }));
@@ -81,9 +93,10 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
     productsDetailed: [{ productId: product, order: 1 }],
     samples: [{ productId: product, quantity: 2 }],
     pob: [],
-    checkInId: null,
+    checkInId: visitId,
     remarks: null,
     presentationOpenedAt: new Date().toISOString(),
+    presentationCapture: geoCap(),
     calledAt: new Date().toISOString(),
     ...over,
   });

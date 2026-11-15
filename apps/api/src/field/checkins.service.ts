@@ -5,19 +5,29 @@ import {
   consentRecords,
   devices,
   doctors,
+  dcrs,
   geoCaptures,
+  outletLocations,
   stockists,
   territories,
   userTerritories,
   type Tx,
 } from '@ariforce/db';
-import { and, asc, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
-import { companySettings, localDate, metres } from './field.util';
+import { autoCloseOpenPunches } from './auto-punch-out';
+import { leaveBlocksWork } from '../leave/leave.util';
+import {
+  companySettings,
+  doctorLockLimitMessage,
+  localDate,
+  metres,
+  punchOnCompanyToday,
+} from './field.util';
 
 type Row = typeof geoCaptures.$inferSelect;
 const OUTLETS = { doctor: doctors, chemist: chemists, stockist: stockists } as const;
@@ -38,6 +48,7 @@ export interface CheckInQuery {
   kind?: CheckIn['kind'];
   outletKind?: 'doctor' | 'chemist' | 'stockist';
   outletId?: string;
+  doctorId?: string;
   unlinked?: 'true' | 'false';
 }
 
@@ -113,6 +124,9 @@ export class CheckInsService {
           : inArray(geoCaptures.kind, ['punch_in', 'visit', 'punch_out']),
         q.outletKind ? eq(geoCaptures.entityType, q.outletKind) : undefined,
         q.outletId ? eq(geoCaptures.entityId, q.outletId) : undefined,
+        q.doctorId
+          ? and(eq(geoCaptures.entityType, 'doctor'), eq(geoCaptures.entityId, q.doctorId))
+          : undefined,
         q.territoryId
           ? inArray(geoCaptures.territoryId, this.territorySubtree(tx, q.territoryId))
           : undefined,
@@ -208,15 +222,54 @@ export class CheckInsService {
 
       const capturedAt = new Date(b.capturedAt);
       const day = localDate(capturedAt, s.timezone);
+      const companyToday = localDate(new Date(), s.timezone);
+      if (
+        (b.kind === 'punch_in' || b.kind === 'punch_out') &&
+        !punchOnCompanyToday(day, companyToday)
+      )
+        throw err(422, 'PUNCH_DATE', 'A punch is recorded for today in the company time zone', {
+          capturedDay: day,
+          today: companyToday,
+        });
+      // Close any open punches on prior local days (IST midnight / missed cron).
+      await autoCloseOpenPunches(tx, {
+        companyId: p.companyId,
+        userId: p.userId,
+        timezone: s.timezone,
+        beforeDay: companyToday,
+      });
+
       const today = await tx
         .select({ kind: geoCaptures.kind })
         .from(geoCaptures)
         .where(and(eq(geoCaptures.userId, p.userId), sql`${capDate(s.timezone)} = ${day}::date`));
       const has = (k: string) => today.some((r) => r.kind === k);
-      if (b.kind === 'punch_in' && has('punch_in'))
+      // Default: one punch_in / day, and nothing after punch_out.
+      // FIELD_RELAX_PUNCH_SEQUENCE=1 (temp testing): allow re-punch-in after punch-out / multiple punch-ins.
+      const relaxSequence = process.env.FIELD_RELAX_PUNCH_SEQUENCE === '1';
+      if (!relaxSequence && b.kind === 'punch_in' && has('punch_in'))
         throw err(409, 'SEQUENCE', 'Already punched in today');
       if (b.kind !== 'punch_in' && !has('punch_in')) throw err(409, 'SEQUENCE', 'Punch in first');
-      if (has('punch_out')) throw err(409, 'SEQUENCE', 'Already punched out today');
+      if (!relaxSequence && has('punch_out'))
+        throw err(409, 'SEQUENCE', 'Already punched out today');
+      if (b.kind === 'punch_in' && (await leaveBlocksWork(tx, p.userId, day)))
+        throw err(422, 'LEAVE_DAY_BLOCKED', 'Leave covers this day, so punch in stays closed');
+
+      if (b.kind === 'punch_out') {
+        const [dcr] = await tx
+          .select({ id: dcrs.id, status: dcrs.status })
+          .from(dcrs)
+          .where(
+            and(
+              eq(dcrs.userId, p.userId),
+              eq(dcrs.date, day),
+              isNull(dcrs.deletedAt),
+              inArray(dcrs.status, ['submitted', 'approved']),
+            ),
+          )
+          .limit(1);
+        if (!dcr) throw err(409, 'DCR_NOT_SUBMITTED', "Submit today's DCR before punching out");
+      }
 
       let territoryId: string | null;
       let distanceM: number | null = null;
@@ -229,15 +282,49 @@ export class CheckInsService {
             territoryId: t.territoryId,
             location: t.location,
             radius: b.outletKind === 'doctor' ? doctors.geofenceRadiusM : sql<null>`null`,
+            maxActiveLocks:
+              b.outletKind === 'doctor' ? doctors.maxActiveLocks : sql<number | null>`null`,
           })
           .from(t)
           .innerJoin(territories, eq(territories.id, t.territoryId))
           .where(and(eq(t.id, b.outletId!), sql`${t.deletedAt} is null`, scope));
         if (!o) throw new NotFoundException('Outlet not found');
         territoryId = o.territoryId;
-        if (o.location) {
-          distanceM = metres(b.location, { lat: o.location.y, lng: o.location.x });
+        // Prefer locked outlet_locations (nearest); fall back to denormalised master point.
+        const locks = await tx
+          .select({ location: outletLocations.location })
+          .from(outletLocations)
+          .where(
+            and(
+              eq(outletLocations.outletKind, b.outletKind!),
+              eq(outletLocations.outletId, b.outletId!),
+              eq(outletLocations.active, true),
+              isNull(outletLocations.deletedAt),
+            ),
+          );
+        const centres = locks.length
+          ? locks.map((l) => ({ lat: l.location.y, lng: l.location.x }))
+          : o.location
+            ? [{ lat: o.location.y, lng: o.location.x }]
+            : [];
+        if (centres.length) {
+          distanceM = Math.min(...centres.map((c) => metres(b.location, c)));
           inFence = distanceM <= (o.radius ?? s.radiusM);
+          const atDoctorCap = b.outletKind === 'doctor' && locks.length >= (o.maxActiveLocks ?? 1);
+          const lockedOutlet = b.outletKind === 'chemist' || b.outletKind === 'stockist';
+          if (!inFence && atDoctorCap) {
+            const limit = o.maxActiveLocks ?? 1;
+            throw err(409, 'LOCATION_LIMIT', doctorLockLimitMessage(limit), {
+              limit,
+              distanceM,
+            });
+          }
+          // A chemist or stockist with a saved pin cannot check in away from it.
+          if (!inFence && lockedOutlet && locks.length > 0)
+            throw err(422, 'OUT_OF_FENCE', `You are ${distanceM} m from the outlet`, {
+              distanceM,
+              radiusM: o.radius ?? s.radiusM,
+            });
           if (!inFence && s.blockOutOfFence)
             throw err(422, 'OUT_OF_FENCE', `You are ${distanceM} m from the outlet`, {
               distanceM,

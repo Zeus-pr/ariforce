@@ -10,7 +10,10 @@ import {
   Car,
   CircleEllipsis,
   LoaderCircle,
+  Package,
   Paperclip,
+  Smartphone,
+  Users,
   Utensils,
   Wallet,
   X,
@@ -58,6 +61,10 @@ const ICON: Record<ExpenseCategory, typeof Bus> = {
   food: Utensils,
   mileage: Car,
   allowance: Wallet,
+  courier: Package,
+  mobile: Smartphone,
+  team_meeting: Users,
+  additional_ta_da: Wallet,
   other: CircleEllipsis,
 };
 const STEPS = ['What & when', 'Amount', 'Review'] as const;

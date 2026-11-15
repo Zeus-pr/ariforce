@@ -8,12 +8,18 @@ import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
 import { toast } from '@ariforce/ui/components/sonner';
-import { strength } from '@/lib/signup/adapter';
+import {
+  PASSWORD_MAX,
+  PASSWORD_MIN,
+  PASSWORD_PATTERN,
+  passwordAccepted,
+  passwordRuleMessage,
+} from '@ariforce/contracts';
+import { PasswordRules } from '@/components/auth/password-rules';
+
 import {
   CODE_LENGTH,
   RESEND_SECONDS,
-  RESET_PASSWORD_MIN as MIN,
-  RESET_PASSWORD_MAX as MAX,
   resetPassword,
   sendResetCode,
   type ResetFailure,
@@ -36,7 +42,7 @@ function failureText(f: ResetFailure): string {
     case 'busy':
       return busyText(f.seconds);
     case 'invalid':
-      return f.message || `Password must be at least ${MIN} characters.`;
+      return f.message || 'Choose a password that meets every requirement.';
     default:
       return 'Could not reach the server. Check your connection and try again.';
   }
@@ -94,7 +100,11 @@ export function ForgotPasswordForm() {
     e.preventDefault();
     if (code.length !== CODE_LENGTH)
       return setErr({ field: 'code', text: `Enter the ${CODE_LENGTH}-digit code from the email.` });
-    if (pw.length < MIN) return setErr({ field: 'pw', text: `Use at least ${MIN} characters.` });
+    if (!passwordAccepted(pw))
+      return setErr({
+        field: 'pw',
+        text: passwordRuleMessage(pw) ?? 'Choose a stronger password.',
+      });
     if (pw !== pw2) return setErr({ field: 'pw2', text: 'The two passwords do not match.' });
     setErr(null);
     setBusy(true);
@@ -179,7 +189,6 @@ export function ForgotPasswordForm() {
       </form>
     );
 
-  const st = strength(pw);
   return (
     <form
       onSubmit={submit}
@@ -232,6 +241,7 @@ export function ForgotPasswordForm() {
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor={`${id}-pw`}>New password</Label>
+        <PasswordRules password={pw} id={`${id}-rules`} />
         <div className="relative">
           <Input
             id={`${id}-pw`}
@@ -240,9 +250,11 @@ export function ForgotPasswordForm() {
             value={pw}
             onChange={(e) => setPw(e.target.value)}
             aria-invalid={err?.field === 'pw'}
-            aria-describedby={`${id}-hint`}
+            aria-describedby={`${id}-rules`}
+            minLength={PASSWORD_MIN}
+            maxLength={PASSWORD_MAX}
+            pattern={PASSWORD_PATTERN}
             className="h-10 pr-10 text-base md:text-base"
-            maxLength={MAX}
             data-testid="fp-password"
           />
           <Button
@@ -257,22 +269,6 @@ export function ForgotPasswordForm() {
             {show ? <EyeOff /> : <Eye />}
           </Button>
         </div>
-        <div id={`${id}-hint`} className="flex items-center gap-2" aria-live="polite">
-          <div className="flex flex-1 gap-1" aria-hidden>
-            {[1, 2, 3, 4].map((i) => (
-              <span
-                key={i}
-                className={`h-1 flex-1 rounded-full ${i <= st.score ? (st.score >= 3 ? 'bg-success' : 'bg-warning') : 'bg-muted'}`}
-              />
-            ))}
-          </div>
-          <span className="text-xs text-muted-foreground" data-testid="fp-strength">
-            {pw ? st.label : `At least ${MIN} characters`}
-          </span>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Longer is stronger. Mix upper and lower case, numbers and symbols.
-        </p>
         {fieldErr('pw')}
       </div>
       <div className="grid gap-1.5">
@@ -285,7 +281,7 @@ export function ForgotPasswordForm() {
           onChange={(e) => setPw2(e.target.value)}
           aria-invalid={err?.field === 'pw2'}
           className="h-10 text-base md:text-base"
-          maxLength={MAX}
+          maxLength={PASSWORD_MAX}
           data-testid="fp-password2"
         />
         {fieldErr('pw2')}

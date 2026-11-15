@@ -20,9 +20,11 @@ import {
   SignupRequestCreate,
   assignableRoles,
   isHierarchyRole,
+  passwordAccepted,
+  passwordRuleMessage,
 } from '@ariforce/contracts';
 import type * as z from 'zod';
-import { REAL, api, apiReady } from '@/lib/api';
+import { api, apiReady } from '@/lib/api';
 import { isPortalRole, isSystemAdmin, type Role } from '@/lib/roles';
 
 export type SignupInput = z.input<typeof SignupRequestCreate>;
@@ -124,23 +126,12 @@ export function validate(i: SignupInput): SignupError | null {
   const phone = i.phone?.trim() ?? '';
   if (phone && (phone.length < 6 || phone.length > 20 || !/^\+?[0-9 ()-]+$/.test(phone)))
     return f('Enter a valid phone number, or leave it empty.', 'phone');
-  if (i.password.length < SIGNUP_PASSWORD_MIN)
-    return f(`Use at least ${SIGNUP_PASSWORD_MIN} characters.`, 'password');
-  if (i.password.length > 128) return f('Use at most 128 characters.', 'password');
+  if (!passwordAccepted(i.password))
+    return f(passwordRuleMessage(i.password) ?? 'Choose a stronger password.', 'password');
   if (!SIGNUP_ROLES.includes(i.requestedRole as Role)) return f('Pick your role.', 'requestedRole');
   return SignupRequestCreate.safeParse(i).success
     ? null
     : new SignupError(messageFor(422), 'VALIDATION', undefined, 422);
-}
-
-/** 0-4 hint only (length 12/16, mixed case, digit + symbol); the server only enforces length. */
-export function strength(p: string): { score: number; label: string } {
-  if (p.length < SIGNUP_PASSWORD_MIN) return { score: p ? 1 : 0, label: p ? 'Too short' : '' };
-  let s = 1;
-  if (p.length >= 16) s++;
-  if (/[a-z]/.test(p) && /[A-Z]/.test(p)) s++;
-  if (/\d/.test(p) && /[^A-Za-z0-9]/.test(p)) s++;
-  return { score: s, label: ['', 'Fair', 'Good', 'Strong', 'Very strong'][s]! };
 }
 
 // ---------- who reviews what (one helper; route guard uses canReviewSignups in lib/permissions) ----------
@@ -160,183 +151,13 @@ export function canDecide(viewer: Role, r: Pick<SignupRequest, 'requestedRole'>)
 export const takesManager = (role: Role) => isHierarchyRole(role) && role !== 'director';
 export const needsTerritory = (role: Role) => isHierarchyRole(role);
 
-// ---------- mock store ----------
-const KEY = 'af:mock-signups';
-type Stored = SignupRequest & { passwordHash: string };
-
-async function hash(p: string) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-const SEED: Stored[] = (
-  [
-    [
-      'Anita Ghosh',
-      'anita.ghosh@example.test',
-      '+91 90000 00011',
-      'business_manager',
-      '2026-10-24T05:30:00Z',
-    ],
-    [
-      'Rakesh Mondal',
-      'rakesh.mondal@example.test',
-      null,
-      'regional_business_manager',
-      '2026-10-25T06:10:00Z',
-    ],
-    [
-      'Sumana Paul',
-      'sumana.paul@example.test',
-      '+91 90000 00013',
-      'business_manager',
-      '2026-10-26T04:45:00Z',
-    ],
-    [
-      'Arijit Das',
-      'arijit.das@example.test',
-      '+91 90000 00014',
-      'area_business_manager',
-      '2026-10-26T09:20:00Z',
-    ],
-  ] as const
-).map(([name, email, phone, role, createdAt], i) => ({
-  id: `00000000-0000-4000-8000-5eed0000000${i + 1}`,
-  userId: `00000000-0000-4000-8000-5eed1000000${i + 1}`,
-  name,
-  email,
-  phone,
-  requestedRole: role,
-  requestedTerritoryId: null,
-  requestedManagerId: null,
-  status: 'pending',
-  approvedRole: null,
-  decidedBy: null,
-  decidedAt: null,
-  reason: null,
-  createdAt,
-  passwordHash: '', // seeded: any password shows the pending message (demo only)
-}));
-function load(): Stored[] {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as Stored[];
-  } catch {
-    /* storage blocked */
-  }
-  return SEED.map((s) => ({ ...s }));
-}
-function save(rows: Stored[]) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(rows));
-  } catch {
-    /* storage blocked */
-  }
-}
-const delay = () => new Promise((r) => setTimeout(r, 150));
-const strip = ({ passwordHash: _h, ...r }: Stored): SignupRequest => r;
-function viewer(): { id: string; role: Role } | null {
-  try {
-    const s = JSON.parse(localStorage.getItem('af:mock-session') ?? 'null') as {
-      userId?: string;
-      role?: Role;
-      previewRole?: Role;
-    } | null;
-    const role = s?.previewRole ?? s?.role;
-    return s?.userId && role ? { id: s.userId, role } : null;
-  } catch {
-    return null;
-  }
-}
-const uuid = () =>
-  `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0').slice(-12)}`;
-
-const mockAdapter = {
-  async submit(input: SignupInput): Promise<string> {
-    await delay();
-    const bad = validate(input);
-    if (bad) throw bad;
-    const rows = load();
-    const email = input.email.trim().toLowerCase();
-    if (rows.some((r) => r.email === email) || /@demo\.ariforce\.(test|in)$/.test(email))
-      throw new SignupError(
-        messageFor(409, AUTH_STATE_CODES.unavailable),
-        AUTH_STATE_CODES.unavailable,
-        undefined,
-        409,
-      );
-    rows.unshift({
-      id: uuid(),
-      userId: uuid(),
-      name: input.name.trim(),
-      email,
-      phone: input.phone?.trim() || null,
-      requestedRole: input.requestedRole as Role,
-      requestedTerritoryId: input.territoryId ?? null,
-      requestedManagerId: input.managerId ?? null,
-      status: 'pending',
-      approvedRole: null,
-      decidedBy: null,
-      decidedAt: null,
-      reason: null,
-      createdAt: new Date().toISOString(),
-      passwordHash: await hash(input.password),
-    });
-    save(rows);
-    return 'Request received. You can sign in once an administrator approves it.';
-  },
-  /** Mock sign-in hook: the state of a request for this email (password checked when one was set). */
-  async statusFor(email: string, password: string): Promise<SignupStatus | null> {
-    const row = load().find((r) => r.email === email.trim().toLowerCase());
-    if (!row) return null;
-    if (row.passwordHash && row.passwordHash !== (await hash(password))) return null;
-    return row.status;
-  },
-  async list(role: Role, status: SignupStatus): Promise<SignupRequest[]> {
-    await delay();
-    const me = viewer();
-    return load()
-      .filter(
-        (r) =>
-          r.status === status &&
-          canDecide(role, r) &&
-          r.userId !== me?.id &&
-          (isSystemAdmin(role) || !r.requestedManagerId || r.requestedManagerId === me?.id),
-      )
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .map(strip);
-  },
-  async approve(id: string, d: Decision): Promise<SignupRequest> {
-    await delay();
-    return decide(id, (row, me) => {
-      if (!grantableRoles(me.role).includes(d.role as Role))
-        throw new SignupError(messageFor(403), 'FORBIDDEN', undefined, 403);
-      if (!takesManager(d.role as Role) && d.managerId)
-        throw new SignupError('This role has no manager.', 'VALIDATION', undefined, 422);
-      if (needsTerritory(d.role as Role) && !(d.territoryIds?.length ?? row.requestedTerritoryId))
-        throw new SignupError('Pick at least one territory.', 'VALIDATION', undefined, 422);
-      Object.assign(row, { status: 'approved', approvedRole: d.role });
-    });
-  },
-  async reject(id: string, reason: string | null): Promise<SignupRequest> {
-    await delay();
-    return decide(id, (row) =>
-      Object.assign(row, { status: 'rejected', reason: reason?.trim() || null }),
-    );
-  },
+export type SignupAdapter = {
+  submit(input: SignupInput): Promise<string>;
+  statusFor(email: string, password: string): Promise<SignupStatus | null>;
+  list(role: Role, status: SignupStatus): Promise<SignupRequest[]>;
+  approve(id: string, d: Decision): Promise<SignupRequest>;
+  reject(id: string, reason: string | null): Promise<SignupRequest>;
 };
-function decide(id: string, apply: (row: Stored, me: { id: string; role: Role }) => void) {
-  const me = viewer();
-  if (!me) throw new SignupError('Sign in again.', 'UNAUTHENTICATED', undefined, 401);
-  const rows = load();
-  const row = rows.find((r) => r.id === id);
-  if (!row || !canDecide(me.role, row) || row.userId === me.id)
-    throw new SignupError(messageFor(404), 'NOT_FOUND', undefined, 404);
-  if (row.status !== 'pending') throw new SignupError(messageFor(409), 'CONFLICT', undefined, 409);
-  apply(row, me);
-  Object.assign(row, { decidedBy: me.id, decidedAt: new Date().toISOString() });
-  save(rows);
-  return strip(row);
-}
 
 // ---------- real ----------
 function fail(error: unknown, response: Response): never {
@@ -352,7 +173,7 @@ function fail(error: unknown, response: Response): never {
 const network = () =>
   new SignupError('Could not reach the server. Check your connection.', 'NETWORK');
 
-const apiAdapter: typeof mockAdapter = {
+const apiAdapter: SignupAdapter = {
   async submit(input) {
     const bad = validate(input);
     if (bad) throw bad;
@@ -401,4 +222,4 @@ const apiAdapter: typeof mockAdapter = {
   },
 };
 
-export const signupAdapter = REAL ? apiAdapter : mockAdapter;
+export const signupAdapter = apiAdapter;

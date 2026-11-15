@@ -12,6 +12,8 @@ export type SelectOption = {
   indent?: boolean;
   meta?: string;
   imageUrl?: string | null;
+  /** Price to stockist (INR); POB is valued at it. */
+  pts?: number | null;
 };
 
 /**

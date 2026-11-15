@@ -46,7 +46,10 @@ export function DcrMonthCalendar({
   pills,
   onMonthChange,
   onSelectDay,
+  closedEmptyDays = false,
 }: {
+  /** DCR rule: only today can get a new report, so empty past/future days are disabled. */
+  closedEmptyDays?: boolean;
   month: string;
   today: string;
   selected: string | null;
@@ -113,6 +116,7 @@ export function DcrMonthCalendar({
           const status = dominant(dayPills);
           const isToday = date === today;
           const isSelected = date === selected;
+          const closed = closedEmptyDays && empty && !isToday;
           return (
             <li key={date}>
               <button
@@ -121,12 +125,14 @@ export function DcrMonthCalendar({
                 data-date={date}
                 data-empty={empty || undefined}
                 data-status={status ?? undefined}
+                disabled={closed}
                 onClick={() => onSelectDay(date, dayPills)}
                 aria-label={`${dayLabel(date)}${dayPills.length ? `: ${dayPills.map((p) => p.label).join(', ')}` : ', no report'}`}
                 aria-pressed={isSelected}
                 className={cn(
                   'flex min-h-14 w-full flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left text-sm transition-[transform,background-color] duration-150 active:scale-[0.98] sm:min-h-20',
                   empty ? 'border-dashed hover:bg-muted/60' : 'bg-card hover:bg-muted/60',
+                  closed && 'cursor-not-allowed opacity-50 hover:bg-transparent active:scale-100',
                   isToday && 'border-primary',
                   isSelected && 'ring-2 ring-ring/40',
                 )}
@@ -137,7 +143,15 @@ export function DcrMonthCalendar({
                 </span>
                 {empty ? (
                   <span className="text-muted-foreground">
-                    {date <= today ? 'File this day' : 'Future day'}
+                    {closedEmptyDays
+                      ? isToday
+                        ? 'File today'
+                        : date < today
+                          ? 'No report'
+                          : 'Future day'
+                      : date <= today
+                        ? 'File this day'
+                        : 'Future day'}
                   </span>
                 ) : (
                   <>

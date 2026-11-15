@@ -14,6 +14,8 @@ import {
   SelectValue,
 } from '@ariforce/ui/components/select';
 import { toast } from '@ariforce/ui/components/sonner';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useRole } from '@/components/shell/role-context';
 import { ROLE_SHORT } from '@/lib/roles';
 import { REAL, api, apiReady } from '@/lib/api';
@@ -26,6 +28,9 @@ import { BulkInvite } from '@/components/invites/bulk-invite';
 
 export function MyTeamView() {
   const { role } = useRole();
+  const router = useRouter();
+  // The Director manages people in the People page; here they only browse and open the 360.
+  const readOnly = role === 'director';
   const [tree, setTree] = useState<OrgTree | null>(null);
   const [unassigned, setUnassigned] = useState<Employee[]>([]);
   const [hqs, setHqs] = useState<Hq[]>([]);
@@ -39,10 +44,13 @@ export function MyTeamView() {
   }, []);
   // Real mode: search is server-side (GET /v1/users?q=, scoped to the caller), debounced, stale calls cancelled.
   const [matchIds, setMatchIds] = useState<Set<string> | null>(null);
+  /** The user search returns at most 100 matches. */
+  const [matchCapped, setMatchCapped] = useState(false);
   useEffect(() => {
     const term = q.trim();
     if (!REAL || !term) {
       setMatchIds(null);
+      setMatchCapped(false);
       return;
     }
     const ctrl = new AbortController();
@@ -51,7 +59,9 @@ export function MyTeamView() {
       const r = await api
         .GET('/v1/users', { params: { query: { q: term, limit: 100 } }, signal: ctrl.signal })
         .catch(() => null);
-      if (!ctrl.signal.aborted) setMatchIds(new Set((r?.data?.items ?? []).map((u) => u.id)));
+      if (ctrl.signal.aborted) return;
+      setMatchIds(new Set((r?.data?.items ?? []).map((u) => u.id)));
+      setMatchCapped((r?.data?.items.length ?? 0) >= 100);
     }, 250);
     return () => {
       clearTimeout(t);
@@ -130,19 +140,21 @@ export function MyTeamView() {
           {below.filter((e) => e.active).length} active
         </p>
         <div className="flex flex-wrap gap-2">
-          {pending.length > 0 && (
+          {!readOnly && pending.length > 0 && (
             <Button variant="outline" onClick={() => setInviteAll(true)} data-testid="invite-all">
               <Send /> Invite all pending ({pending.length})
             </Button>
           )}
-          {apiTeamAdapter.creatableRoles(role).length > 0 && (
+          {!readOnly && apiTeamAdapter.creatableRoles(role).length > 0 && (
             <Button variant="outline" onClick={() => setBulk(true)} data-testid="add-several">
               <Users /> Add several
             </Button>
           )}
-          <Button onClick={() => setSheet({ mode: 'add' })} data-testid="add-employee">
-            <UserPlus /> Add employee
-          </Button>
+          {!readOnly && (
+            <Button onClick={() => setSheet({ mode: 'add' })} data-testid="add-employee">
+              <UserPlus /> Add employee
+            </Button>
+          )}
         </div>
       </div>
 
@@ -209,6 +221,11 @@ export function MyTeamView() {
           </div>
         </CardHeader>
         <div className="p-2">
+          {matchCapped && (
+            <p className="px-2 pb-2 text-xs text-muted-foreground" data-testid="limit-notice">
+              Showing the first 100 matches. Narrow the search to see others.
+            </p>
+          )}
           <Tree
             rootId={tree.rootId}
             nodes={tree.nodes}
@@ -217,7 +234,11 @@ export function MyTeamView() {
             setExpanded={setExpanded}
             query={query}
             matchIds={matchIds}
-            onOpen={(e) => setSheet({ mode: 'edit', employee: e })}
+            onOpen={(e) =>
+              readOnly
+                ? router.push(`/team/members/${e.id}`)
+                : setSheet({ mode: 'edit', employee: e })
+            }
           />
         </div>
       </Card>
@@ -228,7 +249,9 @@ export function MyTeamView() {
             Unassigned <Badge variant="secondary">{unassigned.length}</Badge>
           </CardTitle>
           <CardDescription>
-            People with no reporting manager yet. Assign them to someone in your team.
+            {readOnly
+              ? 'People with no reporting manager yet. Assign them from the People page.'
+              : 'People with no reporting manager yet. Assign them to someone in your team.'}
           </CardDescription>
         </CardHeader>
         <ul className="divide-y">
@@ -247,7 +270,16 @@ export function MyTeamView() {
                   </span>
                 </p>
               </div>
-              <Assign employee={e} managers={managers} onDone={done} />
+              {readOnly ? (
+                <Link
+                  href={`/team/members/${e.id}`}
+                  className="text-sm text-primary underline-offset-2 hover:underline"
+                >
+                  Open profile
+                </Link>
+              ) : (
+                <Assign employee={e} managers={managers} onDone={done} />
+              )}
             </li>
           ))}
           {!unassigned.length && (

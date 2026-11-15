@@ -1,9 +1,29 @@
 import { companies, type Tx } from '@ariforce/db';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { Principal } from '../auth/principal';
 
 export const NOTICE_VERSION = '2026-10-v1';
+
+/** Wording shared by a new pin and a far check-in that is already at the doctor's cap. */
+export function doctorLockLimitMessage(limit: number) {
+  const n = limit === 1 ? '1 locked place' : `${limit} locked places`;
+  return `This doctor already has ${n}. Check in near one of them.`;
+}
 export const MAX_RANGE_DAYS = 62;
+
+/** Company weekly off from leave settings. Sunday when the company has no row. */
+export async function isWeeklyOff(tx: Tx, companyId: string, date: string) {
+  const r = await tx.execute(sql`
+    select 1
+    where coalesce(
+      (select extract(dow from ${date}::date)::int = any (coalesce(weekly_off_days, '{0}'::int[]))
+         from leave_settings
+        where company_id = ${companyId}::uuid and deleted_at is null
+        limit 1),
+      extract(dow from ${date}::date)::int = 0
+    )`);
+  return r.rows.length > 0;
+}
 
 export interface CompanySettings {
   timezone: string;
@@ -11,6 +31,8 @@ export interface CompanySettings {
   maxAccuracyM: number;
   blockOutOfFence: boolean;
   blockMockLocation: boolean;
+  presentationRadiusM: number;
+  lockMaxAccuracyM: number;
   dcrLockAfterHours: number;
   version: number;
 }
@@ -61,9 +83,19 @@ async function loadCompanySettings(tx: Tx, p: Principal): Promise<CompanySetting
     maxAccuracyM: c.geofenceMaxAccuracyM,
     blockOutOfFence: c.geofenceBlockOutOfFence,
     blockMockLocation: c.geofenceBlockMock,
+    presentationRadiusM: c.presentationGeofenceM,
+    lockMaxAccuracyM: c.geoLockMaxAccuracyM,
     dcrLockAfterHours: c.dcrLockAfterHours,
     version: c.version,
   };
+}
+
+/**
+ * A punch is stored on the company-local today. The device clock must name that same day;
+ * a capturedAt on another day is refused so the phone cannot choose the attendance day.
+ */
+export function punchOnCompanyToday(capturedDay: string, companyToday: string) {
+  return capturedDay === companyToday;
 }
 
 /** Calendar date (YYYY-MM-DD) of an instant in the company time zone. */

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { DcrDecision } from '@ariforce/contracts';
-import { doctorPob, lockAtOf, missingPresentation, pobValue } from './dcr-rules';
+import {
+  doctorPob,
+  foreignDayCheckInIds,
+  lockAtOf,
+  missingCheckIns,
+  missingPresentation,
+  pobValue,
+  presentationRequired,
+} from './dcr-rules';
 import { draftsNewestFirst, rejectedNewestFirst, reviewable, submittedOf } from './day-report';
 
 const call = (o: Partial<Parameters<typeof doctorPob>[0][number]>) => ({
@@ -16,15 +24,47 @@ describe('dcr rules', () => {
     expect(pobValue(3, '12.345')).toBe('37.04');
     expect(pobValue(3, null)).toBeNull();
   });
-  it('rejects POB on doctor calls only', () => {
+  it('rejects POB on doctor and stockist calls', () => {
     expect(
       doctorPob([call({ outletKind: 'chemist', pob: [1] }), call({ clientId: 'd', pob: [1] })]),
     ).toEqual({
-      reason: 'POB_NOT_ALLOWED_FOR_DOCTOR',
+      reason: 'POB_CHEMIST_ONLY',
       callIndexes: [1],
       callIds: ['d'],
     });
-    expect(doctorPob([call({ outletKind: 'stockist', pob: [1] })])).toBeNull();
+    expect(doctorPob([call({ outletKind: 'stockist', clientId: 's', pob: [1] })])).toEqual({
+      reason: 'POB_CHEMIST_ONLY',
+      callIndexes: [0],
+      callIds: ['s'],
+    });
+  });
+  it('rejects a visit check-in from another day and keeps one from this day', () => {
+    expect(
+      foreignDayCheckInIds(
+        '2026-11-11',
+        [{ checkInId: 'today' }, { checkInId: 'yesterday' }, { checkInId: null }],
+        [
+          { id: 'today', day: '2026-11-11' },
+          { id: 'yesterday', day: '2026-11-10' },
+        ],
+      ),
+    ).toEqual(['yesterday']);
+  });
+  it('needs a visit check-in on every call at submit', () => {
+    expect(
+      missingCheckIns([
+        call({ clientId: 'a' }),
+        call({ clientId: 'b', checkInId: 'v1' }),
+        call({ clientId: 'c', outletKind: 'chemist' }),
+      ]),
+    ).toEqual({ reason: 'CALL_NOT_CHECKED_IN', callIndexes: [0, 2], callIds: ['a', 'c'] });
+    expect(missingCheckIns([call({ checkInId: 'v1' })])).toBeNull();
+  });
+  it('requires the presentation only from a business manager', () => {
+    expect(presentationRequired(['business_manager'])).toBe(true);
+    expect(presentationRequired(['area_business_manager'])).toBe(false);
+    expect(presentationRequired(['director'])).toBe(false);
+    expect(presentationRequired(['business_manager', 'area_business_manager'])).toBe(false);
   });
   it('needs presentationOpenedAt on doctor calls with products detailed', () => {
     expect(

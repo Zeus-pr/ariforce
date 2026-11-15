@@ -26,10 +26,10 @@ import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
 import { dateLabel, timeIST, todayIST } from '@/components/attendance/format';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
-import { api, apiReady, MOCKING, toApiError } from '@/lib/api';
+import { api, apiReady, toApiError } from '@/lib/api';
 import { saveMessage } from '@/lib/leave/model';
+import { dcrDateClosedText, dcrDateNotTodayMessage, dcrDateOpen } from '@/lib/dcr/date-rule';
 import { productImageUrl } from '@/lib/products/product-image';
-import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
 import { OutletPicker, TerritoryFilter } from '@/components/pickers/pickers';
 import { territoryLabel, workTerritories } from '@/lib/territories';
 import {
@@ -45,6 +45,8 @@ import {
   type RcpaDraft,
 } from './pob-rcpa';
 import { ProductImg } from '@/components/media/product-img';
+import { cachedGet } from '@/lib/query';
+import { getProducts } from '@/lib/query';
 
 /** What the call form needs from a product. */
 type PickProduct = {
@@ -54,15 +56,6 @@ type PickProduct = {
   isSample: boolean;
   imageUrl: string | null;
 };
-
-/** In mock mode the picker uses Arighna's real product names (local mock seed); live mode uses GET /v1/products. */
-const SEED_PRODUCTS: PickProduct[] = MOCK_PRODUCT_SEED.map((p) => ({
-  id: p.id,
-  name: p.name,
-  detail: p.composition,
-  isSample: true,
-  imageUrl: null,
-}));
 
 type Call = Omit<Dcr['calls'][number], 'id'> & { clientId: string };
 type Kind = Call['outletKind'];
@@ -108,33 +101,40 @@ function DcrDay({ today }: { today: string }) {
       await apiReady();
       const [w, d, p, ch, st] = await Promise.all([
         api.GET('/v1/work-types', { params: { query: { limit: 100 } } }),
-        api.GET('/v1/doctors', { params: { query: { limit: 100, sort: 'name' } } }),
-        api.GET('/v1/products', { params: { query: { limit: 200 } } }),
+        cachedGet(['doctors', 'first-page'], () =>
+          api.GET('/v1/doctors', { params: { query: { limit: 100, sort: 'name' } } }),
+        ),
+        getProducts().then((r) => ({ data: r.data && { items: r.data }, error: r.error })),
         api.GET('/v1/chemists', { params: { query: { limit: 100 } } }),
         api.GET('/v1/stockists', { params: { query: { limit: 100 } } }),
       ]);
       // POB/RCPA lines must reference contract products (the server prices them from PTR).
       if (p.data)
         setOrderProducts(
-          p.data.items.filter((x) => x.active).map((x) => ({ id: x.id, name: x.name })),
+          p.data.items.filter((x) => x.active).map((x) => ({ id: x.id, name: x.name, pts: x.pts })),
         );
       if (ch.data) setChemists(ch.data.items.map((x) => ({ id: x.id, name: x.name })));
       if (st.data) setStockists(st.data.items.map((x) => ({ id: x.id, name: x.name })));
       if (w.data) setWorkTypes(w.data.items.filter((x) => x.active));
       if (d.data) setDoctors(d.data.items);
-      if (MOCKING) setProducts(SEED_PRODUCTS);
-      else if (p.data)
+      if (p.data) {
+        // One entry per product name (strength stripped); the SKU with a picture represents it.
+        const groups = new Map<string, typeof p.data.items>();
+        for (const x of p.data.items.filter((i) => i.active))
+          groups.set(x.displayName, [...(groups.get(x.displayName) ?? []), x]);
         setProducts(
-          p.data.items
-            .filter((x) => x.active)
-            .map((x) => ({
-              id: x.id,
-              name: x.name,
-              detail: x.composition,
-              isSample: x.isSample,
-              imageUrl: productImageUrl(x),
-            })),
+          [...groups].map(([name, skus]) => {
+            const main = skus.find((x) => productImageUrl(x)) ?? skus[0]!;
+            return {
+              id: main.id,
+              name,
+              detail: main.composition,
+              isSample: skus.some((x) => x.isSample),
+              imageUrl: productImageUrl(main),
+            };
+          }),
         );
+      }
     })().catch(() => {});
   }, []);
 
@@ -167,7 +167,9 @@ function DcrDay({ today }: { today: string }) {
   const field = workType?.kind === 'field';
   const deviates =
     !!planned && (planned.workTypeId !== wt || (field && (planned.territoryIds[0] ?? '') !== terr));
-  const locked = dcr?.status === 'submitted' || dcr?.status === 'locked';
+  // Today only (IST); a past day only while unlocked. Other days are view-only (history).
+  const dateClosed = !!today && !dcrDateOpen(date, today, dcr?.unlockedUntil ?? null);
+  const locked = dcr?.status === 'submitted' || dcr?.status === 'locked' || dateClosed;
   const productName = useMemo(
     () => new Map([...orderProducts, ...products].map((p) => [p.id, p.name])),
     [products, orderProducts],
@@ -199,7 +201,10 @@ function DcrDay({ today }: { today: string }) {
         territoryIds: field && terr ? [terr] : [],
         deviationReason: deviates ? reason.trim() : null,
         // PobLine.value is computed by the server from PTR; never send it.
-        calls: calls.map((c) => ({ ...c, pob: stripPobValue(c.pob) })),
+        calls: calls.map((c) => ({
+          ...c,
+          pob: c.outletKind === 'chemist' ? stripPobValue(c.pob) : [],
+        })),
         submit,
         ...(dcr ? { version: dcr.version } : {}),
       },
@@ -214,6 +219,10 @@ function DcrDay({ today }: { today: string }) {
         ]
           .filter(Boolean)
           .join(' ') || null;
+      if (e.code === 'DCR_DATE_NOT_TODAY')
+        return toast.error(dcrDateNotTodayMessage(e.details, today ?? undefined), {
+          duration: 10000,
+        });
       return toast.error(pr ?? saveMessage(e), { duration: 10000 });
     }
     setDcr(r.data);
@@ -252,6 +261,12 @@ function DcrDay({ today }: { today: string }) {
           />
         </div>
       </div>
+
+      {dateClosed && today && dcr?.status !== 'submitted' && dcr?.status !== 'locked' && (
+        <p className="rounded-xl border bg-muted/40 p-4 text-sm" data-testid="dcr-date-closed">
+          {dcrDateClosedText(date, today)}
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -629,13 +644,15 @@ function CallDialog({
                 ))}
             </fieldset>
           )}
-          <PobEditor
-            rows={pob}
-            onChange={setPob}
-            products={orderProducts}
-            stockists={stockists}
-            showStockist={kind !== 'stockist'}
-          />
+          {kind === 'chemist' ? (
+            <PobEditor
+              rows={pob}
+              onChange={setPob}
+              products={orderProducts}
+              stockists={stockists}
+              showStockist
+            />
+          ) : null}
           {kind === 'chemist' && (
             <RcpaEditor rows={rcpa} onChange={setRcpa} products={orderProducts} />
           )}
@@ -667,7 +684,7 @@ function CallDialog({
                   samples: Object.entries(samples)
                     .filter(([id, q]) => Number(q) > 0 && detailed.includes(id))
                     .map(([productId, q]) => ({ productId, quantity: Number(q) })),
-                  pob: pobPayload(pob),
+                  pob: kind === 'chemist' ? pobPayload(pob) : [],
                   rcpa: kind === 'chemist' ? rcpaPayload(rcpa) : [],
                   remarks: remarks.trim() || null,
                   calledAt: new Date().toISOString(),

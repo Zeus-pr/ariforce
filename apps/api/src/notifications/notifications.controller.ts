@@ -1,5 +1,14 @@
-import { Controller, Get, HttpCode, NotFoundException, Param, Post, Query } from '@nestjs/common';
-import { Id, NotificationQuery } from '@ariforce/contracts';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  NotFoundException,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
+import { CompanyMessage, Id, NotificationQuery } from '@ariforce/contracts';
 import type * as z from 'zod';
 import { CurrentPrincipal } from '../auth/decorators';
 import type { Principal } from '../auth/principal';
@@ -28,6 +37,12 @@ export class NotificationsController {
   @HttpCode(200)
   readAll(@CurrentPrincipal() p: Principal) {
     return this.svc.readAll(p);
+  }
+
+  @Post('notifications/company')
+  @HttpCode(200)
+  company(@CurrentPrincipal() p: Principal, @Body(new ZodPipe(CompanyMessage)) b: CompanyMessage) {
+    return this.svc.broadcast(p, b);
   }
 
   @Post('notifications/:id/read')

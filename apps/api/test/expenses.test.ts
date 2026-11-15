@@ -359,6 +359,44 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
       expect(acts).toContain(a);
   });
 
+  it('list paging is opt-in; batched report equals per-claim reconciliation', async () => {
+    for (const who of ['sysadmin', 'rbm', 'bm'] as const) {
+      const all = await http().get('/v1/expense-claims').set(as(who));
+      expect(all.status).toBe(200);
+      expect(Object.keys(all.body)).toEqual(['items']);
+      const ids = all.body.items.map((x: { id: string }) => x.id).sort();
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      let pages = 0;
+      do {
+        const r: request.Response = await http()
+          .get(`/v1/expense-claims?limit=1${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`)
+          .set(as(who));
+        expect(r.status).toBe(200);
+        expect(r.body.limit).toBe(1);
+        expect(r.body.total).toBe(ids.length);
+        expect(r.body.items.length).toBeLessThanOrEqual(1);
+        seen.push(...r.body.items.map((x: { id: string }) => x.id));
+        cursor = r.body.nextCursor;
+        pages++;
+      } while (cursor && pages < 500);
+      expect(seen.sort(), who).toEqual(ids);
+    }
+    expect((await http().get('/v1/expense-claims?cursor=bad').set(as('bm'))).status).toBe(422);
+    expect((await http().get('/v1/expense-claims?limit=201').set(as('bm'))).status).toBe(422);
+
+    const rep = await http().get(`/v1/expense-reports?month=${M}`).set(as('sysadmin'));
+    expect(rep.status).toBe(200);
+    expect(rep.body.rows.length).toBeGreaterThan(0);
+    for (const row of rep.body.rows as { claimId: string }[]) {
+      const rec = await http()
+        .get(`/v1/expense-claims/${row.claimId}/reconciliation`)
+        .set(as('sysadmin'));
+      const { days: _d, ...want } = rec.body;
+      expect(row).toMatchObject(want);
+    }
+  });
+
   it('reject, edit and resubmit; no self-approval', async () => {
     const c = await http().post('/v1/expense-claims').set(as('bm2')).send({ month: M });
     const id = c.body.id as string;
@@ -373,7 +411,9 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
       .set(as('rbm'))
       .send({ decision: 'reject', comment: 'no receipt' });
     expect(r.body).toMatchObject({ status: 'rejected', decisionComment: 'no receipt' });
-    const lineId = r.body.lines[0].id as string;
+    const lineId = (r.body.lines as { id: string; amount: number }[]).find(
+      (l) => l.amount === 99,
+    )!.id;
     r = await http()
       .put(`/v1/expense-claims/${id}/lines/${lineId}`)
       .set(as('bm2'))
@@ -383,6 +423,7 @@ describe.skipIf(!OWNER || !APP)('expense claims (real API)', () => {
       .put(`/v1/expense-claims/${id}/lines/${lineId}`)
       .set(as('bm2'))
       .send({ line: line({ amount: 80 }), version: 1 });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect(r.body.total).toBe(80);
     r = await http().post(`/v1/expense-claims/${id}/submit`).set(as('bm2'));
     expect(r.body.status).toBe('submitted');

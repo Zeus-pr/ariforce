@@ -8,7 +8,14 @@ import { calendarWorkingDates } from '@ariforce/contracts';
 import { T, U } from '@ariforce/db';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
-import { createProduct, insertStaff } from './support';
+import {
+  createProduct,
+  ensureFieldReady,
+  ensureOutletLocked,
+  ensureVisitCheckIn,
+  geoCap,
+  insertStaff,
+} from './support';
 
 const OWNER = process.env.DIRECT_URL;
 const APP = process.env.DATABASE_URL;
@@ -38,13 +45,21 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
     ]);
     tok.bm = staff.bearer;
     const wt = (await http().get('/v1/work-types?limit=50').set(as('bm'))).body.items;
-    const field = wt.find((w: { kind: string }) => w.kind === 'field').id;
+    const field = wt.find(
+      (w: { kind: string; code: string }) => w.kind === 'field' && w.code.startsWith('FIELD_'),
+    ).id;
     const doctor = (await http().get('/v1/doctors?approvalStatus=approved&limit=1').set(as('bm')))
       .body.items[0].id;
     const chemist = (await http().get(`/v1/chemists?territoryId=${T.hq}&limit=1`).set(as('bm')))
       .body.items[0].id;
     // PTS 300 → the server values the 5-unit POB at 1500 (#40: value = quantity × PTS).
     product = await createProduct(http, tok.bm!, tok.director!, { pts: 300 });
+    // Call check-in + Presentation gates: punch-in, locks, visits, then submit.
+    await ensureFieldReady(http, tok.bm!);
+    await ensureOutletLocked(http, tok.bm!, 'doctor', doctor);
+    await ensureOutletLocked(http, tok.bm!, 'chemist', chemist);
+    const docVisit = await ensureVisitCheckIn(http, tok.bm!, 'doctor', doctor);
+    const chemVisit = await ensureVisitCheckIn(http, tok.bm!, 'chemist', chemist);
     const res = await http()
       .put('/v1/dcrs')
       .set(as('bm'))
@@ -59,20 +74,21 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
             clientId: uuidv7(),
             outletKind: 'doctor',
             outletId: doctor,
-            checkInId: null,
+            checkInId: docVisit,
             remarks: null,
             jointWorkUserIds: [],
             productsDetailed: [{ productId: product, order: 1 }],
             samples: [{ productId: product, quantity: 3 }],
             pob: [],
             presentationOpenedAt: new Date().toISOString(),
+            presentationCapture: geoCap(),
             calledAt: new Date().toISOString(),
           },
           {
             clientId: uuidv7(),
             outletKind: 'chemist',
             outletId: chemist,
-            checkInId: null,
+            checkInId: chemVisit,
             remarks: null,
             jointWorkUserIds: [],
             productsDetailed: [],

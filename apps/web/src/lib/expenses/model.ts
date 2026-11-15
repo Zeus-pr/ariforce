@@ -19,6 +19,10 @@ export const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   food: 'Food',
   mileage: 'Mileage',
   allowance: 'Daily allowance',
+  courier: 'Courier',
+  mobile: 'Mobile',
+  team_meeting: 'Team meeting',
+  additional_ta_da: 'Additional TA/DA',
   other: 'Other',
 };
 export const STATUS_LABEL: Record<ExpenseStatus, string> = {

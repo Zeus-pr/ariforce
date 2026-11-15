@@ -112,7 +112,7 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
     ).toBe(true);
   });
 
-  it('reporting line: RBM sees both teams, director sees all, system admin has no field permissions', async () => {
+  it('reporting line: RBM sees both teams, director sees all, system admin has field permissions', async () => {
     const rbm = await token('rbm@demo.ariforce.in');
     expect(
       (await http().get(`/v1/doctors/${OTHER_AREA_DOC}`).set('authorization', rbm)).status,
@@ -127,7 +127,9 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
     const sysAuth = await token('sysadmin@demo.ariforce.in');
     const sys = await http().get('/v1/me').set('authorization', sysAuth);
     expect(sys.body.roles).toEqual(['system_admin']);
-    expect(sys.body.permissions).not.toContain('field:read');
+    // Outlet locks / check-ins on Doctor 360 (0061); still outside the sales line (no managerId).
+    expect(sys.body.permissions).toContain('field:read');
+    expect(sys.body.permissions).toContain('field:write');
     expect(sys.body.managerId).toBeNull();
   });
 

@@ -16,6 +16,142 @@ Additive, no migration. GET /v1/dcrs: new optional `doctorId` (uuid); only DCRs 
 non-deleted call at that doctor. User scope unchanged (own DCRs; reporting line for dcr:review);
 `limit` (default 50, max 200) and `cursor` as before.
 
+## feat/phone-notifications (2026-11-06): phone push, company message, doctor dates
+
+Additive. Existing notification calls are unchanged. Two new event types and two new routes.
+
+- `NotificationType` gains `company.message` and `doctor.occasion`.
+- `POST /v1/notifications/company` `{ title, body }` → `{ recipients }` (director or system admin).
+- `POST /v1/devices/{id}/push-token` `{ token }` → `{ ok: true }`. `token: null` clears it.
+  The token is not added to `Device`.
+- After an inbox row is inserted, a `notification.deliver` job sends an Expo push when that
+  user has a token. No token records the delivery as skipped.
+- Once a company-local day, birthdays and anniversaries in the next 5 days (including today)
+  notify the HQ assignee and the managers above them. Blank dates are skipped. One note per
+  person per day.
+
+## feat/dcr-call-checkin (2026-11-05): per-call visit check-in gates
+
+Additive behaviour on existing `checkInId` / visit check-ins (no schema break).
+
+- Submit (legacy upsert + multi-draft submit): every field call needs `checkInId`
+  (422 `VALIDATION`, details.reason `CALL_NOT_CHECKED_IN`).
+- Newly opening Presentation requires a linked visit on the call first
+  (`CALL_NOT_CHECKED_IN`), then the existing `presentationCapture` fence rules.
+- Chemist/stockist: check-in only to submit. Doctor: check-in + presentation when products detailed.
+
+## feat/gps-outlet-lock (2026-11-05): outlet locks + Presentation hard gate
+
+- `GeofenceSettings` gains `presentationRadiusM` (default 300) and `lockMaxAccuracyM` (default 80).
+- New `OutletLocation` / create / patch; `GET|POST /v1/outlets/{kind}/{id}/locations`,
+  `PATCH /v1/outlet-locations/{id}` (ABM→Director + system_admin for patch).
+- Doctors: unlimited locations (fixed labels). Chemists/stockists: one active.
+- `DcrCall` gains `presentationLocationId` / `presentationDistanceM` / `presentationAccuracyM`.
+- `DcrCallInput.presentationCapture` required when newly opening Presentation; server hard-blocks
+  without punch-in, without a lock, or outside `presentationRadiusM`
+  (`OUTLET_NOT_LOCKED`, `NOT_PUNCHED_IN`, `PRESENTATION_OUT_OF_FENCE`, `PRESENTATION_CAPTURE_REQUIRED`).
+- Migration `0060_outlet_locations` (tables + backfill from master `location`).
+
+## feat/director-visibility-contract (2026-11-04): Director "see everything", additive
+
+Contract first; server in follow-up PRs (until then the API ignores the new params). No migration.
+
+- `GET /v1/expense-claims?scope=team` (expenses:approve, else 403): every claim of the caller's
+  subtree in any status, drafts included (Director: company). Existing filters and paging apply.
+  `ExpenseClaim`/`ExpenseClaimSummary` gain optional `userRole`.
+- `GET /v1/approvals?scope=org` (approvals:decide, else 403): every request of the subtree in any
+  state (Director: company), filters `status`, `subjectType`, `userId`, `from`/`to`; opt-in
+  `include=dcr,signup` merges DCR reviews and signup requests. `Approval` gains optional
+  `requestedByRole`, `level`, `totalLevels`, `currentApprover`, `trail` (ExpenseApprovalLevel[]).
+  `Approval.subjectType` gains `dcr` and `signup`, **returned only with include** (TS clients with
+  exhaustive switches must add the two cases).
+- New `GET /v1/team/members/{userId}/activity?from&to` -> `TeamMemberActivity` (today by default;
+  range up to 93 days, 422 `RANGE_TOO_LONG`; profile visibility). Day rows, totals, and calls +
+  check-ins for a single day.
+- New `GET /v1/audit-log` (audit:read: Director, System Admin) -> `AuditLogPage`; filters
+  actorUserId, action (exact or `prefix.`), entityType/entityId, from/to; cursor paging; sensitive
+  keys in before/after redacted (`redactAudit`, `AUDIT_REDACT_KEY`).
+
+## feat/dcr-expenses (server, no contract change)
+
+- Implements DCR expenses as specified: draft/submit persistence, idempotent link into the month
+  claim (origin `dcr`), `claim_locked` skip, `DCR_EXPENSE_CATEGORY_INVALID`, read fields on Dcr.
+- `ExpenseLine.origin` is now returned (`manual` | `ta_da` | `dcr`). Editing/deleting an origin
+  `dcr` line returns 409 `EXPENSE_NOT_EDITABLE` (`details.reason: 'DCR_LINE'`).
+
+## feat/dcr-meeting-times (2026-11-04): server for meeting sub-types, endTime, places
+
+No contract change, no migration. Enforces #121 on PUT /v1/dcrs/draft, POST /v1/dcrs/{id}/submit,
+PUT /v1/tour-plans/items and POST /v1/tour-plans/items/{id}/submit: MEETING_TYPE_INVALID,
+END_TIME_NOT_AFTER_START, DURATION_TOO_LONG (422); durationMin derived from startTime/endTime.
+Behaviour change for the same request: a meeting with a title other than the two labels, sent by
+an older client, is now 422. Data fix (not run):
+`packages/db/scripts/data-fixes/2026-11-04-meeting-title-normalise.sql`.
+
+## feat/dcr-tp-contract (2026-11-03): meeting sub-types, DCR expenses, end time and places
+
+Contract only (phase 1); server lands in phase 2. Additive: every new field is optional on input
+and in responses, so current clients and the current API keep working.
+
+- Meeting sub-type stays in `details.title` (DCR `details` and TP `plan.details`): on write it
+  must be "Cycle Meeting" or "Review Meeting" (`MEETING_TYPES`), else 422
+  `MEETING_TYPE_INVALID` (details.allowed). Legacy rows keep other free text and read unchanged.
+- `endTime` (HH:mm IST, nullable) on meeting, training and office (Admin Work) details;
+  `durationMin` (existing name) is derived from startTime/endTime and is now optional on input
+  (deprecated; ignored when endTime is sent). endTime <= startTime, or endTime without a start
+  time -> 422 `END_TIME_NOT_AFTER_START`; end - start > 720 min -> 422 `DURATION_TOO_LONG`
+  (same limit as the existing durationMin max). Admin work: startTime required with endTime.
+  Field work: unchanged.
+- `fromPlace` / `toPlace` (free text, max 120, optional) on meeting and office details only.
+  Training: endTime only.
+- `DcrExpenseItem` {category (travel|hotel|food|other), amount, note?}; `Dcr.expenses` (optional, max 20) and `DcrDraftPut.expenses` (omit = keep).
+  allowance/mileage -> 422 `DCR_EXPENSE_CATEGORY_INVALID` (details.index, details.allowed).
+- `DcrSubmit.expenses` (optional; replaces the saved list before submit) and submit response
+  `expenseClaimId`, `expenseTotal`, `expenseCount` (optional). Clients never create claim lines.
+- `Dcr` read shapes (detail, list items, submit response) gain `expenseClaimId` (uuid|null),
+  `expenseTotal`, `expenseCount` (optional; from the claim's live origin-dcr lines of that DCR;
+  null/0/0 when none), so a reopened report can show "Added to expenses" with a claim link.
+- `durationMin` may still be sent next to `endTime`; it is ignored and derived.
+- Category mapping: DCR categories are a subset of the existing `ExpenseCategory` enum, mapped
+  1:1 by value (travel, hotel, food, other); no mapping table.
+- Training details have no places; extra keys (fromPlace/toPlace) are stripped (accepted and
+  ignored), as zod does for any unknown key.
+- `ExpenseLine.origin` (`manual` | `ta_da` | `dcr`, optional);
+  `origin: dcr` = show "from DCR", `dcrId` = that DCR. `source` enum unchanged (dcr lines are
+  `auto`, never touched by a TA/DA re-run).
+- `DcrSubmitResult.dcrExpenses` (`DcrExpenseLink`: status linked|skipped|error, reason
+  claim_locked|no_expenses, claimId, claimStatus, claimCreated, lines, total). Month claim
+  submitted/approved/paid -> skipped/claim_locked, the submit still succeeds.
+- Error codes documented on PUT /v1/dcrs/draft, POST /v1/dcrs/{id}/submit and PUT
+  /v1/tour-plans/items. Helpers: `MEETING_TYPES`, `isMeetingType`, `deriveDurationMinutes`.
+
+## perf/territories-compact (2026-11-03): compact territory list
+
+Additive, no migration. New GET /v1/territories/compact (permission: same as GET /v1/territories).
+Query: level?, parentId?, ancestorId?, limit? (1..2000, default 2000), cursor?. Response
+TerritoryCompactList {items: {id, name, level, parentId}[], nextCursor}. Same company and caller
+subtree scope as the full list, non-deleted only, name order. Weak ETag + Cache-Control: private,
+max-age=60; If-None-Match -> 304.
+
+## perf/batch-ids-doctor360 (2026-11-03): Doctor 360 filters on DCR and check-in lists
+
+Additive, no migration.
+
+- GET /v1/dcrs: new optional `doctorId` (uuid). Only DCRs with at least one non-deleted call at
+  that doctor. User scope unchanged (own DCRs; reporting line for dcr:review); `limit`/`cursor` as
+  before.
+- GET /v1/check-ins: new optional `doctorId` (uuid), same as `outletKind=doctor&outletId=`.
+  `userId` outside the reporting line is still 403.
+- `ids=` batch fetch on /v1/chemists and /v1/stockists already existed (max 100, readable rows
+  only, 422 on bad ids); now covered by a test.
+
+## perf/expense-list-paging-report-batch (2026-11-03): opt-in paging for expense claims (additive)
+
+- `GET /v1/expense-claims`: new optional `limit` (1..200) and `cursor` (opaque, from `nextCursor`).
+  Without both: unchanged (all matching claims, body `{ items }` only).
+  With either: one page (limit defaults to 50), ordered month desc, user name, id; body adds `limit`, `total` (all pages) and `nextCursor` (null on the last page). Bad cursor or limit: 422 `VALIDATION`.
+- `GET /v1/expense-reports` and exports: same output; the server now loads lines and DCR days for all claims in two queries instead of three per claim.
+
 ## perf/dcr-products-endpoint (2026-11-03): DCR products on their own endpoint (additive)
 
 - New: `GET /v1/dcrs/products` (`field:read`) -> `DcrProducts { products: DcrProductOption[], detailProducts: DcrDetailProduct[], etag }`.

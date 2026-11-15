@@ -8,6 +8,7 @@ import {
 } from '@ariforce/contracts';
 import {
   approvalRequests,
+  approvalSteps,
   sfcRoutes,
   territories,
   tourPlanItems,
@@ -20,6 +21,7 @@ import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
+import { normaliseDetails } from '../dcr/details-rules';
 import { err } from '../field/checkins.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { ApprovalsService } from './approvals.service';
@@ -33,6 +35,23 @@ export interface TpItemQuery {
   cursor?: string;
 }
 type Decision = { decision: 'approve' | 'reject'; comment?: string };
+
+/** Next calendar month only, and only before the 22nd of this month at 12:00 AM IST. */
+function assertTpWindow(from: string) {
+  const today = istDate();
+  const currentYm = today.slice(0, 7);
+  const [y, m] = currentYm.split('-').map(Number);
+  const nextYm = m! === 12 ? `${y! + 1}-01` : `${y}-${String(m! + 1).padStart(2, '0')}`;
+  const planYm = from.slice(0, 7);
+  if (planYm !== nextYm)
+    throw err(422, 'TP_CUTOFF', 'Tour plans are only for the next calendar month');
+  if (Date.now() >= new Date(`${currentYm}-22T00:00:00+05:30`).getTime())
+    throw err(
+      422,
+      'TP_CUTOFF',
+      'Tour plans for that month closed after the 22nd of the previous month at 12:00 AM IST',
+    );
+}
 
 /**
  * Tour plan items (TP feature, 0050). Owner: create/edit while draft or rejected, submit (one
@@ -111,6 +130,7 @@ export class TourPlanItemsService {
         want ? `details.kind must be '${want}'` : 'No details for this work type',
         { field: 'plan.details', expected: want },
       );
+    plan.details = normaliseDetails(plan.details, 'plan.details') ?? null;
     const bad: Record<string, string[]> = {};
     const miss = (ids: string[], found: { id: string }[]) =>
       ids.filter((i) => !found.some((f) => f.id === i));
@@ -152,6 +172,14 @@ export class TourPlanItemsService {
         .filter((c) => !found.some((f) => f.id === c.sfcRouteId && f.hq === c.hqTerritoryId))
         .map((c) => c.sfcRouteId);
       if (m.length) bad['plan.sfcRoutes'] = m;
+    }
+    for (const [i, section] of plan.sections.entries()) {
+      const [swt] = await tx
+        .select({ id: workTypes.id, active: workTypes.active, kind: workTypes.kind })
+        .from(workTypes)
+        .where(and(eq(workTypes.id, section.workTypeId), isNull(workTypes.deletedAt)));
+      if (!swt?.active || swt.kind === 'leave' || swt.kind === 'holiday')
+        bad[`plan.sections.${i}.workTypeId`] = [section.workTypeId];
     }
     if (Object.keys(bad).length)
       throw err(422, 'VALIDATION', 'Unknown or out-of-scope references', bad);
@@ -201,7 +229,7 @@ export class TourPlanItemsService {
         .limit(limit + 1)
         .offset(offset);
       return {
-        items: await itemsOut(tx, rows.slice(0, limit)),
+        items: await this.withDecide(tx, p, await itemsOut(tx, rows.slice(0, limit))),
         nextCursor: rows.length > limit ? encodeCursor(offset + limit) : null,
         serverTime: new Date().toISOString(),
       };
@@ -209,7 +237,52 @@ export class TourPlanItemsService {
   }
 
   get(p: Principal, id: string) {
-    return this.tenant.run(p, async (tx) => (await itemsOut(tx, [await this.row(tx, p, id)]))[0]!);
+    return this.tenant.run(p, async (tx) => {
+      const [item] = await this.withDecide(tx, p, await itemsOut(tx, [await this.row(tx, p, id)]));
+      return item!;
+    });
+  }
+
+  /** Pending plans only: whether this caller may approve or reject now. */
+  private async withDecide(tx: Tx, p: Principal, items: TourPlanItem[]): Promise<TourPlanItem[]> {
+    const pending = items.filter((i) => i.status === 'pending').map((i) => i.id);
+    const reqs = pending.length
+      ? await tx
+          .select()
+          .from(approvalRequests)
+          .where(
+            and(
+              eq(approvalRequests.entityType, 'tour_plan_item'),
+              inArray(approvalRequests.entityId, pending),
+              eq(approvalRequests.state, 'pending'),
+            ),
+          )
+      : [];
+    const reqIds = reqs.map((r) => r.id);
+    const steps = reqIds.length
+      ? await tx
+          .select({
+            requestId: approvalSteps.requestId,
+            stepNo: approvalSteps.stepNo,
+            approverUserId: approvalSteps.approverUserId,
+            decidedBy: approvalSteps.decidedBy,
+          })
+          .from(approvalSteps)
+          .where(inArray(approvalSteps.requestId, reqIds))
+      : [];
+    return items.map((item) => {
+      const req = reqs.find((r) => r.entityId === item.id);
+      return {
+        ...item,
+        canDecide:
+          !!req &&
+          this.approvals.canDecide(
+            p,
+            req,
+            steps.filter((s) => s.requestId === req.id),
+          ),
+      };
+    });
   }
 
   upsert(p: Principal, b: TourPlanItemUpsert) {
@@ -267,6 +340,7 @@ export class TourPlanItemsService {
       const cur = await this.row(tx, p, id, true);
       this.own(p, cur);
       this.editable(cur);
+      assertTpWindow(cur.fromDate);
       if (cur.fromDate < istDate())
         throw err(422, 'TP_IN_PAST', 'A tour plan must start today or later', {
           field: 'from',

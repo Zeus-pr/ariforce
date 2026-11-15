@@ -4,10 +4,12 @@ import type { IncomingMessage } from 'node:http';
 /** Internal header the API sets (overwriting any client value) so better-auth sees the same IP. */
 export const CLIENT_IP_HEADER = 'x-ariforce-client-ip';
 
-/** Forwarded IPs are trusted only in an explicitly configured deployment. */
+/** Forwarded IPs are trusted only in an explicitly configured deployment. Railway sets RAILWAY_ENVIRONMENT, so that host uses the edge IP without a manual flag. */
 export const clientIpMode = () => {
   const mode = process.env.CLIENT_IP_MODE;
-  return mode === 'cloudflare' || mode === 'railway' ? mode : 'socket';
+  if (mode === 'cloudflare' || mode === 'railway' || mode === 'socket') return mode;
+  if (process.env.RAILWAY_ENVIRONMENT) return 'railway';
+  return 'socket';
 };
 
 const norm = (ip: string | undefined | null) => {

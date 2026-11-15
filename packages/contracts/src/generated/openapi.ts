@@ -110,7 +110,48 @@ export interface paths {
      */
     get: operations['listTerritories'];
     put?: never;
+    /**
+     * Create a territory. Code is required except for a patch under a headquarter.
+     * @description Requires: territories:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
+     */
+    post: operations['createTerritory'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/territories/health': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Counts of territory setup problems for a director or system admin
+     * @description Requires: territories:read. Results are territory-subtree scoped.
+     */
+    get: operations['territoryHealth'];
+    put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/territories/{id}/move': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Requires: territories:write. Masters write = RBM and above or system_admin; ABM/BM get 403. */
+    post: operations['moveTerritory'];
     delete?: never;
     options?: never;
     head?: never;
@@ -126,6 +167,83 @@ export interface paths {
     };
     /** @description Requires: territories:read. Results are territory-subtree scoped. */
     get: operations['getTerritory'];
+    put?: never;
+    post?: never;
+    /**
+     * Soft-delete when nothing live still uses the territory
+     * @description Requires: territories:write. Masters write = RBM and above or system_admin; ABM/BM get 403.
+     */
+    delete: operations['deleteTerritory'];
+    options?: never;
+    head?: never;
+    /** @description Requires: territories:write. Masters write = RBM and above or system_admin; ABM/BM get 403. */
+    patch: operations['updateTerritory'];
+    trace?: never;
+  };
+  '/v1/holidays': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Company holiday names for a year or a date range. Does not close the day. */
+    get: operations['listHolidays'];
+    put?: never;
+    post: operations['createHoliday'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/holidays/copy': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Copy holiday names onto the same month and day in another year */
+    post: operations['copyHolidays'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/holidays/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: operations['deleteHoliday'];
+    options?: never;
+    head?: never;
+    patch: operations['updateHoliday'];
+    trace?: never;
+  };
+  '/v1/territories/compact': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Compact territory list (id, name, level, parentId) for pickers and trees
+     * @description Same company and caller-subtree scope as GET /v1/territories, non-deleted only, ordered by name. Default and max page 2000; follow nextCursor beyond that. Weak ETag + Cache-Control: private, max-age=60; If-None-Match -> 304 with empty body.
+     *
+     *     Requires: territories:read. Results are territory-subtree scoped.
+     */
+    get: operations['listTerritoriesCompact'];
     put?: never;
     post?: never;
     delete?: never;
@@ -222,6 +340,23 @@ export interface paths {
     put?: never;
     /** Enrol this install (company or personal phone) */
     post: operations['enrolDevice'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/devices/{id}/push-token': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Save or clear the Expo push token for this install */
+    post: operations['setDevicePushToken'];
     delete?: never;
     options?: never;
     head?: never;
@@ -811,6 +946,58 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/outlets/{kind}/{id}/locations': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Active locked locations for a doctor / chemist / stockist */
+    get: operations['listOutletLocations'];
+    put?: never;
+    /** First-time lock (or add another doctor practice). Chemist/stockist: one active only. Idempotent on clientId. */
+    post: operations['createOutletLocation'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/outlets/{kind}/{id}/lock-cap': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** ABM and above, and system admin, set how many active pins a doctor may have (1–5). Default is 1. */
+    patch: operations['patchOutletLockCap'];
+    trace?: never;
+  };
+  '/v1/outlet-locations/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** ABM→Director (and system_admin) edit / deactivate a locked location */
+    patch: operations['patchOutletLocation'];
+    trace?: never;
+  };
   '/v1/me/consent': {
     parameters: {
       query?: never;
@@ -1242,6 +1429,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Default: your own requests and those of your reporting line (unchanged). scope=org: every request of your subtree in any state (Director: the whole company) with requestedByRole, level, totalLevels, currentApprover and trail; filters status, subjectType, userId, from/to; include=dcr,signup merges DCR reviews and signup requests into the same page (ordered createdAt desc, id). */
     get: operations['listApprovals'];
     put?: never;
     post?: never;
@@ -1396,6 +1584,46 @@ export interface paths {
     };
     /** Profile of yourself or someone below you (ABM+; Director: everyone) */
     get: operations['getTeamMemberProfile'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/team/members/{userId}/activity': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Employee 360 activity of yourself or someone below you (Director: everyone): today by default, or any range up to 93 days
+     * @description Per day: attendance (same rules as the profile today block), approved TP coverage, the day DCR (status, work type, calls, start/end/duration, DCR expense total), call and GPS check-in counts; range totals; for a single day (from = to) also the calls and check-ins themselves. Same visibility as GET /v1/team/members/{userId}/profile (ABM+ with reports:read over their subtree, Director everyone; non-hierarchy roles 403). Batched: a fixed number of queries per request, independent of range length.
+     */
+    get: operations['getTeamMemberActivity'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/audit-log': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Audit log of your company, newest first (audit:read: Director, System Admin)
+     * @description Filters: actorUserId, action (exact, or prefix ending in '.'), entityType (+ entityId), from/to (IST dates, inclusive). Cursor paging (limit default 50, max 200), ordered at desc, id desc. before/after are returned with sensitive keys (token, secret, otp, password, hash, authorization, cookie, api key, private key, signature) replaced by '[redacted]' at any depth. Reading is not itself audited.
+     */
+    get: operations['listAuditLog'];
     put?: never;
     post?: never;
     delete?: never;
@@ -1591,6 +1819,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/notifications/company': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Director or system admin: one notification for every other active user */
+    post: operations['sendCompanyMessage'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/notifications/read-all': {
     parameters: {
       query?: never;
@@ -1755,7 +2000,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide */
+    /**
+     * Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide; scope=team: every claim of your subtree (drafts too; Director: company)
+     * @description Without limit and cursor: all matching claims, response { items } exactly as before. With limit and/or cursor: one page (limit default 50, max 200), ordered month desc, user name, id, and the response adds limit, total and nextCursor (null on the last page). Invalid cursor: 422 VALIDATION.
+     */
     get: operations['listExpenseClaims'];
     put?: never;
     /** Create your claim for a month (one per user per month); returns the existing one with 200 */
@@ -2042,6 +2290,76 @@ export interface paths {
     /** sfc:write over this employee (never your own unless system_admin). Replaces the whole table; amounts computed by the server; audited (sfc.routes_saved) */
     put: operations['putSfcTable'];
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/sales/targets': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** sales:write. All-products monthly targets per HQ for a month range */
+    get: operations['listSalesTargets'];
+    /** sales:write. Set one HQ target for a month range (spread each|total); audited (sales.targets_set) */
+    put: operations['setSalesTargets'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/sales/actuals': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** sales:write. Actual sales rows of one month */
+    get: operations['listSalesActuals'];
+    put?: never;
+    /** sales:write. Add one actual row; audited (sales.actual_added) */
+    post: operations['createSalesActual'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/sales/actuals/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** sales:write. Remove an actual row; audited (sales.actual_deleted) */
+    delete: operations['deleteSalesActual'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/sales/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** sales:write. Import targets or actuals by territory/product code (dryRun validates only) */
+    post: operations['importSales'];
     delete?: never;
     options?: never;
     head?: never;
@@ -2685,6 +3003,42 @@ export interface components {
       | 'system_admin'
       | 'distribution_head'
       | 'accountant';
+    TerritoryCreate: {
+      name: string;
+      code?: string;
+      level: components['schemas']['TerritoryLevel'];
+      parentId: string | null;
+    };
+    TerritoryMove: {
+      version: number;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      parentId: string;
+    };
+    TerritoryUpdate: {
+      version: number;
+      name?: string;
+      code?: string;
+    };
+    HolidayCreate: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      name: string;
+    };
+    HolidayCopy: {
+      fromYear: number;
+      toYear: number;
+    };
+    HolidayUpdate: {
+      version: number;
+      name: string;
+    };
     UploadUrlRequest: {
       purpose: components['schemas']['FilePurpose'];
       /** @enum {string} */
@@ -2723,6 +3077,9 @@ export interface components {
     DeviceOwnership: 'company' | 'personal';
     /** @enum {string} */
     DevicePlatform: 'android' | 'ios';
+    DevicePushToken: {
+      token: string | null;
+    };
     ConsentGrant: {
       purpose: components['schemas']['ConsentPurpose'];
       /** @description Version of the DPDP notice shown */
@@ -2764,6 +3121,12 @@ export interface components {
       specialtyId: string | null;
       categoryId: string | null;
       registrationNo: string | null;
+      /** @default null */
+      dateOfBirth: (string | null) | null;
+      /** @default null */
+      anniversary: (string | null) | null;
+      /** @default null */
+      email: string | null;
       addressLine: string | null;
       city: string | null;
       state: string | null;
@@ -2789,6 +3152,9 @@ export interface components {
       specialtyId?: string | null;
       categoryId?: string | null;
       registrationNo?: string | null;
+      dateOfBirth?: (string | null) | null;
+      anniversary?: (string | null) | null;
+      email?: string | null;
       addressLine?: string | null;
       city?: string | null;
       state?: string | null;
@@ -3051,7 +3417,60 @@ export interface components {
       /** @description false = allow and flag */
       blockOutOfFence: boolean;
       blockMockLocation: boolean;
+      /** @description Hard Presentation gate radius (default 300) */
+      presentationRadiusM: number;
+      /** @description Max GPS accuracy allowed when locking an outlet (default 80) */
+      lockMaxAccuracyM: number;
       version: number;
+    };
+    OutletLocationCreate: {
+      /**
+       * Format: uuid
+       * @description Becomes the outlet_locations id (idempotent)
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      clientId: string;
+      label: components['schemas']['OutletLocationLabel'];
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      deviceId?: string;
+      location: components['schemas']['GeoPoint'];
+      accuracyM: number;
+      /**
+       * Format: date-time
+       * @description Device clock at capture
+       */
+      capturedAt: string;
+      /**
+       * @description Mock-location flag from the OS
+       * @default false
+       */
+      isMock: boolean;
+    };
+    OutletLocationLabel:
+      | components['schemas']['DoctorLocationLabel']
+      | components['schemas']['ChemistLocationLabel']
+      | components['schemas']['StockistLocationLabel'];
+    /** @enum {string} */
+    DoctorLocationLabel: 'clinic' | 'hospital' | 'chamber' | 'residence' | 'nursing_home' | 'other';
+    /** @enum {string} */
+    ChemistLocationLabel: 'retail_shop' | 'distributor_counter' | 'other';
+    /** @enum {string} */
+    StockistLocationLabel: 'godown' | 'depot' | 'office' | 'other';
+    DoctorLockCap: {
+      /** @description 1–5. A deactivated pin does not count toward this. */
+      maxActiveLocks: number;
+    };
+    /** @description ABM→Director and system_admin only. Reps cannot edit after lock. */
+    OutletLocationPatch: {
+      version: number;
+      label?: components['schemas']['OutletLocationLabel'];
+      location?: components['schemas']['GeoPoint'];
+      accuracyM?: number;
+      active?: boolean;
     };
     /** @enum {string} */
     ApprovalStatus: 'draft' | 'submitted' | 'approved' | 'rejected' | 'recalled';
@@ -3090,7 +3509,7 @@ export interface components {
       /** @default [] */
       workWithUserIds: string[];
       /**
-       * @description One route per HQ of the day (as DCR sfcRoutes); fully checked at DCR submit
+       * @description Every selected SFC route. Both-way TA is summed and the greatest DA is kept.
        * @default []
        */
       sfcRoutes: components['schemas']['DcrSfcRouteChoice'][];
@@ -3099,6 +3518,8 @@ export interface components {
        * @default null
        */
       details: components['schemas']['DcrDetails'] | null;
+      /** @default [] */
+      sections: components['schemas']['TourPlanSection'][];
     };
     DcrSfcRouteChoice: {
       /**
@@ -3126,7 +3547,7 @@ export interface components {
        * @enum {string}
        */
       kind: 'meeting';
-      /** @description Meeting / training type or name */
+      /** @description Meeting sub-type: "Cycle Meeting" or "Review Meeting" on write (else 422 MEETING_TYPE_INVALID). Legacy rows may hold other free text; reads return it unchanged */
       title: string;
       /** @enum {string} */
       mode: 'in_person' | 'online';
@@ -3137,11 +3558,17 @@ export interface components {
        * @example 10:30
        */
       startTime: string;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
+      /** @description Local end time HH:mm (IST), same day, must be after startTime (else 422 END_TIME_NOT_AFTER_START). The server derives durationMin from startTime/endTime */
+      endTime?: string | null;
+      /** @description Minutes. Derived by the server from startTime/endTime and always present in responses. Deprecated on input: ignored when endTime is sent; accepted only from older clients that send no endTime */
+      durationMin?: number;
       /** @description Free text */
       attendees?: string | null;
       remarks?: string | null;
+      /** @description Free text place, optional */
+      fromPlace?: string | null;
+      /** @description Free text place, optional */
+      toPlace?: string | null;
     };
     DcrTrainingDetails: {
       /**
@@ -3160,8 +3587,10 @@ export interface components {
        * @example 10:30
        */
       startTime: string;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
+      /** @description Local end time HH:mm (IST), same day, must be after startTime (else 422 END_TIME_NOT_AFTER_START). The server derives durationMin from startTime/endTime */
+      endTime?: string | null;
+      /** @description Minutes. Derived by the server from startTime/endTime and always present in responses. Deprecated on input: ignored when endTime is sent; accepted only from older clients that send no endTime */
+      durationMin?: number;
       /** @description Free text */
       attendees?: string | null;
       remarks?: string | null;
@@ -3178,8 +3607,14 @@ export interface components {
       taskType: string;
       description: string;
       startTime?: string | null;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
+      /** @description Local end time HH:mm (IST). startTime is required together with endTime (else 422 END_TIME_NOT_AFTER_START); end after start, at most 12 h (DURATION_TOO_LONG). Derives durationMin */
+      endTime?: string | null;
+      /** @description Minutes. Derived from startTime/endTime when both are sent (input ignored); otherwise still required as before. Always present in responses */
+      durationMin?: number;
+      /** @description Free text place, optional */
+      fromPlace?: string | null;
+      /** @description Free text place, optional */
+      toPlace?: string | null;
       remarks?: string | null;
     };
     DcrLeaveDetails: {
@@ -3194,6 +3629,22 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       leaveRequestId: string;
+    };
+    TourPlanSection: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      /** @default [] */
+      territoryIds: string[];
+      /** @default [] */
+      workWithUserIds: string[];
+      /** @default [] */
+      sfcRoutes: components['schemas']['DcrSfcRouteChoice'][];
+      /** @default null */
+      details: components['schemas']['DcrDetails'] | null;
     };
     TourPlanItemDecision: {
       /** @enum {string} */
@@ -3319,6 +3770,8 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       clientId: string;
+      /** @description Required when setting presentationOpenedAt. Server hard-blocks outside presentationRadiusM or without punch-in / lock. */
+      presentationCapture?: components['schemas']['PresentationCapture'];
     };
     DetailedProduct: {
       /**
@@ -3371,6 +3824,38 @@ export interface components {
       /** @description Prescribing doctor, in your scope */
       doctorId?: string | null;
     };
+    PresentationCapture: {
+      /**
+       * Format: uuid
+       * @description Becomes the visit geo_capture id
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      clientId: string;
+      /**
+       * Format: uuid
+       * @description Specific locked location; default = nearest active location
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      locationId?: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      deviceId?: string;
+      location: components['schemas']['GeoPoint'];
+      accuracyM: number;
+      /**
+       * Format: date-time
+       * @description Device clock at capture
+       */
+      capturedAt: string;
+      /**
+       * @description Mock-location flag from the OS
+       * @default false
+       */
+      isMock: boolean;
+    };
     DcrCorrectionRequest: {
       /**
        * Format: date
@@ -3410,13 +3895,54 @@ export interface components {
       /** @description The approved TourPlanItem this day is filed from. The date must lie in its from..to and it must be yours and approved, else 422 VALIDATION (details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date in the range may be drafted (submit still opens on the day). Omitted: the server links the approved item covering the date, if any. No deviation reason is ever required */
       tourPlanItemId?: string | null;
       calls?: components['schemas']['DcrCallInput'][];
+      /** @description Every section of the day, in order. When sent, this replaces the day. The first section is also stored on the header fields. Omit to save a single section from the header fields. */
+      sections?: components['schemas']['DcrSectionInput'][];
+      /** @description Day expenses (any work type), replaces the saved list. Omit to keep it. Categories travel/hotel/food/other (else 422 DCR_EXPENSE_CATEGORY_INVALID). Receipt files go on the linked claim line */
+      expenses?: components['schemas']['DcrExpenseItem'][];
       /** @description Row version from the last read */
       version?: number;
     };
     /** @enum {string} */
     DcrBand: 'hq' | 'ex_hq' | 'outstation';
+    DcrSectionInput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      /** @default [] */
+      territoryIds: string[];
+      /** @default [] */
+      workWithUserIds: string[];
+      /** @default [] */
+      sfcRoutes: components['schemas']['DcrSfcRouteChoice'][];
+      details?: components['schemas']['DcrDetails'] | null;
+      calls?: components['schemas']['DcrCallInput'][];
+    };
+    DcrExpenseItem: {
+      /** @description One of travel, hotel, food, other. allowance and mileage stay with TA/DA: 422 DCR_EXPENSE_CATEGORY_INVALID */
+      category: components['schemas']['ExpenseCategory'];
+      /** @description Rupees */
+      amount: number;
+      note?: string | null;
+    };
+    /** @enum {string} */
+    ExpenseCategory:
+      | 'travel'
+      | 'hotel'
+      | 'food'
+      | 'mileage'
+      | 'allowance'
+      | 'courier'
+      | 'mobile'
+      | 'team_meeting'
+      | 'additional_ta_da'
+      | 'other';
     DcrSubmit: {
       version: number;
+      /** @description Day expenses; when sent they replace the saved draft list before submit. Omit to submit the saved list. The server links them into the month claim (clients never create the lines) */
+      expenses?: components['schemas']['DcrExpenseItem'][];
     };
     DcrDecision: {
       /** @enum {string} */
@@ -3486,6 +4012,7 @@ export interface components {
     };
     InviteAccept: {
       token: string;
+      /** @description 12–128 characters, with one uppercase letter, one lowercase letter, one number, and one symbol */
       password: string;
     };
     /** @enum {string} */
@@ -3511,6 +4038,10 @@ export interface components {
       /** @description Latest start relative to today; null = up to 31 Dec this year */
       maxFutureDays?: number | null;
       version?: number;
+    };
+    CompanyMessage: {
+      title: string;
+      body: string;
     };
     /**
      * @description pending -> approved | rejected; pending or approved -> cancelled (balance restored). Applying submits straight to approval.
@@ -3620,8 +4151,6 @@ export interface components {
        */
       tourPlanId: string | null;
     };
-    /** @enum {string} */
-    ExpenseCategory: 'travel' | 'hotel' | 'food' | 'mileage' | 'allowance' | 'other';
     ExpenseLineUpdate: {
       line: components['schemas']['ExpenseLineInput'];
       version: number;
@@ -3748,18 +4277,102 @@ export interface components {
       actualFare: boolean;
       /** @default null */
       travelMode: components['schemas']['SfcTravelMode'] | null;
-      /**
-       * @description ex | hq | os; anything else is 422 VALIDATION
-       * @default null
-       */
-      category: components['schemas']['SfcCategory'] | null;
+      /** @description HQ/EX/EX HQ/OS/OUT EX HQ (any case) are stored as hq, ex, or os. EX / OS and MEETING are stored as those labels. Anything else is 422 VALIDATION. */
+      category?: ('ex' | 'hq' | 'os' | 'EX / OS' | 'MEETING') | null;
       /** @default null */
       da: number | null;
     };
     /** @enum {string} */
     SfcTravelMode: 'bike' | 'bus' | 'train' | 'bus_train' | 'car' | 'other';
     /** @enum {string} */
-    SfcCategory: 'ex' | 'hq' | 'os';
+    SalesKind: 'primary' | 'secondary';
+    SalesTargetSet: {
+      /**
+       * Format: uuid
+       * @description An HQ (headquarter level) territory
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      kind: components['schemas']['SalesKind'];
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      fromMonth: string;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      toMonth: string;
+      /** @description Rupees. Per month when spread = each, the total for the whole period when spread = total */
+      value: number;
+      /**
+       * @default each
+       * @enum {string}
+       */
+      spread: 'each' | 'total';
+      /** @default null */
+      quantity: number | null;
+      /**
+       * @description false: 409 TARGETS_EXIST when a month already has a target
+       * @default false
+       */
+      overwrite: boolean;
+    };
+    SalesActualCreate: {
+      /**
+       * Format: uuid
+       * @description An HQ (headquarter level) territory
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      /** @default null */
+      stockistId: string | null;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      kind: components['schemas']['SalesKind'];
+      /** @default 0 */
+      quantity: number;
+      /** @default 0 */
+      freeQuantity: number;
+      value: number;
+      /** @default false */
+      isReturn: boolean;
+    };
+    SalesImportRequest: {
+      /** @enum {string} */
+      entity: 'targets' | 'actuals';
+      /** @default true */
+      dryRun: boolean;
+      rows: components['schemas']['SalesImportRow'][];
+    };
+    SalesImportRow: {
+      territoryCode: string;
+      /** @default null */
+      productCode: string | null;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      kind: components['schemas']['SalesKind'];
+      value: number;
+      /** @default null */
+      quantity: number | null;
+      /** @default 0 */
+      freeQuantity: number;
+      /** @default false */
+      isReturn: boolean;
+    };
     AllowanceDraftRequest: {
       /** @default false */
       dryRun: boolean;
@@ -3788,6 +4401,7 @@ export interface components {
       /** Format: email */
       email: string;
       code: string;
+      /** @description 12–128 characters, with one uppercase letter, one lowercase letter, one number, and one symbol */
       password: string;
     };
     SignupRequestCreate: {
@@ -3796,6 +4410,7 @@ export interface components {
       email: string;
       /** @default null */
       phone: string | null;
+      /** @description 12–128 characters, with one uppercase letter, one lowercase letter, one number, and one symbol */
       password: string;
       requestedRole: components['schemas']['SignupRoleKey'];
       /**
@@ -4002,6 +4617,7 @@ export interface components {
       | 'settings:write'
       | 'audit:read'
       | 'sales:read'
+      | 'sales:write'
       | 'finance:read'
       | 'expenses:write'
       | 'expenses:read'
@@ -4081,6 +4697,89 @@ export interface components {
         lat: number;
         lng: number;
       } | null;
+    };
+    TerritoryHealth: {
+      items: {
+        /** @enum {string} */
+        code:
+          | 'no_territory'
+          | 'sfc_hq_invisible'
+          | 'bm_without_hq'
+          | 'hq_without_bm'
+          | 'area_without_holder'
+          | 'assignment_to_deleted';
+        count: number;
+        /** @default [] */
+        people: {
+          /**
+           * Format: uuid
+           * @description UUIDv7 identifier
+           * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+           */
+          id: string;
+          name: string;
+          territoryId: string | null;
+        }[];
+        /** @default [] */
+        places: {
+          /**
+           * Format: uuid
+           * @description UUIDv7 identifier
+           * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+           */
+          id: string;
+          name: string;
+        }[];
+      }[];
+    };
+    HolidayList: {
+      items: components['schemas']['Holiday'][];
+    };
+    Holiday: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      name: string;
+      version: number;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+    };
+    HolidayCopyResult: {
+      copied: number;
+      skipped: {
+        /**
+         * Format: date
+         * @description Calendar date (YYYY-MM-DD, IST)
+         */
+        date: string;
+        reason: string;
+      }[];
+    };
+    TerritoryCompactList: {
+      items: components['schemas']['TerritoryCompact'][];
+      nextCursor: string | null;
+    };
+    TerritoryCompact: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      level: components['schemas']['TerritoryLevel'];
+      parentId: string | null;
     };
     SpecialtyPage: {
       items: components['schemas']['Specialty'][];
@@ -4239,6 +4938,10 @@ export interface components {
     };
     /** @enum {string} */
     DeviceStatus: 'pending_consent' | 'active' | 'revoked';
+    DevicePushTokenResult: {
+      /** @constant */
+      ok: true;
+    };
     ConsentRecord: {
       purpose: components['schemas']['ConsentPurpose'];
       /** @description Version of the DPDP notice shown */
@@ -4390,6 +5093,9 @@ export interface components {
       specialtyId: string | null;
       categoryId: string | null;
       registrationNo: string | null;
+      dateOfBirth: (string | null) | null;
+      anniversary: (string | null) | null;
+      email: string | null;
       addressLine: string | null;
       city: string | null;
       state: string | null;
@@ -4401,6 +5107,11 @@ export interface components {
        * @enum {string}
        */
       approvalStatus: 'pending' | 'approved' | 'rejected';
+      /**
+       * @description Active GPS pins this doctor may have. Default 1. ABM and above, and system admin, set 1–5 on the lock card. A deactivated pin does not count. Read-only here.
+       * @default 1
+       */
+      maxActiveLocks: number;
       /** @description Latest rejection reason while approvalStatus is rejected; only for the adder, their reporting line, the approvers and company-wide roles (else null). Read-only. */
       rejectionReason?: string | null;
       /** @description Who rejected it. Read-only. */
@@ -5110,6 +5821,65 @@ export interface components {
         half: ('am' | 'pm') | null;
       } | null;
     };
+    OutletLocationList: {
+      items: components['schemas']['OutletLocation'][];
+      /** Format: date-time */
+      serverTime: string;
+    };
+    OutletLocation: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      companyId: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+      /** @description Tombstone: set when soft-deleted */
+      deletedAt: string | null;
+      /** @description Row version, incremented on every update (optimistic concurrency) */
+      version: number;
+      outletKind: components['schemas']['OutletKind'];
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      outletId: string;
+      label: components['schemas']['OutletLocationLabel'];
+      location: components['schemas']['GeoPointOutput'];
+      accuracyM: number | null;
+      /** @enum {string} */
+      source: 'gps' | 'network' | 'fused' | 'manual';
+      isMock: boolean;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      lockedAt: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      lockedBy: string;
+      lockedByName?: string | null;
+      active: boolean;
+    };
     ConsentState: {
       deviceId: string | null;
       ownership: ('company' | 'personal') | null;
@@ -5291,6 +6061,12 @@ export interface components {
       submittedAt: string | null;
       decidedAt: string | null;
       decidedBy: string | null;
+      /** @description Both-way TA of the selected SFC routes, each route once across every section */
+      ta?: number;
+      /** @description The greatest DA among those routes */
+      da?: number;
+      /** @description True when this pending plan is waiting for you */
+      canDecide?: boolean;
     };
     StandardTourPlan: {
       /**
@@ -5472,8 +6248,18 @@ export interface components {
       sfcRoutes: components['schemas']['DcrSfcRoute'][];
       /** @default null */
       submittedBy: string | null;
+      /** @description Expenses reported for the day (any work type). Linked into the month claim at submit (origin dcr); read-only after submit. Absent (older API) = none */
+      expenses?: components['schemas']['DcrExpenseItemOutput'][];
+      /** @description Month claim holding this DCR's expense lines (origin dcr); null when it has none. Absent from older APIs */
+      expenseClaimId?: string | null;
+      /** @description Sum of this DCR's live origin-dcr claim lines, rupees (0 when none) */
+      expenseTotal?: number;
+      /** @description Number of this DCR's live origin-dcr claim lines (0 when none) */
+      expenseCount?: number;
       /** @description Live calls on this DCR (GET /v1/dcrs list only) */
       callCount?: number;
+      /** @description Every section of the day. Absent on older responses: the header is the only section */
+      sections?: components['schemas']['DcrSection'][];
     };
     DcrCall: {
       /**
@@ -5498,10 +6284,15 @@ export interface components {
       rcpa: components['schemas']['RcpaLineOutput'][];
       remarks: string | null;
       /**
-       * @description When the product presentation was shown to the doctor (client time). Drafts may omit it; submit requires it on every doctor call with productsDetailed (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED).
+       * @description When the product presentation was shown to the doctor (client time). Drafts may omit it. A business manager must set it on every doctor call with productsDetailed before submit (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED). Area business manager and above may submit after check-in. Setting it requires presentationCapture (hard geofence).
        * @default null
        */
       presentationOpenedAt: string | null;
+      /** @description Locked outlet_locations row used for the Presentation check */
+      presentationLocationId?: string | null;
+      /** @description Server metres from capture to presentationLocationId */
+      presentationDistanceM?: number | null;
+      presentationAccuracyM?: number | null;
       /**
        * Format: date-time
        * @description Server time when the call (clientId) was first saved to a DCR; never changes on re-save. Client values are ignored.
@@ -5561,11 +6352,27 @@ export interface components {
       /** @description own | hq (fallback). Absent on snapshots frozen before the fallback existed */
       source?: components['schemas']['DcrSfcSource'];
     };
+    /** @enum {string} */
+    SfcCategory: 'ex' | 'hq' | 'os';
     /**
      * @description own = the filer's route; hq = the filer has no live route on that HQ, so the HQ's routes (any owner) are offered
      * @enum {string}
      */
     DcrSfcSource: 'own' | 'hq';
+    DcrSection: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      band: components['schemas']['DcrBand'] | null;
+      territoryIds: string[];
+      workWithUserIds: string[];
+      sfcRoutes: components['schemas']['DcrSfcRoute'][];
+      details: components['schemas']['DcrDetailsOutput'] | null;
+      calls: components['schemas']['DcrCall'][];
+    };
     CompetitorBrandList: {
       items: components['schemas']['CompetitorBrand'][];
     };
@@ -5588,7 +6395,10 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       companyId: string;
-      /** @enum {string} */
+      /**
+       * @description Engine types; 'dcr' (DCR review, subjectId = DCR id) and 'signup' (signup request) are only returned when asked for with include=dcr / include=signup
+       * @enum {string}
+       */
       subjectType:
         | 'tour_plan'
         | 'doctor'
@@ -5597,7 +6407,9 @@ export interface components {
         | 'dcr_unlock'
         | 'leave'
         | 'device'
-        | 'expense';
+        | 'expense'
+        | 'dcr'
+        | 'signup';
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -5632,6 +6444,42 @@ export interface components {
       autoApproved?: boolean;
       /** @description Approver warnings. dcr_rejected_lines: an expense claim has lines on days whose DCR was rejected (see claim.dcrRejectedDates); approving such a claim is blocked with 409 DCR_NOT_APPROVED */
       flags?: 'dcr_rejected_lines'[];
+      /** @description Requester's most senior role key */
+      requestedByRole?: components['schemas']['RoleKey'] | null;
+      /** @description Level awaiting a decision (1-based); null once decided */
+      level?: number | null;
+      /** @description Configured levels for this type; null where the type has a single decision */
+      totalLevels?: number | null;
+      /** @description Approver of the level awaiting a decision; null when decided or shared queue */
+      currentApprover?: components['schemas']['ExpenseApprover'] | null;
+      /** @description Per-level history (same shape as ExpenseClaim.approvalTrail): who, when, status, comment/reason. Present on scope=org reads */
+      trail?: components['schemas']['ExpenseApprovalLevel'][];
+    };
+    /** @description User ref with their most senior role key */
+    ExpenseApprover: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      name: string;
+      role: string | null;
+    };
+    ExpenseApprovalLevel: {
+      level: number;
+      /** @description Assigned approver of this level (projected up the manager chain for levels not reached yet); null when skipped, shared queue or auto-approved */
+      approver: components['schemas']['ExpenseApprover'] | null;
+      /** @description Who actually decided (may be above the assigned approver); null if undecided or system */
+      decidedBy: components['schemas']['ExpenseApprover'] | null;
+      /** @enum {string} */
+      status: 'pending' | 'approved' | 'rejected' | 'skipped';
+      /** @description True for the level awaiting a decision now */
+      current: boolean;
+      decidedAt: string | null;
+      comment: string | null;
+      /** @description comment when status is rejected */
+      rejectionReason: string | null;
     };
     DcrOptions: {
       /**
@@ -5774,6 +6622,12 @@ export interface components {
       submittedAt: string | null;
       decidedAt: string | null;
       decidedBy: string | null;
+      /** @description Both-way TA of the selected SFC routes, each route once across every section */
+      ta?: number;
+      /** @description The greatest DA among those routes */
+      da?: number;
+      /** @description True when this pending plan is waiting for you */
+      canDecide?: boolean;
       /** @description Unfiled days from today (IST) on; the card is listed only while this is non-empty */
       pendingDates: string[];
       /** @description pendingDates that already have a DCR draft */
@@ -6035,13 +6889,25 @@ export interface components {
       sfcRoutes: components['schemas']['DcrSfcRoute'][];
       /** @default null */
       submittedBy: string | null;
+      /** @description Expenses reported for the day (any work type). Linked into the month claim at submit (origin dcr); read-only after submit. Absent (older API) = none */
+      expenses?: components['schemas']['DcrExpenseItemOutput'][];
+      /** @description Month claim holding this DCR's expense lines (origin dcr); null when it has none. Absent from older APIs */
+      expenseClaimId?: string | null;
+      /** @description Sum of this DCR's live origin-dcr claim lines, rupees (0 when none) */
+      expenseTotal?: number;
+      /** @description Number of this DCR's live origin-dcr claim lines (0 when none) */
+      expenseCount?: number;
       /** @description Live calls on this DCR (GET /v1/dcrs list only) */
       callCount?: number;
+      /** @description Every section of the day. Absent on older responses: the header is the only section */
+      sections?: components['schemas']['DcrSection'][];
       /**
        * @description Server TA/DA auto-draft outcome; null when the company setting autoExpenseOnDcrSubmit is off or on an idempotent retry. Clients: non-null means the server drafted (do not draft client-side)
        * @default null
        */
       expenseDraft: components['schemas']['ExpenseAutoDraft'] | null;
+      /** @description Linking of the DCR's expenses into the month claim (always attempted, independent of autoExpenseOnDcrSubmit). null on a same-key retry; absent from older APIs */
+      dcrExpenses?: components['schemas']['DcrExpenseLink'] | null;
     };
     ExpenseAutoDraft: {
       /**
@@ -6078,6 +6944,22 @@ export interface components {
         code: string;
         message: string;
       } | null;
+    };
+    DcrExpenseLink: {
+      /**
+       * @description linked = the DCR's lines were written (all earlier origin-dcr lines with this dcrId are replaced, so a resubmit never duplicates); skipped = nothing written (reason); error = linking failed, the submit still succeeded
+       * @enum {string}
+       */
+      status: 'linked' | 'skipped' | 'error';
+      /** @description claim_locked = the month claim is submitted/approved/paid (or deleted): items stay on the DCR, not copied; no_expenses = the DCR has none (earlier DCR lines on an editable claim are removed) */
+      reason: ('claim_locked' | 'no_expenses') | null;
+      claimId: string | null;
+      claimStatus: ('draft' | 'submitted' | 'approved' | 'rejected' | 'paid') | null;
+      claimCreated: boolean;
+      /** @description DCR-sourced lines now on the claim for this DCR */
+      lines: number;
+      /** @description Sum of those lines, rupees */
+      total: number;
     };
     ApprovalPage: {
       items: components['schemas']['Approval'][];
@@ -6314,6 +7196,194 @@ export interface components {
         ruleCode: components['schemas']['ExceptionRuleCode'];
         count: number;
       }[];
+    };
+    TeamMemberActivity: {
+      member: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+        role: components['schemas']['RoleKey'] | null;
+      };
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      from: string;
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      to: string;
+      /**
+       * Format: date
+       * @description Company-local (IST) today
+       */
+      today: string;
+      /** @description One row per date, oldest first */
+      days: components['schemas']['ActivityDay'][];
+      totals: components['schemas']['ActivityTotals'];
+      /** @description Only for a single-day range (from = to), else null */
+      detail: {
+        /** @description Calls of the day, by calledAt */
+        calls: components['schemas']['ActivityCall'][];
+        /** @description GPS captures of the day, by capturedAt */
+        checkIns: components['schemas']['CheckIn'][];
+      } | null;
+      /** @description Same rule as TeamProfile.canSeeExpenses */
+      canSeeExpenses: boolean;
+    };
+    ActivityDay: {
+      /**
+       * Format: date
+       * @description Calendar date (YYYY-MM-DD, IST)
+       */
+      date: string;
+      attendance: components['schemas']['ProfileAttendanceStatus'];
+      punchInAt: string | null;
+      punchOutAt: string | null;
+      leave: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        requestId: string;
+        typeCode: string;
+        half: ('am' | 'pm') | null;
+      } | null;
+      /** @description An approved tour-plan item covers the day */
+      planned: boolean;
+      /** @description The submitted/approved report of the day, else the newest draft; null if none */
+      dcr: components['schemas']['ActivityDcr'] | null;
+      calls: number;
+      /** @description GPS captures (punch in/out and visits) */
+      checkIns: number;
+    };
+    ActivityDcr: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /** @enum {string} */
+      status: 'draft' | 'submitted' | 'locked' | 'approved' | 'rejected';
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      workTypeName: string;
+      callCount: number;
+      /** @description details.startTime (HH:mm) when set */
+      startTime: string | null;
+      endTime: string | null;
+      durationMin: number | null;
+      /** @description Live origin-dcr claim lines of this DCR */
+      expenseTotal: number;
+      /** @description Expenses reported on the DCR itself. Stay visible when the DCR is rejected (the claim lines are removed then) */
+      expenses: components['schemas']['DcrExpenseItemOutput'][];
+    };
+    ActivityTotals: {
+      days: number;
+      present: number;
+      absent: number;
+      leave: number;
+      holiday: number;
+      weeklyOff: number;
+      incomplete: number;
+      dcr: {
+        draft: number;
+        submitted: number;
+        approved: number;
+        rejected: number;
+        locked: number;
+        /** @description Working days (not leave/holiday/off) without a DCR */
+        missing: number;
+      };
+      calls: number;
+      checkIns: number;
+      plannedDays: number;
+      /** @description Sum of ActivityDcr.expenseTotal */
+      dcrExpenseTotal: number;
+      /** @description Totals of the person’s expense claims for the months touching the range (any status, not soft-deleted); 0 without expense visibility */
+      claimTotal: number;
+    };
+    ActivityCall: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      outletKind: components['schemas']['OutletKind'];
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      outletId: string;
+      /** @description Visit check-in (GPS) for this call */
+      checkInId: string | null;
+      /**
+       * Format: date-time
+       * @description Server time when the call (clientId) was first saved to a DCR; never changes on re-save. Client values are ignored.
+       */
+      readonly calledAt: string;
+      jointWorkUserIds: string[];
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      dcrId: string;
+      outletName: string | null;
+    };
+    AuditLogPage: {
+      items: components['schemas']['AuditLogEntry'][];
+      nextCursor: string | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      serverTime: string;
+      /** @description Rows matching the filters; present when includeTotal=true */
+      total?: number;
+    };
+    AuditLogEntry: {
+      /** @description audit_log.id (bigint as string) */
+      id: string;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      at: string;
+      /** @description null for system actions */
+      actor: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+        role: components['schemas']['RoleKey'] | null;
+      } | null;
+      action: string;
+      entityType: string | null;
+      entityId: string | null;
+      /** @description Row JSON with sensitive keys redacted */
+      before: unknown | null;
+      /** @description Row JSON with sensitive keys redacted */
+      after: unknown | null;
+      ip: string | null;
+      userAgent: string | null;
+      requestId: string | null;
     };
     TeamPerformance: {
       /**
@@ -6575,9 +7645,14 @@ export interface components {
       | 'dcr.rejected'
       | 'dcr_unlock.submitted'
       | 'dcr_unlock.approved'
-      | 'dcr_unlock.rejected';
+      | 'dcr_unlock.rejected'
+      | 'company.message'
+      | 'doctor.occasion';
     UnreadCount: {
       count: number;
+    };
+    CompanyMessageResult: {
+      recipients: number;
     };
     ReadAllResult: {
       updated: number;
@@ -6631,6 +7706,8 @@ export interface components {
       approvalId: string | null;
       /** @description Current step while pending */
       approvalStep: number | null;
+      /** @description True when this pending request is waiting for you */
+      canDecide?: boolean;
       /**
        * Format: date-time
        * @description ISO-8601 timestamp (UTC)
@@ -6740,6 +7817,12 @@ export interface components {
     };
     ExpenseClaimList: {
       items: components['schemas']['ExpenseClaimSummary'][];
+      /** @description Paged reads only (limit or cursor sent) */
+      limit?: number;
+      /** @description Paged reads only: claims matching the filters (all pages) */
+      total?: number;
+      /** @description Paged reads only: pass as cursor for the next page; null on the last page */
+      nextCursor?: string | null;
     };
     ExpenseClaimSummary: {
       /**
@@ -6800,33 +7883,9 @@ export interface components {
       canPay: boolean;
       /** @description Who marked it paid; null unless paid */
       paidBy: components['schemas']['UserRef'] | null;
+      /** @description Claim owner's most senior role key */
+      userRole?: components['schemas']['RoleKey'] | null;
       lineCount: number;
-    };
-    ExpenseApprovalLevel: {
-      level: number;
-      /** @description Assigned approver of this level (projected up the manager chain for levels not reached yet); null when skipped, shared queue or auto-approved */
-      approver: components['schemas']['ExpenseApprover'] | null;
-      /** @description Who actually decided (may be above the assigned approver); null if undecided or system */
-      decidedBy: components['schemas']['ExpenseApprover'] | null;
-      /** @enum {string} */
-      status: 'pending' | 'approved' | 'rejected' | 'skipped';
-      /** @description True for the level awaiting a decision now */
-      current: boolean;
-      decidedAt: string | null;
-      comment: string | null;
-      /** @description comment when status is rejected */
-      rejectionReason: string | null;
-    };
-    /** @description User ref with their most senior role key */
-    ExpenseApprover: {
-      /**
-       * Format: uuid
-       * @description UUIDv7 identifier
-       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
-       */
-      id: string;
-      name: string;
-      role: string | null;
     };
     ExpenseClaim: {
       /**
@@ -6888,6 +7947,8 @@ export interface components {
       canPay: boolean;
       /** @description Who marked it paid; null unless paid */
       paidBy: components['schemas']['UserRef'] | null;
+      /** @description Claim owner's most senior role key */
+      userRole?: components['schemas']['RoleKey'] | null;
     };
     ExpenseLine: {
       /**
@@ -6918,6 +7979,11 @@ export interface components {
        * @enum {string}
        */
       source: 'manual' | 'auto';
+      /**
+       * @description Where the line came from: manual, ta_da (TA/DA auto-draft), dcr (an expense item on the day's DCR; show 'from DCR', dcrId is that DCR). Absent from older APIs: derive from source. dcr lines have source auto and are never touched by a TA/DA re-run
+       * @enum {string}
+       */
+      origin?: 'manual' | 'ta_da' | 'dcr';
       /** @description Fare-chart place used for TA (#39) */
       allowancePlaceId: string | null;
       /**
@@ -7131,6 +8197,105 @@ export interface components {
        */
       updatedAt: string;
     };
+    SalesTargetList: {
+      data: components['schemas']['SalesTarget'][];
+    };
+    SalesTarget: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      territoryName: string;
+      territoryCode: string;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      kind: components['schemas']['SalesKind'];
+      /** @description Target value, rupees */
+      value: number;
+      quantity: number | null;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+    };
+    SalesTargetSetResult: {
+      months: number;
+      created: number;
+      updated: number;
+    };
+    SalesActualList: {
+      data: components['schemas']['SalesActual'][];
+    };
+    SalesActual: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      territoryName: string;
+      territoryCode: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      productName: string;
+      stockistId: string | null;
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      kind: components['schemas']['SalesKind'];
+      quantity: number;
+      freeQuantity: number;
+      value: number;
+      isReturn: boolean;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      updatedAt: string;
+    };
+    SalesImportResult: {
+      dryRun: boolean;
+      totals: {
+        rows: number;
+        valid: number;
+        created: number;
+        updated: number;
+        errors: number;
+      };
+      results: components['schemas']['SalesImportRowResult'][];
+    };
+    SalesImportRowResult: {
+      /** @description 1-based position in the request */
+      row: number;
+      /** @enum {string} */
+      status: 'valid' | 'created' | 'updated' | 'error';
+      error:
+        ('unknown_territory' | 'not_headquarter' | 'unknown_product' | 'product_required') | null;
+    };
     AllowanceDraftResult: {
       dryRun: boolean;
       days: components['schemas']['AllowanceDay'][];
@@ -7317,7 +8482,10 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       companyId: string;
-      /** @enum {string} */
+      /**
+       * @description Engine types; 'dcr' (DCR review, subjectId = DCR id) and 'signup' (signup request) are only returned when asked for with include=dcr / include=signup
+       * @enum {string}
+       */
       subjectType:
         | 'tour_plan'
         | 'doctor'
@@ -7326,7 +8494,9 @@ export interface components {
         | 'dcr_unlock'
         | 'leave'
         | 'device'
-        | 'expense';
+        | 'expense'
+        | 'dcr'
+        | 'signup';
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -7361,6 +8531,16 @@ export interface components {
       autoApproved?: boolean;
       /** @description Approver warnings. dcr_rejected_lines: an expense claim has lines on days whose DCR was rejected (see claim.dcrRejectedDates); approving such a claim is blocked with 409 DCR_NOT_APPROVED */
       flags?: 'dcr_rejected_lines'[];
+      /** @description Requester's most senior role key */
+      requestedByRole?: components['schemas']['RoleKey'] | null;
+      /** @description Level awaiting a decision (1-based); null once decided */
+      level?: number | null;
+      /** @description Configured levels for this type; null where the type has a single decision */
+      totalLevels?: number | null;
+      /** @description Approver of the level awaiting a decision; null when decided or shared queue */
+      currentApprover?: components['schemas']['ExpenseApprover'] | null;
+      /** @description Per-level history (same shape as ExpenseClaim.approvalTrail): who, when, status, comment/reason. Present on scope=org reads */
+      trail?: components['schemas']['ExpenseApprovalLevel'][];
       /** @description Full subject details for the requester, an assigned approver (any step) or a caller with read access to the subject; otherwise null */
       subject: components['schemas']['ApprovalSubject'] | null;
     };
@@ -7938,7 +9118,15 @@ export interface components {
       /** @description false = allow and flag */
       blockOutOfFence: boolean;
       blockMockLocation: boolean;
+      /** @description Hard Presentation gate radius (default 300) */
+      presentationRadiusM: number;
+      /** @description Max GPS accuracy allowed when locking an outlet (default 80) */
+      lockMaxAccuracyM: number;
       version: number;
+    };
+    DoctorLockCapOutput: {
+      /** @description 1–5. A deactivated pin does not count toward this. */
+      maxActiveLocks: number;
     };
     TourPlanDayOutput: {
       /**
@@ -7986,7 +9174,7 @@ export interface components {
       /** @default [] */
       workWithUserIds: string[];
       /**
-       * @description One route per HQ of the day (as DCR sfcRoutes); fully checked at DCR submit
+       * @description Every selected SFC route. Both-way TA is summed and the greatest DA is kept.
        * @default []
        */
       sfcRoutes: components['schemas']['DcrSfcRouteChoiceOutput'][];
@@ -7995,6 +9183,8 @@ export interface components {
        * @default null
        */
       details: components['schemas']['DcrDetailsOutput'] | null;
+      /** @default [] */
+      sections: components['schemas']['TourPlanSectionOutput'][];
     };
     DcrSfcRouteChoiceOutput: {
       /**
@@ -8022,7 +9212,7 @@ export interface components {
        * @enum {string}
        */
       kind: 'meeting';
-      /** @description Meeting / training type or name */
+      /** @description Meeting sub-type: "Cycle Meeting" or "Review Meeting" on write (else 422 MEETING_TYPE_INVALID). Legacy rows may hold other free text; reads return it unchanged */
       title: string;
       /** @enum {string} */
       mode: 'in_person' | 'online';
@@ -8033,11 +9223,17 @@ export interface components {
        * @example 10:30
        */
       startTime: string;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
+      /** @description Local end time HH:mm (IST), same day, must be after startTime (else 422 END_TIME_NOT_AFTER_START). The server derives durationMin from startTime/endTime */
+      endTime?: string | null;
+      /** @description Minutes. Derived by the server from startTime/endTime and always present in responses. Deprecated on input: ignored when endTime is sent; accepted only from older clients that send no endTime */
+      durationMin?: number;
       /** @description Free text */
       attendees?: string | null;
       remarks?: string | null;
+      /** @description Free text place, optional */
+      fromPlace?: string | null;
+      /** @description Free text place, optional */
+      toPlace?: string | null;
     };
     DcrTrainingDetailsOutput: {
       /**
@@ -8056,8 +9252,10 @@ export interface components {
        * @example 10:30
        */
       startTime: string;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
+      /** @description Local end time HH:mm (IST), same day, must be after startTime (else 422 END_TIME_NOT_AFTER_START). The server derives durationMin from startTime/endTime */
+      endTime?: string | null;
+      /** @description Minutes. Derived by the server from startTime/endTime and always present in responses. Deprecated on input: ignored when endTime is sent; accepted only from older clients that send no endTime */
+      durationMin?: number;
       /** @description Free text */
       attendees?: string | null;
       remarks?: string | null;
@@ -8074,8 +9272,14 @@ export interface components {
       taskType: string;
       description: string;
       startTime?: string | null;
-      /** @description Minutes, 1-720 */
-      durationMin: number;
+      /** @description Local end time HH:mm (IST). startTime is required together with endTime (else 422 END_TIME_NOT_AFTER_START); end after start, at most 12 h (DURATION_TOO_LONG). Derives durationMin */
+      endTime?: string | null;
+      /** @description Minutes. Derived from startTime/endTime when both are sent (input ignored); otherwise still required as before. Always present in responses */
+      durationMin?: number;
+      /** @description Free text place, optional */
+      fromPlace?: string | null;
+      /** @description Free text place, optional */
+      toPlace?: string | null;
       remarks?: string | null;
     };
     DcrLeaveDetailsOutput: {
@@ -8090,6 +9294,22 @@ export interface components {
        * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
        */
       leaveRequestId: string;
+    };
+    TourPlanSectionOutput: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      workTypeId: string;
+      /** @default [] */
+      territoryIds: string[];
+      /** @default [] */
+      workWithUserIds: string[];
+      /** @default [] */
+      sfcRoutes: components['schemas']['DcrSfcRouteChoiceOutput'][];
+      /** @default null */
+      details: components['schemas']['DcrDetailsOutput'] | null;
     };
     StandardTourPlanDayOutput: {
       week: number;
@@ -8146,6 +9366,13 @@ export interface components {
       prescriptions?: number | null;
       /** @description Prescribing doctor, in your scope */
       doctorId?: string | null;
+    };
+    DcrExpenseItemOutput: {
+      /** @description One of travel, hotel, food, other. allowance and mileage stay with TA/DA: 422 DCR_EXPENSE_CATEGORY_INVALID */
+      category: components['schemas']['ExpenseCategory'];
+      /** @description Rupees */
+      amount: number;
+      note?: string | null;
     };
     SfcSettingsOutput: {
       /** @description TA per km (INR) used to compute SFC amounts on write */
@@ -8432,6 +9659,176 @@ export interface operations {
       };
     };
   };
+  createTerritory: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['TerritoryCreate'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Territory'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description NATIONAL_EXISTS or CODE_TAKEN or TERRITORY_KEY_TAKEN */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TERRITORY_PARENT_LEVEL or VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  territoryHealth: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Counts only */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TerritoryHealth'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  moveTerritory: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['TerritoryMove'];
+      };
+    };
+    responses: {
+      /** @description Moved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Territory'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT or CODE_TAKEN */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TERRITORY_PARENT_LEVEL or TERRITORY_CYCLE */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   getTerritory: {
     parameters: {
       query?: never;
@@ -8473,6 +9870,483 @@ export interface operations {
       };
       /** @description Not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteTerritory: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TERRITORY_IN_USE */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  updateTerritory: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['TerritoryUpdate'];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Territory'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT or CODE_TAKEN or TERRITORY_KEY_TAKEN */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listHolidays: {
+    parameters: {
+      query?: {
+        year?: number;
+        from?: string;
+        to?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Holidays */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HolidayList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createHoliday: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['HolidayCreate'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Holiday'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description HOLIDAY_DATE_TAKEN */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  copyHolidays: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['HolidayCopy'];
+      };
+    };
+    responses: {
+      /** @description Copied and skipped */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HolidayCopyResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteHoliday: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  updateHoliday: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['HolidayUpdate'];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Holiday'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listTerritoriesCompact: {
+    parameters: {
+      query?: {
+        level?: components['schemas']['TerritoryLevel'];
+        parentId?: string;
+        /** @description Only descendants of this territory */
+        ancestorId?: string;
+        /** @description Page size, default and max 2000 (the full list caps at 200) */
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
+      };
+      header?: {
+        /** @description ETag from a previous response; 304 with empty body if unchanged */
+        'if-none-match'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK (ETag, Cache-Control headers) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TerritoryCompactList'];
+        };
+      };
+      /** @description Not modified (If-None-Match matched); empty body */
+      304: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
         headers: {
           [name: string]: unknown;
         };
@@ -8782,6 +10656,60 @@ export interface operations {
       };
       /** @description Validation failed */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  setDevicePushToken: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DevicePushToken'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DevicePushTokenResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };
@@ -11171,6 +13099,8 @@ export interface operations {
         kind?: components['schemas']['CheckInKind'];
         outletKind?: components['schemas']['OutletKind'];
         outletId?: string;
+        /** @description Doctor 360: only visit check-ins at this doctor (same as outletKind=doctor&outletId=). Still limited to the caller and their reporting line; combine with limit */
+        doctorId?: string;
         /** @description true = only visit check-ins not yet linked to a DCR call (DCR call picker, gap #9) */
         unlinked?: 'true' | 'false';
       };
@@ -11270,7 +13200,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Sequence error (e.g. visit before punch-in, second punch-in) */
+      /** @description Sequence error, or LOCATION_LIMIT when a doctor is already at their pin cap and outside every saved pin */
       409: {
         headers: {
           [name: string]: unknown;
@@ -11288,7 +13218,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Validation failed; LOW_ACCURACY, MOCK_LOCATION or OUT_OF_FENCE when the company policy blocks */
+      /** @description Validation failed; LOW_ACCURACY, MOCK_LOCATION, or OUT_OF_FENCE. A chemist or stockist with a locked pin is refused outside that pin */
       422: {
         headers: {
           [name: string]: unknown;
@@ -11562,6 +13492,266 @@ export interface operations {
       };
     };
   };
+  listOutletLocations: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        kind: 'doctor' | 'chemist' | 'stockist';
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OutletLocationList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Outlet not found or outside your territories */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createOutletLocation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        kind: 'doctor' | 'chemist' | 'stockist';
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['OutletLocationCreate'];
+      };
+    };
+    responses: {
+      /** @description Replay */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OutletLocation'];
+        };
+      };
+      /** @description Locked */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OutletLocation'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description LOCATION_EXISTS (chem/stockist), LOCATION_LIMIT (doctor already at their pin cap), or IDEMPOTENCY_CONFLICT */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description DEVICE_NOT_ACTIVE or CONSENT_REQUIRED */
+      412: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description LOW_ACCURACY / MOCK_LOCATION / invalid label */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  patchOutletLockCap: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        kind: 'doctor' | 'chemist' | 'stockist';
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['DoctorLockCap'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DoctorLockCapOutput'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description BM cannot change the cap */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Outlet not found or outside your territories */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Only a doctor has a pin cap, or the number is outside 1–5 */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  patchOutletLocation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['OutletLocationPatch'];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OutletLocation'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description BM cannot edit */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VERSION_CONFLICT or LOCATION_EXISTS */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   getConsentState: {
     parameters: {
       query?: never;
@@ -11760,7 +13950,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description VALIDATION: to < from, more than 31 days, unknown/inactive or leave/holiday work type, details.kind mismatch, unknown or out-of-scope territories/users/SFC routes */
+      /** @description VALIDATION: to < from, more than 31 days, unknown/inactive or leave/holiday work type, details.kind mismatch, unknown or out-of-scope territories/users/SFC routes; MEETING_TYPE_INVALID (meeting details.title not Cycle Meeting / Review Meeting; details.allowed), END_TIME_NOT_AFTER_START (end <= start, or endTime without startTime; details.startTime/endTime), DURATION_TOO_LONG (end - start > 720 min) */
       422: {
         headers: {
           [name: string]: unknown;
@@ -12953,7 +15143,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today), VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds) */
+      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today), VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds), MEETING_TYPE_INVALID (meeting details.title not Cycle Meeting / Review Meeting; details.allowed), END_TIME_NOT_AFTER_START (end <= start, or endTime without startTime; details.startTime/endTime), DURATION_TOO_LONG (end - start > 720 min), DCR_EXPENSE_CATEGORY_INVALID (details.index, details.allowed) */
       422: {
         headers: {
           [name: string]: unknown;
@@ -12983,7 +15173,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Audited as expense.auto_drafted. Director (no manager): the report is approved at submit by the system (status approved, approvedBy null, autoApproved true; audit dcr.auto_approved) before the expense auto-draft, and the day never locks (no DAY_LOCKED, no unlock request). */
+      /** @description Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Independently, the DCR's expenses[] are linked into the month claim (created if missing) as origin dcr lines (dcrId), replacing all earlier origin-dcr lines of that DCR (idempotent); a submitted/approved/paid claim is not touched (dcrExpenses.status skipped, reason claim_locked) and the submit still succeeds. Audited as expense.auto_drafted. Director (no manager): the report is approved at submit by the system (status approved, approvedBy null, autoApproved true; audit dcr.auto_approved) before the expense auto-draft, and the day never locks (no DAY_LOCKED, no unlock request). */
       200: {
         headers: {
           [name: string]: unknown;
@@ -13028,7 +15218,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND */
+      /** @description DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND, DCR_EXPENSE_CATEGORY_INVALID, MEETING_TYPE_INVALID (meeting details.title not Cycle Meeting / Review Meeting; details.allowed), END_TIME_NOT_AFTER_START (end <= start, or endTime without startTime; details.startTime/endTime), DURATION_TOO_LONG (end - start > 720 min) */
       422: {
         headers: {
           [name: string]: unknown;
@@ -13241,9 +15431,21 @@ export interface operations {
           | 'dcr_unlock'
           | 'leave'
           | 'device'
-          | 'expense';
+          | 'expense'
+          | 'dcr'
+          | 'signup';
         /** @description to_decide = pending requests from your reporting line that you may decide (never your own); requested = yours */
         mine?: 'to_decide' | 'requested';
+        /** @description org: every request of your reporting subtree in any state (Director: the whole company), with trail/level fields. Needs approvals:decide (else 403). Ignored with mine */
+        scope?: 'org';
+        /** @description Requester; must be you or in your subtree */
+        userId?: string;
+        /** @description Created on/after this IST date */
+        from?: string;
+        /** @description Created on/before this IST date */
+        to?: string;
+        /** @description Comma list of non-engine items to merge in: dcr (DCR reviews: submitted/approved/rejected DCRs, needs dcr:review) and signup (signup requests, same visibility as GET /v1/signup-requests). Only with scope=org */
+        include?: string;
       };
       header?: never;
       path?: never;
@@ -13269,8 +15471,17 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      /** @description FORBIDDEN: scope=org without approvals:decide */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (bad cursor, include without scope=org, from after to) */
+      422: {
         headers: {
           [name: string]: unknown;
         };
@@ -13663,7 +15874,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description VALIDATION: password shorter than 12 characters (or token malformed) */
+      /** @description VALIDATION: password must be 12–128 characters with one uppercase letter, one lowercase letter, one number, and one symbol (or token malformed) */
       422: {
         headers: {
           [name: string]: unknown;
@@ -13762,6 +15973,132 @@ export interface operations {
       };
       /** @description Not in your subtree (or not a hierarchy user) */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getTeamMemberActivity: {
+    parameters: {
+      query?: {
+        /** @description Default: today (IST) */
+        from?: string;
+        /** @description Default: from. Inclusive; at most 93 days (else 422 RANGE_TOO_LONG); not after today (IST) */
+        to?: string;
+      };
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        userId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Activity */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamMemberActivity'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN: same rules as the profile */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Not in your subtree (or not a hierarchy user) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (from after to, to after today) or RANGE_TOO_LONG (more than 93 days; details.maxDays) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listAuditLog: {
+    parameters: {
+      query?: {
+        /** @description Who did it */
+        actorUserId?: string;
+        /** @description Exact action (e.g. 'dcr.submit'), or a prefix ending in '.' (e.g. 'dcr.') */
+        action?: string;
+        entityType?: string;
+        /** @description Needs entityType */
+        entityId?: string;
+        /** @description IST date, inclusive */
+        from?: string;
+        /** @description IST date, inclusive */
+        to?: string;
+        limit?: number;
+        /** @description Opaque, from nextCursor */
+        cursor?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AuditLogPage'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN: missing audit:read */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (bad cursor, from after to, entityId without entityType) */
+      422: {
         headers: {
           [name: string]: unknown;
         };
@@ -14404,6 +16741,57 @@ export interface operations {
       };
     };
   };
+  sendCompanyMessage: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['CompanyMessage'];
+      };
+    };
+    responses: {
+      /** @description Queued */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CompanyMessageResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Director or system admin only */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Validation failed */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   markAllNotificationsRead: {
     parameters: {
       query?: never;
@@ -14976,6 +17364,12 @@ export interface operations {
         month?: string;
         userId?: string;
         status?: components['schemas']['ExpenseStatus'];
+        /** @description team: every claim of your reporting subtree in any status, drafts included (Director: the whole company). Needs expenses:approve (else 403). Combine with userId/status/month and limit/cursor */
+        scope?: 'team';
+        /** @description Opt-in paging (default 50 once cursor is sent). Without limit and cursor every readable claim is returned, as before */
+        limit?: number;
+        /** @description Opaque cursor from `nextCursor` */
+        cursor?: string;
       };
       header?: never;
       path?: never;
@@ -15001,8 +17395,17 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      /** @description FORBIDDEN: scope=team without expenses:approve */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (bad limit or cursor) */
+      422: {
         headers: {
           [name: string]: unknown;
         };
@@ -16339,6 +18742,338 @@ export interface operations {
       };
     };
   };
+  listSalesTargets: {
+    parameters: {
+      query: {
+        /** @description Month (YYYY-MM) */
+        from: string;
+        /** @description Month (YYYY-MM) */
+        to: string;
+        territoryId?: string;
+        kind?: components['schemas']['SalesKind'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SalesTargetList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  setSalesTargets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['SalesTargetSet'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SalesTargetSetResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TERRITORY_NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TARGETS_EXIST (details.months; send overwrite to replace) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (not an HQ, or more than 36 months) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  listSalesActuals: {
+    parameters: {
+      query: {
+        /** @description Month (YYYY-MM) */
+        month: string;
+        territoryId?: string;
+        kind?: components['schemas']['SalesKind'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SalesActualList'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  createSalesActual: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['SalesActualCreate'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier
+             * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+             */
+            id: string;
+          };
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description TERRITORY_NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION (not an HQ, unknown product, stockist not under the HQ) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteSalesActual: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Removed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier
+             * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+             */
+            id: string;
+          };
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description SALES_ACTUAL_NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  importSales: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['SalesImportRequest'];
+      };
+    };
+    responses: {
+      /** @description Per-row result */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SalesImportResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   draftExpenseAllowances: {
     parameters: {
       query?: never;
@@ -16840,7 +19575,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Validation failed (email, 6-digit code, password 12-128) */
+      /** @description Validation failed (email, 6-digit code, password: 12–128 characters with upper, lower, number, and symbol) */
       422: {
         headers: {
           [name: string]: unknown;
@@ -16900,7 +19635,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description Validation failed (password min 12; system_admin cannot be requested) */
+      /** @description Validation failed (password needs 12–128 characters with upper, lower, number, and symbol; system_admin cannot be requested) */
       422: {
         headers: {
           [name: string]: unknown;

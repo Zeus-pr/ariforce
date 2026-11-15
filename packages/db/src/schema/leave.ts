@@ -122,3 +122,21 @@ export const leaveGrants = pgTable(
   },
   (t) => [index('leave_grants_user_idx').on(t.companyId, t.userId, t.year)],
 );
+
+/** Company calendar label. A holiday does not close punch-in, DCR, or tour plans. */
+export const companyHolidays = pgTable(
+  'company_holidays',
+  {
+    id: pk(),
+    companyId: companyId().references(() => companies.id),
+    date: date('date').notNull(),
+    name: text('name').notNull(),
+    ...syncCols(),
+  },
+  (t) => [
+    uniqueIndex('company_holidays_date_uq')
+      .on(t.companyId, t.date)
+      .where(sql`${t.deletedAt} is null`),
+    index('company_holidays_year_idx').on(t.companyId, t.date),
+  ],
+);

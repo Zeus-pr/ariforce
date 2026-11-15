@@ -6,6 +6,9 @@ import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
 import { api, apiReady } from '@/lib/api';
 import { openReceipt } from '@/lib/expenses/upload';
+import { getTerritories } from '@/lib/query';
+import { DcrReportBody } from '@/components/dcr/team-dcr-detail';
+import { SignupInline } from '@/components/signups/signup-requests-view';
 
 /**
  * Read-only view of what an approval decides on. Primary source: GET /v1/approvals/{id} (ApprovalDetail,
@@ -13,7 +16,13 @@ import { openReceipt } from '@/lib/expenses/upload';
  * (e.g. a manager above the requester) — shown plainly. Leave/expense/doctor requests that are not in the
  * approvals store (mock leave/expense flows) fall back to the subject's own endpoint.
  */
-export function ApprovalReview({ approval }: { approval: Approval }) {
+export function ApprovalReview({
+  approval,
+  readOnly = false,
+}: {
+  approval: Approval;
+  readOnly?: boolean;
+}) {
   const t = approval.subjectType;
   const [detail, setDetail] = useState<ApprovalDetail | null | undefined>(undefined);
   useEffect(() => {
@@ -48,6 +57,12 @@ export function ApprovalReview({ approval }: { approval: Approval }) {
         <ExpenseReview a={approval} />
       ) : t === 'doctor' ? (
         <DoctorReview a={approval} />
+      ) : t === 'dcr' ? (
+        <div className="flex flex-col gap-4">
+          <DcrReportBody id={approval.subjectId} inline readOnly={readOnly} />
+        </div>
+      ) : t === 'signup' ? (
+        <SignupInline id={approval.subjectId} />
       ) : (
         <p>{approval.summary}</p>
       )}
@@ -428,7 +443,7 @@ function DoctorReview({ a }: { a: Approval }) {
       setD(doc);
       if (!doc) return;
       const [t, m] = await Promise.all([
-        api.GET('/v1/territories', { params: { query: { limit: 200 } as never } }),
+        getTerritories().then((items) => ({ data: { items } })),
         api.POST('/v1/doctors/duplicate-check', {
           body: {
             name: doc.name,

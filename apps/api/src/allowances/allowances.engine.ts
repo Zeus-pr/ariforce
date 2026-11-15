@@ -3,6 +3,7 @@ import { type Tx } from '@ariforce/db';
 import { sql } from 'drizzle-orm';
 import { err } from '../field/checkins.service';
 import { dayReportSql } from '../dcr/day-report';
+import { dayTaDa, type RouteFare } from './section-ta-da';
 
 type Band = 'hq' | 'ex_hq' | 'outstation';
 type Rate = {
@@ -32,6 +33,10 @@ export interface DraftLine {
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const numOrNull = (v: unknown) => {
+  const n = Number(v);
+  return v == null || !Number.isFinite(n) ? null : n;
+};
 const BAND_LABEL: Record<Band, string> = { hq: 'HQ', ex_hq: 'ex-HQ', outstation: 'outstation' };
 
 /**
@@ -43,9 +48,18 @@ export interface ComputeOptions {
   dates?: string[];
 }
 
-/** Round-trip km from the DCR's frozen SFC snapshots (one per HQ of the day); null when none. */
-export const sfcKm = (snaps: { bothWayKm?: unknown }[]) => {
-  const ks = snaps.map((x) => Number(x.bothWayKm)).filter((n) => Number.isFinite(n) && n > 0);
+/** Round-trip km from the DCR's frozen SFC snapshots. Each route counts once. */
+export const sfcKm = (snaps: { bothWayKm?: unknown; sfcRouteId?: string }[]) => {
+  const seen = new Set<string>();
+  const ks: number[] = [];
+  for (const s of snaps) {
+    if (s.sfcRouteId) {
+      if (seen.has(s.sfcRouteId)) continue;
+      seen.add(s.sfcRouteId);
+    }
+    const n = Number(s.bothWayKm);
+    if (Number.isFinite(n) && n > 0) ks.push(n);
+  }
   return ks.length ? r2(ks.reduce((a, b) => a + b, 0)) : null;
 };
 
@@ -94,8 +108,20 @@ export async function computeAllowances(
   ).rows.filter((d) => !only || only.has(d.date));
   const snapRows = dcrRows.length
     ? (
-        await tx.execute<{ dcr_id: string; snapshot: { bothWayKm?: unknown } | null }>(
-          sql`select dcr_id, snapshot from dcr_sfc_routes where deleted_at is null and snapshot is not null
+        await tx.execute<{
+          dcr_id: string;
+          section_index: number;
+          sfc_route_id: string;
+          snapshot: {
+            bothWayKm?: unknown;
+            bothWayAmount?: unknown;
+            da?: unknown;
+            sfcRouteId?: string;
+            actualFare?: boolean;
+          } | null;
+        }>(
+          sql`select dcr_id, section_index, sfc_route_id, snapshot from dcr_sfc_routes
+            where deleted_at is null and snapshot is not null
             and dcr_id in (${sql.join(
               dcrRows.map((d) => sql`${d.id}::uuid`),
               sql`, `,
@@ -189,6 +215,53 @@ export async function computeAllowances(
       continue;
     }
     const rate = pickRate(band, d.date);
+    const bySection = new Map<number, RouteFare[]>();
+    for (const row of snapRows.filter((x) => x.dcr_id === d.id)) {
+      const fare: RouteFare = {
+        id: row.snapshot?.sfcRouteId ?? row.sfc_route_id,
+        bothWayAmount: numOrNull(row.snapshot?.bothWayAmount),
+        da: numOrNull(row.snapshot?.da),
+      };
+      const list = bySection.get(row.section_index ?? 0) ?? [];
+      list.push(fare);
+      bySection.set(row.section_index ?? 0, list);
+    }
+    const daySnaps = snapRows.filter((x) => x.dcr_id === d.id);
+    const actualFare = daySnaps.some((x) => x.snapshot?.actualFare === true);
+    const fromRoutes =
+      actualFare ||
+      [...bySection.values()].some((list) =>
+        list.some((f) => f.bothWayAmount != null || f.da != null),
+      );
+    if (fromRoutes) {
+      const rolled = dayTaDa([...bySection.values()]);
+      day.da = rolled.da;
+      day.ta = rolled.ta;
+      day.km = sfcKm(daySnaps.map((x) => x.snapshot ?? {}));
+      if (day.da > 0)
+        out.push({
+          date: d.date,
+          dcrId: d.id,
+          category: 'allowance',
+          amount: day.da,
+          mileageKm: null,
+          notes: 'DA',
+          placeId: null,
+          calc: { source: 'sfc', sections: bySection.size },
+        });
+      if (day.ta > 0)
+        out.push({
+          date: d.date,
+          dcrId: d.id,
+          category: day.km ? 'mileage' : 'travel',
+          amount: day.ta,
+          mileageKm: day.km || null,
+          notes: `TA: SFC, ${day.km ?? 0} km`,
+          placeId: null,
+          calc: { source: 'sfc', sections: bySection.size },
+        });
+      continue;
+    }
     if (!rate) {
       day.issues.push('no_rate');
       continue;

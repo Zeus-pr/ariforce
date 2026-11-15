@@ -105,8 +105,12 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
       const g = auth(request);
       if (g.res) return g.res;
       const q = new URL(request.url).searchParams;
+      const team = q.get('scope') === 'team';
+      if (team && !can(g.p, 'expenses:approve'))
+        return e(403, 'FORBIDDEN', 'scope=team needs expenses:approve');
+      // scope=team: drafts too; the mock has no reporting line, so it shows every claim.
       const items = claims
-        .filter((c) => visible(g.p, c))
+        .filter((c) => team || visible(g.p, c))
         .filter((c) => !q.get('month') || c.month === q.get('month'))
         .filter((c) => !q.get('status') || c.status === q.get('status'))
         .filter((c) => !q.get('userId') || c.userId === q.get('userId'))
@@ -115,7 +119,20 @@ export function expenseHandlers(baseUrl: string, who: (r: Request) => Me | undef
           total: total({ ...c, lines } as Claim),
           lineCount: lines.length,
         }));
-      return HttpResponse.json(ExpenseClaimList.parse({ items }));
+      if (!q.has('limit') && !q.has('cursor'))
+        return HttpResponse.json(ExpenseClaimList.parse({ items }));
+      // Opt-in paging, same envelope as the API (offset cursor `o:<n>` base64).
+      const limit = Math.min(Math.max(Number(q.get('limit') ?? 50) || 50, 1), 200);
+      const offset = Number(/^o:(\d+)$/.exec(atob(q.get('cursor') ?? btoa('o:0')))?.[1] ?? 0);
+      const pageItems = items.slice(offset, offset + limit);
+      return HttpResponse.json(
+        ExpenseClaimList.parse({
+          items: pageItems,
+          limit,
+          total: items.length,
+          nextCursor: offset + limit < items.length ? btoa(`o:${offset + limit}`) : null,
+        }),
+      );
     }),
     http.post(`${B}/expense-claims`, async ({ request }) => {
       const g = auth(request);

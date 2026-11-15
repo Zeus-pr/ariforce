@@ -22,6 +22,8 @@ import {
   TableRow,
 } from '@ariforce/ui/components/table';
 import { Tabs, TabsList, TabsTrigger } from '@ariforce/ui/components/tabs';
+import { Member360 } from './member-360';
+import { todayIST } from '@/components/attendance/format';
 import { formatKpi, KPI_META } from '@/components/dashboard/kpi-meta';
 import { API_URL, api, apiReady, toApiError } from '@/lib/api';
 import { roleLabel } from '@/lib/roles';
@@ -136,40 +138,48 @@ export function ProfileView({ userId }: { userId: string }) {
         />
         <Fact label="Contact" value={m.email ?? '—'} sub={m.phone ?? undefined} />
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="profile-counts">
-        <Fact label="Doctors" value={String(p.counts.doctors)} />
-        <Fact label="Chemists" value={String(p.counts.chemists)} />
-        <Fact label="Direct reports" value={String(p.counts.directReports)} />
-        <Fact label="Everyone below" value={String(p.counts.subtreeSize)} />
-      </div>
+      <Member360
+        userId={userId}
+        canSeeExpenses={p.canSeeExpenses}
+        performance={
+          <div className="grid gap-5">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="profile-counts">
+              <Fact label="Doctors" value={String(p.counts.doctors)} />
+              <Fact label="Chemists" value={String(p.counts.chemists)} />
+              <Fact label="Direct reports" value={String(p.counts.directReports)} />
+              <Fact label="Everyone below" value={String(p.counts.subtreeSize)} />
+            </div>
 
-      {p.exceptions && (
-        <Card className="gap-3 p-4" data-testid="profile-exceptions">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-base font-semibold">Exceptions</h2>
-            <p className="text-sm text-muted-foreground">
-              {p.exceptions.open} open · {p.exceptions.openHigh} high · {p.exceptions.last30Days} in
-              the last 30 days
-            </p>
+            {p.exceptions && (
+              <Card className="gap-3 p-4" data-testid="profile-exceptions">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h2 className="text-base font-semibold">Exceptions</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {p.exceptions.open} open · {p.exceptions.openHigh} high ·{' '}
+                    {p.exceptions.last30Days} in the last 30 days
+                  </p>
+                </div>
+                {p.exceptions.byRule.length > 0 ? (
+                  <ul className="flex flex-wrap gap-2">
+                    {p.exceptions.byRule.map((r) => (
+                      <li key={r.ruleCode}>
+                        <Badge variant="secondary">
+                          {EXCEPTION_RULES[r.ruleCode]?.name ?? r.ruleCode}: {r.count}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">None open.</p>
+                )}
+              </Card>
+            )}
+
+            <Performance userId={userId} canSeeExpenses={p.canSeeExpenses} />
+            <Outlets userId={userId} />
           </div>
-          {p.exceptions.byRule.length > 0 ? (
-            <ul className="flex flex-wrap gap-2">
-              {p.exceptions.byRule.map((r) => (
-                <li key={r.ruleCode}>
-                  <Badge variant="secondary">
-                    {EXCEPTION_RULES[r.ruleCode]?.name ?? r.ruleCode}: {r.count}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">None open.</p>
-          )}
-        </Card>
-      )}
-
-      <Performance userId={userId} canSeeExpenses={p.canSeeExpenses} />
-      <Outlets userId={userId} />
+        }
+      />
     </div>
   );
 }
@@ -336,6 +346,21 @@ type OutletRow = {
   requiredVisits?: number;
 };
 
+const monthName = new Intl.DateTimeFormat('en-IN', {
+  month: 'long',
+  timeZone: 'Asia/Kolkata',
+}).format(new Date());
+
+/** Last visit with its age, so a date in an earlier month reads right next to 0 visits this month. */
+function lastVisit(d: string | null) {
+  if (!d) return 'Never';
+  const days = Math.round(
+    (Date.parse(`${todayIST()}T00:00:00Z`) - Date.parse(`${d}T00:00:00Z`)) / 86_400_000,
+  );
+  const age = days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+  return `${day(d)} · ${age}`;
+}
+
 function Outlets({ userId }: { userId: string }) {
   const [kind, setKind] = useState<'doctors' | 'chemists'>('doctors');
   const [q, setQ] = useState('');
@@ -433,7 +458,7 @@ function Outlets({ userId }: { userId: string }) {
                 {kind === 'doctors' && <TableHead>Specialty</TableHead>}
                 <TableHead>Territory</TableHead>
                 {kind === 'doctors' && (
-                  <TableHead className="text-right">Visits this month</TableHead>
+                  <TableHead className="text-right">Visits in {monthName}</TableHead>
                 )}
                 <TableHead>Last visit</TableHead>
               </TableRow>
@@ -452,7 +477,7 @@ function Outlets({ userId }: { userId: string }) {
                       {o.visitsThisMonth ?? 0} / {o.requiredVisits ?? 0}
                     </TableCell>
                   )}
-                  <TableCell className="whitespace-nowrap">{day(o.lastVisitDate)}</TableCell>
+                  <TableCell className="whitespace-nowrap">{lastVisit(o.lastVisitDate)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

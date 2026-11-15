@@ -168,7 +168,7 @@ describe.skipIf(!OWNER || !APP)('System admin invites any role / any territory',
     const h = await insertRetiredHolder(`${RUN}.acc-accept@demo.ariforce.in`, 'accountant');
     const res = await http()
       .post('/v1/invites/accept')
-      .send({ token: h.token, password: 'a-long-enough-password' });
+      .send({ token: h.token, password: 'Good-Pass-12a' });
     expect(res.status, JSON.stringify(res.body)).toBe(422);
     expect(res.body.error.code).toBe('ROLE_RETIRED');
     const list = await http().get('/v1/users').query({ q: RUN, limit: 100 }).set(as('sysadmin'));
@@ -188,12 +188,13 @@ describe.skipIf(!OWNER || !APP)('System admin invites any role / any territory',
     ).toBe(403);
     expect((await post('abm', emp('business_manager'))).status).toBe(422);
     expect((await post('director', emp('accountant'))).status).toBe(422);
+    // A director has the system admin's powers over people (users:write): may add a director.
     expect((await post('director', emp('director', { territoryIds: [T.national] }))).status).toBe(
-      403,
+      201,
     );
     expect((await post('dh', emp('business_manager', { territoryIds: [T.hq] }))).status).toBe(403);
     expect(
-      (await http().post(`/v1/employees/${created.accountant}/invite`).set(as('director'))).status,
+      (await http().post(`/v1/employees/${created.accountant}/invite`).set(as('dh'))).status,
     ).toBe(403);
     const ok = await post('abm', emp('business_manager', { territoryIds: [T.hq] }));
     expect(ok.status).toBe(201);

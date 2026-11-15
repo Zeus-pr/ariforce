@@ -5,7 +5,7 @@
  */
 import type { components } from '@ariforce/contracts';
 import { api } from '@/lib/api';
-import { assignField, assignMessage, territoryQueryFor } from '@/lib/assign-errors';
+import { assignField, assignMessage } from '@/lib/assign-errors';
 import { roleLevel, type Role, type SalesRole } from '@/lib/roles';
 import {
   AdapterError,
@@ -20,6 +20,7 @@ import {
   type OrgTree,
   type Page,
 } from './types';
+import { getTerritories } from '@/lib/query';
 
 type Node = components['schemas']['TeamNode'];
 
@@ -93,14 +94,8 @@ export const apiTeamAdapter = {
   /** HQs from GET /v1/territories?assignableForRole=business_manager (HQ only); team HQs as fallback. */
   async hqs(_role: Role): Promise<Hq[]> {
     if (!last) await load();
-    const r = await api
-      .GET('/v1/territories', {
-        params: {
-          query: { limit: 200, sort: 'name', ...territoryQueryFor('business_manager') } as never,
-        },
-      })
-      .catch(() => null);
-    const items = r?.data?.items.filter((t) => t.level === 'headquarter') ?? [];
+    const all = await getTerritories().catch(() => []);
+    const items = all.filter((t) => t.level === 'headquarter' && !t.deletedAt);
     if (!items.length) return hqCache;
     const seen = new Map(hqCache.map((h) => [h.id, h]));
     for (const t of items)

@@ -1,6 +1,149 @@
+import { randomUUID } from 'node:crypto';
+import { v7 as uuidv7 } from 'uuid';
 import type request from 'supertest';
 
 type Http = () => ReturnType<typeof request>;
+
+/** Stable Kolkata-ish point used by field / presentation fixtures. */
+export const TEST_GPS = { lat: 22.57, lng: 88.36 } as const;
+
+/** GeoCapture payload for punch-in / lock / presentationCapture. Fresh clientId each call. */
+export function geoCap(extra: Record<string, unknown> = {}) {
+  return {
+    clientId: uuidv7(),
+    location: TEST_GPS,
+    accuracyM: 15,
+    capturedAt: new Date().toISOString(),
+    isMock: false,
+    ...extra,
+  };
+}
+
+/**
+ * Enrol an active device + location consent when needed, then punch in for today (201 or 409).
+ * Required before Presentation hard-gate DCR calls.
+ */
+export async function ensureFieldReady(http: Http, auth: string): Promise<string> {
+  const hdr = { authorization: auth };
+  const me = await http().get('/v1/me/consent').set(hdr);
+  let deviceId = me.body.deviceId as string | undefined;
+  if (!me.body.canCheckIn) {
+    const dev = await http()
+      .post('/v1/devices')
+      .set(hdr)
+      .send({
+        ownership: 'personal',
+        platform: 'android',
+        installId: `pres-${randomUUID()}`,
+        model: 'Pixel',
+        osVersion: '15',
+        appVersion: '0.1.0',
+        assetTag: null,
+      });
+    if (dev.status !== 201) throw new Error(`device enrol failed: ${JSON.stringify(dev.body)}`);
+    for (const purpose of ['personal_device_enrolment', 'location_checkin'] as const) {
+      const c = await http()
+        .post(`/v1/devices/${dev.body.id}/consents`)
+        .set(hdr)
+        .send({ purpose, granted: true, noticeVersion: '2026-10-v1' });
+      if (c.status !== 201) throw new Error(`consent ${purpose} failed: ${JSON.stringify(c.body)}`);
+    }
+    deviceId = dev.body.id as string;
+  }
+  let pin = await http()
+    .post('/v1/check-ins')
+    .set(hdr)
+    .send(geoCap({ kind: 'punch_in' }));
+  if (pin.status === 422 && pin.body?.error?.code === 'WEEKLY_OFF') {
+    const si = await http()
+      .post('/v1/auth/sign-in/email')
+      .send({
+        email: 'director@demo.ariforce.in',
+        password: process.env.DEMO_PASSWORD ?? 'ariforce-demo-pass',
+      });
+    if (si.status !== 200) throw new Error(`director sign-in failed: ${si.status}`);
+    const director = { authorization: `Bearer ${si.headers['set-auth-token']}` };
+    const settings = await http().get('/v1/leave/settings').set(director);
+    if (settings.status !== 200) throw new Error(JSON.stringify(settings.body));
+    const ymd = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    const dow = new Date(`${ymd}T00:00:00Z`).getUTCDay();
+    const saved = settings.body.weeklyOffDays as number[];
+    const put = (version: number, days: number[]) =>
+      http().put('/v1/leave/settings').set(director).send({
+        approvalLevels: settings.body.approvalLevels,
+        backdateDays: settings.body.backdateDays,
+        maxFutureDays: settings.body.maxFutureDays,
+        version,
+        weeklyOffDays: days,
+      });
+    const opened = await put(
+      settings.body.version,
+      saved.filter((d) => d !== dow),
+    );
+    if (opened.status !== 200) throw new Error(JSON.stringify(opened.body));
+    try {
+      pin = await http()
+        .post('/v1/check-ins')
+        .set(hdr)
+        .send(geoCap({ kind: 'punch_in' }));
+    } finally {
+      const cur = await http().get('/v1/leave/settings').set(director);
+      await put(cur.body.version, saved);
+    }
+  }
+  if (![201, 409].includes(pin.status))
+    throw new Error(`punch_in failed: ${pin.status} ${JSON.stringify(pin.body)}`);
+  if (!deviceId) throw new Error('no deviceId after field ready');
+  return deviceId;
+}
+
+/**
+ * Ensure the outlet has at least one active lock near TEST_GPS. Idempotent.
+ * Doctor labels default to clinic; chem/stockist use retail_shop / godown.
+ */
+export async function ensureOutletLocked(
+  http: Http,
+  auth: string,
+  outletKind: 'doctor' | 'chemist' | 'stockist',
+  outletId: string,
+): Promise<string> {
+  const hdr = { authorization: auth };
+  const listed = await http().get(`/v1/outlets/${outletKind}/${outletId}/locations`).set(hdr);
+  const existing = listed.body.items as { id: string }[] | undefined;
+  if (existing?.length) return existing[0]!.id;
+  const label =
+    outletKind === 'doctor' ? 'clinic' : outletKind === 'chemist' ? 'retail_shop' : 'godown';
+  const lock = await http()
+    .post(`/v1/outlets/${outletKind}/${outletId}/locations`)
+    .set(hdr)
+    .send(geoCap({ label }));
+  if (![200, 201].includes(lock.status))
+    throw new Error(`outlet lock failed: ${lock.status} ${JSON.stringify(lock.body)}`);
+  return lock.body.id as string;
+}
+
+/** Visit check-in at an outlet (after ensureFieldReady + lock). Returns geo_captures id. */
+export async function ensureVisitCheckIn(
+  http: Http,
+  auth: string,
+  outletKind: 'doctor' | 'chemist' | 'stockist',
+  outletId: string,
+): Promise<string> {
+  const hdr = { authorization: auth };
+  await ensureOutletLocked(http, auth, outletKind, outletId);
+  const visit = await http()
+    .post('/v1/check-ins')
+    .set(hdr)
+    .send(geoCap({ kind: 'visit', outletKind, outletId }));
+  if (![200, 201].includes(visit.status))
+    throw new Error(`visit check-in failed: ${visit.status} ${JSON.stringify(visit.body)}`);
+  return visit.body.id as string;
+}
 
 /** First visible product; imports a division + product as the director when the seed has none. */
 export async function ensureProduct(http: Http, bm: string, director: string): Promise<string> {

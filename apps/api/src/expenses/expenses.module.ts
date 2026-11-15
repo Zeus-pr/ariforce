@@ -6,11 +6,12 @@ import {
   ExpenseClaimsController,
   ExpenseReportsController,
 } from './expenses.controller';
+import { ExpenseAutoDraftService } from './auto-draft.service';
 import { ExpensesService } from './expenses.service';
 
 @Module({
   imports: [PlansModule, FilesModule],
   controllers: [ExpenseClaimsController, ExpenseAttachmentsController, ExpenseReportsController],
-  providers: [ExpensesService],
+  providers: [ExpensesService, ExpenseAutoDraftService],
 })
 export class ExpensesModule {}

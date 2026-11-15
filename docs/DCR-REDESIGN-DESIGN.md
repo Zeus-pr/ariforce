@@ -123,3 +123,59 @@ snapshot, so TA/DA always come from the same route):
 `packages/db/scripts/data-fixes/2026-10-28-sfc-category-normalise.sql`: dry run by default, `-v apply=1`
 to write. `EX`, `EX HQ` -> `ex`; `HQ` -> `hq`; `OS`, `OUT EX HQ` -> `os`. `EX / OS` and `MEETING` are
 kept as is and listed. Re-runnable.
+
+## Meeting sub-types, DCR expenses, end time and places (contract 2026-11-03; server: meeting/time rules done, expenses pending)
+
+- Meeting sub-type = `details.title`, one of "Cycle Meeting" / "Review Meeting" on write (DCR
+  and TP); anything else is 422 MEETING_TYPE_INVALID. Before this, title was free text. Old rows
+  are never rewritten destructively: the data fix
+  `packages/db/scripts/data-fixes/2026-11-04-meeting-title-normalise.sql` (dry-run default) only
+  rewrites titles that clearly say "cycle" or "review" to the exact label (old text kept in the
+  audit/notes); everything else displays its legacy title. Reads tolerate legacy values.
+- Meeting, training and admin work (office) get `endTime`; the server derives `durationMin`
+  (end - start, same day, 1-720). end <= start -> 422 END_TIME_NOT_AFTER_START, more than 12 h -> 422 DURATION_TOO_LONG.
+  Admin work: startTime becomes required whenever endTime is sent. Older clients
+  that send only `durationMin` keep working until endTime becomes required.
+- Meeting and admin work get optional `fromPlace` / `toPlace` (no TA/DA rule reads them yet, so
+  nothing justifies making them mandatory). Training: no places.
+- Any work type can carry `expenses[]` (travel, hotel, food, other). At submit they are copied
+  into the month claim as `origin: dcr` lines (`dcrId`), replacing all of that DCR's
+  earlier dcr lines, so a resubmit never duplicates. Same rules as the TA/DA auto-draft: only a
+  draft/rejected claim is written (created if missing); a submitted/approved/paid claim is left
+  alone (`dcrExpenses.status skipped, reason claim_locked`), the DCR keeps the items and the user
+  adds them after the claim reopens. Claims are one per user per month, so a second draft claim
+  is not possible without a schema change. A DCR rejection removes its dcr lines from an
+  editable claim and flags them (dcr_rejected_at) on a decided one, as for TA/DA.
+- New fields live in `dcrs.details` (jsonb) and need no migration; expenses need a table.
+
+### Server rules (apps/api/src/dcr/details-rules.ts)
+
+Run on every write: DCR draft PUT, DCR submit (so an old draft with a free-text meeting title is
+refused with MEETING_TYPE_INVALID), TP item upsert and TP submit. Never on reads. With endTime the
+server stores durationMin = end - start and ignores the sent value; without endTime durationMin is
+still required (older clients). Training drops fromPlace/toPlace silently (zod strip). The new keys
+live in the details jsonb, so DCR detail, DCR list (also the manager's dcr:review list) and
+GET /v1/tour-plans/items/{id} (what TP approvers read) return them unchanged.
+
+### Server rules: DCR expenses (feat/dcr-expenses)
+
+- Storage: `dcrs.expenses` jsonb array (0055). Draft PUT replaces it when `expenses` is sent
+  (even `[]`) and keeps it when omitted; the submit body's `expenses` replace it, else the saved
+  list is submitted. Unknown item keys (`id`, `receiptRef`) are stripped (schemas stay non-strict).
+- Categories: travel/hotel/food/other; allowance or mileage -> 422 `DCR_EXPENSE_CATEGORY_INVALID`
+  (`details.index`, `details.allowed`). DAY_LOCKED / DCR_DATE_NOT_TODAY apply as before.
+- Link on submit (`ExpenseAutoDraftService.linkDcrExpenses`, savepoint, never fails the submit):
+  month claim created if missing; claim submitted/approved/paid/soft-deleted -> `dcrExpenses =
+{status:'skipped', reason:'claim_locked'}` and nothing changes; otherwise the DCR's live
+  origin='dcr' lines are replaced by one line per item (`source='auto'`, `autoTrigger='dcr_submit'`,
+  `origin='dcr'`, `dcrId`, `dcr_item_index`), total recomputed, audit `expense.dcr_linked`. Unique
+  index `expense_lines_dcr_item_uq` (0056) guards duplicates. Runs whatever the company's auto
+  TA/DA setting is. No items and no claim -> `skipped/no_expenses`, no claim created.
+- Response: `dcrExpenses`, plus `expenseClaimId`/`expenseTotal`/`expenseCount`, which the DCR
+  detail and list also return (one grouped query over live origin-dcr lines; null/0/0 when none).
+- Claim lines with origin='dcr' cannot be edited or deleted through the claim: 409
+  `EXPENSE_NOT_EDITABLE` with `details.reason='DCR_LINE'` (change the DCR and resubmit). Receipts
+  can be attached. Lines go through the normal two-level claim approval and show `origin` on the
+  claim detail.
+- DCR rejection: unchanged `rejectionPlan` (source='auto' lines): removed from an editable
+  (draft/rejected) claim, flagged on a locked one.

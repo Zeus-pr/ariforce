@@ -26,16 +26,41 @@ import { CLIENT_IP_HEADER } from '../common/client-ip';
 import type { MailService } from '../mail/mail.service';
 
 export const AUTH_BASE_PATH = '/v1/auth';
-/**
- * Session lifetime in seconds (cookie Max-Age and auth_session.expires_at; the mobile bearer token
- * is the same row). Hard cap: updateAge = expiresIn, so use never extends a session; sign in again
- * after SESSION_MAX_AGE_SECONDS (default 18 h) even while active.
- */
+/** Web (browser cookie) hard cap from sign-in. Also sets cookie Max-Age. Default 18 h. */
 export const SESSION_MAX_AGE_DEFAULT_S = 18 * 60 * 60;
+/** Mobile (Expo / bearer) hard cap from sign-in. Default 90 days — no 18 h forced re-login. */
+export const MOBILE_SESSION_MAX_AGE_DEFAULT_S = 90 * 24 * 60 * 60;
+export const CLIENT_HEADER = 'x-ariforce-client';
+
 export const sessionMaxAgeSeconds = (env: NodeJS.ProcessEnv = process.env) => {
   const n = Number(env.SESSION_MAX_AGE_SECONDS);
   return Number.isInteger(n) && n >= 300 && n <= 30 * 24 * 60 * 60 ? n : SESSION_MAX_AGE_DEFAULT_S;
 };
+export const mobileSessionMaxAgeSeconds = (env: NodeJS.ProcessEnv = process.env) => {
+  const n = Number(env.MOBILE_SESSION_MAX_AGE_SECONDS);
+  return Number.isInteger(n) && n >= 300 && n <= 365 * 24 * 60 * 60
+    ? n
+    : MOBILE_SESSION_MAX_AGE_DEFAULT_S;
+};
+
+/** Mobile app sends `x-ariforce-client: mobile`; Expo/RN UAs often include Expo or okhttp. */
+export function isMobileAuthClient(
+  userAgent: string | null | undefined,
+  clientHeader?: string | null,
+) {
+  if ((clientHeader ?? '').trim().toLowerCase() === 'mobile') return true;
+  const ua = userAgent ?? '';
+  return /\bExpo\b/i.test(ua) || /\bokhttp\b/i.test(ua);
+}
+
+function headerGet(
+  ctx: { headers?: Headers; request?: { headers?: Headers } } | null | undefined,
+  name: string,
+) {
+  const h = ctx?.headers ?? ctx?.request?.headers;
+  if (!h || typeof h.get !== 'function') return null;
+  return h.get(name);
+}
 /**
  * Session cookie attributes: HttpOnly, Path=/, Secure on https (better-auth defaults). SameSite from
  * AUTH_COOKIE_SAMESITE (lax default; none = cross-site web/API hosts, always Secure). AUTH_COOKIE_DOMAIN
@@ -100,7 +125,9 @@ export function createAuth(db: Db, audit: AuditService, mail?: MailService) {
       // Forgot password (email OTP) signs out every device (#79).
       revokeSessionsOnPasswordReset: true,
     },
-    // Hard cap, no sliding (updateAge = expiresIn). No cookieCache: revocation stays immediate.
+    // Web cookie Max-Age = expiresIn (18 h). updateAge = expiresIn → no sliding for anyone.
+    // Mobile bearer rows get a longer expiresAt in session.create.before (see isMobileAuthClient).
+    // No cookieCache: revocation stays immediate.
     session: { expiresIn: sessionMaxAgeSeconds(), updateAge: sessionMaxAgeSeconds() },
     plugins: [
       bearer(),
@@ -149,7 +176,7 @@ export function createAuth(db: Db, audit: AuditService, mail?: MailService) {
       session: {
         create: {
           // Runs after the password check: pending/rejected sign-ups get a clear state, no session.
-          before: async (session) => {
+          before: async (session, ctx) => {
             const r = await db.execute<{ s: string | null }>(
               sql`select auth_account_status(${session.userId}) as s`,
             );
@@ -185,6 +212,15 @@ export function createAuth(db: Db, audit: AuditService, mail?: MailService) {
                   code: AUTH_STATE_CODES.retired,
                   message: 'Your role is no longer in use; contact your administrator',
                 });
+            }
+            // Web keeps the 18 h row; mobile bearer gets a longer hard cap (still revoked on
+            // password reset / deactivate / role change).
+            if (isMobileAuthClient(session.userAgent, headerGet(ctx, CLIENT_HEADER))) {
+              return {
+                data: {
+                  expiresAt: new Date(Date.now() + mobileSessionMaxAgeSeconds() * 1000),
+                },
+              };
             }
           },
           after: async (session, ctx) => {

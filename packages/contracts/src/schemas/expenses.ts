@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { UserRef, DateOnly, Id, Month, Timestamp } from './common';
+import { RoleKey } from './roles';
 
 /** Expense claims (#52): one claim per user per month, lines with receipts in R2. */
 /** `allowance` = daily allowance (DA), usually drafted by TA/DA auto-calc (#39). */
@@ -9,6 +10,10 @@ export const EXPENSE_CATEGORIES = [
   'food',
   'mileage',
   'allowance',
+  'courier',
+  'mobile',
+  'team_meeting',
+  'additional_ta_da',
   'other',
 ] as const;
 export const ExpenseCategory = z.enum(EXPENSE_CATEGORIES).meta({ id: 'ExpenseCategory' });
@@ -91,6 +96,10 @@ export const ExpenseLine = z
     source: z.enum(['manual', 'auto']).meta({
       description:
         'auto = drafted by TA/DA (#39) and replaced on re-run; editing or attaching a receipt makes it manual',
+    }),
+    origin: z.enum(['manual', 'ta_da', 'dcr']).optional().meta({
+      description:
+        "Where the line came from: manual, ta_da (TA/DA auto-draft), dcr (an expense item on the day's DCR; show 'from DCR', dcrId is that DCR). Absent from older APIs: derive from source. dcr lines have source auto and are never touched by a TA/DA re-run",
     }),
     allowancePlaceId: Id.nullable().meta({ description: 'Fare-chart place used for TA (#39)' }),
     autoTrigger: z.enum(['allowances_run', 'dcr_submit']).nullable().default(null).meta({
@@ -182,6 +191,9 @@ export const ExpenseClaim = z
     }),
     canPay: z.boolean().meta({ description: 'The caller may mark it paid now (POST /pay)' }),
     paidBy: UserRef.nullable().meta({ description: 'Who marked it paid; null unless paid' }),
+    userRole: RoleKey.nullable().optional().meta({
+      description: "Claim owner's most senior role key",
+    }),
   })
   .meta({ id: 'ExpenseClaim' });
 export type ExpenseClaim = z.infer<typeof ExpenseClaim>;
@@ -190,13 +202,33 @@ export const ExpenseClaimSummary = ExpenseClaim.omit({ lines: true })
   .extend({ lineCount: z.int() })
   .meta({ id: 'ExpenseClaimSummary' });
 export const ExpenseClaimList = z
-  .object({ items: z.array(ExpenseClaimSummary) })
+  .object({
+    items: z.array(ExpenseClaimSummary),
+    limit: z.int().optional().meta({ description: 'Paged reads only (limit or cursor sent)' }),
+    total: z.int().min(0).optional().meta({
+      description: 'Paged reads only: claims matching the filters (all pages)',
+    }),
+    nextCursor: z.string().nullable().optional().meta({
+      description: 'Paged reads only: pass as cursor for the next page; null on the last page',
+    }),
+  })
   .meta({ id: 'ExpenseClaimList' });
-export const ExpenseClaimListQuery = z.object({
-  month: Month.optional(),
-  userId: Id.optional(),
-  status: ExpenseStatus.optional(),
-});
+export const ExpenseClaimListQuery = z
+  .object({
+    month: Month.optional(),
+    userId: Id.optional(),
+    status: ExpenseStatus.optional(),
+    scope: z.enum(['team']).optional().meta({
+      description:
+        'team: every claim of your reporting subtree in any status, drafts included (Director: the whole company). Needs expenses:approve (else 403). Combine with userId/status/month and limit/cursor',
+    }),
+    limit: z.coerce.number().int().min(1).max(200).optional().meta({
+      description:
+        'Opt-in paging (default 50 once cursor is sent). Without limit and cursor every readable claim is returned, as before',
+    }),
+    cursor: z.string().max(200).optional().meta({ description: 'Opaque cursor from `nextCursor`' }),
+  })
+  .meta({ id: 'ExpenseClaimListQuery' });
 export const ExpenseClaimCreate = z
   .object({ month: Month })
   .meta({ id: 'ExpenseClaimCreate', description: 'Creates (or returns) your claim for the month' });

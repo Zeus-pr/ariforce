@@ -18,7 +18,7 @@ const base = {
   name: 'Self Signup',
   email: 'self.signup@example.com',
   phone: null,
-  password: 'long-enough-pass',
+  password: 'Good-Pass-12a',
   requestedRole: 'business_manager',
   territoryId: null,
   managerId: null,

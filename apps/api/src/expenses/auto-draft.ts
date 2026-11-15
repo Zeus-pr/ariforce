@@ -76,3 +76,13 @@ export function rejectionPlan(
   const flag = lines.filter((l) => !l.flagged && !remove.includes(l.id)).map((l) => l.id);
   return { editable, remove, flag };
 }
+
+/**
+ * How a DCR submit may write that day's lines.
+ * draft/rejected: the claim is editable.
+ * submitted/approved/paid: locked. A resubmitted DCR waits until the claim is rejected.
+ */
+export function claimWriteMode(claimStatus: string, _flaggedDcrLines: number): 'edit' | 'locked' {
+  if (claimEditable(claimStatus)) return 'edit';
+  return 'locked';
+}

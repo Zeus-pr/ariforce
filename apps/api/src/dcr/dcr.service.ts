@@ -9,11 +9,14 @@ import {
 } from '@ariforce/contracts';
 import {
   chemists,
+  consentRecords,
   dcrCallProducts,
   dcrCallRcpa,
   dcrCalls,
   dcrs,
   dcrSfcRoutes,
+  devices,
+  expenseLines,
   doctors,
   geoCaptures,
   products,
@@ -21,6 +24,7 @@ import {
   territories,
   tourPlans,
   users,
+  isCampWorkType,
   workTypes,
   type Tx,
 } from '@ariforce/db';
@@ -32,15 +36,24 @@ import { dayStates, loadSubs } from '../plans/tp-submissions';
 import { SUBMITTED_STATUSES, dayReport, isDaySubmittedViolation } from './day-report';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
-import { CheckInsService, err } from '../field/checkins.service';
-import { companySettings, type CompanySettings } from '../field/field.util';
+import { CheckInsService, capDate, err } from '../field/checkins.service';
+import { companySettings, localDate, type CompanySettings } from '../field/field.util';
+import { OutletLocationsService } from '../field/outlet-locations.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { ApprovalsService } from '../plans/approvals.service';
 import { autoApproveAudit, isDirector, systemPrincipal } from '../plans/auto-approve';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ExceptionRecheck } from '../jobs/exception-recheck';
-import { approvedLeaveDays, assertNotOnLeave, lockDcrLeave } from '../leave/leave.util';
-import { DCR_LOCK_TZ, doctorPob, missingPresentation, pobValue } from './dcr-rules';
+import { leaveBlocksWork, lockDcrLeave } from '../leave/leave.util';
+import {
+  DCR_LOCK_TZ,
+  doctorPob,
+  foreignDayCheckInIds,
+  missingCheckIns,
+  missingPresentation,
+  pobValue,
+  presentationRequired,
+} from './dcr-rules';
 
 type Upsert = z.infer<typeof DcrUpsert>;
 type DcrRow = typeof dcrs.$inferSelect;
@@ -125,6 +138,7 @@ export class DcrService {
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
     private readonly checkIns: CheckInsService,
+    private readonly outlets: OutletLocationsService,
     private readonly approvals: ApprovalsService,
     private readonly notifications: NotificationsService,
     private readonly recheck: ExceptionRecheck,
@@ -268,8 +282,30 @@ export class DcrService {
       .from(dcrSfcRoutes)
       .where(and(inArray(dcrSfcRoutes.dcrId, ids), isNull(dcrSfcRoutes.deletedAt)))
       .orderBy(asc(dcrSfcRoutes.createdAt), asc(dcrSfcRoutes.id));
+    // Expense link read fields: one grouped query over the live origin-dcr lines (no N+1).
+    const exp = new Map(
+      (
+        await tx
+          .select({
+            dcrId: expenseLines.dcrId,
+            claimId: sql<string>`(array_agg(${expenseLines.claimId}))[1]`,
+            total: sql<string>`coalesce(sum(${expenseLines.amount}), 0)`,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(expenseLines)
+          .where(
+            and(
+              inArray(expenseLines.dcrId, ids),
+              eq(expenseLines.origin, 'dcr'),
+              isNull(expenseLines.deletedAt),
+            ),
+          )
+          .groupBy(expenseLines.dcrId)
+      ).map((x) => [x.dcrId, x]),
+    );
     const out: Dcr[] = [];
     for (const r of rows) {
+      const e = exp.get(r.id);
       const li = lockInfo.get(`${r.userId}:${r.date}`)!;
       out.push({
         id: r.id,
@@ -311,9 +347,13 @@ export class DcrService {
         unlockedUntil: li.unlockedUntil?.toISOString() ?? null,
         band: r.band,
         details: (r.details as Dcr['details']) ?? null,
+        expenses: (r.expenses as Dcr['expenses']) ?? [],
+        expenseClaimId: e?.claimId ?? null,
+        expenseTotal: e ? Number(e.total) : 0,
+        expenseCount: e?.count ?? 0,
         workWithUserIds: r.workWithUserIds,
         sfcRoutes: routes
-          .filter((x) => x.dcrId === r.id)
+          .filter((x) => x.dcrId === r.id && (x.sectionIndex ?? 0) === 0)
           .map((x) => ({
             hqTerritoryId: x.hqTerritoryId,
             sfcRouteId: x.sfcRouteId,
@@ -357,9 +397,19 @@ export class DcrService {
                 })),
               remarks: c.remarks,
               presentationOpenedAt: c.presentationOpenedAt?.toISOString() ?? null,
+              presentationLocationId: c.presentationLocationId ?? null,
+              presentationDistanceM: c.presentationDistanceM ?? null,
+              presentationAccuracyM: c.presentationAccuracyM ?? null,
               calledAt: (c.calledAt ?? c.createdAt).toISOString(),
             };
           }),
+        sections: daySections(
+          r,
+          calls.filter((c) => c.dcrId === r.id),
+          lines,
+          rcpa,
+          routes.filter((x) => x.dcrId === r.id),
+        ),
       });
     }
     return out;
@@ -462,7 +512,13 @@ export class DcrService {
     return { tourPlanId: tp.id, entries };
   }
 
-  async validateCalls(tx: Tx, p: Principal, b: Pick<Upsert, 'calls'>, dcrId: string | undefined) {
+  async validateCalls(
+    tx: Tx,
+    p: Principal,
+    b: Pick<Upsert, 'calls'>,
+    dcrId: string | undefined,
+    date: string,
+  ) {
     const bad: Record<string, string[]> = {};
     const scope = this.tenant.scope(p, territories.path);
     for (const kind of ['doctor', 'chemist', 'stockist'] as const) {
@@ -512,9 +568,9 @@ export class DcrService {
       const inactive = found.filter((f) => !f.active && orderIds.has(f.id)).map((f) => f.id);
       if (inactive.length) bad.inactiveProductIds = inactive;
     }
-    // POB on chemist/stockist calls only; RCPA on chemist calls only; no duplicate lines in a call.
+    // POB on chemist calls only; RCPA on chemist calls only; no duplicate lines in a call.
     const docPob = doctorPob(b.calls);
-    if (docPob) throw err(422, 'VALIDATION', 'POB is not allowed on doctor calls', docPob);
+    if (docPob) throw err(422, 'VALIDATION', 'POB is only allowed on a chemist visit', docPob);
     const rcpaOutlet = b.calls.filter((c) => c.rcpa.length && c.outletKind !== 'chemist');
     if (rcpaOutlet.length) bad.rcpaOutletCallIds = rcpaOutlet.map((c) => c.clientId);
     const dup = (keys: string[]) => new Set(keys).size !== keys.length;
@@ -572,6 +628,13 @@ export class DcrService {
         );
       });
       if (wrong.length) bad.checkInIds = wrong.map((c) => c.checkInId!);
+      const tz = (await companySettings(tx, p)).timezone;
+      const otherDay = foreignDayCheckInIds(
+        date,
+        ci.map((c) => ({ checkInId: c.checkInId })),
+        caps.map((g) => ({ id: g.id, day: localDate(g.capturedAt, tz) })),
+      );
+      if (otherDay.length) bad.checkInIds = [...new Set([...(bad.checkInIds ?? []), ...otherDay])];
       // Multi-draft (0045): a check-in counts as used only by a live submitted report; other
       // drafts of the day are alternatives and may reuse it.
       const used = await tx
@@ -608,6 +671,12 @@ export class DcrService {
         clientIds: foreign.map((f) => f.id),
       });
     return { pts };
+  }
+
+  /** Submit rule: every field call needs a linked visit check-in. */
+  assertCheckIns(calls: Parameters<typeof missingCheckIns>[0]) {
+    const miss = missingCheckIns(calls);
+    if (miss) throw err(422, 'VALIDATION', 'Check in at every call outlet before submitting', miss);
   }
 
   /** Submit rule: doctor calls with products detailed need presentationOpenedAt. */
@@ -659,13 +728,17 @@ export class DcrService {
       if (!wt) throw err(422, 'VALIDATION', 'Unknown work type', { workTypeId: b.workTypeId });
       // Legacy submit: serialise with leave approval before the approved-leave check.
       if (b.submit) await lockDcrLeave(tx, p.userId);
-      if (wt.kind === 'field' || wt.kind === 'non_field')
-        assertNotOnLeave(await approvedLeaveDays(tx, [p.userId], b.date, b.date), [
-          { date: b.date, session: 'full', kind: wt.kind },
-        ]);
+      if (
+        (wt.kind === 'field' || wt.kind === 'non_field') &&
+        (await leaveBlocksWork(tx, p.userId, b.date))
+      )
+        throw err(422, 'LEAVE_DAY_BLOCKED', 'Leave covers this day, so this report stays closed');
       const field = wt.kind === 'field';
+      const camp = isCampWorkType(wt.code);
+      if (camp && b.calls.length)
+        throw err(422, 'VALIDATION', 'Camp does not take doctor, chemist or stockist calls');
       if (!field && b.calls.length) throw err(422, 'VALIDATION', 'Calls need a field work type');
-      if (field && b.submit && !b.calls.length)
+      if (field && !camp && b.submit && !b.calls.length)
         throw err(422, 'VALIDATION', 'Field work needs at least one call');
       if (b.territoryIds.length) {
         const found = await tx
@@ -686,8 +759,11 @@ export class DcrService {
       // TP feature: changes from the approved tour plan no longer need a deviation reason
       // (deviationReason stays optional and is stored as given).
 
-      const { pts } = await this.validateCalls(tx, p, b, cur?.id);
-      if (b.submit) this.assertPresentations(b.calls);
+      const { pts } = await this.validateCalls(tx, p, b, cur?.id, b.date);
+      if (b.submit) {
+        this.assertCheckIns(b.calls);
+        if (presentationRequired(p.roles)) this.assertPresentations(b.calls);
+      }
 
       const vals = {
         workTypeId: b.workTypeId,
@@ -757,7 +833,7 @@ export class DcrService {
     p: Principal,
     dcrId: string,
     date: string,
-    calls: Upsert['calls'],
+    calls: (Upsert['calls'][number] & { sectionIndex?: number })[],
     pts: Map<string, string | null>,
   ) {
     const now = new Date();
@@ -772,17 +848,198 @@ export class DcrService {
           keep.length ? notInArray(dcrCalls.id, keep) : sql`true`,
         ),
       );
+    const s = await companySettings(tx, p);
+    const existing = keep.length
+      ? await tx
+          .select({
+            id: dcrCalls.id,
+            presentationOpenedAt: dcrCalls.presentationOpenedAt,
+            presentationLocationId: dcrCalls.presentationLocationId,
+            presentationDistanceM: dcrCalls.presentationDistanceM,
+            presentationAccuracyM: dcrCalls.presentationAccuracyM,
+            geoCaptureId: dcrCalls.geoCaptureId,
+          })
+          .from(dcrCalls)
+          .where(and(inArray(dcrCalls.id, keep), isNull(dcrCalls.deletedAt)))
+      : [];
+    const priorCalls = new Map(existing.map((r) => [r.id, r]));
+
+    // Batch-load locks only for calls newly opening Presentation.
+    const opening = calls.filter((c) => {
+      const was = priorCalls.get(c.clientId);
+      return !!c.presentationCapture || (!!c.presentationOpenedAt && !was?.presentationOpenedAt);
+    });
+    const locks = await this.outlets.loadActive(
+      tx,
+      opening.map((c) => ({ outletKind: c.outletKind, outletId: c.outletId })),
+    );
+    const locksByOutlet = new Map<string, typeof locks>();
+    for (const loc of locks) {
+      const k = `${loc.outletKind}:${loc.outletId}`;
+      const arr = locksByOutlet.get(k) ?? [];
+      arr.push(loc);
+      locksByOutlet.set(k, arr);
+    }
+
     for (const c of calls) {
       // calledAt is server time when the call (clientId) is first saved; re-saves keep it and any
       // client value is ignored (Sharanya, 2026-10-29).
+      const was = priorCalls.get(c.clientId);
+      let geoCaptureId = c.checkInId ?? was?.geoCaptureId ?? null;
+      let presentationOpenedAt: Date | null = c.presentationOpenedAt
+        ? new Date(c.presentationOpenedAt)
+        : null;
+      let presentationLocationId: string | null = was?.presentationLocationId ?? null;
+      let presentationDistanceM: number | null = was?.presentationDistanceM ?? null;
+      let presentationAccuracyM: number | null = was?.presentationAccuracyM ?? null;
+
+      const openingNow =
+        !!c.presentationCapture || (!!presentationOpenedAt && !was?.presentationOpenedAt);
+
+      if (!presentationOpenedAt) {
+        presentationLocationId = null;
+        presentationDistanceM = null;
+        presentationAccuracyM = null;
+      } else if (openingNow) {
+        // Per-call visit check-in first; Presentation is a second step on that visit.
+        if (!geoCaptureId)
+          throw err(
+            422,
+            'CALL_NOT_CHECKED_IN',
+            'Check in at this outlet before opening Presentation',
+            { outletKind: c.outletKind, outletId: c.outletId },
+          );
+        if (!c.presentationCapture)
+          throw err(
+            422,
+            'PRESENTATION_CAPTURE_REQUIRED',
+            'presentationCapture is required when opening Presentation',
+          );
+        const cap = c.presentationCapture;
+        const dayLocs = locksByOutlet.get(`${c.outletKind}:${c.outletId}`) ?? [];
+        if (!dayLocs.length)
+          throw err(422, 'OUTLET_NOT_LOCKED', 'Lock this outlet location before Presentation', {
+            outletKind: c.outletKind,
+            outletId: c.outletId,
+          });
+
+        const day = localDate(new Date(cap.capturedAt), s.timezone);
+        const punched = await tx
+          .select({ id: geoCaptures.id })
+          .from(geoCaptures)
+          .where(
+            and(
+              eq(geoCaptures.userId, p.userId),
+              eq(geoCaptures.kind, 'punch_in'),
+              sql`${capDate(s.timezone)} = ${day}::date`,
+            ),
+          )
+          .limit(1);
+        if (!punched.length)
+          throw err(422, 'NOT_PUNCHED_IN', 'Punch in before opening Presentation');
+
+        if (cap.isMock && s.blockMockLocation)
+          throw err(422, 'MOCK_LOCATION', 'Mock location is not allowed');
+        if (cap.accuracyM > s.maxAccuracyM)
+          throw err(
+            422,
+            'LOW_ACCURACY',
+            `GPS accuracy ${cap.accuracyM} m exceeds ${s.maxAccuracyM} m`,
+            { maxAccuracyM: s.maxAccuracyM },
+          );
+
+        const hit = this.outlets.nearest(dayLocs, cap.location, cap.locationId);
+        if (!hit)
+          throw err(
+            422,
+            'LOCATION_NOT_FOUND',
+            'presentationCapture.locationId is not an active lock',
+          );
+        if (hit.distanceM > s.presentationRadiusM)
+          throw err(
+            422,
+            'PRESENTATION_OUT_OF_FENCE',
+            `You are ${hit.distanceM} m from the outlet (limit ${s.presentationRadiusM} m)`,
+            { distanceM: hit.distanceM, radiusM: s.presentationRadiusM, locationId: hit.loc.id },
+          );
+
+        const active = await tx
+          .select({ id: devices.id })
+          .from(devices)
+          .where(and(eq(devices.userId, p.userId), eq(devices.status, 'active')));
+        const deviceId = cap.deviceId ?? (active.length === 1 ? active[0]!.id : undefined);
+        if (!deviceId || !active.some((d) => d.id === deviceId))
+          throw err(412, 'DEVICE_NOT_ACTIVE', 'Enrol this device before Presentation');
+        const [consent] = await tx
+          .select({ granted: consentRecords.granted })
+          .from(consentRecords)
+          .where(
+            and(
+              eq(consentRecords.userId, p.userId),
+              eq(consentRecords.purpose, 'location_checkin'),
+            ),
+          )
+          .orderBy(desc(consentRecords.at), desc(consentRecords.id))
+          .limit(1);
+        if (!consent?.granted)
+          throw err(412, 'CONSENT_REQUIRED', 'Location check-in consent not granted');
+
+        const t = OUTLETS[c.outletKind];
+        const [o] = await tx
+          .select({ territoryId: t.territoryId })
+          .from(t)
+          .where(eq(t.id, c.outletId));
+
+        const [prevCap] = await tx
+          .select()
+          .from(geoCaptures)
+          .where(eq(geoCaptures.id, cap.clientId));
+        if (prevCap) {
+          if (prevCap.userId !== p.userId || prevCap.kind !== 'visit')
+            throw err(
+              409,
+              'IDEMPOTENCY_CONFLICT',
+              'clientId already used for a different check-in',
+            );
+          geoCaptureId = prevCap.id;
+        } else {
+          await tx.insert(geoCaptures).values({
+            id: cap.clientId,
+            companyId: p.companyId,
+            userId: p.userId,
+            deviceId,
+            kind: 'visit',
+            location: { x: cap.location.lng, y: cap.location.lat },
+            accuracyM: cap.accuracyM,
+            source: 'gps',
+            isMock: cap.isMock ?? false,
+            entityType: c.outletKind,
+            entityId: c.outletId,
+            distanceM: hit.distanceM,
+            territoryId: o?.territoryId ?? null,
+            capturedAt: new Date(cap.capturedAt),
+          });
+          geoCaptureId = cap.clientId;
+        }
+
+        presentationOpenedAt = presentationOpenedAt ?? new Date(cap.capturedAt);
+        presentationLocationId = hit.loc.id;
+        presentationDistanceM = hit.distanceM;
+        presentationAccuracyM = cap.accuracyM;
+      }
+
       const v = {
         outletKind: c.outletKind,
         outletId: c.outletId,
-        geoCaptureId: c.checkInId ?? null,
+        geoCaptureId,
         jointWorkUserId: c.jointWorkUserIds[0] ?? null,
         jointWorkUserIds: c.jointWorkUserIds,
         remarks: c.remarks ?? null,
-        presentationOpenedAt: c.presentationOpenedAt ? new Date(c.presentationOpenedAt) : null,
+        presentationOpenedAt,
+        presentationLocationId,
+        presentationDistanceM,
+        presentationAccuracyM,
+        sectionIndex: c.sectionIndex ?? 0,
       };
       await tx
         .insert(dcrCalls)
@@ -948,4 +1205,94 @@ export class DcrService {
       return this.approvals.byId(tx, id);
     });
   }
+}
+
+type StoredSection = {
+  workTypeId?: string;
+  territoryIds?: string[];
+  workWithUserIds?: string[];
+  band?: Dcr['band'];
+  details?: Dcr['details'];
+};
+
+function daySections(
+  r: {
+    workTypeId: string;
+    band: Dcr['band'];
+    territoryIds: string[];
+    territoryId: string | null;
+    workWithUserIds: string[];
+    details: unknown;
+    sections: unknown;
+  },
+  dayCalls: (typeof dcrCalls.$inferSelect)[],
+  lines: (typeof dcrCallProducts.$inferSelect)[],
+  rcpa: (typeof dcrCallRcpa.$inferSelect)[],
+  dayRoutes: (typeof dcrSfcRoutes.$inferSelect)[],
+): NonNullable<Dcr['sections']> {
+  const meta = Array.isArray(r.sections) ? (r.sections as StoredSection[]) : [];
+  const indexes = new Set<number>([0]);
+  for (const c of dayCalls) indexes.add(c.sectionIndex ?? 0);
+  for (const route of dayRoutes) indexes.add(route.sectionIndex ?? 0);
+  const last = Math.max(meta.length - 1, ...indexes);
+  const territories = r.territoryIds.length ? r.territoryIds : r.territoryId ? [r.territoryId] : [];
+  const callOf = (c: (typeof dayCalls)[number]): DcrCall => {
+    const l = lines.filter((x) => x.callId === c.id);
+    return {
+      id: c.id,
+      outletKind: c.outletKind,
+      outletId: c.outletId,
+      checkInId: c.geoCaptureId,
+      jointWorkUserIds: c.jointWorkUserIds,
+      productsDetailed: l
+        .filter((x) => x.kind === 'detailed')
+        .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
+        .map((x) => ({ productId: x.productId, order: x.seq ?? 1 })),
+      samples: l
+        .filter((x) => x.kind === 'sample')
+        .map((x) => ({ productId: x.productId, quantity: x.quantity ?? 0 })),
+      pob: l
+        .filter((x) => x.kind === 'pob')
+        .map((x) => ({
+          productId: x.productId,
+          quantity: x.quantity ?? 0,
+          stockistId: x.stockistId,
+          value: x.value === null ? null : Number(x.value),
+        })),
+      rcpa: rcpa
+        .filter((x) => x.callId === c.id)
+        .map((x) => ({
+          productId: x.productId,
+          competitorBrand: x.competitorBrand,
+          competitorCompany: x.competitorCompany,
+          quantity: x.quantity,
+          prescriptions: x.prescriptions,
+          doctorId: x.doctorId,
+        })),
+      remarks: c.remarks,
+      presentationOpenedAt: c.presentationOpenedAt?.toISOString() ?? null,
+      presentationLocationId: c.presentationLocationId ?? null,
+      presentationDistanceM: c.presentationDistanceM ?? null,
+      presentationAccuracyM: c.presentationAccuracyM ?? null,
+      calledAt: (c.calledAt ?? c.createdAt).toISOString(),
+    };
+  };
+  return Array.from({ length: last + 1 }, (_, i) => {
+    const m = meta[i];
+    return {
+      workTypeId: m?.workTypeId ?? r.workTypeId,
+      band: m?.band ?? (i === 0 ? r.band : null),
+      territoryIds: m?.territoryIds ?? (i === 0 ? territories : []),
+      workWithUserIds: m?.workWithUserIds ?? (i === 0 ? r.workWithUserIds : []),
+      details: (m?.details ?? (i === 0 ? r.details : null)) as Dcr['details'],
+      sfcRoutes: dayRoutes
+        .filter((x) => (x.sectionIndex ?? 0) === i)
+        .map((x) => ({
+          hqTerritoryId: x.hqTerritoryId,
+          sfcRouteId: x.sfcRouteId,
+          snapshot: (x.snapshot as Dcr['sfcRoutes'][number]['snapshot']) ?? null,
+        })),
+      calls: dayCalls.filter((c) => (c.sectionIndex ?? 0) === i).map(callOf),
+    };
+  });
 }

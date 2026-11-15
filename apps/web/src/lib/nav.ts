@@ -1,6 +1,8 @@
 import { DEFAULT_ROLE_PERMISSIONS } from '@ariforce/contracts';
 import type { LucideIcon } from 'lucide-react';
 import {
+  CheckCheck,
+  ScrollText,
   UserCog,
   UserPlus,
   CalendarRange,
@@ -15,11 +17,13 @@ import {
   CircleAlert,
   ClipboardList,
   LayoutDashboard,
-  MapPin,
   ReceiptText,
   CalendarOff,
+  CalendarDays,
   Tags,
   Route,
+  Megaphone,
+  Map,
 } from 'lucide-react';
 
 import { seesExpenses } from './expenses/model';
@@ -67,14 +71,6 @@ export const NAV: NavItem[] = [
     icon: LayoutDashboard,
     roles: SALES,
     section: 'workspace',
-  },
-  {
-    slug: 'attendance',
-    title: 'Attendance',
-    href: '/attendance',
-    icon: MapPin,
-    roles: SALES,
-    section: 'field',
   },
   { slug: 'dcr', title: 'DCR', href: '/dcr', icon: ClipboardList, roles: SALES, section: 'field' },
   {
@@ -183,6 +179,22 @@ export const NAV: NavItem[] = [
     section: 'admin',
   },
   {
+    slug: 'approvals',
+    title: 'Approvals',
+    href: '/approvals',
+    icon: CheckCheck,
+    roles: ROLES.filter((r) => (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('approvals:decide')),
+    section: 'admin',
+  },
+  {
+    slug: 'audit',
+    title: 'Audit log',
+    href: '/audit',
+    icon: ScrollText,
+    roles: ROLES.filter((r) => (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('audit:read')),
+    section: 'admin',
+  },
+  {
     slug: 'sign-up-requests',
     title: 'Sign-up requests',
     href: '/sign-up-requests',
@@ -195,10 +207,11 @@ export const NAV: NavItem[] = [
     title: 'Invite people',
     href: '/admin/invites',
     icon: UserPlus,
-    // System admin with users:write (the API's isAdmin): any hierarchy role, any HQ, company-wide.
+    // System admin or director with users:write (the API's isAdmin): any hierarchy role, any HQ, company-wide.
     roles: ROLES.filter(
       (r) =>
-        isSystemAdmin(r) && (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
+        (isSystemAdmin(r) || r === 'director') &&
+        (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
     ),
     section: 'admin',
   },
@@ -207,11 +220,44 @@ export const NAV: NavItem[] = [
     title: 'People',
     href: '/admin/people',
     icon: UserCog,
-    // Same gate as Invite people: system admin with users:write.
+    // Same gate as Invite people: system admin or director with users:write.
     roles: ROLES.filter(
       (r) =>
-        isSystemAdmin(r) && (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
+        (isSystemAdmin(r) || r === 'director') &&
+        (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
     ),
+    section: 'admin',
+  },
+  {
+    slug: 'organization',
+    title: 'Organization',
+    href: '/admin/organization',
+    icon: Map,
+    roles: ROLES.filter(
+      (r) =>
+        (isSystemAdmin(r) || r === 'director') &&
+        (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
+    ),
+    section: 'admin',
+  },
+  {
+    slug: 'leave-setup',
+    title: 'Leave setup',
+    href: '/admin/leave',
+    icon: CalendarDays,
+    roles: ROLES.filter(
+      (r) =>
+        (isSystemAdmin(r) || r === 'director') &&
+        (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
+    ),
+    section: 'admin',
+  },
+  {
+    slug: 'company-message',
+    title: 'Company message',
+    href: '/admin/message',
+    icon: Megaphone,
+    roles: ['director', 'system_admin'],
     section: 'admin',
   },
   {

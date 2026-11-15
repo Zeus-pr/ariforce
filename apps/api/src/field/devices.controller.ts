@@ -1,7 +1,14 @@
 import { Body, Controller, Get, HttpCode, NotFoundException, Param, Post } from '@nestjs/common';
-import { ConsentGrant, DeviceEnrol, Id, type ConsentState, type Device } from '@ariforce/contracts';
+import {
+  ConsentGrant,
+  DeviceEnrol,
+  DevicePushToken,
+  Id,
+  type ConsentState,
+  type Device,
+} from '@ariforce/contracts';
 import { consentRecords, devices, type Tx } from '@ariforce/db';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, ne } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { CurrentPrincipal, RequirePermissions } from '../auth/decorators';
 import type { Principal } from '../auth/principal';
@@ -88,6 +95,32 @@ export class DevicesController {
         after: toDto(row!),
       });
       return toDto(row!);
+    });
+  }
+
+  @Post('devices/:id/push-token')
+  @HttpCode(200)
+  @RequirePermissions('me:read')
+  pushToken(
+    @CurrentPrincipal() p: Principal,
+    @Param('id') id: string,
+    @Body(new ZodPipe(DevicePushToken)) b: DevicePushToken,
+  ) {
+    if (!Id.safeParse(id).success) throw new NotFoundException('Device not found');
+    return this.tenant.run(p, async (tx) => {
+      const [row] = await tx
+        .select({ id: devices.id })
+        .from(devices)
+        .where(and(eq(devices.id, id), eq(devices.userId, p.userId)));
+      if (!row) throw new NotFoundException('Device not found');
+      const token = b.token?.trim() || null;
+      if (token)
+        await tx
+          .update(devices)
+          .set({ pushToken: null })
+          .where(and(eq(devices.pushToken, token), ne(devices.id, row.id)));
+      await tx.update(devices).set({ pushToken: token }).where(eq(devices.id, row.id));
+      return { ok: true as const };
     });
   }
 

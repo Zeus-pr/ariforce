@@ -151,7 +151,10 @@ export function ClaimView({ id }: { id: string }) {
     return m;
   }, {});
   const hotelMissing = c.lines.some(
-    (l) => l.category === 'hotel' && !l.attachments.some((a) => a.status === 'confirmed'),
+    (l) =>
+      !l.dcrRejectedAt &&
+      l.category === 'hotel' &&
+      !l.attachments.some((a) => a.status === 'confirmed'),
   );
   const dcrGapDays = recon?.days.filter((d) => d.dcrStatus !== 'approved') ?? [];
   const approveBlock =
@@ -166,29 +169,6 @@ export function ClaimView({ id }: { id: string }) {
       m[l.category] = (m[l.category] ?? 0) + l.amount;
       return m;
     }, {});
-
-  async function confirmAuto(l: Line) {
-    await run(
-      l.id,
-      () =>
-        api.PUT('/v1/expense-claims/{id}/lines/{lineId}', {
-          params: { path: { id: c.id, lineId: l.id } },
-          body: {
-            line: {
-              date: l.date,
-              category: l.category,
-              amount: l.amount,
-              notes: l.notes,
-              mileageKm: l.mileageKm,
-              dcrId: l.dcrId,
-              tourPlanId: l.tourPlanId,
-            },
-            version: l.version,
-          },
-        }),
-      'Confirmed',
-    );
-  }
 
   const submit = () =>
     run(
@@ -294,23 +274,9 @@ export function ClaimView({ id }: { id: string }) {
                     </span>
                   </span>
                   <span className="font-semibold tabular-nums">{money(l.amount)}</span>
-                  <Button size="sm" variant="ghost" onClick={() => setEdit({ line: l })}>
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-teal-600 hover:bg-teal-700"
-                    disabled={busy === l.id}
-                    onClick={() => confirmAuto(l)}
-                    data-testid="exp-auto-confirm"
-                  >
-                    {busy === l.id ? (
-                      <LoaderCircle className="animate-spin" aria-hidden />
-                    ) : (
-                      <Check aria-hidden />
-                    )}
-                    Confirm
-                  </Button>
+                  {l.category === 'hotel' ? (
+                    <Receipts claimId={c.id} line={l} editable={editable} onChange={load} />
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -376,7 +342,7 @@ export function ClaimView({ id }: { id: string }) {
             <header className="flex items-center justify-between px-4 pt-3 text-sm">
               <span className="font-medium">{dayLabel(d)}</span>
               <span className="text-muted-foreground tabular-nums">
-                {money(ls.reduce((s, l) => s + l.amount, 0))}
+                {money(ls.filter((l) => !l.dcrRejectedAt).reduce((s, l) => s + l.amount, 0))}
               </span>
             </header>
             <ul className="flex flex-col">
@@ -469,10 +435,8 @@ export function ClaimView({ id }: { id: string }) {
           <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-end gap-3 px-4 py-3 sm:px-6">
             {editable && (
               <>
-                {(hotelMissing || autoLines.length > 0) && (
-                  <span className="mr-auto text-sm text-amber-800">
-                    {hotelMissing ? 'Hotel receipt missing' : 'Confirm auto-filled TA/DA first'}
-                  </span>
+                {hotelMissing && (
+                  <span className="mr-auto text-sm text-amber-800">Hotel receipt missing</span>
                 )}
                 <Button
                   className="bg-brand-600 hover:bg-brand-700"

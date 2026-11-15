@@ -12,6 +12,9 @@ import {
   approvalRequests,
   approvalSteps,
   chemists,
+  dcrs,
+  roles,
+  userRoles,
   doctorCategories,
   doctors,
   expenseLines,
@@ -46,6 +49,8 @@ import { ExceptionRecheck } from '../jobs/exception-recheck';
 import { rejectionReason } from '../common/rejection';
 import { plansOut, syncStatus } from './tp-submissions';
 import { routeToHolders } from './approval-routing';
+import { buildTrail, primaryRole, type TrailUser } from '../expenses/approval-trail';
+import { TeamService } from '../team/team.service';
 import {
   AUTO_APPROVE_REASON,
   autoApproveAudit,
@@ -104,6 +109,12 @@ export interface EntityOptions {
    * and payload.approverIds lists them. None: request() throws 422 NO_APPROVER.
    */
   route?: 'manager' | 'permission_holders';
+  /**
+   * The last of `levels` is always the company's Director, whatever the manager chain above the
+   * previous level looks like (manager, their manager, then Director). Skipped when the previous
+   * approver or the decider already is the Director.
+   */
+  finalDirector?: boolean;
   onStep?: StepHook;
   /** Runs before any approve (every step, every route); throw to block (e.g. DCR_NOT_APPROVED). */
   beforeApprove?: (
@@ -172,6 +183,11 @@ export interface ApprovalQuery {
   status?: Approval['status'];
   subjectType?: Approval['subjectType'];
   mine?: 'to_decide' | 'requested';
+  scope?: 'org';
+  userId?: string;
+  from?: string;
+  to?: string;
+  include?: string;
 }
 
 /**
@@ -191,6 +207,7 @@ export class ApprovalsService {
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
     private readonly recheck: ExceptionRecheck,
+    private readonly team: TeamService,
   ) {
     // DCR unlock/correction requests: director only (dcr_unlock:decide), Sharanya 2026-10-29.
     // Routed to the company's directors (dcr_unlock:decide holders), not the rep's manager (Phase B).
@@ -724,6 +741,16 @@ export class ApprovalsService {
     return rows.rows.map((r) => r.id);
   }
 
+  /** The company's Director (oldest active one if several; any Director can decide). */
+  async directorId(tx: Tx): Promise<string | null> {
+    const rows = await tx.execute<{ id: string }>(sql`select u.id
+      from users u join user_roles ur on ur.user_id = u.id join roles r on r.id = ur.role_id
+      where u.deleted_at is null and u.status = 'active' and r.deleted_at is null
+        and r.key = 'director'
+      order by u.created_at, u.id limit 1`);
+    return rows.rows[0]?.id ?? null;
+  }
+
   async byId(tx: Tx, id: string): Promise<Approval> {
     const [r] = await tx.select().from(approvalRequests).where(eq(approvalRequests.id, id));
     return (await this.toDto(tx, [r!]))[0]!;
@@ -824,6 +851,11 @@ export class ApprovalsService {
   }
 
   list(p: Principal, q: ApprovalQuery) {
+    if (q.include && q.scope !== 'org')
+      throw err(422, 'VALIDATION', 'include needs scope=org', { field: 'include' });
+    if (q.from && q.to && q.from > q.to)
+      throw err(422, 'VALIDATION', 'from must be on or before to', { field: 'from' });
+    if (q.scope === 'org' && !q.mine) return this.listOrg(p, q);
     return this.tenant.run(p, async (tx) => {
       const canDecide = p.permissions.includes('approvals:decide');
       const state =
@@ -873,6 +905,284 @@ export class ApprovalsService {
           .from(approvalRequests)
           .where(and(...where));
         out.total = t!.n;
+      }
+      return out;
+    });
+  }
+
+  /**
+   * scope=org (Director view, #128): every request of the caller's subtree in any state (Director:
+   * the company), with requestedByRole / level / totalLevels / currentApprover / trail, optionally
+   * merged with DCR reviews (include=dcr) and signup requests (include=signup). Newest first.
+   * Batched: a fixed number of queries per page (sources, steps, users, roles, one per projected
+   * manager level), never per row; signup visibility reuses TeamService.canDecide.
+   */
+  private listOrg(p: Principal, q: ApprovalQuery) {
+    if (!p.permissions.includes('approvals:decide'))
+      throw err(403, 'FORBIDDEN', 'scope=org needs approvals:decide');
+    if (q.userId && p.teamUserIds && !p.teamUserIds.includes(q.userId))
+      throw err(403, 'FORBIDDEN', 'User is outside your team');
+    const sort = q.sort ?? '-createdAt';
+    if (sort.replace(/^-/, '') !== 'createdAt')
+      throw err(422, 'VALIDATION', `Unknown sort field ${sort}`);
+    const newest = sort.startsWith('-');
+    const inc = new Set((q.include ?? '').split(',').filter(Boolean));
+    const want = (t: Approval['subjectType']) => !q.subjectType || q.subjectType === t;
+    return this.tenant.run(p, async (tx) => {
+      const limit = q.limit ?? 50;
+      const offset = decodeCursor(q.cursor);
+      const take = offset + limit + 1;
+      const dir = newest ? desc : asc;
+      const istDay = (c: SQL | typeof approvalRequests.createdAt) =>
+        sql`(${c} at time zone 'Asia/Kolkata')::date`;
+      const range = (c: SQL | typeof approvalRequests.createdAt) => [
+        q.from ? sql`${istDay(c)} >= ${q.from}::date` : undefined,
+        q.to ? sql`${istDay(c)} <= ${q.to}::date` : undefined,
+      ];
+      const state =
+        q.status === 'pending' ? ['pending', 'draft'] : q.status ? [q.status] : undefined;
+      const engineTypes = q.subjectType ? ENTITY[q.subjectType] : undefined;
+      const engineWhere = [
+        this.visible(p),
+        ne(approvalRequests.entityType, 'tour_plan_item'),
+        state ? inArray(approvalRequests.state, state as never[]) : undefined,
+        q.subjectType
+          ? eq(approvalRequests.entityType, engineTypes ?? ('none' as never))
+          : undefined,
+        q.userId ? eq(approvalRequests.requestedBy, q.userId) : undefined,
+        ...range(approvalRequests.createdAt),
+      ].filter(Boolean) as SQL[];
+      const countOnly = q.includeTotal === 'true';
+      const engine =
+        q.subjectType === 'dcr' || q.subjectType === 'signup'
+          ? []
+          : await tx
+              .select()
+              .from(approvalRequests)
+              .where(and(...engineWhere))
+              .orderBy(dir(approvalRequests.createdAt), dir(approvalRequests.id))
+              .limit(take);
+
+      // include=dcr: DCR reviews (submitted = pending, approved, rejected); dcr:review holders only.
+      const dcrStatus =
+        q.status === 'pending'
+          ? ['submitted']
+          : q.status === 'approved' || q.status === 'rejected'
+            ? [q.status]
+            : q.status
+              ? []
+              : ['submitted', 'approved', 'rejected'];
+      const dcrWhere = and(
+        isNull(dcrs.deletedAt),
+        sql`${dcrs.submittedAt} is not null`,
+        inArray(dcrs.status, dcrStatus.length ? (dcrStatus as never[]) : ['none' as never]),
+        p.teamUserIds ? inArray(dcrs.userId, p.teamUserIds) : undefined,
+        q.userId ? eq(dcrs.userId, q.userId) : undefined,
+        ...range(sql`${dcrs.submittedAt}`),
+      );
+      const dcrRows =
+        inc.has('dcr') && want('dcr') && p.permissions.includes('dcr:review') && dcrStatus.length
+          ? await tx
+              .select()
+              .from(dcrs)
+              .where(dcrWhere)
+              .orderBy(dir(dcrs.submittedAt), dir(dcrs.id))
+              .limit(take)
+          : [];
+      const signupStatus =
+        q.status === 'cancelled' ? null : (q.status as 'pending' | 'approved' | 'rejected');
+      const signups =
+        inc.has('signup') && want('signup') && signupStatus !== null
+          ? await this.team.signupsVisibleTo(tx, p, {
+              status: signupStatus,
+              userId: q.userId,
+              from: q.from,
+              to: q.to,
+            })
+          : [];
+
+      type Item = { at: Date; id: string; kind: 'engine' | 'dcr' | 'signup'; i: number };
+      const merged: Item[] = [
+        ...engine.map((r, i) => ({ at: r.createdAt, id: r.id, kind: 'engine' as const, i })),
+        ...dcrRows.map((r, i) => ({ at: r.submittedAt!, id: r.id, kind: 'dcr' as const, i })),
+        ...signups.map((r, i) => ({ at: r.r.createdAt, id: r.r.id, kind: 'signup' as const, i })),
+      ].sort((a, b) => {
+        const d = a.at.getTime() - b.at.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+        return newest ? -d : d;
+      });
+      const pageItems = merged.slice(offset, offset + limit);
+      const pageEngine = pageItems.filter((x) => x.kind === 'engine').map((x) => engine[x.i]!);
+      const pageDcr = pageItems.filter((x) => x.kind === 'dcr').map((x) => dcrRows[x.i]!);
+      const pageSignup = pageItems.filter((x) => x.kind === 'signup').map((x) => signups[x.i]!);
+
+      // Batched trail inputs.
+      const base = await this.toDto(tx, pageEngine, p);
+      const reqIds = pageEngine.map((r) => r.id);
+      const steps = reqIds.length
+        ? await tx
+            .select()
+            .from(approvalSteps)
+            .where(inArray(approvalSteps.requestId, reqIds))
+            .orderBy(asc(approvalSteps.stepNo))
+        : [];
+      const levelsOf = new Map<string, number | null>();
+      for (const t of new Set(pageEngine.map((r) => r.entityType))) {
+        const lv = this.options.get(t)?.levels;
+        levelsOf.set(t, typeof lv === 'function' ? await lv(tx, p) : (lv ?? null));
+      }
+      const um = new Map<string, TrailUser>();
+      const load = async (ids: (string | null | undefined)[]) => {
+        const need = [...new Set(ids.filter((x): x is string => !!x && !um.has(x)))];
+        if (!need.length) return;
+        const rows = await tx
+          .select({ id: users.id, name: users.name, managerId: users.managerId })
+          .from(users)
+          .where(inArray(users.id, need));
+        for (const r of rows) um.set(r.id, { name: r.name, managerId: r.managerId, role: null });
+      };
+      await load([
+        ...pageEngine.map((r) => r.requestedBy),
+        ...steps.flatMap((s) => [s.approverUserId, s.decidedBy]),
+        ...pageDcr.flatMap((d) => [d.userId, d.approvedBy, d.rejectedBy]),
+        ...pageSignup.flatMap((s) => [s.r.userId, s.r.decidedBy, s.r.requestedManagerId]),
+      ]);
+      await load(pageDcr.map((d) => um.get(d.userId)?.managerId));
+      // Project pending multi-level requests up the manager chain (one users query per level).
+      const maxLv = Math.max(0, ...[...levelsOf.values()].map((v) => v ?? 0));
+      let frontier = pageEngine
+        .filter((r) => r.state === 'pending')
+        .map((r) => steps.filter((s) => s.requestId === r.id).at(-1)?.approverUserId ?? null);
+      for (let i = 0; i < maxLv && frontier.some(Boolean); i++) {
+        const next = frontier.map((id) => (id ? (um.get(id)?.managerId ?? null) : null));
+        await load(next);
+        frontier = next;
+      }
+      if (um.size) {
+        const rr = await tx
+          .select({ userId: userRoles.userId, key: roles.key })
+          .from(userRoles)
+          .innerJoin(roles, eq(roles.id, userRoles.roleId))
+          .where(inArray(userRoles.userId, [...um.keys()]));
+        for (const [id, u] of um)
+          u.role = primaryRole(rr.filter((r) => r.userId === id).map((r) => r.key));
+      }
+      const ref = (id: string | null | undefined) =>
+        id ? { id, name: um.get(id)?.name ?? '', role: um.get(id)?.role ?? null } : null;
+      const roleOf = (id: string) => (um.get(id)?.role ?? null) as Approval['requestedByRole'];
+      const single = (
+        status: Approval['status'],
+        approverId: string | null,
+        decidedBy: string | null,
+        decidedAt: Date | null,
+        comment: string | null,
+      ) => ({
+        level: status === 'pending' ? 1 : null,
+        totalLevels: null,
+        currentApprover: status === 'pending' ? ref(approverId) : null,
+        trail: [
+          {
+            level: 1,
+            approver: ref(approverId),
+            decidedBy: ref(decidedBy),
+            status: (status === 'cancelled' ? 'skipped' : status) as 'pending',
+            current: status === 'pending',
+            decidedAt: decidedAt?.toISOString() ?? null,
+            comment,
+            rejectionReason: status === 'rejected' ? comment : null,
+          },
+        ],
+      });
+
+      const byEngine = new Map(base.map((a) => [a.id, a]));
+      const items: Approval[] = pageItems.map((x) => {
+        if (x.kind === 'engine') {
+          const r = engine[x.i]!;
+          const st = steps.filter((s) => s.requestId === r.id);
+          const total = levelsOf.get(r.entityType) ?? null;
+          const t = buildTrail(Math.max(total ?? 1, 1), r, st, um);
+          return {
+            ...byEngine.get(r.id)!,
+            requestedByRole: roleOf(r.requestedBy),
+            level: r.state === 'pending' ? r.currentStep : null,
+            totalLevels: total,
+            currentApprover: t.currentApprover,
+            trail: t.approvalTrail,
+          };
+        }
+        if (x.kind === 'dcr') {
+          const d = dcrRows[x.i]!;
+          const status: Approval['status'] =
+            d.status === 'submitted'
+              ? 'pending'
+              : d.status === 'rejected'
+                ? 'rejected'
+                : 'approved';
+          const decidedBy = d.approvedBy ?? d.rejectedBy ?? null;
+          const decidedAt = d.approvedAt ?? d.rejectedAt ?? null;
+          const approverId = um.get(d.userId)?.managerId ?? null;
+          const inTeam = !p.teamUserIds || p.teamUserIds.includes(d.userId);
+          return {
+            id: d.id,
+            companyId: d.companyId,
+            subjectType: 'dcr',
+            subjectId: d.id,
+            canDecide: status === 'pending' && d.userId !== p.userId && inTeam,
+            requestedBy: d.userId,
+            requestedByName: um.get(d.userId)?.name ?? '',
+            approverId,
+            status,
+            summary: `DCR ${d.date}`,
+            comment: d.rejectionReason ?? null,
+            createdAt: d.submittedAt!.toISOString(),
+            decidedAt: decidedAt?.toISOString() ?? null,
+            decidedBy,
+            rejectionReason: status === 'rejected' ? (d.rejectionReason ?? null) : null,
+            requestedByRole: roleOf(d.userId),
+            ...single(status, approverId, decidedBy, decidedAt, d.rejectionReason ?? null),
+          };
+        }
+        const { r } = signups[x.i]!;
+        const status = r.status as Approval['status'];
+        return {
+          id: r.id,
+          companyId: r.companyId,
+          subjectType: 'signup',
+          subjectId: r.id,
+          canDecide: status === 'pending',
+          requestedBy: r.userId,
+          requestedByName: um.get(r.userId)?.name ?? '',
+          approverId: r.requestedManagerId,
+          status,
+          summary: `Sign-up as ${r.requestedRole}`,
+          comment: r.reason,
+          createdAt: r.createdAt.toISOString(),
+          decidedAt: r.decidedAt?.toISOString() ?? null,
+          decidedBy: r.decidedBy,
+          rejectionReason: status === 'rejected' ? r.reason : null,
+          requestedByRole: null,
+          ...single(status, r.requestedManagerId, r.decidedBy, r.decidedAt, r.reason),
+        };
+      });
+      const out: Record<string, unknown> = {
+        items,
+        nextCursor: merged.length > offset + limit ? encodeCursor(offset + limit) : null,
+        serverTime: new Date().toISOString(),
+      };
+      if (countOnly) {
+        const [e] =
+          engine.length || !(q.subjectType === 'dcr' || q.subjectType === 'signup')
+            ? await tx
+                .select({ n: sql<number>`count(*)::int` })
+                .from(approvalRequests)
+                .where(and(...engineWhere))
+            : [{ n: 0 }];
+        const [d] = dcrRows.length
+          ? await tx
+              .select({ n: sql<number>`count(*)::int` })
+              .from(dcrs)
+              .where(dcrWhere)
+          : [{ n: 0 }];
+        out.total = e!.n + d!.n + signups.length;
       }
       return out;
     });
@@ -947,12 +1257,24 @@ export class ApprovalsService {
         // A decider above the current approver (their manager or higher, e.g. the director) who
         // approves early covers the next level too: finish here instead of queueing a step for
         // someone at or below the decider (no duplicate or stuck step with skipped ranks).
-        const deciderCoversNext =
-          !!up?.managerId &&
+        const covers = (id: string | null | undefined) =>
+          !!id &&
           p.userId !== cur.approverUserId &&
-          (p.teamUserIds === null || p.teamUserIds.includes(up.managerId));
-        if (up?.managerId && up.managerId !== req.requestedBy && !deciderCoversNext) {
-          const next = req.currentStep + 1;
+          (p.teamUserIds === null || p.teamUserIds.includes(id));
+        let next = req.currentStep + 1;
+        let nextApprover: string | null | undefined =
+          opt.finalDirector && next === levels ? await this.directorId(tx) : up?.managerId;
+        // Director-final routes: a manager-rung decider who covers the next rung skips to the Director.
+        if (opt.finalDirector && next < levels && covers(nextApprover)) {
+          next = levels;
+          nextApprover = await this.directorId(tx);
+        }
+        if (
+          nextApprover &&
+          nextApprover !== req.requestedBy &&
+          nextApprover !== cur.approverUserId &&
+          !covers(nextApprover)
+        ) {
           await tx
             .update(approvalSteps)
             .set({ decision: 'approved', decidedBy: p.userId, decidedAt: new Date(), comment })
@@ -962,13 +1284,13 @@ export class ApprovalsService {
             companyId: p.companyId,
             requestId: id,
             stepNo: next,
-            approverUserId: up.managerId,
+            approverUserId: nextApprover,
           });
           await tx
             .update(approvalRequests)
             .set({ currentStep: next })
             .where(eq(approvalRequests.id, id));
-          await opt.onStep?.(tx, p, req, next, up.managerId);
+          await opt.onStep?.(tx, p, req, next, nextApprover);
           await this.audit.record(tx, p, 'approval.step_approved', {
             entityType: req.entityType,
             entityId: req.entityId,

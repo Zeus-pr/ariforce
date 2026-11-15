@@ -42,9 +42,9 @@ const browser = await engine.launch();
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 await ctx.addInitScript(() => {
   sessionStorage.setItem('af:splash-seen', '1');
-  if (!localStorage.getItem('af:mock-session'))
+  if (!localStorage.getItem('af:session'))
     localStorage.setItem(
-      'af:mock-session',
+      'af:session',
       JSON.stringify({ userId: 'mock-abm', role: 'area_business_manager' }),
     );
 });
@@ -133,9 +133,9 @@ const m = await browser.newContext({
 });
 await m.addInitScript(() => {
   sessionStorage.setItem('af:splash-seen', '1');
-  if (!localStorage.getItem('af:mock-session'))
+  if (!localStorage.getItem('af:session'))
     localStorage.setItem(
-      'af:mock-session',
+      'af:session',
       JSON.stringify({ userId: 'mock-abm', role: 'area_business_manager' }),
     );
 });
@@ -159,9 +159,9 @@ const d1 = await browser.newContext({
 });
 await d1.addInitScript(() => {
   sessionStorage.setItem('af:splash-seen', '1');
-  if (!localStorage.getItem('af:mock-session'))
+  if (!localStorage.getItem('af:session'))
     localStorage.setItem(
-      'af:mock-session',
+      'af:session',
       JSON.stringify({ userId: 'mock-abm', role: 'area_business_manager' }),
     );
 });

@@ -39,7 +39,7 @@ for (const mode of ['link', 'email']) {
   await ctx.addInitScript(() => {
     sessionStorage.setItem('af:splash-seen', '1');
     localStorage.setItem(
-      'af:mock-session',
+      'af:session',
       JSON.stringify({
         userId: '00000000-0000-7000-8000-000000000099',
         role: 'area_business_manager',
@@ -159,7 +159,7 @@ for (const mode of ['link', 'email']) {
   await ctx.addInitScript(() => {
     sessionStorage.setItem('af:splash-seen', '1');
     localStorage.setItem(
-      'af:mock-session',
+      'af:session',
       JSON.stringify({
         userId: '00000000-0000-7000-8000-000000000099',
         role: 'area_business_manager',

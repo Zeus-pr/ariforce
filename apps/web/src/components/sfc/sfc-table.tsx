@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDown, ArrowUp, Download, Plus, Trash2, Upload } from 'lucide-react';
 import { Button } from '@ariforce/ui/components/button';
 import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
@@ -17,6 +17,13 @@ import {
   type SfcRow,
   type SfcSheet,
 } from '@/lib/sfc/adapter';
+import { exportXlsx } from '@/components/export/export';
+import {
+  SFC_SHEET_HEADERS,
+  sfcRoutesToSheet,
+  sfcSheetToRoutes,
+  type SfcSheetRoute,
+} from '@/lib/sfc/sheet';
 
 type Draft = Omit<SfcRow, 'da'> & { km: string; da: string };
 const toDraft = (r: SfcRow): Draft => ({
@@ -72,6 +79,7 @@ export function SfcTable({
   const [error, setError] = useState<SfcFailure | null>(null);
   const [badRow, setBadRow] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     const s = await getSheet(userId);
@@ -101,6 +109,83 @@ export function SfcTable({
       [out[i], out[j]] = [out[j]!, out[i]!];
       return out;
     });
+  async function download() {
+    const routes: SfcSheetRoute[] = rows.map((r) => {
+      const km = parseKm(r.km);
+      const da = parseDa(r.da);
+      return {
+        fromPlace: r.fromPlace,
+        toPlace: r.toPlace,
+        distanceKm: km === 'bad' ? null : km,
+        actualFare: r.actualFare,
+        travelMode: r.travelMode,
+        category: r.category,
+        da: da === 'bad' ? null : da,
+      };
+    });
+    const slug =
+      name
+        .replace(/[^\w]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .toLowerCase() || 'routes';
+    await exportXlsx({
+      title: `SFC · ${name}`,
+      meta: ['Edit this file, then Import it on the SFC page and press Save SFC.'],
+      columns: SFC_SHEET_HEADERS.map((header) => ({
+        header,
+        width: header.startsWith('Distance') || header === 'DA' ? 22 : 18,
+        align: header === 'DA' || header.startsWith('Distance') ? 'right' : 'left',
+      })),
+      rows: routes.length ? sfcRoutesToSheet(routes) : [SFC_SHEET_HEADERS.map(() => null)],
+      fileName: `sfc-${slug}`,
+    });
+  }
+
+  async function upload(file: File) {
+    let grid: string[][];
+    if (/\.csv$/i.test(file.name)) {
+      const text = await file.text();
+      grid = text
+        .split(/\r?\n/)
+        .filter((line) => line.trim())
+        .map((line) => line.split(',').map((c) => c.trim().replace(/^"|"$/g, '')));
+    } else {
+      const { readSheet } = await import('read-excel-file/browser');
+      const raw = await readSheet(file);
+      grid = raw.map((r) => r.map((c) => (c == null ? '' : String(c))));
+    }
+    const parsed = sfcSheetToRoutes(grid.filter((r) => r.some((c) => c.trim())));
+    if (parsed.error) {
+      setError({ code: 'LOCAL', status: 0, kind: 'invalid', message: parsed.error });
+      return;
+    }
+    const filled = rows.some((r) => r.fromPlace.trim() || r.toPlace.trim());
+    if (
+      filled &&
+      !window.confirm(
+        `Replace the ${rows.length} routes on this page with the ${parsed.routes.length} routes in the file? Nothing is saved until you press Save SFC.`,
+      )
+    ) {
+      return;
+    }
+    setRows(
+      parsed.routes.map((r) => ({
+        id: newId(),
+        fromPlace: r.fromPlace,
+        toPlace: r.toPlace,
+        distanceKm: r.distanceKm,
+        km: r.distanceKm == null ? '' : String(r.distanceKm),
+        actualFare: r.actualFare,
+        travelMode: r.travelMode,
+        category: r.category,
+        da: r.da == null ? '' : String(r.da),
+      })),
+    );
+    setError(null);
+    setBadRow(null);
+    toast.success(`${parsed.routes.length} routes loaded. Save SFC to keep them.`);
+  }
+
   const add = () =>
     setRows((rs) => [
       ...rs,
@@ -442,39 +527,78 @@ export function SfcTable({
             </tbody>
           </table>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Button type="button" variant="outline" onClick={add} data-testid="sfc-add">
+      </fieldset>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={add}
+            disabled={!(base.canEdit && editable)}
+            data-testid="sfc-add"
+          >
             <Plus className="size-4" /> Add row
           </Button>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground" data-testid="sfc-total">
-              {rows.length} rows, ₹{fmt(total)} one way excluding actual fares
-            </span>
-            {dirty && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void download()}
+            data-testid="sfc-export"
+          >
+            <Download className="size-4" /> Export
+          </Button>
+          {base.canEdit && editable && (
+            <>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) void upload(file);
+                }}
+              />
               <Button
                 type="button"
-                variant="ghost"
-                onClick={() => {
-                  setRows(orig);
-                  setError(null);
-                  setBadRow(null);
-                }}
-                data-testid="sfc-reset"
+                variant="outline"
+                onClick={() => fileRef.current?.click()}
+                data-testid="sfc-import"
               >
-                Undo changes
+                <Upload className="size-4" /> Import
               </Button>
-            )}
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground" data-testid="sfc-total">
+            {rows.length} rows, ₹{fmt(total)} one way excluding actual fares
+          </span>
+          {dirty && (
             <Button
               type="button"
-              onClick={() => void save()}
-              disabled={saving || !dirty}
-              data-testid="sfc-save"
+              variant="ghost"
+              onClick={() => {
+                setRows(orig);
+                setError(null);
+                setBadRow(null);
+              }}
+              data-testid="sfc-reset"
             >
-              {saving ? 'Saving…' : 'Save SFC'}
+              Undo changes
             </Button>
-          </div>
+          )}
+          <Button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving || !dirty || !(base.canEdit && editable)}
+            data-testid="sfc-save"
+          >
+            {saving ? 'Saving…' : 'Save SFC'}
+          </Button>
         </div>
-      </fieldset>
+      </div>
     </div>
   );
 }

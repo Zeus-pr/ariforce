@@ -30,7 +30,7 @@ const SKIP = '__skip';
 const STEPS = ['Upload', 'Match columns', 'Review', 'Import'] as const;
 const MAX_ROWS = 5000;
 
-type Sheet = { fileName: string; headers: string[]; rows: string[][] };
+export type Sheet = { fileName: string; headers: string[]; rows: string[][] };
 type Checked = { line: number; ok: boolean; errors: string[]; body: Record<string, unknown> };
 
 function parseCsv(text: string): string[][] {
@@ -65,7 +65,7 @@ function parseCsv(text: string): string[][] {
   return rows;
 }
 
-async function readFile(file: File): Promise<Sheet> {
+export async function readFile(file: File): Promise<Sheet> {
   let data: string[][];
   if (/\.csv$/i.test(file.name)) data = parseCsv(await file.text());
   else {

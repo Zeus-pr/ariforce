@@ -301,10 +301,20 @@ describe('contract gaps', () => {
       calls: [],
       submit: false,
     };
-    // A director's day never locks: the old date stays editable.
+    // A director's day never locks, but DCRs are still today-only (IST): an old date is refused.
     const asDirector = await api.PUT('/v1/dcrs', { body });
-    expect(asDirector.response.status).toBe(200);
-    expect(asDirector.data!.neverLocks).toBe(true);
+    expect(asDirector.response.status).toBe(422);
+    const istToday = new Date(Date.now() + 5.5 * 36e5).toISOString().slice(0, 10);
+    expect(asDirector.error).toMatchObject({
+      error: { code: 'DCR_DATE_NOT_TODAY', details: { date: old, today: istToday } },
+    });
+    const todayAsDirector = await api.PUT('/v1/dcrs', { body: { ...body, date: istToday } });
+    expect(todayAsDirector.response.status).toBe(200);
+    expect(todayAsDirector.data!.neverLocks).toBe(true);
+    const future = await api.PUT('/v1/dcrs/draft', {
+      body: { ...body, date: '2099-01-01' },
+    } as never);
+    expect((future as { response: Response }).response.status).toBe(422);
     const roles = fx.me.roles;
     fx.me.roles = ['business_manager'];
     try {

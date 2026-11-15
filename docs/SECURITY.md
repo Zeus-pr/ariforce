@@ -5,12 +5,17 @@ Hardening from the Cutly audit. One section per issue.
 ## Session lifetime
 
 - One `auth_session` row per sign-in; the browser cookie and the mobile bearer token
-  (`Authorization: Bearer`, better-auth `bearer()` plugin) are the same row, so the same rules apply.
-- **Hard cap 18 h from sign-in, no sliding**: `expiresIn` = `updateAge` = `SESSION_MAX_AGE_SECONDS`
-  (default `64800`, allowed 300..2592000). Activity never extends a session.
-- Tradeoff: a user who is active all day must sign in again 18 h after signing in. The sliding
-  alternative is a small `updateAge` (e.g. 1 h), which gives an 18 h _idle_ window instead, but then an
-  active (or stolen) session never expires on its own.
+  (`Authorization: Bearer`, better-auth `bearer()` plugin) share the table, but **lifetimes differ**.
+- **Web (browser cookie): hard cap 18 h from sign-in, no sliding.** `expiresIn` = `updateAge` =
+  `SESSION_MAX_AGE_SECONDS` (default `64800`, allowed 300..2592000). Cookie `Max-Age` matches.
+  Activity never extends a web session; sign in again after 18 h.
+- **Mobile (Expo / bearer): longer hard cap.** Sessions created with `x-ariforce-client: mobile`
+  (or a User-Agent that looks like Expo/okhttp) get `expires_at` =
+  `MOBILE_SESSION_MAX_AGE_SECONDS` (default 90 days, allowed 300..31536000). No 18 h forced
+  re-login on the phone. Password reset, deactivate, and role change still revoke every device.
+- Tradeoff (web): a user active all day must sign in again 18 h after signing in. Sliding
+  (`updateAge` smaller than `expiresIn`) would give an idle window instead, but then an active
+  (or stolen) web session never expires on its own.
 - Expired session -> better-auth returns no session -> `401` on `/v1/me` and every data route (tested in
   `apps/api/test/session-lifetime.test.ts`; runs in CI against the workflow Postgres service, skipped
   locally without `DIRECT_URL`/`DATABASE_URL`).

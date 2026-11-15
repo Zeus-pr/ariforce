@@ -1,7 +1,8 @@
 import * as z from 'zod';
-import { DcrBand, DcrDetails, DcrSfcRoute } from './dcr-parts';
+import { DcrBand, DcrDetails, DcrSfcRoute, DcrSfcRouteChoice, DcrExpenses } from './dcr-parts';
 import { UserRef, DateOnly, GeoPoint, Id, Month, Syncable, Timestamp, listQuery } from './common';
 import { RoleKey } from './roles';
+import { ExpenseApprovalLevel, ExpenseApprover } from './expenses';
 
 const Capture = z.object({
   location: GeoPoint,
@@ -64,6 +65,10 @@ export const CheckInListQuery = FieldListQuery.extend({
   kind: CheckInKind.optional(),
   outletKind: OutletKind.optional(),
   outletId: Id.optional(),
+  doctorId: Id.optional().meta({
+    description:
+      'Doctor 360: only visit check-ins at this doctor (same as outletKind=doctor&outletId=). Still limited to the caller and their reporting line; combine with limit',
+  }),
   unlinked: z.enum(['true', 'false']).optional().meta({
     description:
       'true = only visit check-ins not yet linked to a DCR call (DCR call picker, gap #9)',
@@ -152,10 +157,96 @@ export const GeofenceSettings = z
     maxAccuracyM: z.int().min(5).max(5000),
     blockOutOfFence: z.boolean().meta({ description: 'false = allow and flag' }),
     blockMockLocation: z.boolean(),
+    presentationRadiusM: z
+      .int()
+      .min(10)
+      .max(5000)
+      .meta({ description: 'Hard Presentation gate radius (default 300)' }),
+    lockMaxAccuracyM: z
+      .int()
+      .min(5)
+      .max(5000)
+      .meta({ description: 'Max GPS accuracy allowed when locking an outlet (default 80)' }),
     version: z.int().min(1),
   })
   .meta({ id: 'GeofenceSettings' });
 export type GeofenceSettings = z.infer<typeof GeofenceSettings>;
+
+/** Fixed practice labels (doctors may have many locations; chemists/stockists one). */
+export const DoctorLocationLabel = z
+  .enum(['clinic', 'hospital', 'chamber', 'residence', 'nursing_home', 'other'])
+  .meta({ id: 'DoctorLocationLabel' });
+export const ChemistLocationLabel = z
+  .enum(['retail_shop', 'distributor_counter', 'other'])
+  .meta({ id: 'ChemistLocationLabel' });
+export const StockistLocationLabel = z
+  .enum(['godown', 'depot', 'office', 'other'])
+  .meta({ id: 'StockistLocationLabel' });
+export const OutletLocationLabel = z
+  .union([DoctorLocationLabel, ChemistLocationLabel, StockistLocationLabel])
+  .meta({ id: 'OutletLocationLabel' });
+
+export const OutletLocation = Syncable.extend({
+  outletKind: OutletKind,
+  outletId: Id,
+  label: OutletLocationLabel,
+  location: GeoPoint,
+  accuracyM: z.number().nullable(),
+  source: z.enum(['gps', 'network', 'fused', 'manual']),
+  isMock: z.boolean(),
+  lockedAt: Timestamp,
+  lockedBy: Id,
+  lockedByName: z.string().nullable().optional(),
+  active: z.boolean(),
+}).meta({ id: 'OutletLocation' });
+export type OutletLocation = z.infer<typeof OutletLocation>;
+
+export const OutletLocationCreate = z
+  .object({
+    clientId: Id.meta({ description: 'Becomes the outlet_locations id (idempotent)' }),
+    label: OutletLocationLabel,
+    deviceId: Id.optional(),
+    ...Capture.shape,
+  })
+  .meta({ id: 'OutletLocationCreate' });
+export type OutletLocationCreate = z.infer<typeof OutletLocationCreate>;
+
+export const OutletLocationPatch = z
+  .object({
+    version: z.int().min(1),
+    label: OutletLocationLabel.optional(),
+    location: GeoPoint.optional(),
+    accuracyM: z.number().min(0).max(10000).optional(),
+    active: z.boolean().optional(),
+  })
+  .meta({
+    id: 'OutletLocationPatch',
+    description: 'ABM→Director and system_admin only. Reps cannot edit after lock.',
+  });
+export type OutletLocationPatch = z.infer<typeof OutletLocationPatch>;
+
+/** How many active pins a doctor may have. Default on the doctor row is 1. */
+export const DoctorLockCap = z
+  .object({
+    maxActiveLocks: z.int().min(1).max(5).meta({
+      description: '1–5. A deactivated pin does not count toward this.',
+    }),
+  })
+  .meta({ id: 'DoctorLockCap' });
+export type DoctorLockCap = z.infer<typeof DoctorLockCap>;
+
+/** GPS proof when opening Presentation (hard 300 m gate). */
+export const PresentationCapture = z
+  .object({
+    clientId: Id.meta({ description: 'Becomes the visit geo_capture id' }),
+    locationId: Id.optional().meta({
+      description: 'Specific locked location; default = nearest active location',
+    }),
+    deviceId: Id.optional(),
+    ...Capture.shape,
+  })
+  .meta({ id: 'PresentationCapture' });
+export type PresentationCapture = z.infer<typeof PresentationCapture>;
 
 /** DPDP consent state for the caller's device (#36). */
 export const ConsentState = z
@@ -396,8 +487,17 @@ export const DcrCall = z
     remarks: z.string().max(1000).nullable(),
     presentationOpenedAt: Timestamp.nullable().default(null).meta({
       description:
-        'When the product presentation was shown to the doctor (client time). Drafts may omit it; submit requires it on every doctor call with productsDetailed (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED).',
+        'When the product presentation was shown to the doctor (client time). Drafts may omit it. A business manager must set it on every doctor call with productsDetailed before submit (422 VALIDATION, details.reason PRESENTATION_NOT_OPENED). Area business manager and above may submit after check-in. Setting it requires presentationCapture (hard geofence).',
     }),
+    presentationLocationId: Id.nullable()
+      .optional()
+      .meta({ description: 'Locked outlet_locations row used for the Presentation check' }),
+    presentationDistanceM: z
+      .number()
+      .nullable()
+      .optional()
+      .meta({ description: 'Server metres from capture to presentationLocationId' }),
+    presentationAccuracyM: z.number().nullable().optional(),
     calledAt: Timestamp.meta({
       readOnly: true,
       description:
@@ -406,13 +506,22 @@ export const DcrCall = z
   })
   .meta({ id: 'DcrCall' });
 export type DcrCall = z.infer<typeof DcrCall>;
-export const DcrCallInput = DcrCall.omit({ id: true })
+export const DcrCallInput = DcrCall.omit({
+  id: true,
+  presentationLocationId: true,
+  presentationDistanceM: true,
+  presentationAccuracyM: true,
+})
   .extend({
     clientId: Id,
     pob: z.array(PobLine).max(100),
     rcpa: z.array(RcpaLine).max(100).default([]),
     presentationOpenedAt: Timestamp.nullable().optional().meta({
       description: 'See DcrCall.presentationOpenedAt; omit or null on drafts',
+    }),
+    presentationCapture: PresentationCapture.optional().meta({
+      description:
+        'Required when setting presentationOpenedAt. Server hard-blocks outside presentationRadiusM or without punch-in / lock.',
     }),
     calledAt: Timestamp.optional().meta({
       description: 'Ignored: the server sets calledAt when the call is first saved',
@@ -433,6 +542,31 @@ export const CompetitorBrand = z
 export const CompetitorBrandList = z
   .object({ items: z.array(CompetitorBrand) })
   .meta({ id: 'CompetitorBrandList' });
+
+export const DcrSectionInput = z
+  .object({
+    workTypeId: Id,
+    territoryIds: z.array(Id).max(20).default([]),
+    workWithUserIds: z.array(Id).max(20).default([]),
+    sfcRoutes: z.array(DcrSfcRouteChoice).max(20).default([]),
+    details: DcrDetails.nullable().optional(),
+    calls: z.array(DcrCallInput).max(60).default([]),
+  })
+  .meta({ id: 'DcrSectionInput' });
+export type DcrSectionInput = z.infer<typeof DcrSectionInput>;
+
+export const DcrSection = z
+  .object({
+    workTypeId: Id,
+    band: DcrBand.nullable(),
+    territoryIds: z.array(Id),
+    workWithUserIds: z.array(Id),
+    sfcRoutes: z.array(DcrSfcRoute),
+    details: DcrDetails.nullable(),
+    calls: z.array(DcrCall),
+  })
+  .meta({ id: 'DcrSection' });
+export type DcrSection = z.infer<typeof DcrSection>;
 
 export const Dcr = Syncable.extend({
   userId: Id,
@@ -493,11 +627,32 @@ export const Dcr = Syncable.extend({
     .default([])
     .meta({ description: 'One chosen SFC route per HQ of the day; snapshots set at submit' }),
   submittedBy: Id.nullable().default(null),
+  expenses: DcrExpenses.optional().meta({
+    description:
+      'Expenses reported for the day (any work type). Linked into the month claim at submit (origin dcr); read-only after submit. Absent (older API) = none',
+  }),
+  expenseClaimId: Id.nullable().optional().meta({
+    description:
+      "Month claim holding this DCR's expense lines (origin dcr); null when it has none. Absent from older APIs",
+  }),
+  expenseTotal: z
+    .number()
+    .optional()
+    .meta({ description: "Sum of this DCR's live origin-dcr claim lines, rupees (0 when none)" }),
+  expenseCount: z
+    .int()
+    .min(0)
+    .optional()
+    .meta({ description: "Number of this DCR's live origin-dcr claim lines (0 when none)" }),
   callCount: z
     .int()
     .min(0)
     .optional()
     .meta({ description: 'Live calls on this DCR (GET /v1/dcrs list only)' }),
+  sections: z.array(DcrSection).optional().meta({
+    description:
+      'Every section of the day. Absent on older responses: the header is the only section',
+  }),
 }).meta({ id: 'Dcr' });
 export type Dcr = z.infer<typeof Dcr>;
 export const DcrUpsert = z
@@ -547,16 +702,23 @@ export const Approval = z
   .object({
     id: Id,
     companyId: Id,
-    subjectType: z.enum([
-      'tour_plan',
-      'doctor',
-      'chemist',
-      'stockist',
-      'dcr_unlock',
-      'leave',
-      'device',
-      'expense',
-    ]),
+    subjectType: z
+      .enum([
+        'tour_plan',
+        'doctor',
+        'chemist',
+        'stockist',
+        'dcr_unlock',
+        'leave',
+        'device',
+        'expense',
+        'dcr',
+        'signup',
+      ])
+      .meta({
+        description:
+          "Engine types; 'dcr' (DCR review, subjectId = DCR id) and 'signup' (signup request) are only returned when asked for with include=dcr / include=signup",
+      }),
     subjectId: Id,
     canDecide: z.boolean().optional().meta({
       description:
@@ -589,6 +751,24 @@ export const Approval = z
           'Approver warnings. dcr_rejected_lines: an expense claim has lines on days whose DCR was rejected (see claim.dcrRejectedDates); approving such a claim is blocked with 409 DCR_NOT_APPROVED',
       }),
   })
+  .extend({
+    requestedByRole: RoleKey.nullable().optional().meta({
+      description: "Requester's most senior role key",
+    }),
+    level: z.int().min(1).nullable().optional().meta({
+      description: 'Level awaiting a decision (1-based); null once decided',
+    }),
+    totalLevels: z.int().min(1).nullable().optional().meta({
+      description: 'Configured levels for this type; null where the type has a single decision',
+    }),
+    currentApprover: ExpenseApprover.nullable().optional().meta({
+      description: 'Approver of the level awaiting a decision; null when decided or shared queue',
+    }),
+    trail: z.array(ExpenseApprovalLevel).optional().meta({
+      description:
+        'Per-level history (same shape as ExpenseClaim.approvalTrail): who, when, status, comment/reason. Present on scope=org reads',
+    }),
+  })
   .meta({ id: 'Approval' });
 export type Approval = z.infer<typeof Approval>;
 export const ApprovalDecision = z
@@ -607,4 +787,19 @@ export const ApprovalListQuery = listQuery(['createdAt'] as const, {
     description:
       'to_decide = pending requests from your reporting line that you may decide (never your own); requested = yours',
   }),
+  scope: z.enum(['org']).optional().meta({
+    description:
+      'org: every request of your reporting subtree in any state (Director: the whole company), with trail/level fields. Needs approvals:decide (else 403). Ignored with mine',
+  }),
+  userId: Id.optional().meta({ description: 'Requester; must be you or in your subtree' }),
+  from: DateOnly.optional().meta({ description: 'Created on/after this IST date' }),
+  to: DateOnly.optional().meta({ description: 'Created on/before this IST date' }),
+  include: z
+    .string()
+    .regex(/^(dcr|signup)(,(dcr|signup))?$/)
+    .optional()
+    .meta({
+      description:
+        'Comma list of non-engine items to merge in: dcr (DCR reviews: submitted/approved/rejected DCRs, needs dcr:review) and signup (signup requests, same visibility as GET /v1/signup-requests). Only with scope=org',
+    }),
 }).meta({ description: 'Visible: your own requests and those of your reporting line' });

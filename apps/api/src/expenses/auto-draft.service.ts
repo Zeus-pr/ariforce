@@ -1,7 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import type { ExpenseAutoDraft, ExpenseStatus } from '@ariforce/contracts';
-import { companies, expenseClaims, expenseLines, type Tx } from '@ariforce/db';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import type {
+  DcrExpenseItem,
+  DcrExpenseLink,
+  ExpenseAutoDraft,
+  ExpenseStatus,
+} from '@ariforce/contracts';
+import {
+  companies,
+  dcrs,
+  expenseAttachments,
+  expenseClaims,
+  expenseLines,
+  type Tx,
+} from '@ariforce/db';
+import { and, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
@@ -11,6 +23,7 @@ import {
   autoDraftPlan,
   claimEditable,
   claimMonth,
+  claimWriteMode,
   rejectionPlan,
 } from './auto-draft';
 
@@ -100,6 +113,7 @@ export class ExpenseAutoDraftService {
                 eq(expenseLines.claimId, c!.id),
                 eq(expenseLines.date, d.date),
                 eq(expenseLines.source, 'auto'),
+                ne(expenseLines.origin, 'dcr'),
                 isNull(expenseLines.deletedAt),
               ),
             );
@@ -116,6 +130,7 @@ export class ExpenseAutoDraftService {
               dcrId: l.dcrId,
               source: 'auto' as const,
               autoTrigger: 'dcr_submit' as const,
+              origin: 'ta_da' as const,
               calc: l.calc,
               allowancePlaceId: l.placeId,
             })),
@@ -128,6 +143,7 @@ export class ExpenseAutoDraftService {
               and(
                 eq(expenseLines.claimId, c!.id),
                 eq(expenseLines.date, d.date),
+                isNotNull(expenseLines.dcrRejectedAt),
                 isNull(expenseLines.deletedAt),
               ),
             );
@@ -149,6 +165,179 @@ export class ExpenseAutoDraftService {
       });
     }
     return result;
+  }
+
+  /**
+   * DCR expenses -> month claim (contract #121), at every submit, independent of the TA/DA
+   * setting. Same claim rules as TA/DA: create the month claim if missing; write only a draft or
+   * rejected claim; a submitted/approved/paid or soft-deleted claim is not touched (skipped,
+   * claim_locked). Idempotent: all live origin = 'dcr' lines of this DCR are replaced (none when
+   * the DCR has no items); expense_lines_dcr_item_uq makes a duplicate impossible. Savepoint: a
+   * failure never fails the submit (status error).
+   */
+  async linkDcrExpenses(
+    tx: Tx,
+    p: Principal,
+    d: DcrRef,
+    items: DcrExpenseItem[],
+  ): Promise<DcrExpenseLink> {
+    let out: DcrExpenseLink = {
+      status: 'skipped',
+      reason: null,
+      claimId: null,
+      claimStatus: null,
+      claimCreated: false,
+      lines: 0,
+      total: 0,
+    };
+    try {
+      return await tx.transaction(async (sp) => {
+        const month = claimMonth(d.date);
+        let [c] = await sp
+          .select()
+          .from(expenseClaims)
+          .where(and(eq(expenseClaims.userId, d.userId), eq(expenseClaims.month, month)))
+          .for('update');
+        if (!c && !items.length) return { ...out, reason: 'no_expenses' as const };
+        if (!c) {
+          [c] = await sp
+            .insert(expenseClaims)
+            .values({ id: uuidv7(), companyId: p.companyId, userId: d.userId, month })
+            .returning();
+          out = { ...out, claimCreated: true };
+          await this.audit.record(sp, p, 'expense.created', {
+            entityType: 'expense_claim',
+            entityId: c!.id,
+            after: {
+              month: month.slice(0, 7),
+              actor: 'system',
+              trigger: 'dcr_expenses',
+              dcrId: d.id,
+            },
+          });
+        }
+        out = { ...out, claimId: c!.id, claimStatus: c!.status };
+        const flagged = await sp
+          .select({ id: expenseLines.id })
+          .from(expenseLines)
+          .where(
+            and(
+              eq(expenseLines.claimId, c!.id),
+              eq(expenseLines.date, d.date),
+              eq(expenseLines.origin, 'dcr'),
+              isNotNull(expenseLines.dcrRejectedAt),
+              isNull(expenseLines.deletedAt),
+            ),
+          );
+        const mode = claimWriteMode(c!.deletedAt ? 'paid' : c!.status, flagged.length);
+        if (mode === 'locked') return { ...out, reason: 'claim_locked' as const };
+        const now = new Date();
+        const old = await sp
+          .update(expenseLines)
+          .set({ deletedAt: now })
+          .where(
+            and(
+              eq(expenseLines.claimId, c!.id),
+              eq(expenseLines.dcrId, d.id),
+              eq(expenseLines.origin, 'dcr'),
+              isNull(expenseLines.deletedAt),
+            ),
+          )
+          .returning({ id: expenseLines.id });
+        const manuals = items.length
+          ? await sp
+              .select({
+                id: expenseLines.id,
+                category: expenseLines.category,
+                amount: expenseLines.amount,
+              })
+              .from(expenseLines)
+              .where(
+                and(
+                  eq(expenseLines.claimId, c!.id),
+                  eq(expenseLines.date, d.date),
+                  eq(expenseLines.origin, 'manual'),
+                  isNull(expenseLines.deletedAt),
+                  sql`exists (select 1 from ${expenseAttachments} a where a.line_id = ${expenseLines.id} and a.deleted_at is null)`,
+                ),
+              )
+          : [];
+        const used = new Set<string>();
+        const fresh: (typeof expenseLines.$inferInsert)[] = [];
+        for (const [i, it] of items.entries()) {
+          const hit = manuals.find(
+            (m) =>
+              !used.has(m.id) &&
+              m.category === it.category &&
+              Number(m.amount).toFixed(2) === it.amount.toFixed(2),
+          );
+          const notes = it.note?.trim() || null;
+          if (hit) {
+            used.add(hit.id);
+            await sp
+              .update(expenseLines)
+              .set({
+                notes,
+                dcrId: d.id,
+                source: 'auto',
+                autoTrigger: 'dcr_submit',
+                origin: 'dcr',
+                dcrItemIndex: i,
+              })
+              .where(eq(expenseLines.id, hit.id));
+          } else
+            fresh.push({
+              id: uuidv7(),
+              companyId: p.companyId,
+              claimId: c!.id,
+              date: d.date,
+              category: it.category,
+              amount: it.amount.toFixed(2),
+              notes,
+              dcrId: d.id,
+              source: 'auto',
+              autoTrigger: 'dcr_submit',
+              origin: 'dcr',
+              dcrItemIndex: i,
+            });
+        }
+        if (fresh.length) await sp.insert(expenseLines).values(fresh);
+        await sp
+          .update(expenseLines)
+          .set({ dcrRejectedAt: null })
+          .where(
+            and(
+              eq(expenseLines.claimId, c!.id),
+              eq(expenseLines.date, d.date),
+              isNotNull(expenseLines.dcrRejectedAt),
+              isNull(expenseLines.deletedAt),
+            ),
+          );
+        await recomputeTotal(sp, c!.id);
+        const total = Math.round(items.reduce((t, it) => t + it.amount, 0) * 100) / 100;
+        const res: DcrExpenseLink = {
+          ...out,
+          status: items.length ? 'linked' : 'skipped',
+          reason: items.length ? null : 'no_expenses',
+          lines: items.length,
+          total,
+        };
+        await this.audit.record(sp, p, 'expense.dcr_linked', {
+          entityType: 'expense_claim',
+          entityId: c!.id,
+          after: { actor: 'system', dcrId: d.id, date: d.date, replaced: old.length, ...res },
+        });
+        return res;
+      });
+    } catch (e) {
+      const res = { ...out, status: 'error' as const, reason: null };
+      await this.audit.record(tx, p, 'expense.dcr_linked', {
+        entityType: 'dcr',
+        entityId: d.id,
+        after: { actor: 'system', ...res, error: String((e as Error)?.message ?? e).slice(0, 200) },
+      });
+      return res;
+    }
   }
 
   /** Call after the DCR is rejected (same transaction); independent of the company setting. */
@@ -181,18 +370,19 @@ export class ExpenseAutoDraftService {
     );
     if (!plan.remove.length && !plan.flag.length) return null;
     const now = new Date();
-    if (plan.remove.length) {
+    if (plan.remove.length)
       await tx
         .update(expenseLines)
         .set({ deletedAt: now })
         .where(inArray(expenseLines.id, plan.remove));
-      await recomputeTotal(tx, c.id);
-    }
     if (plan.flag.length)
       await tx
         .update(expenseLines)
         .set({ dcrRejectedAt: now })
         .where(inArray(expenseLines.id, plan.flag));
+    // Flagged lines stay visible to the approver and drop out of the payable total.
+    // A paid claim has already moved money, so its stored total stays as paid.
+    if (c.status !== 'paid') await recomputeTotal(tx, c.id);
     const out = {
       claimId: c.id,
       claimStatus: c.status,
@@ -206,10 +396,51 @@ export class ExpenseAutoDraftService {
     });
     return out;
   }
+
+  /**
+   * After a claim is rejected, copy submitted DCR expenses and TA/DA for days that were
+   * skipped while the claim was submitted.
+   */
+  async backfillMonth(
+    tx: Tx,
+    p: Principal,
+    claim: { userId: string; month: string; status: string; deletedAt: Date | null },
+  ) {
+    if (claim.deletedAt || !claimEditable(claim.status)) return;
+    const start = String(claim.month).slice(0, 10);
+    const rows = await tx
+      .select({
+        id: dcrs.id,
+        userId: dcrs.userId,
+        date: dcrs.date,
+        expenses: dcrs.expenses,
+      })
+      .from(dcrs)
+      .where(
+        and(
+          eq(dcrs.userId, claim.userId),
+          sql`${dcrs.date} >= ${start}::date`,
+          sql`${dcrs.date} < (${start}::date + interval '1 month')`,
+          inArray(dcrs.status, ['submitted', 'approved']),
+          isNull(dcrs.deletedAt),
+        ),
+      );
+    for (const d of rows) {
+      const items = Array.isArray(d.expenses) ? d.expenses : [];
+      await this.linkDcrExpenses(
+        tx,
+        p,
+        { id: d.id, userId: d.userId, date: d.date },
+        items as DcrExpenseItem[],
+      );
+      await this.onDcrSubmit(tx, p, { id: d.id, userId: d.userId, date: d.date });
+    }
+  }
 }
 
 export async function recomputeTotal(tx: Tx, claimId: string) {
   await tx.execute(sql`update expense_claims set total = coalesce((
-    select sum(amount) from expense_lines where claim_id = ${claimId} and deleted_at is null), 0)
+    select sum(amount) from expense_lines
+      where claim_id = ${claimId} and deleted_at is null and dcr_rejected_at is null), 0)
     where id = ${claimId}`);
 }

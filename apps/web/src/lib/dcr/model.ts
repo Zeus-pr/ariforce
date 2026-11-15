@@ -4,8 +4,11 @@
  * Admin work and Leave (by detailsKind), plus any other work type as-is (e.g. Holiday).
  */
 import type { Dcr, DcrBand, DcrDetails, DcrDraftPut, DcrSfcMatch } from '@ariforce/contracts';
+import { expenseProblems, itemsOf, type DcrExpenseItem, type ExpenseDraft } from './expenses';
 import { bandOf, categoryFitsBand, sfcCategoryOf } from './bands';
 import type { ApiError } from '@/lib/api';
+import { dcrDateNotTodayMessage } from './date-rule';
+import { spanMin, endTimeProblem, type DetailsExtra } from './times';
 
 export type WorkTypeOption = {
   id: string;
@@ -56,13 +59,22 @@ export const MODE_LABEL: Record<string, string> = {
   other: 'Other',
 };
 
-/** One "Work On" choice. Field covers every work type with a band; the band picks the exact one. */
+/** Camp uses the field-work bands and is stored as CAMP_HQ / CAMP_EXHQ / CAMP_OUT. */
+export function isCampWorkType(w: { code: string }): boolean {
+  return w.code.toUpperCase().startsWith('CAMP_');
+}
+
+/** One "Work On" choice. Field and Camp each cover one work type per band; the band picks the exact one. */
 export type WorkOn = {
   key: string;
   label: string;
-  branch: 'field' | 'meeting' | 'training' | 'office' | 'leave' | 'other';
+  branch: 'field' | 'camp' | 'meeting' | 'training' | 'office' | 'leave' | 'other';
   workTypes: WorkTypeOption[];
 };
+
+export function isRouteDay(branch: WorkOn['branch'] | undefined): boolean {
+  return branch === 'field' || branch === 'camp';
+}
 
 /**
  * Work types with their band normalised (any case; 'ex'/'os' accepted). A field work type whose band
@@ -98,9 +110,12 @@ export function cleanSfcHqs(hqs: SfcHq[], band: DcrBand | null): SfcHq[] {
 
 export function workOnChoices(wts: WorkTypeOption[]): WorkOn[] {
   const out: WorkOn[] = [];
-  const field = wts.filter((w) => w.kind === 'field' && w.band);
+  const banded = wts.filter((w) => w.kind === 'field' && w.band);
+  const field = banded.filter((w) => !isCampWorkType(w));
+  const camp = banded.filter((w) => isCampWorkType(w));
   if (field.length)
     out.push({ key: 'field', label: 'Field work', branch: 'field', workTypes: field });
+  if (camp.length) out.push({ key: 'camp', label: 'Camp', branch: 'camp', workTypes: camp });
   const label = {
     meeting: 'Meeting',
     training: 'Training',
@@ -176,34 +191,49 @@ export type MeetingForm = {
   mode: 'in_person' | 'online';
   location: string;
   startTime: string;
+  endTime: string;
+  /** Derived from start and end; never typed in. */
   durationMin: string;
   attendees: string;
   remarks: string;
   trainer: string;
+  /** Meeting only. */
+  fromPlace: string;
+  toPlace: string;
 };
 export type OfficeForm = {
   taskType: string;
   description: string;
   startTime: string;
+  endTime: string;
+  /** Derived from start and end; never typed in. */
   durationMin: string;
   remarks: string;
+  fromPlace: string;
+  toPlace: string;
 };
 export const emptyMeeting = (): MeetingForm => ({
   title: '',
   mode: 'in_person',
   location: '',
   startTime: '',
+  endTime: '',
   durationMin: '',
   attendees: '',
   remarks: '',
   trainer: '',
+  fromPlace: '',
+  toPlace: '',
 });
 export const emptyOffice = (): OfficeForm => ({
   taskType: '',
   description: '',
   startTime: '',
+  endTime: '',
   durationMin: '',
   remarks: '',
+  fromPlace: '',
+  toPlace: '',
 });
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -232,6 +262,10 @@ export type FlowState = {
   leaveRequestId: string;
   /** Why the day differs from the approved tour plan; asked for when submit says DEVIATION_REASON_REQUIRED. */
   deviationReason: string;
+  /** Optional day expenses (any work type). */
+  expenses: ExpenseDraft[];
+  /** The saved report had expenses, so an empty list must be sent to clear them. */
+  expensesSent: boolean;
 };
 
 const minutes = (v: string) => {
@@ -239,40 +273,61 @@ const minutes = (v: string) => {
   return Number.isInteger(n) && n >= 1 && n <= 720 ? n : null;
 };
 
-export function detailsOf(s: FlowState): DcrDetails | null {
+export function detailsOf(s: FlowState): (DcrDetails & DetailsExtra) | null {
   const b = s.workOn?.branch;
   const t = (v: string) => v.trim() || null;
   if (b === 'meeting' || b === 'training') {
     const m = s.meeting;
-    if (!m.title.trim() || !HHMM.test(m.startTime) || !minutes(m.durationMin)) return null;
+    const span = spanMin(m.startTime, m.endTime);
+    if (!m.title.trim() || !span || !minutes(String(span))) return null;
     const base = {
       title: m.title.trim(),
       mode: m.mode,
       location: t(m.location),
       startTime: m.startTime,
-      durationMin: minutes(m.durationMin)!,
+      endTime: m.endTime,
+      durationMin: span,
       attendees: t(m.attendees),
       remarks: t(m.remarks),
     };
     return b === 'meeting'
-      ? { kind: 'meeting', ...base }
+      ? { kind: 'meeting', ...base, fromPlace: t(m.fromPlace), toPlace: t(m.toPlace) }
       : { kind: 'training', ...base, trainer: t(m.trainer) };
   }
   if (b === 'office') {
     const o = s.office;
-    if (!o.taskType.trim() || !o.description.trim() || !minutes(o.durationMin)) return null;
+    const span = spanMin(o.startTime, o.endTime);
+    if (!o.taskType.trim() || !o.description.trim() || !span || !minutes(String(span))) return null;
     return {
       kind: 'office',
       taskType: o.taskType.trim(),
       description: o.description.trim(),
-      startTime: HHMM.test(o.startTime) ? o.startTime : null,
-      durationMin: minutes(o.durationMin)!,
+      startTime: o.startTime,
+      endTime: o.endTime,
+      durationMin: span,
       remarks: t(o.remarks),
+      fromPlace: t(o.fromPlace),
+      toPlace: t(o.toPlace),
     };
   }
   if (b === 'leave')
     return s.leaveRequestId ? { kind: 'leave', leaveRequestId: s.leaveRequestId } : null;
   return null;
+}
+
+/** Start/end checks shared by meeting, training and admin work. */
+function timeProblems(
+  f: { startTime: string; endTime: string },
+  add: (key: string, text: string) => void,
+) {
+  if (!HHMM.test(f.startTime)) add('startTime', 'Enter the start time.');
+  if (!HHMM.test(f.endTime)) add('endTime', 'Enter the end time.');
+  const bad = endTimeProblem(f.startTime, f.endTime);
+  if (bad) add('endTime', bad);
+  else {
+    const span = spanMin(f.startTime, f.endTime);
+    if (span && span > 720) add('endTime', 'A session can be at most 12 hours.');
+  }
 }
 
 /** Problems that block Submit, keyed by the field they belong to. Field values are only checked on a Field day. */
@@ -281,7 +336,9 @@ export function problems(s: FlowState): { key: string; text: string }[] {
   const add = (key: string, text: string) => p.push({ key, text });
   const b = s.workOn?.branch;
   if (!s.workOn) add('workOn', 'Choose what you worked on.');
-  if (b === 'field') {
+  const exp = expenseProblems(s.expenses);
+  if (exp) add('expenses', exp);
+  if (isRouteDay(b)) {
     if (!s.workTypeId) add('band', 'Choose the band: HQ, EX or OS.');
     else if (!s.territoryIds.length) add('territory', 'Choose the territory you worked.');
     else if (!s.workWithDone) add('workWith', 'Choose who you worked with, or Worked alone.');
@@ -294,35 +351,42 @@ export function problems(s: FlowState): { key: string; text: string }[] {
       for (const h of s.sfc.hqs)
         if (!(s.routeChoice[h.hqTerritoryId] ?? h.autoSelectedId))
           add('sfc', `Pick the SFC route for ${h.hqName}.`);
-      if (!s.calls.length) add('calls', 'Add at least one Doctor, Chemist or Stockist call.');
-      s.calls.forEach((c, i) => {
-        if (!c.outletId)
-          add(
-            `call-${c.clientId}`,
-            `Call ${i + 1}: choose the ${KIND_LABEL[c.kind].toLowerCase()}.`,
-          );
-        if (!HHMM.test(c.time)) add(`call-${c.clientId}`, `Call ${i + 1}: enter the visit time.`);
-        if (c.kind === 'doctor' && c.productIds.length && !c.presentationOpenedAt)
-          add(
-            `call-${c.clientId}`,
-            `Call ${i + 1}: open the product presentation before submitting.`,
-          );
-      });
+      if (b !== 'camp') {
+        if (!s.calls.length) add('calls', 'Add at least one Doctor, Chemist or Stockist call.');
+        s.calls.forEach((c, i) => {
+          if (!c.outletId)
+            add(
+              `call-${c.clientId}`,
+              `Call ${i + 1}: choose the ${KIND_LABEL[c.kind].toLowerCase()}.`,
+            );
+          if (!HHMM.test(c.time)) add(`call-${c.clientId}`, `Call ${i + 1}: enter the visit time.`);
+          if (c.kind === 'doctor' && c.productIds.length && !c.presentationOpenedAt)
+            add(
+              `call-${c.clientId}`,
+              `Call ${i + 1}: open the product presentation before submitting.`,
+            );
+        });
+      }
     }
   }
   if (b === 'meeting' || b === 'training') {
     const m = s.meeting;
     const what = b === 'meeting' ? 'meeting' : 'training';
-    if (!m.title.trim()) add('title', `Choose the ${what} type, or pick Other and type it in.`);
+    if (!m.title.trim())
+      add(
+        'title',
+        b === 'meeting'
+          ? 'Choose the meeting type.'
+          : `Choose the ${what} type, or pick Other and type it in.`,
+      );
     if (m.mode === 'in_person' && !m.location.trim()) add('location', 'Enter where it was held.');
-    if (!HHMM.test(m.startTime)) add('startTime', 'Enter the start time.');
-    if (!minutes(m.durationMin)) add('durationMin', 'Enter the duration in minutes (1 to 720).');
+    timeProblems(m, add);
   }
   if (b === 'office') {
     const o = s.office;
     if (!o.taskType.trim()) add('taskType', 'Choose the task type, or pick Other and type it in.');
     if (!o.description.trim()) add('description', 'Describe the task.');
-    if (!minutes(o.durationMin)) add('durationMin', 'Enter the duration in minutes (1 to 720).');
+    timeProblems(o, add);
   }
   if (b === 'leave' && !s.leaveRequestId)
     add('leave', 'Choose or apply for the leave that covers this date.');
@@ -337,8 +401,9 @@ export function problems(s: FlowState): { key: string; text: string }[] {
 export function draftBody(
   s: FlowState,
   saved?: { id: string; version: number } | null,
-): DcrDraftPut {
-  const field = s.workOn?.branch === 'field';
+): DcrDraftPut & { expenses?: DcrExpenseItem[] } {
+  const field = isRouteDay(s.workOn?.branch);
+  const withCalls = s.workOn?.branch === 'field';
   const routes =
     field && s.sfc.state === 'ok'
       ? s.sfc.hqs
@@ -360,7 +425,7 @@ export function draftBody(
     // A partial non-field form is kept on the page, not sent: the API only takes complete details.
     details,
     deviationReason: s.deviationReason.trim() || null,
-    calls: field
+    calls: withCalls
       ? s.calls
           .filter((c) => c.outletId && HHMM.test(c.time))
           .map((c) => ({
@@ -372,21 +437,24 @@ export function draftBody(
             productsDetailed: c.productIds.map((productId, i) => ({ productId, order: i + 1 })),
             samples: [],
             pob:
-              c.kind === 'doctor'
-                ? []
-                : c.pob
+              c.kind === 'chemist'
+                ? c.pob
                     .filter((r) => r.productId && Number(r.quantity) > 0)
                     .map((r) => ({
                       productId: r.productId,
                       quantity: Number(r.quantity),
                       stockistId: r.stockistId || null,
-                    })),
+                    }))
+                : [],
             rcpa: [],
             remarks: c.remarks.trim() || null,
             ...(c.kind === 'doctor' ? { presentationOpenedAt: c.presentationOpenedAt } : {}),
             calledAt: isoOf(s.date, c.time),
           }))
       : [],
+    // Contract #121: omitted = keep the saved list. Left out when there never were any, so an API
+    // without DCR expenses yet sees the same body as before.
+    ...(s.expenses.length || s.expensesSent ? { expenses: itemsOf(s.expenses) } : {}),
     ...(saved ? { id: saved.id, version: saved.version } : {}),
   };
 }
@@ -416,6 +484,8 @@ export function callsFromDcr(d: Dcr, names: Map<string, string>): CallDraft[] {
 /** Plain words for the redesign's error codes. */
 export function dcrErrorMessage(e: ApiError): string {
   switch (e.code) {
+    case 'DCR_EXPENSE_CATEGORY_INVALID':
+      return 'One of the expenses has a category that can’t be used here. Choose Travel, Hotel, Food or Other.';
     case 'SFC_NO_MATCH':
       return 'No matching SFC record for this band and territory. Change the territory or band, or ask your manager to add the route to your SFC.';
     case 'SFC_ROUTE_REQUIRED':
@@ -432,12 +502,20 @@ export function dcrErrorMessage(e: ApiError): string {
       return 'This report changed in another tab. Reload the page and try again.';
     case 'DAY_LOCKED':
       return 'This day is locked. Ask your manager to reopen it.';
+    case 'DCR_DATE_NOT_TODAY':
+      return dcrDateNotTodayMessage(e.details);
     case 'DAY_ALREADY_SUBMITTED':
       return 'You already submitted a report for this day. This draft can’t be saved or submitted; you can delete it.';
     case 'NOT_FOUND':
       return 'This draft no longer exists. It may have been deleted on another device.';
     case 'DEVIATION_REASON_REQUIRED':
       return 'Say why the day differs from your approved tour plan.';
+    case 'MEETING_TYPE_INVALID':
+      return 'Choose the meeting type: Cycle Meeting or Review Meeting.';
+    case 'END_TIME_NOT_AFTER_START':
+      return 'The end time must be after the start time.';
+    case 'DURATION_TOO_LONG':
+      return 'A session can be at most 12 hours. Check the start and end time.';
     default:
       return e.message || 'Could not save. Try again.';
   }

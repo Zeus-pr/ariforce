@@ -7,6 +7,7 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import {
+  EXPENSE_CATEGORIES,
   EXPENSE_MAX_FILES_PER_LINE,
   type ExpenseCategory,
   type AllowanceDraftRequest,
@@ -37,6 +38,7 @@ import { and, asc, eq, gte, inArray, isNull, lt, ne, or, sql, type SQL } from 'd
 import { v7 as uuidv7 } from 'uuid';
 import type * as z from 'zod';
 import type { Principal } from '../auth/principal';
+import { ExpenseAutoDraftService } from './auto-draft.service';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
@@ -47,6 +49,9 @@ import { nameRejecters, rejectionFields } from '../common/rejection';
 import { keyExt, sniffMatches } from './files.util';
 import { computeAllowances } from '../allowances/allowances.engine';
 import { isDayReport } from '../dcr/day-report';
+import { companySettings, localDate } from '../field/field.util';
+import { loadStatements } from './statement.data';
+import { decodeCursor, encodeCursor } from '../masters/masters.service';
 
 type ClaimRow = typeof expenseClaims.$inferSelect;
 type LineRow = typeof expenseLines.$inferSelect;
@@ -72,7 +77,13 @@ import { buildTrail, primaryRole, type TrailUser } from './approval-trail';
 
 type ExpenseTrailFields = Pick<
   ExpenseClaim,
-  'approvalTrail' | 'totalLevels' | 'currentApprover' | 'canDecide' | 'canPay' | 'paidBy'
+  | 'approvalTrail'
+  | 'totalLevels'
+  | 'currentApprover'
+  | 'canDecide'
+  | 'canPay'
+  | 'paidBy'
+  | 'userRole'
 >;
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -91,6 +102,7 @@ export class ExpensesService implements OnModuleInit {
     private readonly approvals: ApprovalsService,
     private readonly storage: StorageService,
     private readonly notifications: NotificationsService,
+    private readonly autoDraft: ExpenseAutoDraftService,
   ) {}
 
   onModuleInit() {
@@ -119,9 +131,17 @@ export class ExpensesService implements OnModuleInit {
           dedupeKey: `expense.decided:${req.id}`,
           data: { ...(req.payload ?? {}), comment, ...(approved ? {} : { reason: comment }) },
         });
+        if (!approved) {
+          const [c] = await tx
+            .select()
+            .from(expenseClaims)
+            .where(eq(expenseClaims.id, req.entityId));
+          if (c) await this.autoDraft.backfillMonth(tx, p, c);
+        }
       },
       {
         levels: approvalLevels(),
+        finalDirector: approvalLevels() >= 3,
         permission: 'expenses:approve',
         beforeApprove: (tx, _p, req) => this.assertDcrsApproved(tx, req.entityId),
         onBlocked: (p, req, e) => this.notifyBlocked(p, req.entityId, e),
@@ -162,7 +182,13 @@ export class ExpensesService implements OnModuleInit {
     const lines = await tx
       .select({ date: expenseLines.date })
       .from(expenseLines)
-      .where(and(eq(expenseLines.claimId, claimId), isNull(expenseLines.deletedAt)));
+      .where(
+        and(
+          eq(expenseLines.claimId, claimId),
+          isNull(expenseLines.deletedAt),
+          isNull(expenseLines.dcrRejectedAt),
+        ),
+      );
     const dates = [...new Set(lines.map((l) => l.date))];
     if (!dates.length) return;
     const rows = await tx
@@ -250,11 +276,36 @@ export class ExpensesService implements OnModuleInit {
     return parts.length ? or(...parts)! : sql`false`;
   }
 
-  private async claimRow(tx: Tx, p: Principal, id: string, lock = false): Promise<ClaimRow> {
+  /**
+   * GET /v1/expense-claims/{id} only (#128): the Director (company-wide, expenses:approve) may also
+   * open any claim of the company, drafts included, i.e. everything the scope=team list shows.
+   * Read-only: write/decide/pay paths keep using readable() alone, so nobody else changes.
+   */
+  private directorReadable(p: Principal): SQL {
+    return p.roles.includes('director') &&
+      p.teamUserIds === null &&
+      p.permissions.includes('expenses:approve')
+      ? or(this.readable(p), sql`true`)!
+      : this.readable(p);
+  }
+
+  private async claimRow(
+    tx: Tx,
+    p: Principal,
+    id: string,
+    lock = false,
+    directorRead = false,
+  ): Promise<ClaimRow> {
     const q = tx
       .select()
       .from(expenseClaims)
-      .where(and(eq(expenseClaims.id, id), isNull(expenseClaims.deletedAt), this.readable(p)));
+      .where(
+        and(
+          eq(expenseClaims.id, id),
+          isNull(expenseClaims.deletedAt),
+          directorRead ? this.directorReadable(p) : this.readable(p),
+        ),
+      );
     const [c] = lock ? await q.for('update') : await q;
     if (!c) throw new NotFoundException('Expense claim not found');
     return c;
@@ -321,6 +372,7 @@ export class ExpensesService implements OnModuleInit {
    */
   private async trails(tx: Tx, p: Principal, cs: ClaimRow[]) {
     const totalLevels = approvalLevels();
+    const directorId = totalLevels >= 3 ? await this.approvals.directorId(tx) : null;
     const reqIds = [
       ...new Set(cs.flatMap((c) => (c.approvalRequestId ? [c.approvalRequestId] : []))),
     ];
@@ -347,6 +399,8 @@ export class ExpensesService implements OnModuleInit {
     await load([
       ...steps.flatMap((s) => [s.approverUserId, s.decidedBy]),
       ...cs.map((c) => c.paidBy),
+      ...cs.map((c) => c.userId),
+      directorId,
     ]);
     // Project pending requests up the manager chain (one users query per missing level).
     let frontier = reqs
@@ -370,7 +424,7 @@ export class ExpensesService implements OnModuleInit {
     for (const c of cs) {
       const req = reqs.find((r) => r.id === c.approvalRequestId) ?? null;
       const st = req ? steps.filter((s) => s.requestId === req.id) : [];
-      const t = buildTrail(totalLevels, req, st, um);
+      const t = buildTrail(totalLevels, req, st, um, directorId);
       out.set(c.id, {
         ...t,
         totalLevels,
@@ -385,6 +439,7 @@ export class ExpensesService implements OnModuleInit {
           c.userId !== p.userId &&
           p.permissions.includes('expenses:pay'),
         paidBy: c.paidBy ? { id: c.paidBy, name: um.get(c.paidBy)?.name ?? '' } : null,
+        userRole: (um.get(c.userId)?.role ?? null) as ExpenseClaim['userRole'],
       });
     }
     return out;
@@ -425,6 +480,7 @@ export class ExpensesService implements OnModuleInit {
       dcrId: l.dcrId,
       tourPlanId: l.tourPlanId,
       source: l.source,
+      origin: l.origin,
       allowancePlaceId: l.allowancePlaceId,
       autoTrigger: l.source === 'auto' ? (l.autoTrigger ?? null) : null,
       dcrRejectedAt: iso(l.dcrRejectedAt),
@@ -447,28 +503,70 @@ export class ExpensesService implements OnModuleInit {
 
   private async recomputeTotal(tx: Tx, claimId: string) {
     await tx.execute(sql`update expense_claims set total = coalesce((
-      select sum(amount) from expense_lines where claim_id = ${claimId} and deleted_at is null), 0)
+      select sum(amount) from expense_lines
+        where claim_id = ${claimId} and deleted_at is null and dcr_rejected_at is null), 0)
       where id = ${claimId}`);
   }
 
   // ---- claims ----
 
-  list(p: Principal, q: { month?: string; userId?: string; status?: ExpenseStatus }) {
+  /**
+   * Without limit/cursor: every readable claim (unchanged). With either: one page of `limit`
+   * (default 50, max 200) plus `limit`, `total` and `nextCursor` (opaque offset cursor).
+   */
+  list(
+    p: Principal,
+    q: {
+      month?: string;
+      userId?: string;
+      status?: ExpenseStatus;
+      scope?: 'team';
+      limit?: number;
+      cursor?: string;
+    },
+  ) {
+    // scope=team (Director view): every claim of the reporting subtree in any status, drafts too;
+    // Director (teamUserIds null) = whole company. Same paging/filters as the default list.
+    if (q.scope === 'team' && !p.permissions.includes('expenses:approve'))
+      throw new ForbiddenException('scope=team needs expenses:approve');
+    const visible =
+      q.scope === 'team'
+        ? p.teamUserIds
+          ? inArray(expenseClaims.userId, p.teamUserIds)
+          : sql`true`
+        : this.readable(p);
+    const paged = q.limit !== undefined || q.cursor !== undefined;
+    const limit = q.limit ?? 50;
+    const offset = paged ? decodeCursor(q.cursor) : 0;
     return this.tenant.run(p, async (tx) => {
-      const rows = await tx
+      const where = and(
+        visible,
+        isNull(expenseClaims.deletedAt),
+        q.month ? eq(expenseClaims.month, monthStart(q.month)) : undefined,
+        q.userId ? eq(expenseClaims.userId, q.userId) : undefined,
+        q.status ? eq(expenseClaims.status, q.status) : undefined,
+      );
+      const base = tx
         .select({ c: expenseClaims, name: users.name })
         .from(expenseClaims)
         .innerJoin(users, eq(users.id, expenseClaims.userId))
-        .where(
-          and(
-            this.readable(p),
-            isNull(expenseClaims.deletedAt),
-            q.month ? eq(expenseClaims.month, monthStart(q.month)) : undefined,
-            q.userId ? eq(expenseClaims.userId, q.userId) : undefined,
-            q.status ? eq(expenseClaims.status, q.status) : undefined,
-          ),
-        )
-        .orderBy(sql`${expenseClaims.month} desc`, asc(users.name));
+        .where(where);
+      // Paged reads add the id tie-break so pages never overlap or skip rows.
+      const rows = paged
+        ? await base
+            .orderBy(sql`${expenseClaims.month} desc`, asc(users.name), asc(expenseClaims.id))
+            .limit(limit)
+            .offset(offset)
+        : await base.orderBy(sql`${expenseClaims.month} desc`, asc(users.name));
+      const total = paged
+        ? ((
+            await tx
+              .select({ n: sql<number>`count(*)::int` })
+              .from(expenseClaims)
+              .innerJoin(users, eq(users.id, expenseClaims.userId))
+              .where(where)
+          )[0]?.n ?? 0)
+        : 0;
       const counts = rows.length
         ? await tx
             .select({ id: expenseLines.claimId, n: sql<number>`count(*)::int` })
@@ -518,18 +616,25 @@ export class ExpensesService implements OnModuleInit {
             lineCount: counts.find((x) => x.id === r.c.id)?.n ?? 0,
           })),
         ),
+        ...(paged && {
+          limit,
+          total,
+          nextCursor: offset + rows.length < total ? encodeCursor(offset + limit) : null,
+        }),
       };
     });
   }
 
   get(p: Principal, id: string) {
-    return this.tenant.run(p, async (tx) => this.toDto(tx, await this.claimRow(tx, p, id), p));
+    return this.tenant.run(p, async (tx) =>
+      this.toDto(tx, await this.claimRow(tx, p, id, false, true), p),
+    );
   }
 
   /** Creates your claim for the month, or returns the existing one (created = false). */
   create(p: Principal, month: string) {
     return this.tenant.run(p, async (tx) => {
-      const today = new Date().toISOString().slice(0, 7);
+      const today = localDate(new Date(), (await companySettings(tx, p)).timezone).slice(0, 7);
       if (month > today) throw err(422, 'VALIDATION', 'Cannot claim for a future month');
       const [cur] = await tx
         .select()
@@ -558,8 +663,33 @@ export class ExpensesService implements OnModuleInit {
     const m = c.month.slice(0, 7);
     if (l.date.slice(0, 7) !== m)
       throw err(422, 'VALIDATION', `date must be in ${m}`, { field: 'date' });
-    if (l.date > new Date().toISOString().slice(0, 10))
+    if (l.date > localDate(new Date(), (await companySettings(tx, p)).timezone))
       throw err(422, 'VALIDATION', 'date cannot be in the future', { field: 'date' });
+    const taDaCategories: ExpenseCategory[] | null =
+      l.category === 'travel'
+        ? ['travel', 'mileage']
+        : l.category === 'allowance' || l.category === 'mileage'
+          ? [l.category]
+          : null;
+    if (taDaCategories) {
+      const [auto] = await tx
+        .select({ id: expenseLines.id })
+        .from(expenseLines)
+        .where(
+          and(
+            eq(expenseLines.claimId, c.id),
+            eq(expenseLines.date, l.date),
+            eq(expenseLines.origin, 'ta_da'),
+            inArray(expenseLines.category, taDaCategories),
+            isNull(expenseLines.deletedAt),
+          ),
+        )
+        .limit(1);
+      if (auto)
+        throw err(422, 'VALIDATION', 'This day already has that allowance from the DCR', {
+          field: 'category',
+        });
+    }
     if (l.dcrId) {
       const [d] = await tx
         .select({ date: dcrs.date })
@@ -634,16 +764,33 @@ export class ExpensesService implements OnModuleInit {
     return l;
   }
 
+  /** Lines copied from a DCR are edited on the DCR (resubmit replaces them), never here. */
+  private notDcrLine(l: LineRow) {
+    if (l.origin === 'dcr' || l.origin === 'ta_da')
+      throw err(
+        409,
+        'EXPENSE_NOT_EDITABLE',
+        l.origin === 'dcr'
+          ? 'This line comes from your DCR; change the DCR expenses'
+          : 'This TA/DA comes from the DCR and cannot be edited',
+        {
+          reason: l.origin === 'dcr' ? 'DCR_LINE' : 'TA_DA_LINE',
+          dcrId: l.dcrId,
+        },
+      );
+  }
+
   updateLine(p: Principal, id: string, lineId: string, l: ExpenseLineInput, version: number) {
     return this.tenant.run(p, async (tx) => {
       const c = await this.ownEditable(tx, p, id);
       const cur = await this.lineRow(tx, c.id, lineId);
+      this.notDcrLine(cur);
       if (cur.version !== version)
         throw err(409, 'VERSION_CONFLICT', 'Stale version', this.lineDto(cur, []));
       await this.checkLine(tx, p, c, l);
       await tx
         .update(expenseLines)
-        .set({ ...this.lineValues(l), source: 'manual', autoTrigger: null })
+        .set({ ...this.lineValues(l), source: 'manual', autoTrigger: null, origin: 'manual' })
         .where(eq(expenseLines.id, lineId));
       await this.recomputeTotal(tx, c.id);
       await this.audit.record(tx, p, 'expense.line_updated', {
@@ -659,7 +806,7 @@ export class ExpensesService implements OnModuleInit {
   deleteLine(p: Principal, id: string, lineId: string) {
     return this.tenant.run(p, async (tx) => {
       const c = await this.ownEditable(tx, p, id);
-      await this.lineRow(tx, c.id, lineId);
+      this.notDcrLine(await this.lineRow(tx, c.id, lineId));
       const now = new Date();
       await tx.update(expenseLines).set({ deletedAt: now }).where(eq(expenseLines.id, lineId));
       await tx
@@ -680,7 +827,7 @@ export class ExpensesService implements OnModuleInit {
   draftAllowances(p: Principal, id: string, req: AllowanceDraftRequest) {
     return this.tenant.run(p, async (tx) => {
       const c = await this.ownEditable(tx, p, id);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localDate(new Date(), (await companySettings(tx, p)).timezone);
       const r = await computeAllowances(tx, c, req, today);
       if (req.dryRun) return { dryRun: true, days: r.days, totals: r.totals, claim: null };
       const now = new Date();
@@ -691,6 +838,7 @@ export class ExpensesService implements OnModuleInit {
           and(
             eq(expenseLines.claimId, c.id),
             eq(expenseLines.source, 'auto'),
+            ne(expenseLines.origin, 'dcr'),
             isNull(expenseLines.deletedAt),
           ),
         );
@@ -708,6 +856,7 @@ export class ExpensesService implements OnModuleInit {
             dcrId: l.dcrId,
             source: 'auto' as const,
             autoTrigger: 'allowances_run' as const,
+            origin: 'ta_da' as const,
             calc: l.calc,
             allowancePlaceId: l.placeId,
           })),
@@ -784,7 +933,10 @@ export class ExpensesService implements OnModuleInit {
       const dto = await this.toDto(tx, c, p);
       if (!dto.lines.length) throw err(422, 'EXPENSE_EMPTY', 'Add at least one line first');
       const noReceipt = dto.lines.filter(
-        (l) => l.category === 'hotel' && !l.attachments.some((a) => a.status === 'confirmed'),
+        (l) =>
+          !l.dcrRejectedAt &&
+          l.category === 'hotel' &&
+          !l.attachments.some((a) => a.status === 'confirmed'),
       );
       if (noReceipt.length)
         throw err(422, 'RECEIPT_REQUIRED', 'Hotel lines need a confirmed receipt', {
@@ -894,11 +1046,6 @@ export class ExpensesService implements OnModuleInit {
           uploadedBy: p.userId,
         })
         .returning();
-      // A receipt on a drafted TA/DA line makes it the rep's own (kept on re-run).
-      await tx
-        .update(expenseLines)
-        .set({ source: 'manual', autoTrigger: null })
-        .where(and(eq(expenseLines.id, lineId), eq(expenseLines.source, 'auto')));
       await this.audit.record(tx, p, 'expense.attachment_requested', {
         entityType: 'expense_attachment',
         entityId: a!.id,
@@ -1024,76 +1171,35 @@ export class ExpensesService implements OnModuleInit {
   // ---- reconciliation & reports ----
 
   private async reconcile(tx: Tx, c: ClaimRow): Promise<ExpenseReconciliation> {
-    const m = c.month.slice(0, 7);
     const lines = await tx
       .select()
       .from(expenseLines)
       .where(and(eq(expenseLines.claimId, c.id), isNull(expenseLines.deletedAt)));
-    const days = await tx
+    return reconcileClaim(c, lines, await this.monthDays(tx, [c.userId], c.month));
+  }
+
+  /** DCR day reports of these users in the claim month (one query for a whole report). */
+  private monthDays(tx: Tx, userIds: string[], month: string) {
+    const m = month.slice(0, 7);
+    return tx
       .select({
         id: dcrs.id,
         date: dcrs.date,
         status: dcrs.status,
         field: workTypes.countsAsFieldDay,
+        userId: dcrs.userId,
       })
       .from(dcrs)
       .innerJoin(workTypes, eq(workTypes.id, dcrs.workTypeId))
       .where(
         and(
-          eq(dcrs.userId, c.userId),
+          userIds.length === 1 ? eq(dcrs.userId, userIds[0]!) : inArray(dcrs.userId, userIds),
           isNull(dcrs.deletedAt),
           isDayReport(dcrs),
-          gte(dcrs.date, c.month),
+          gte(dcrs.date, month),
           lt(dcrs.date, nextMonth(m)),
         ),
       );
-    const byDate = new Map<string, LineRow[]>();
-    for (const l of lines) byDate.set(l.date, [...(byDate.get(l.date) ?? []), l]);
-    const byCategory = {
-      travel: 0,
-      hotel: 0,
-      food: 0,
-      mileage: 0,
-      allowance: 0,
-      other: 0,
-    } as Record<Category, number>;
-    for (const l of lines) byCategory[l.category] = r2(byCategory[l.category] + Number(l.amount));
-    let unmatched = 0;
-    const out = [...byDate.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, ls]) => {
-        const d = days.find((x) => x.date === date);
-        const flags: ExpenseReconciliation['days'][number]['flags'] = [];
-        if (!date.startsWith(m)) flags.push('outside_month');
-        if (!d) flags.push('no_dcr');
-        else {
-          if (d.status === 'draft') flags.push('dcr_not_submitted');
-          if (!d.field) flags.push('non_field_day');
-        }
-        if (ls.some((l) => l.dcrId && l.dcrId !== d?.id)) flags.push('dcr_link_mismatch');
-        const claimed = r2(ls.reduce((s, l) => s + Number(l.amount), 0));
-        if (flags.length) unmatched = r2(unmatched + claimed);
-        return {
-          date,
-          claimed,
-          lineCount: ls.length,
-          dcrId: d?.id ?? null,
-          dcrStatus: d?.status ?? null,
-          flags,
-        };
-      });
-    return {
-      claimId: c.id,
-      userId: c.userId,
-      month: m,
-      total: r2(lines.reduce((s, l) => s + Number(l.amount), 0)),
-      claimedDays: out.length,
-      dcrDays: days.filter((d) => d.status === 'submitted' || d.status === 'approved').length,
-      matchedDays: out.filter((d) => !d.flags.length).length,
-      unmatchedAmount: unmatched,
-      byCategory,
-      days: out,
-    };
   }
 
   reconciliation(p: Principal, id: string) {
@@ -1135,30 +1241,54 @@ export class ExpensesService implements OnModuleInit {
           ),
         )
         .orderBy(asc(users.name));
-      const claims = [];
-      for (const r of rows) {
-        const rec = await this.reconcile(tx, r.c);
-        const lines = await tx
-          .select()
-          .from(expenseLines)
-          .where(and(eq(expenseLines.claimId, r.c.id), isNull(expenseLines.deletedAt)))
-          .orderBy(asc(expenseLines.date));
-        claims.push({ rec, userName: r.name, status: r.c.status, lines });
-      }
-      return claims;
+      if (!rows.length) return [];
+      // Two queries for the whole report (was 3 per claim): all lines, all DCR days of the month.
+      const allLines = await tx
+        .select()
+        .from(expenseLines)
+        .where(
+          and(
+            inArray(
+              expenseLines.claimId,
+              rows.map((r) => r.c.id),
+            ),
+            isNull(expenseLines.deletedAt),
+          ),
+        )
+        .orderBy(asc(expenseLines.date), asc(expenseLines.id));
+      const allDays = await this.monthDays(
+        tx,
+        [...new Set(rows.map((r) => r.c.userId))],
+        monthStart(q.month),
+      );
+      return rows.map((r) => {
+        const lines = allLines.filter((l) => l.claimId === r.c.id);
+        const days = allDays.filter((d) => d.userId === r.c.userId);
+        return {
+          rec: reconcileClaim(r.c, lines, days),
+          userName: r.name,
+          status: r.c.status,
+          lines,
+        };
+      });
     });
+  }
+
+  /** Per-employee monthly statements (header, day rows) for the Excel export. */
+  statements(
+    p: Principal,
+    month: string,
+    data: Awaited<ReturnType<ExpensesService['reportData']>>,
+  ) {
+    return this.tenant.run(p, (tx) => loadStatements(tx, p.companyId, month, data));
   }
 
   async report(p: Principal, q: Parameters<ExpensesService['reportData']>[1]) {
     const data = await this.reportData(p, q);
-    const byCategory = {
-      travel: 0,
-      hotel: 0,
-      food: 0,
-      mileage: 0,
-      allowance: 0,
-      other: 0,
-    } as Record<Category, number>;
+    const byCategory = Object.fromEntries(EXPENSE_CATEGORIES.map((k) => [k, 0])) as Record<
+      Category,
+      number
+    >;
     for (const d of data)
       for (const k of Object.keys(byCategory) as Category[])
         byCategory[k] = r2(byCategory[k] + d.rec.byCategory[k]);
@@ -1182,4 +1312,63 @@ export class ExpensesService implements OnModuleInit {
       }),
     );
   }
+}
+
+/** Pure reconciliation of one claim against its user's DCR day reports of the claim month. */
+function reconcileClaim(
+  c: ClaimRow,
+  lines: LineRow[],
+  days: {
+    id: string;
+    date: string;
+    status: (typeof dcrs.$inferSelect)['status'];
+    field: boolean;
+  }[],
+): ExpenseReconciliation {
+  const m = c.month.slice(0, 7);
+  // Rejected-DCR lines stay on the claim for the approver and are not part of the payable total.
+  const payable = lines.filter((l) => !l.dcrRejectedAt);
+  const byDate = new Map<string, LineRow[]>();
+  for (const l of payable) byDate.set(l.date, [...(byDate.get(l.date) ?? []), l]);
+  const byCategory = Object.fromEntries(EXPENSE_CATEGORIES.map((k) => [k, 0])) as Record<
+    Category,
+    number
+  >;
+  for (const l of payable) byCategory[l.category] = r2(byCategory[l.category] + Number(l.amount));
+  let unmatched = 0;
+  const out = [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, ls]) => {
+      const d = days.find((x) => x.date === date);
+      const flags: ExpenseReconciliation['days'][number]['flags'] = [];
+      if (!date.startsWith(m)) flags.push('outside_month');
+      if (!d) flags.push('no_dcr');
+      else {
+        if (d.status === 'draft') flags.push('dcr_not_submitted');
+        if (!d.field) flags.push('non_field_day');
+      }
+      if (ls.some((l) => l.dcrId && l.dcrId !== d?.id)) flags.push('dcr_link_mismatch');
+      const claimed = r2(ls.reduce((s, l) => s + Number(l.amount), 0));
+      if (flags.length) unmatched = r2(unmatched + claimed);
+      return {
+        date,
+        claimed,
+        lineCount: ls.length,
+        dcrId: d?.id ?? null,
+        dcrStatus: d?.status ?? null,
+        flags,
+      };
+    });
+  return {
+    claimId: c.id,
+    userId: c.userId,
+    month: m,
+    total: r2(payable.reduce((s, l) => s + Number(l.amount), 0)),
+    claimedDays: out.length,
+    dcrDays: days.filter((d) => d.status === 'submitted' || d.status === 'approved').length,
+    matchedDays: out.filter((d) => !d.flags.length).length,
+    unmatchedAmount: unmatched,
+    byCategory,
+    days: out,
+  };
 }

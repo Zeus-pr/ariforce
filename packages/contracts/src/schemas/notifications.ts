@@ -24,6 +24,8 @@ export const NOTIFICATION_TYPES = [
   'dcr_unlock.submitted',
   'dcr_unlock.approved',
   'dcr_unlock.rejected',
+  'company.message',
+  'doctor.occasion',
 ] as const;
 export const NotificationType = z.enum(NOTIFICATION_TYPES).meta({ id: 'NotificationType' });
 export type NotificationType = z.infer<typeof NotificationType>;
@@ -77,3 +79,17 @@ export const ReadAllResult = z.object({ updated: z.int().min(0) }).meta({ id: 'R
 export const JobStats = z
   .object({ queued: z.int(), running: z.int(), done: z.int(), dead: z.int() })
   .meta({ id: 'JobStats' });
+
+/** Director or system admin message. One in-app row per other active user; the sender is skipped. */
+export const CompanyMessage = z
+  .object({
+    title: z.string().trim().min(1).max(120),
+    body: z.string().trim().min(1).max(500),
+  })
+  .meta({ id: 'CompanyMessage' });
+export type CompanyMessage = z.infer<typeof CompanyMessage>;
+
+export const CompanyMessageResult = z
+  .object({ recipients: z.int().min(0) })
+  .meta({ id: 'CompanyMessageResult' });
+export type CompanyMessageResult = z.infer<typeof CompanyMessageResult>;

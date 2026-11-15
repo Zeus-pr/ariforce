@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 
 import { PlaceholderTag } from '@/components/masters/placeholder';
 
-import { ArrowLeft, FileSpreadsheet, MapPin, Pencil, Phone, Plus } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, Mail, MapPin, Pencil, Phone, Plus } from 'lucide-react';
 import { RecordSheet } from '@/components/masters/record-sheet';
 import type { MasterRow } from '@/components/masters/config';
 import { Button } from '@ariforce/ui/components/button';
@@ -15,13 +15,15 @@ import { RejectionNote } from '@/components/approvals/rejection-note';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import type { Doctor } from '@ariforce/contracts';
+import type { Dcr, Doctor } from '@ariforce/contracts';
 import { Badge } from '@ariforce/ui/components/badge';
 import { Card, CardDescription, CardHeader, CardTitle } from '@ariforce/ui/components/card';
 import { cn } from '@ariforce/ui/lib/utils';
 import { DataTable } from '@/components/data-table/data-table';
 import type { Column } from '@/components/data-table/types';
+import { OutletLocksCard } from '@/components/field/outlet-locks-card';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
+import { MasterExport } from '@/components/masters/master-export';
 import { masterSource } from '@/components/masters/source';
 import { api, apiReady } from '@/lib/api';
 import { addDays, monthLabel, shortDate, thisMonth, todayYmd } from '@/lib/period';
@@ -29,7 +31,6 @@ import {
   HISTORY_DAYS,
   productTally,
   SAMPLE_CAP_PER_MONTH,
-  sampleVisits,
   visitsFrom,
   type Visit,
 } from './doctor-data';
@@ -41,6 +42,17 @@ const VisitsChart = dynamic(() => import('./doctor-charts').then((m) => m.Visits
     <div className="h-[170px] animate-pulse rounded-md bg-muted/40" aria-busy="true" />
   ),
 });
+
+function dayLabel(iso: string) {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
 
 export function DoctorsView() {
   const id = useSearchParams().get('id');
@@ -119,18 +131,21 @@ function DoctorList() {
         onRowClick={(d) => router.push(`/doctors?id=${d.id}`)}
         searchPlaceholder="Search doctors"
         actions={
-          canWrite ? (
-            <>
-              <Button variant="outline" asChild>
-                <Link href="/doctors/import" data-testid="master-import">
-                  <FileSpreadsheet /> Import
-                </Link>
-              </Button>
-              <Button data-testid="master-add" onClick={() => setAdding(true)}>
-                <Plus /> Add doctor
-              </Button>
-            </>
-          ) : undefined
+          <>
+            <MasterExport kind="doctors" />
+            {canWrite && (
+              <>
+                <Button variant="outline" asChild>
+                  <Link href="/doctors/import" data-testid="master-import">
+                    <FileSpreadsheet /> Import
+                  </Link>
+                </Button>
+                <Button data-testid="master-add" onClick={() => setAdding(true)}>
+                  <Plus /> Add doctor
+                </Button>
+              </>
+            )}
+          </>
         }
         empty={<p className="py-10 text-center text-sm text-muted-foreground">No doctors match.</p>}
       />
@@ -159,16 +174,48 @@ function Doctor360({ id }: { id: string }) {
       await apiReady();
       const today = todayYmd();
       const from = addDays(today, -HISTORY_DAYS);
+      // Check-ins are filtered on the server by doctor. DCRs use doctorId so this page
+      // does not download the whole team's reports (that request was cut off at 8s).
+      const allDcrs = async () => {
+        const items: Dcr[] = [];
+        let cursor: string | undefined;
+        for (let i = 0; i < 20; i++) {
+          const r = await api.GET('/v1/dcrs', {
+            params: {
+              query: {
+                from,
+                to: today,
+                limit: 50,
+                doctorId: id,
+                ...(cursor ? { cursor } : {}),
+              },
+            },
+          });
+          items.push(...(r.data?.items ?? []));
+          cursor = r.data?.nextCursor ?? undefined;
+          if (!cursor) break;
+        }
+        return items;
+      };
       const [one, dcrs, ci] = await Promise.all([
         api.GET('/v1/doctors/{id}', { params: { path: { id } } }),
-        api.GET('/v1/dcrs', { params: { query: { from, to: today, limit: 200 } } }),
+        allDcrs(),
         api.GET('/v1/check-ins', {
-          params: { query: { from, to: today, kind: 'visit', limit: 200 } },
+          params: {
+            query: {
+              from,
+              to: today,
+              kind: 'visit',
+              outletKind: 'doctor',
+              outletId: id,
+              limit: 200,
+            },
+          },
         }),
       ]);
       if (!live) return;
       setDoc(one.data ?? null);
-      setReal(visitsFrom(id, dcrs.data?.items ?? [], ci.data?.items ?? []));
+      setReal(visitsFrom(id, dcrs, ci.data?.items ?? []));
     })().catch(() => {});
     return () => {
       live = false;
@@ -185,11 +232,7 @@ function Doctor360({ id }: { id: string }) {
   const category = lk.categories.find((c) => c.id === doc?.categoryId);
   const target = category?.visitsPerMonth ?? 0;
   const today = todayYmd();
-  const isSample = real !== null && real.length === 0;
-  const visits = useMemo(
-    () => (real === null ? null : real.length ? real : sampleVisits(id, today, target || 2)),
-    [real, id, today, target],
-  );
+  const visits = real;
   const month = thisMonth();
   const thisMonthVisits = (visits ?? []).filter((v) => v.date.startsWith(month));
   const samplesThisMonth = thisMonthVisits.reduce(
@@ -266,15 +309,6 @@ function Doctor360({ id }: { id: string }) {
               <Pencil /> Edit
             </Button>
           )}
-          {isSample && (
-            <Badge
-              variant="outline"
-              className="border-dashed font-normal text-muted-foreground"
-              data-testid="sample-badge"
-            >
-              Sample visit history
-            </Badge>
-          )}
         </div>
         <p className="text-sm text-muted-foreground">
           {[
@@ -299,6 +333,17 @@ function Doctor360({ id }: { id: string }) {
               {doc.phone}
             </a>
           )}
+          {doc.email && (
+            <a
+              href={`mailto:${doc.email}`}
+              className="inline-flex items-center gap-1 hover:text-foreground"
+            >
+              <Mail className="size-3.5" />
+              {doc.email}
+            </a>
+          )}
+          {doc.dateOfBirth && <span>Born {dayLabel(doc.dateOfBirth)}</span>}
+          {doc.anniversary && <span>Anniversary {dayLabel(doc.anniversary)}</span>}
         </p>
       </div>
 
@@ -345,6 +390,8 @@ function Doctor360({ id }: { id: string }) {
           </p>
         </Stat>
       </div>
+
+      <OutletLocksCard outletKind="doctor" outletId={doc.id} />
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <Card className="gap-0 py-0 shadow-xs">
@@ -445,12 +492,6 @@ function Doctor360({ id }: { id: string }) {
           </Card>
         </div>
       </div>
-      {isSample && (
-        <p className="text-xs text-muted-foreground">
-          Sample data: no calls to this doctor are recorded yet, so the visit history above is
-          illustrative.
-        </p>
-      )}
     </div>
   );
 }

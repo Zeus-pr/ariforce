@@ -10,7 +10,8 @@
  * SFC_HQ_NOT_ASSIGNED / SFC_ROUTE_NOT_FOUND, 429. Amounts are computed by the server; the web shows
  * the same rule (km x rate, both way = 2x) while typing. DA is a money amount (number or null).
  */
-import { API_URL, MOCKING, apiReady } from '@/lib/api';
+import { sfcCategoryFromLabel, sfcCategoryLabel } from '@ariforce/contracts';
+import { API_URL, apiReady } from '@/lib/api';
 
 export const DEFAULT_RATE = 2.95;
 /** Display labels for the contract's SfcTravelMode values. */
@@ -93,19 +94,6 @@ async function call<T>(path: string, init?: { method?: string; body?: unknown })
   await apiReady();
   const headers: Record<string, string> = { accept: 'application/json' };
   if (init?.body !== undefined) headers['content-type'] = 'application/json';
-  if (MOCKING && typeof window !== 'undefined') {
-    // Mock mode: the SFC mock scopes by persona, like the other principal-aware mocks.
-    try {
-      const s = JSON.parse(localStorage.getItem('af:mock-session') ?? 'null') as {
-        role?: string;
-        previewRole?: string;
-      } | null;
-      const who = s?.previewRole ?? s?.role;
-      if (who) headers['x-mock-user'] = who;
-    } catch {
-      /* default persona */
-    }
-  }
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
@@ -197,7 +185,7 @@ const fromApi = (t: ApiTable): SfcSheet => ({
     distanceKm: r.oneWayKm,
     actualFare: r.actualFare,
     travelMode: r.travelMode ? (MODE[r.travelMode] ?? r.travelMode.toUpperCase()) : '',
-    category: r.category ?? '',
+    category: sfcCategoryLabel(r.category),
     da: r.da,
   })),
 });
@@ -256,6 +244,13 @@ export const listEmployees = (hqId: string) =>
       canEdit: e.canEdit,
     })),
   );
+/** HQ/EX/EX HQ/OS/OUT EX HQ/EX / OS/MEETING, or the raw text when it is not one of those. */
+function categoryForSave(label: string): string | null {
+  const mapped = sfcCategoryFromLabel(label);
+  if (mapped === undefined) return label.trim() || null;
+  return mapped;
+}
+
 const path = (userId: string) => `/v1/sfc/employees/${encodeURIComponent(userId)}/routes`;
 export const getSheet = (userId: string) => call<ApiTable>(path(userId)).then(fromApi);
 /** Whole table in display order. Rows created in the browser (id "new-…") are sent without an id. */
@@ -272,7 +267,7 @@ export const saveSheet = (userId: string, etag: string, hqId: string, rows: SfcR
         oneWayKm: r.distanceKm ?? 0,
         actualFare: r.actualFare,
         travelMode: MODE_KEY[r.travelMode] ?? (r.travelMode ? 'other' : null),
-        category: r.category || null,
+        category: categoryForSave(r.category),
         da: r.da,
       })),
     },

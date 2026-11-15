@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   check,
   date,
@@ -9,6 +10,7 @@ import {
   numeric,
   pgEnum,
   pgTable,
+  real,
   smallint,
   text,
   timestamp,
@@ -179,6 +181,16 @@ export const dcrs = pgTable(
     band: text('band', { enum: ['hq', 'ex_hq', 'outstation'] }),
     /** Non-field details (0043), shape per work type (contracts DcrDetails). */
     details: jsonb('details'),
+    /** DCR expense items [{category, amount, note?}] (0055); linked into the claim at submit. */
+    expenses: jsonb('expenses')
+      .$type<{ category: string; amount: number; note?: string | null }[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    /** One day, many sections. Empty means the header columns are the only section. */
+    sections: jsonb('sections')
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     /** Day-level Work With (0043): anyone in the company. */
     workWithUserIds: uuid('work_with_user_ids')
       .array()
@@ -205,6 +217,7 @@ export const dcrs = pgTable(
       .on(t.companyId, t.userId, t.submitIdempotencyKey)
       .where(sql`submit_idempotency_key IS NOT NULL`),
     check('dcrs_band_ck', sql`band IS NULL OR band IN ('hq', 'ex_hq', 'outstation')`),
+    check('dcrs_expenses_ck', sql`jsonb_typeof(expenses) = 'array'`),
     check('dcrs_details_ck', sql`details IS NULL OR jsonb_typeof(details) = 'object'`),
     check(
       'dcrs_submit_key_ck',
@@ -233,11 +246,12 @@ export const dcrSfcRoutes = pgTable(
       .notNull()
       .references(() => sfcRoutes.id),
     snapshot: jsonb('snapshot'),
+    sectionIndex: integer('section_index').notNull().default(0),
     ...syncCols(),
   },
   (t) => [
-    uniqueIndex('dcr_sfc_routes_dcr_hq_uq')
-      .on(t.companyId, t.dcrId, t.hqTerritoryId)
+    uniqueIndex('dcr_sfc_routes_dcr_section_route_uq')
+      .on(t.companyId, t.dcrId, t.sectionIndex, t.sfcRouteId)
       .where(sql`deleted_at IS NULL`),
     index('dcr_sfc_routes_route_idx').on(t.companyId, t.sfcRouteId),
     check('dcr_sfc_routes_snapshot_ck', sql`snapshot IS NULL OR jsonb_typeof(snapshot) = 'object'`),
@@ -271,11 +285,18 @@ export const dcrCalls = pgTable(
     remarks: text('remarks'),
     /** When the presentation was shown to the doctor (0048); required on submit for detailed doctor calls. */
     presentationOpenedAt: timestamp('presentation_opened_at', { withTimezone: true }),
+    /** Locked outlet_locations row used for the Presentation geofence check. */
+    presentationLocationId: uuid('presentation_location_id'),
+    /** Server-computed metres from the capture to presentationLocationId. */
+    presentationDistanceM: bigint('presentation_distance_m', { mode: 'number' }),
+    presentationAccuracyM: real('presentation_accuracy_m'),
+    sectionIndex: integer('section_index').notNull().default(0),
     ...syncCols(),
   },
   (t) => [
     index('dcr_calls_user_date_idx').on(t.companyId, t.userId, t.date),
     index('dcr_calls_outlet_idx').on(t.companyId, t.outletKind, t.outletId),
+    index('dcr_calls_dcr_idx').on(t.companyId, t.dcrId),
   ],
 );
 

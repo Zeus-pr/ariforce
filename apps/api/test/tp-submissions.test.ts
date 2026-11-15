@@ -54,7 +54,9 @@ describe.skipIf(!OWNER || !APP)('tour plan submissions (#86, real API)', () => {
     await owner.query(`delete from tour_plans where user_id = $1 and month = $2`, args);
     const me = await http().get('/v1/me').set(as('bm2'));
     const wt = await http().get('/v1/work-types?limit=50').set(as('bm2'));
-    const field = wt.body.items.find((w: { kind: string }) => w.kind === 'field');
+    const field = wt.body.items.find(
+      (w: { kind: string; code: string }) => w.kind === 'field' && w.code.startsWith('FIELD_'),
+    );
     entry = { session: 'full', workTypeId: field.id, territoryIds: [me.body.territoryIds[0]] };
   });
   afterAll(async () => {

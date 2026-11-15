@@ -92,6 +92,8 @@ export const PERMISSIONS = [
   'audit:read',
   /** Stockists, primary/secondary sales and distribution views, company-wide (distribution_head). */
   'sales:read',
+  /** Set sales targets and enter or import sales actuals (director, system_admin). */
+  'sales:write',
   /** Legacy (retired accountant role); no endpoint checks it since 0040. Use expenses:pay. */
   'finance:read',
   /** Own expense claims: create, edit while draft/rejected, submit, attach receipts (#52). */
@@ -190,7 +192,15 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
   sales_manager: SENIOR,
   general_manager: SENIOR,
   vice_president: SENIOR,
-  director: [...SENIOR, 'settings:write', 'audit:read', 'expenses:pay', 'dcr_unlock:decide'],
+  director: [
+    ...SENIOR,
+    'settings:write',
+    'audit:read',
+    'expenses:pay',
+    'dcr_unlock:decide',
+    'sales:write',
+    'users:write',
+  ],
   system_admin: [
     ...BASE,
     ...MASTERS_WRITE,
@@ -203,6 +213,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'sfc:write',
     'expenses:pay',
     'dcr:review',
+    'sales:write',
+    // Outlet locks / check-ins on Doctor 360 (list requires field:read; manage needs write).
+    'field:read',
+    'field:write',
+    'leave:read',
+    'leave:approve',
   ],
   // Accepted by lead: read-only, company-wide; no doctors/chemists; never masters write.
   distribution_head: [

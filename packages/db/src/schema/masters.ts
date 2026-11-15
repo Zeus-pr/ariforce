@@ -114,10 +114,13 @@ export const doctors = pgTable(
     approvalStatus: approvalState('approval_status').notNull().default('approved'),
     /** Geofence radius in metres; null = company default (#24). */
     geofenceRadiusM: integer('geofence_radius_m'),
+    /** Active GPS pins this doctor may have. Default 1. ABM and above set 1–5. */
+    maxActiveLocks: integer('max_active_locks').notNull().default(1),
     geoTaggedAt: timestamp('geo_tagged_at', { withTimezone: true }),
     geoTaggedBy: uuid('geo_tagged_by').references(() => users.id),
     dateOfBirth: text('date_of_birth'),
     anniversary: text('anniversary'),
+    email: text('email'),
     ...contact(),
     ...syncCols(),
   },
@@ -128,11 +131,13 @@ export const doctors = pgTable(
     // Duplicate detection on field-added doctors (#26).
     index('doctors_regno_idx').on(t.companyId, sql`upper(${t.registrationNo})`),
     index('doctors_pincode_idx').on(t.companyId, t.pincode),
+    index('doctors_email_idx').on(t.companyId, sql`lower(${t.email})`),
     index('doctors_location_gix').using('gist', t.location),
     check(
       'doctors_geofence_ck',
       sql`${t.geofenceRadiusM} is null or ${t.geofenceRadiusM} between 10 and 2000`,
     ),
+    check('doctors_lock_cap_ck', sql`${t.maxActiveLocks} between 1 and 5`),
   ],
 );
 

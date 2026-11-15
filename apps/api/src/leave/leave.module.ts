@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { PlansModule } from '../plans/plans.module';
+import { HolidaysController } from './holidays.controller';
+import { HolidaysService } from './holidays.service';
 import { LeaveController } from './leave.controller';
 import { LeaveService } from './leave.service';
 
 @Module({
   imports: [PlansModule],
-  controllers: [LeaveController],
-  providers: [LeaveService],
+  controllers: [LeaveController, HolidaysController],
+  providers: [LeaveService, HolidaysService],
 })
 export class LeaveModule {}

@@ -54,7 +54,7 @@ describe.skipIf(!OWNER || !APP)(
       const prevSlug = process.env.SIGNUP_COMPANY_SLUG;
       process.env.SIGNUP_COMPANY_SLUG = 'demo';
       const email = `field.${RUN}@example.test`;
-      const pw = `field-${RUN}-pass`;
+      const pw = `Field-${RUN}-1!`;
       const req = await http().post('/v1/auth/sign-up-request').send({
         name: BM_NAME,
         email,
@@ -78,6 +78,21 @@ describe.skipIf(!OWNER || !APP)(
       tok.bm = `Bearer ${si.headers['set-auth-token']}`;
     });
     afterAll(async () => {
+      if (app && tok.director) {
+        const cur = await http().get('/v1/leave/settings').set(as('director'));
+        if (cur.status === 200 && JSON.stringify(cur.body.weeklyOffDays) !== '[0]') {
+          await http()
+            .put('/v1/leave/settings')
+            .set(as('director'))
+            .send({
+              approvalLevels: cur.body.approvalLevels,
+              backdateDays: cur.body.backdateDays,
+              maxFutureDays: cur.body.maxFutureDays,
+              version: cur.body.version,
+              weeklyOffDays: [0],
+            });
+        }
+      }
       await app?.close();
     });
 
@@ -225,6 +240,25 @@ describe.skipIf(!OWNER || !APP)(
         .get(`/v1/check-ins?unlinked=true&outletKind=doctor&outletId=${doc.body.id}`)
         .set(as('bm'));
       expect(unl.body.items).toHaveLength(2);
+      // Doctor 360: doctorId + limit; a peer BM outside the line sees nothing and gets 403 by userId.
+      const d360 = await http().get(`/v1/check-ins?doctorId=${doc.body.id}`).set(as('bm'));
+      expect(d360.body.items).toHaveLength(2);
+      const one = await http().get(`/v1/check-ins?doctorId=${doc.body.id}&limit=1`).set(as('bm'));
+      expect(one.body.items).toHaveLength(1);
+      expect(one.body.nextCursor).toBeTruthy();
+      expect(
+        (await http().get(`/v1/check-ins?doctorId=${doc.body.id}`).set(as('abm'))).body.items,
+      ).toHaveLength(2);
+      expect(
+        (await http().get(`/v1/check-ins?doctorId=${doc.body.id}`).set(as('seedbm'))).body.items,
+      ).toHaveLength(0);
+      expect(
+        (
+          await http()
+            .get(`/v1/check-ins?doctorId=${doc.body.id}&userId=${p1.body.userId}`)
+            .set(as('seedbm'))
+        ).status,
+      ).toBe(403);
       const abm = await http().get(`/v1/check-ins?userId=${p1.body.userId}`).set(as('abm'));
       expect(abm.body.items.length).toBeGreaterThanOrEqual(3);
       const other = await http().get(`/v1/check-ins?userId=${p1.body.userId}`).set(as('bm'));
@@ -253,6 +287,35 @@ describe.skipIf(!OWNER || !APP)(
         'absent',
         'absent',
       ]);
+    });
+
+    it('punch-out on a weekly off still waits for a DCR', async () => {
+      const istDay = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+      const dow = new Date(`${istDay}T00:00:00Z`).getUTCDay();
+      const settings = await http().get('/v1/leave/settings').set(as('director'));
+      expect(settings.status, JSON.stringify(settings.body)).toBe(200);
+      const off = await http()
+        .put('/v1/leave/settings')
+        .set(as('director'))
+        .send({
+          approvalLevels: settings.body.approvalLevels,
+          backdateDays: settings.body.backdateDays,
+          maxFutureDays: settings.body.maxFutureDays,
+          version: settings.body.version,
+          weeklyOffDays: [dow],
+        });
+      expect(off.status, JSON.stringify(off.body)).toBe(200);
+      const out = await http()
+        .post('/v1/check-ins')
+        .set(as('bm'))
+        .send(cap({ kind: 'punch_out' }));
+      expect(out.status, JSON.stringify(out.body)).toBe(409);
+      expect(out.body.error.code).toBe('DCR_NOT_SUBMITTED');
     });
   },
 );

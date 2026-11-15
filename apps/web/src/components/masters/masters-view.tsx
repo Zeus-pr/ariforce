@@ -12,6 +12,7 @@ import type { Column } from '@/components/data-table/types';
 import { MASTERS, type MasterKind, type MasterRow } from './config';
 import { LookupsProvider, useLookups } from './lookups';
 import { RecordSheet } from './record-sheet';
+import { MasterExport } from './master-export';
 import { masterSource } from './source';
 import { useRole } from '@/components/shell/role-context';
 import { canWriteMasters } from '@/lib/permissions';
@@ -148,20 +149,23 @@ function Inner({ kind }: { kind: MasterKind }) {
           </div>
         }
         actions={
-          canWrite ? (
-            <>
-              {importLink}
-              <Button
-                data-testid="master-add"
-                onClick={() => {
-                  setRow(null);
-                  setOpen(true);
-                }}
-              >
-                <Plus /> Add {cfg.singular}
-              </Button>
-            </>
-          ) : undefined
+          <>
+            <MasterExport kind={kind} />
+            {canWrite && (
+              <>
+                {importLink}
+                <Button
+                  data-testid="master-add"
+                  onClick={() => {
+                    setRow(null);
+                    setOpen(true);
+                  }}
+                >
+                  <Plus /> Add {cfg.singular}
+                </Button>
+              </>
+            )}
+          </>
         }
       />
       <RecordSheet

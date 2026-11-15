@@ -181,9 +181,11 @@ export class SfcService {
     return this.tenant.run(p, async (tx) => {
       const under = territoryId
         ? sql`and exists (select 1 from user_territories ut2
-             join territories t2 on t2.id = ut2.territory_id
+             join territories t2 on t2.id = ut2.territory_id and t2.deleted_at is null
              join territories root on root.id = ${territoryId}::uuid
-             where ut2.user_id = su.id and (t2.path = root.path or starts_with(t2.path, root.path || '.')))`
+             where ut2.user_id = su.id and (
+               t2.path = root.path or starts_with(t2.path, root.path || '.')
+               or (root.level = 'headquarter' and t2.level = 'area' and t2.id = root.parent_id)))`
         : sql``;
       const rows = await tx.execute<{
         id: string;
@@ -277,8 +279,15 @@ export class SfcService {
       if (current !== b.etag)
         throw err(409, 'VERSION_CONFLICT', 'SFC changed since it was loaded', { etag: current });
       const hq = await tx.execute(sql`
-        select 1 from user_territories where user_id = ${u.id}::uuid
-          and territory_id = ${b.hqTerritoryId}::uuid`);
+        select 1 from territories hq
+        where hq.id = ${b.hqTerritoryId}::uuid and hq.deleted_at is null
+          and (
+            exists (select 1 from user_territories ut
+              where ut.user_id = ${u.id}::uuid and ut.territory_id = hq.id)
+            or (hq.level = 'headquarter' and exists (
+              select 1 from user_territories ut
+              join territories area on area.id = ut.territory_id and area.deleted_at is null
+              where ut.user_id = ${u.id}::uuid and area.level = 'area' and area.id = hq.parent_id)))`);
       if (!hq.rows.length)
         throw err(422, 'SFC_HQ_NOT_ASSIGNED', 'hqTerritoryId is not assigned to this employee');
       const before = await tx

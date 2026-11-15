@@ -46,7 +46,7 @@ export async function setup(name) {
     await ctx.addInitScript(
       (s) => {
         sessionStorage.setItem('af:splash-seen', '1');
-        localStorage.setItem('af:mock-session', s);
+        localStorage.setItem('af:session', s);
       },
       JSON.stringify({ userId: `mock-${ID[role]}`, role }),
     );

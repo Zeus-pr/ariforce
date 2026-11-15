@@ -35,7 +35,7 @@ describe.skipIf(!OWNER || !APP)('session revocation (real API)', () => {
 
   it('role change and deactivation refuse old cookie + bearer (401); suspended cannot sign in', async () => {
     const email = `rev.${RUN}@demo.ariforce.in`;
-    const pw = `pw-${RUN}-long`;
+    const pw = `Pw-${RUN}-long-1!`;
     const created = await http()
       .post('/v1/employees')
       .set({ authorization: director })

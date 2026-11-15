@@ -99,7 +99,9 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     tok.writer = writer.bearer;
     tok.otherWriter = otherWriter.bearer;
     const wt = (await http().get('/v1/work-types?limit=50').set(as('writer'))).body.items;
-    field = wt.find((w: { kind: string }) => w.kind === 'field').id;
+    field = wt.find(
+      (w: { kind: string; code: string }) => w.kind === 'field' && w.code.startsWith('FIELD_'),
+    ).id;
     doctor = (
       await http()
         .get(`/v1/doctors?territoryId=${T.otherArea}&approvalStatus=approved&limit=1`)
@@ -219,24 +221,15 @@ describe.skipIf(!OWNER || !APP)('POB / RCPA at chemist calls (#40, real API)', (
     const doctorPob = await put([docPob]);
     expect(doctorPob.status).toBe(422);
     expect(doctorPob.body.error.details.callIds).toEqual([docPob.clientId]);
-    const r = await put([stkRcpa, docRcpa]);
+    const stockistPob = await put([stkRcpa]);
+    expect(stockistPob.status).toBe(422);
+    expect(stockistPob.body.error.details.callIds).toEqual([stkRcpa.clientId]);
+    const r = await put([{ ...stkRcpa, pob: [] }, docRcpa]);
     expect(r.status).toBe(422);
     expect(r.body.error.details.rcpaOutletCallIds).toEqual([stkRcpa.clientId, docRcpa.clientId]);
-    // POB alone on a chemist or stockist call is fine.
-    const ok = await put([
-      call({ pob: [{ productId: priced, quantity: 1 }] }),
-      call({
-        outletKind: 'stockist',
-        outletId: stockist,
-        pob: [{ productId: priced, quantity: 2 }],
-      }),
-    ]);
-    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
-    type C = { outletKind: string; pob: { value: number | null }[] };
-    const pobOf = (k: string) =>
-      (ok.body.calls as C[]).find((c) => c.outletKind === k && c.pob.length)?.pob[0]?.value;
-    expect(pobOf('chemist')).toBe(12.35);
-    expect(pobOf('stockist')).toBe(24.7);
+    const chemistOnly = await put([call({ pob: [{ productId: priced, quantity: 1 }] })]);
+    expect(chemistOnly.status, JSON.stringify(chemistOnly.body)).toBe(200);
+    expect(chemistOnly.body.calls[0].pob[0].value).toBe(12.35);
   });
 
   it('validates products, duplicates, quantities, stockist and doctor scope', async () => {

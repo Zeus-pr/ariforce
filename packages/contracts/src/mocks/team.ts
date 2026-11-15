@@ -1,3 +1,9 @@
+import {
+  ACTIVITY_MAX_DAYS,
+  AuditLogPage,
+  TeamMemberActivity,
+  redactAudit,
+} from '../schemas/director';
 import { http, HttpResponse } from 'msw';
 import type { Me } from '../schemas/auth';
 import { isRetiredRole, ROLE_RANK, type RoleKey } from '../schemas/roles';
@@ -564,6 +570,84 @@ export function teamProfileHandlers(baseUrl: string, who: (r: Request) => Me | u
     expenses: null,
   });
   return [
+    http.get(`${B}/activity`, ({ request, params }) => {
+      const g = guard(request, String(params.userId));
+      if (g.res) return g.res;
+      const url = new URL(request.url);
+      const t0 = today();
+      const from = url.searchParams.get('from') ?? t0;
+      const to = url.searchParams.get('to') ?? from;
+      if (from > to || to > t0) return e(422, 'VALIDATION', 'from must be <= to <= today');
+      const n = Math.round((Date.parse(to) - Date.parse(from)) / 864e5) + 1;
+      if (n > ACTIVITY_MAX_DAYS)
+        return e(422, 'RANGE_TOO_LONG', `At most ${ACTIVITY_MAX_DAYS} days`);
+      const days = Array.from({ length: n }, (_, i) => ({
+        date: new Date(Date.parse(from) + i * 864e5).toISOString().slice(0, 10),
+        attendance: 'absent' as const,
+        punchInAt: null,
+        punchOutAt: null,
+        leave: null,
+        planned: false,
+        dcr: null,
+        calls: 0,
+        checkIns: 0,
+      }));
+      const { depth: _d, ...member } = node(g.t, 0);
+      return HttpResponse.json(
+        TeamMemberActivity.parse({
+          member: { id: member.id, name: member.name, role: member.role },
+          from,
+          to,
+          today: t0,
+          days,
+          totals: {
+            days: n,
+            present: 0,
+            absent: n,
+            leave: 0,
+            holiday: 0,
+            weeklyOff: 0,
+            incomplete: 0,
+            dcr: { draft: 0, submitted: 0, approved: 0, rejected: 0, locked: 0, missing: n },
+            calls: 0,
+            checkIns: 0,
+            plannedDays: 0,
+            dcrExpenseTotal: 0,
+            claimTotal: 0,
+          },
+          detail: n === 1 ? { calls: [], checkIns: [] } : null,
+          canSeeExpenses:
+            g.p.id === g.t.id ||
+            (g.p.permissions as string[]).some(
+              (x) => x === 'expenses:approve' || x === 'expenses:pay',
+            ),
+        }),
+      );
+    }),
+    http.get(`${baseUrl}/v1/audit-log`, ({ request }) => {
+      const p = who(request);
+      if (!p) return e(401, 'UNAUTHENTICATED', 'Sign in required');
+      if (!(p.permissions as string[]).includes('audit:read'))
+        return e(403, 'FORBIDDEN', 'Missing audit:read');
+      const items = [
+        {
+          id: '1',
+          at: new Date().toISOString(),
+          actor: { id: p.id, name: p.name, role: null },
+          action: 'auth.login',
+          entityType: 'user',
+          entityId: p.id,
+          before: null,
+          after: redactAudit({ email: p.email, token: 'x' }),
+          ip: null,
+          userAgent: null,
+          requestId: null,
+        },
+      ];
+      return HttpResponse.json(
+        AuditLogPage.parse({ items, nextCursor: null, serverTime: new Date().toISOString() }),
+      );
+    }),
     http.get(`${B}/profile`, ({ request, params }) => {
       const g = guard(request, String(params.userId));
       if (g.res) return g.res;

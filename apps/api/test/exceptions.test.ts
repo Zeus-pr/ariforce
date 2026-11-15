@@ -239,7 +239,10 @@ describe.skipIf(!OWNER || !APP)('exceptions (real API)', () => {
     expect((await http().get(`/v1/exceptions/${id}`).set(as('bm2'))).status).toBe(404);
     expect((await http().get(`/v1/exceptions/${id}`).set(as('abm'))).status).toBe(200);
     expect((await http().get(`/v1/exceptions/not-a-uuid`).set(as('abm'))).status).toBe(404);
-    for (const who of ['sysadmin', 'accountant', 'dh']) {
+    // system_admin has field:read (0061) so list is allowed, but not company-wide — BM row is 404.
+    expect((await http().get('/v1/exceptions').set(as('sysadmin'))).status).toBe(200);
+    expect((await http().get(`/v1/exceptions/${id}`).set(as('sysadmin'))).status).toBe(404);
+    for (const who of ['accountant', 'dh']) {
       expect((await http().get('/v1/exceptions').set(as(who))).status).toBe(403);
       expect((await http().get(`/v1/exceptions/${id}`).set(as(who))).status).toBe(403);
     }

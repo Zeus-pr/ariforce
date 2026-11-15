@@ -75,6 +75,9 @@ export const IMPORT_TEMPLATES: Record<
       'specialty_code',
       'category_code',
       'registration_no',
+      'date_of_birth',
+      'anniversary',
+      'email',
       'address_line',
       'city',
       'state',
@@ -145,6 +148,10 @@ export function normaliseRow(raw: Record<string, unknown>): Record<string, unkno
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const str = (v: unknown) => (v === null || v === undefined ? null : String(v));
+const blank = (v: unknown) => {
+  const s = str(v)?.trim();
+  return s ? s : null;
+};
 function num(v: unknown, col: string, errs: ImportCellError[]) {
   if (v === null || v === undefined) return null;
   const n = typeof v === 'number' ? v : Number(String(v).replace(/,/g, ''));
@@ -234,6 +241,9 @@ export function mapImportRow(
         specialtyId: ref(r, 'specialty', lk.specialty, false, errs),
         categoryId: ref(r, 'category', lk.category, false, errs),
         registrationNo: str(r.registration_no),
+        dateOfBirth: blank(r.date_of_birth),
+        anniversary: blank(r.anniversary),
+        email: blank(r.email),
         ...address(),
       };
       break;

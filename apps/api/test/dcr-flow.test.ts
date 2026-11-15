@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEMO_COMPANY_ID as A, T, U } from '@ariforce/db';
 import { Dcr, DcrOptions, DcrProducts, DcrSfcMatch } from '@ariforce/contracts';
-import { insertStaff, otherHq } from './support';
+import { ensureFieldReady, ensureVisitCheckIn, insertStaff, otherHq } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 
@@ -22,6 +22,7 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
   let leaveWriter: { id: string; bearer: string } | undefined;
   let hq2: string;
   let doctorId: string;
+  let visitId: string;
   const wt: Record<string, string> = {};
   const http = () => request(app.getHttpServer());
   const as = () => ({ authorization: me.bearer });
@@ -40,7 +41,7 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
     clientId: randomUUID(),
     outletKind: 'doctor',
     outletId: doctorId,
-    checkInId: null,
+    checkInId: visitId,
     jointWorkUserIds: [],
     productsDetailed: [],
     samples: [],
@@ -66,6 +67,8 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
       [A, T.hq],
     );
     doctorId = d.rows[0].id;
+    await ensureFieldReady(http, me.bearer);
+    visitId = await ensureVisitCheckIn(http, me.bearer, 'doctor', doctorId);
     const w = await owner.query(
       `select id, code from work_types where company_id=$1 and code in ('FIELD_HQ','MEETING','LEAVE')`,
       [A],
@@ -208,7 +211,10 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
         workTypeId: wt.FIELD_HQ,
         territoryIds: [T.hq, hq2],
         deviationReason: 'test',
-        sfcRoutes: [{ hqTerritoryId: T.hq, sfcRouteId: r2 }],
+        sfcRoutes: [
+          { hqTerritoryId: T.hq, sfcRouteId: r1 },
+          { hqTerritoryId: T.hq, sfcRouteId: r2 },
+        ],
         calls: [call()],
         version: d.version,
       });
@@ -222,11 +228,19 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     const s = Dcr.parse(r.body);
     expect(s.status).toBe('submitted');
-    expect(s.sfcRoutes).toHaveLength(2);
-    const byHq = Object.fromEntries(s.sfcRoutes.map((x) => [x.hqTerritoryId, x]));
-    expect(byHq[T.hq]!.sfcRouteId).toBe(r2);
-    expect(byHq[hq2]!.sfcRouteId).toBe(r3);
-    expect(byHq[T.hq]!.snapshot).toMatchObject({ toPlace: 'Beta', category: 'hq', band: 'hq' });
+    expect(s.sfcRoutes).toHaveLength(3);
+    expect(
+      s.sfcRoutes
+        .filter((x) => x.hqTerritoryId === T.hq)
+        .map((x) => x.sfcRouteId)
+        .sort(),
+    ).toEqual([r1, r2].sort());
+    expect(s.sfcRoutes.find((x) => x.hqTerritoryId === hq2)!.sfcRouteId).toBe(r3);
+    expect(s.sfcRoutes.find((x) => x.sfcRouteId === r2)!.snapshot).toMatchObject({
+      toPlace: 'Beta',
+      category: 'hq',
+      band: 'hq',
+    });
     version = s.version;
     const again = await http()
       .post(`/v1/dcrs/${id}/submit`)

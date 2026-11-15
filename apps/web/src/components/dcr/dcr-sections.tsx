@@ -5,6 +5,7 @@ import { CalendarPlus, Lock, MapPin, RotateCw, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import type { Dcr } from '@ariforce/contracts';
+import { DEFAULT_MEETING_TYPE, MEETING_TYPES } from '@/lib/dcr/meeting-types';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
@@ -27,6 +28,8 @@ import { PobEditor, type Opt } from './pob-rcpa';
 import { SearchSelect, type SelectOption } from './search-select';
 import { failureMessage, thrownMessage } from '@/lib/dcr/errors';
 import { bandOf, sfcCategoryOf } from '@/lib/dcr/bands';
+import { cachedGet } from '@/lib/query';
+import { durationText, endTimeProblem, spanMin } from '@/lib/dcr/times';
 
 const ProductPresentation = dynamic(
   () => import('./product-presentation').then((m) => m.ProductPresentation),
@@ -307,7 +310,9 @@ function useCustomers(
       const rs = await Promise.all(
         queries.map((query) =>
           kind === 'doctor'
-            ? api.GET('/v1/doctors', { params: { query } })
+            ? cachedGet(['doctors', 'query', query], () =>
+                api.GET('/v1/doctors', { params: { query } }),
+              )
             : kind === 'chemist'
               ? api.GET('/v1/chemists', { params: { query } })
               : api.GET('/v1/stockists', {
@@ -357,6 +362,8 @@ export function CallCard({
   scope,
   names,
   products,
+  detailProducts = products,
+  skuToDetail,
   productsError = null,
   onProductsRetry,
   readOnly,
@@ -370,6 +377,10 @@ export function CallCard({
   /** Names of the day's HQs and territories by id. */
   names: Map<string, string>;
   products: SelectOption[];
+  /** Doctor-detailing options: one per product name (no strength). Defaults to `products`. */
+  detailProducts?: SelectOption[];
+  /** SKU id -> the detailProducts id that represents it, so saved calls resolve. */
+  skuToDetail?: Map<string, string>;
   productsError?: string | null;
   onProductsRetry?: () => void;
   readOnly: boolean;
@@ -390,10 +401,11 @@ export function CallCard({
   const onQuery = useCallback((q: string) => setQ(q), [setQ]);
   const noun = KIND_LABEL[call.kind];
   const labels = new Map(call.outletId ? [[call.outletId, call.outletName]] : []);
-  const productOpts: Opt[] = products.map((p) => ({ id: p.id, name: p.label }));
+  const productOpts: Opt[] = products.map((p) => ({ id: p.id, name: p.label, pts: p.pts }));
   const [presentationOpen, setPresentationOpen] = useState(false);
-  const detailedProducts = call.productIds
-    .map((id) => products.find((p) => p.id === id))
+  const detailIds = [...new Set(call.productIds.map((id) => skuToDetail?.get(id) ?? id))];
+  const detailedProducts = detailIds
+    .map((id) => detailProducts.find((p) => p.id === id))
     .filter((product): product is SelectOption => !!product);
   // Chemist POB may name a supplying stockist — load stockists for the day's HQs.
   const stockistsQ = useCustomers('stockist', scope, names, true);
@@ -492,12 +504,12 @@ export function CallCard({
             </span>
             <SearchSelect
               label="Products"
-              options={products}
+              options={detailProducts}
               error={productsError}
               onRetry={onProductsRetry}
               emptyText="No active products yet. Ask your administrator."
-              labels={new Map(call.productIds.map((id) => [id, 'Saved product']))}
-              value={call.productIds}
+              labels={new Map(detailIds.map((id) => [id, 'Saved product']))}
+              value={detailIds}
               onChange={(ids) => onChange({ productIds: ids, presentationOpenedAt: null })}
               multiple
               placeholder="Choose products"
@@ -536,22 +548,20 @@ export function CallCard({
           )}
         </>
       )}
-      {(call.kind === 'chemist' || call.kind === 'stockist') && !readOnly && (
+      {call.kind === 'chemist' && !readOnly && (
         <PobEditor
           rows={call.pob ?? []}
           onChange={(pob) => onChange({ pob })}
           products={productOpts}
           stockists={stockistList}
-          showStockist={call.kind === 'chemist'}
+          showStockist
         />
       )}
-      {(call.kind === 'chemist' || call.kind === 'stockist') &&
-        readOnly &&
-        (call.pob?.length ?? 0) > 0 && (
-          <p className="text-sm text-muted-foreground" data-testid="dcr-call-pob-ro">
-            Order booked: {call.pob.length} line{call.pob.length === 1 ? '' : 's'}
-          </p>
-        )}
+      {call.kind === 'chemist' && readOnly && (call.pob?.length ?? 0) > 0 && (
+        <p className="text-sm text-muted-foreground" data-testid="dcr-call-pob-ro">
+          Order booked: {call.pob.length} line{call.pob.length === 1 ? '' : 's'}
+        </p>
+      )}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`rem-${call.clientId}`}>
           Remarks <span className="font-normal text-muted-foreground">(optional)</span>
@@ -595,13 +605,6 @@ function Field({
   );
 }
 
-const MEETING_TYPES = [
-  'Cycle meeting',
-  'Area review',
-  'Regional review',
-  'Conference or CME',
-  'Team meeting',
-];
 const TRAINING_TYPES = [
   'Product training',
   'Induction',
@@ -631,6 +634,7 @@ function TypeSelect({
   disabled,
   errors = [],
   testId,
+  allowOther = true,
 }: {
   id: string;
   label: string;
@@ -643,9 +647,12 @@ function TypeSelect({
   disabled: boolean;
   errors?: string[];
   testId: string;
+  /** false: only the presets; a saved value outside them still shows as its own choice. */
+  allowOther?: boolean;
 }) {
   const [otherPicked, setOtherPicked] = useState(false);
-  const other = otherPicked || (!!value && !presets.includes(value));
+  const legacy = !allowOther && !!value && !presets.includes(value);
+  const other = allowOther && (otherPicked || (!!value && !presets.includes(value)));
   return (
     <div className="flex flex-col gap-1.5">
       <Label id={`${id}-label`}>{label}</Label>
@@ -658,8 +665,9 @@ function TypeSelect({
           onChange(v === OTHER ? '' : v);
         }}
         choices={[
+          ...(legacy ? [{ value, label: value }] : []),
           ...presets.map((p) => ({ value: p, label: p })),
-          { value: OTHER, label: 'Other', hint: 'Type it in' },
+          ...(allowOther ? [{ value: OTHER, label: 'Other', hint: 'Type it in' }] : []),
         ]}
         placeholder={placeholder}
         disabled={disabled}
@@ -686,6 +694,106 @@ function TypeSelect({
   );
 }
 
+type TimeForm = { startTime: string; endTime: string; durationMin: string };
+
+/**
+ * Start and end time with the duration worked out from them (read-only). The duration is written
+ * back to the form so the API's `durationMin` always matches. End before start is flagged inline.
+ */
+function TimeRange({
+  id,
+  value,
+  onChange,
+  errors,
+}: {
+  id: string;
+  value: TimeForm;
+  onChange: (p: Partial<TimeForm>) => void;
+  errors: Record<string, string[]>;
+}) {
+  const span = spanMin(value.startTime, value.endTime);
+  const inline = endTimeProblem(value.startTime, value.endTime);
+  const setTimes = (p: Partial<TimeForm>) => {
+    const next = { ...value, ...p };
+    const d = spanMin(next.startTime, next.endTime);
+    onChange({ ...p, durationMin: d ? String(d) : '' });
+  };
+  return (
+    <div className="grid gap-4 sm:col-span-2 sm:grid-cols-3">
+      <Field label="Start time" htmlFor={`${id}-start`} errors={errors.startTime}>
+        <Input
+          id={`${id}-start`}
+          type="time"
+          value={value.startTime}
+          onChange={(e) => setTimes({ startTime: e.target.value })}
+          className="min-h-11 md:text-base"
+          data-testid={`${id}-start`}
+        />
+      </Field>
+      <Field label="End time" htmlFor={`${id}-end`} errors={inline ? [inline] : errors.endTime}>
+        <Input
+          id={`${id}-end`}
+          type="time"
+          value={value.endTime}
+          min={value.startTime || undefined}
+          onChange={(e) => setTimes({ endTime: e.target.value })}
+          aria-invalid={!!inline || !!errors.endTime?.length || undefined}
+          className="min-h-11 md:text-base"
+          data-testid={`${id}-end`}
+        />
+      </Field>
+      <div className="flex flex-col gap-1.5">
+        <Label id={`${id}-dur-label`}>Duration</Label>
+        <p
+          aria-labelledby={`${id}-dur-label`}
+          className="flex min-h-11 items-center text-base text-foreground tabular-nums"
+          data-testid={`${id}-duration`}
+        >
+          {durationText(span)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+type PlaceForm = { fromPlace: string; toPlace: string };
+
+/** From and To place (meeting and admin work), side by side. */
+function PlacePair({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: PlaceForm;
+  onChange: (p: Partial<PlaceForm>) => void;
+}) {
+  return (
+    <>
+      <Field label="From place" optional htmlFor={`${id}-from`}>
+        <Input
+          id={`${id}-from`}
+          value={value.fromPlace}
+          maxLength={120}
+          onChange={(e) => onChange({ fromPlace: e.target.value })}
+          className="md:text-base"
+          data-testid={`${id}-from`}
+        />
+      </Field>
+      <Field label="To place" optional htmlFor={`${id}-to`}>
+        <Input
+          id={`${id}-to`}
+          value={value.toPlace}
+          maxLength={120}
+          onChange={(e) => onChange({ toPlace: e.target.value })}
+          className="md:text-base"
+          data-testid={`${id}-to`}
+        />
+      </Field>
+    </>
+  );
+}
+
 /** Meeting and Training: type/name, in person or online, where, when, how long, who, remarks. */
 export function MeetingFields({
   kind,
@@ -702,13 +810,19 @@ export function MeetingFields({
 }) {
   const set = (p: Partial<MeetingForm>) => onChange({ ...value, ...p });
   const what = kind === 'meeting' ? 'Meeting' : 'Training';
+  // A new meeting starts on the common case; the user can switch to the other type.
+  const needsDefault = kind === 'meeting' && !readOnly && !value.title;
+  useEffect(() => {
+    if (needsDefault) onChange({ ...value, title: DEFAULT_MEETING_TYPE });
+  }, [needsDefault]);
   return (
     <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-2" data-testid={`dcr-${kind}`}>
       <div className="sm:col-span-2">
         <TypeSelect
           id="m-title"
           label={`${what} type`}
-          presets={kind === 'meeting' ? MEETING_TYPES : TRAINING_TYPES}
+          presets={kind === 'meeting' ? [...MEETING_TYPES] : TRAINING_TYPES}
+          allowOther={kind !== 'meeting'}
           value={value.title}
           onChange={(title) => set({ title })}
           placeholder={`Choose the ${what.toLowerCase()} type`}
@@ -752,25 +866,8 @@ export function MeetingFields({
           />
         </Field>
       </div>
-      <Field label="Start time" htmlFor="m-start" errors={errors.startTime}>
-        <Input
-          id="m-start"
-          type="time"
-          value={value.startTime}
-          onChange={(e) => set({ startTime: e.target.value })}
-          className="min-h-11 md:text-base"
-        />
-      </Field>
-      <Field label="Duration (minutes)" htmlFor="m-dur" errors={errors.durationMin}>
-        <Input
-          id="m-dur"
-          inputMode="numeric"
-          value={value.durationMin}
-          onChange={(e) => set({ durationMin: e.target.value.replace(/\D/g, '').slice(0, 3) })}
-          placeholder="60"
-          className="md:text-base"
-        />
-      </Field>
+      <TimeRange id="m" value={value} onChange={set} errors={errors} />
+      {kind === 'meeting' && <PlacePair id="m" value={value} onChange={set} />}
       {kind === 'training' && (
         <div className="sm:col-span-2">
           <Field label="Trainer" optional htmlFor="m-trainer">
@@ -853,25 +950,8 @@ export function OfficeFields({
           />
         </Field>
       </div>
-      <Field label="Start time" optional htmlFor="o-start">
-        <Input
-          id="o-start"
-          type="time"
-          value={value.startTime}
-          onChange={(e) => set({ startTime: e.target.value })}
-          className="min-h-11 md:text-base"
-        />
-      </Field>
-      <Field label="Duration (minutes)" htmlFor="o-dur" errors={errors.durationMin}>
-        <Input
-          id="o-dur"
-          inputMode="numeric"
-          value={value.durationMin}
-          onChange={(e) => set({ durationMin: e.target.value.replace(/\D/g, '').slice(0, 3) })}
-          placeholder="120"
-          className="md:text-base"
-        />
-      </Field>
+      <TimeRange id="o" value={value} onChange={set} errors={errors} />
+      <PlacePair id="o" value={value} onChange={set} />
       <div className="sm:col-span-2">
         <Field label="Remarks" optional htmlFor="o-rem">
           <Input

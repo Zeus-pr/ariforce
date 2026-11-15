@@ -14,7 +14,7 @@ const post = (path: string, body: unknown) =>
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-const pw = 'a-new-long-password';
+const pw = 'A-new-long-password-1';
 
 describe('forgot password contracts (item F)', () => {
   it('schema: 6-digit code, password min 12', () => {

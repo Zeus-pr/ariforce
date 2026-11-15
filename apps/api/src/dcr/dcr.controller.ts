@@ -134,7 +134,7 @@ export class DcrController {
       throw err(422, 'VALIDATION', 'Idempotency-Key header is required (1-128 chars)', {
         field: 'Idempotency-Key',
       });
-    return this.flow.submit(p, id, b.version, h.data['idempotency-key']);
+    return this.flow.submit(p, id, b.version, h.data['idempotency-key'], b.expenses);
   }
 
   @Get()

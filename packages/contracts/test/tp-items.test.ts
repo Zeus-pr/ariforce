@@ -117,6 +117,7 @@ describe('TourPlanItemUpsert', () => {
       workWithUserIds: [],
       sfcRoutes: [],
       details: null,
+      sections: [],
     });
   });
 });

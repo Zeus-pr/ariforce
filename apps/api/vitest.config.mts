@@ -6,6 +6,8 @@ export default defineConfig({
   test: {
     include: ['test/**/*.test.ts', 'src/**/*.test.ts'],
     testTimeout: 30000,
+    // beforeAll boots the Nest app and signs in. The 10s default timed out the signup file on CI.
+    hookTimeout: 60000,
     fileParallelism: false,
   },
 });

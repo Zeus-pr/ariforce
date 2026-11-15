@@ -46,7 +46,7 @@ Changing the rate does not recompute saved rows. A table picks up the new rate t
 - `GET /v1/sfc/settings`: returns `{ ratePerKm, version }`.
 - `PUT /v1/sfc/settings`: takes `{ ratePerKm, version }`. Can return 409 `VERSION_CONFLICT`.
 - `GET /v1/sfc/hqs`: returns `{ items: [{ id, name, code, level, parentId, parentName, employeeCount, routeCount }] }`. These are the headquarter-level territories in the caller's scope, subtree included.
-- `GET /v1/sfc/employees?territoryId=`: returns `{ items: [{ id, name, employeeCode, role, rank, hqTerritoryIds, routeCount, hasSfc, canEdit }] }`. These are the visible employees assigned to that territory or anywhere below it.
+- `GET /v1/sfc/employees?territoryId=`: returns `{ items: [{ id, name, employeeCode, role, rank, hqTerritoryIds, routeCount, hasSfc, canEdit }] }`. These are the visible employees assigned to that territory or anywhere below it. When it is a headquarter, the list also includes anyone assigned to the area directly above it. That area is the area manager’s own headquarter. Saving their chart against the headquarter below does not copy that assignment onto them.
 - `GET /v1/sfc/employees/{userId}/routes`: returns `{ userId, userName, hqTerritoryId, ratePerKm, etag, canEdit, routes[] }`.
 - `PUT /v1/sfc/employees/{userId}/routes`: takes `{ etag, hqTerritoryId, routes: [{ id?, fromPlace, toPlace, oneWayKm, actualFare, travelMode, category, da }] }`.
   - The PUT sends the **whole table** in display order.

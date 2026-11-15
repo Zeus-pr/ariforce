@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import type { components } from '@ariforce/contracts';
-import { assignMessage, territoryQueryFor } from '@/lib/assign-errors';
+import { assignMessage } from '@/lib/assign-errors';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
@@ -20,6 +20,8 @@ import { api, apiReady, toApiError } from '@/lib/api';
 import { ROLES, ROLE_LABEL, roleLevel, type Role } from '@/lib/roles';
 import type { InviteResult } from '@/lib/team-adapter/types';
 import { cn } from '@ariforce/ui/lib/utils';
+import { getTerritories } from '@/lib/query';
+import { allPages } from '@/lib/paging';
 
 type User = components['schemas']['UserSummary'];
 export type Terr = { id: string; name: string; code: string; level: string };
@@ -46,22 +48,13 @@ export function useHqs() {
   useEffect(() => {
     void (async () => {
       await apiReady();
-      const out = new Map<string, Terr>();
-      // HQs first via the BM-assignable list (HQ only; a filtered list also catches HQs a plain list
-      // may page past), then everything else. The level check in the pickers stays as a fallback.
-      for (const extra of [territoryQueryFor('business_manager'), {}]) {
-        let cursor: string | undefined;
-        for (let i = 0; i < 20; i++) {
-          const r = await api.GET('/v1/territories', {
-            params: { query: { ...extra, limit: 200, cursor, sort: 'name' } as never },
-          });
-          if (!r.data) break;
-          for (const t of r.data.items)
-            out.set(t.id, { id: t.id, name: t.name, code: t.code, level: t.level });
-          cursor = r.data.nextCursor ?? undefined;
-          if (!cursor) break;
-        }
-      }
+      // One cached territory list (lib/query); the level check in the pickers stays as a fallback.
+      const all = await getTerritories();
+      const out = new Map<string, Terr>(
+        all
+          .filter((t) => !t.deletedAt)
+          .map((t) => [t.id, { id: t.id, name: t.name, code: t.code, level: t.level }]),
+      );
       setHqs([...out.values()]);
     })().catch(() => setHqs([]));
   }, []);
@@ -618,9 +611,13 @@ function PendingInvites({ hqs }: { hqs: Terr[] | null }) {
   const [busy, setBusy] = useState<string | null>(null);
   const load = useCallback(async () => {
     await apiReady();
-    const r = await api.GET('/v1/users', {
-      params: { query: { status: 'invited', limit: 200 } as never },
-    });
+    const r = await allPages((cursor) =>
+      api.GET('/v1/users', {
+        params: {
+          query: { status: 'invited', limit: 200, ...(cursor ? { cursor } : {}) } as never,
+        },
+      }),
+    );
     setRows(r.data?.items ?? []);
   }, []);
   useEffect(() => {

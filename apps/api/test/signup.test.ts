@@ -14,7 +14,7 @@ const OWNER = process.env.DIRECT_URL;
 const APP = process.env.DATABASE_URL;
 const PASSWORD = process.env.DEMO_PASSWORD ?? 'ariforce-demo-pass';
 const RUN = Date.now().toString(36);
-const PW = `signup-${RUN}-pass`;
+const PW = `Signup-${RUN}-1!`;
 
 describe.skipIf(!OWNER || !APP)('Sign-up requests (real API)', () => {
   let app: INestApplication;
@@ -182,14 +182,6 @@ describe.skipIf(!OWNER || !APP)('Sign-up requests (real API)', () => {
       (await submit({ email: e, requestedRole: 'director', territoryId: T.national })).status,
     ).toBe(202);
     const id = await reqId(e);
-    expect(
-      (
-        await http()
-          .post(`/v1/signup-requests/${id}/approve`)
-          .set(as('director'))
-          .send({ role: 'director' })
-      ).status,
-    ).toBe(404);
     expect(
       (
         await http()

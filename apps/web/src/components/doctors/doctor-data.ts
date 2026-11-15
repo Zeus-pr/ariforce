@@ -1,6 +1,4 @@
 import type { CheckIn, Dcr } from '@ariforce/contracts';
-import { addDays } from '@/lib/period';
-import { MOCK_PRODUCT_SEED } from '@/mocks/product-seed';
 
 export type Visit = {
   id: string;
@@ -10,7 +8,6 @@ export type Visit = {
   pobValue: number | null;
   inFence: boolean | null;
   remarks: string | null;
-  sample?: boolean;
 };
 
 /** Samples per doctor per month before a call is flagged. No contract yet (CONTRACT-GAPS #18); to confirm with Arighna. */
@@ -52,36 +49,6 @@ export function visitsFrom(doctorId: string, dcrs: Dcr[], checkIns: CheckIn[]): 
         remarks: null,
       });
   return out.sort((a, b) => b.date.localeCompare(a.date));
-}
-
-/** Labelled sample history for a doctor with no recorded calls, so the page can be reviewed. Deterministic per doctor. */
-export function sampleVisits(doctorId: string, today: string, perMonth: number): Visit[] {
-  let seed = [...doctorId].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
-  const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) % 1000) / 1000;
-  const pick = () => MOCK_PRODUCT_SEED[Math.floor(rnd() * MOCK_PRODUCT_SEED.length)]!.id;
-  const gap = Math.max(5, Math.round(30 / Math.max(1, perMonth)));
-  const out: Visit[] = [];
-  for (
-    let back = 2 + Math.floor(rnd() * 4), i = 0;
-    back < HISTORY_DAYS;
-    back += gap + Math.floor(rnd() * 5) - 2, i++
-  ) {
-    const products = [pick(), pick(), pick()].filter((p, j, a) => a.indexOf(p) === j);
-    const fb = ['positive', 'neutral', 'positive', 'negative'] as const;
-    out.push({
-      id: `sample-${i}`,
-      date: addDays(today, -back),
-      products: products.map((productId, j) => ({ productId, feedback: fb[(i + j) % 4]! })),
-      samples: products
-        .slice(0, 2)
-        .map((productId) => ({ productId, quantity: 2 + Math.floor(rnd() * 4) })),
-      pobValue: rnd() > 0.6 ? Math.round(rnd() * 40) * 100 : null,
-      inFence: rnd() > 0.15,
-      remarks: null,
-      sample: true,
-    });
-  }
-  return out;
 }
 
 export function productTally(visits: Visit[]) {

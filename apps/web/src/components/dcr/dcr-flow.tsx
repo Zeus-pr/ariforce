@@ -19,8 +19,9 @@ import { Skeleton } from '@ariforce/ui/components/skeleton';
 import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
 import { dateLabel, todayIST } from '@/components/attendance/format';
+import { dcrDateClosedText, dcrDateOpen } from '@/lib/dcr/date-rule';
 import Link from 'next/link';
-import { api, apiReady, MOCKING, toApiError, type ApiError } from '@/lib/api';
+import { api, apiReady, toApiError, type ApiError } from '@/lib/api';
 import {
   BANDS,
   KIND_LABEL,
@@ -30,6 +31,7 @@ import {
   emptyMeeting,
   emptyOffice,
   hqIdsOf,
+  isRouteDay,
   problems as findProblems,
   territoryRows,
   workOnChoices,
@@ -49,6 +51,15 @@ import { failureMessage, thrownMessage } from '@/lib/dcr/errors';
 import { productImageUrl } from '@/lib/products/product-image';
 import { bandOf } from '@/lib/dcr/bands';
 import { ChoiceSelect } from './choice-select';
+import { DcrExpenses } from './dcr-expenses';
+import {
+  defaultCategory,
+  draftsOf,
+  expensesOf,
+  linkOutcome,
+  rememberCategories,
+  type SubmitExpenseInfo,
+} from '@/lib/dcr/expenses';
 import {
   CallCard,
   type CustomerScope,
@@ -59,6 +70,9 @@ import {
   SfcPanel,
 } from './dcr-sections';
 import { SearchSelect, type SelectOption } from './search-select';
+import { cachedGet } from '@/lib/query';
+import { getProducts } from '@/lib/query';
+import { extraFormOf } from '@/lib/dcr/times';
 
 const noop = () => () => {};
 const nowHHmm = () =>
@@ -135,6 +149,8 @@ const fresh = (date: string): FlowState => ({
   office: emptyOffice(),
   leaveRequestId: '',
   deviationReason: '',
+  expenses: [],
+  expensesSent: false,
 });
 
 function Step({
@@ -189,6 +205,8 @@ function Flow({
   const [peopleQ, setPeopleQ] = useState('');
   const [peopleError, setPeopleError] = useState<string | null>(null);
   const [products, setProducts] = useState<SelectOption[]>([]);
+  const [detailProducts, setDetailProducts] = useState<SelectOption[]>([]);
+  const [skuToDetail, setSkuToDetail] = useState<Map<string, string>>(new Map());
   const [productsError, setProductsError] = useState<string | null>(null);
   const [productsTick, setProductsTick] = useState(0);
   const [askDeviation, setAskDeviation] = useState(false);
@@ -198,6 +216,8 @@ function Flow({
   const [apiMissing, setApiMissing] = useState(false);
   const [missingHqIds, setMissingHqIds] = useState<string[]>([]);
   const [showErrors, setShowErrors] = useState(false);
+  /** What happened to the day's expenses at submit (shown once, in the submitted panel). */
+  const [expenseOutcome, setExpenseOutcome] = useState<string | null>(null);
   const [saving, setSaving] = useState<'draft' | 'submit' | null>(null);
   const [reload, setReload] = useState(0);
   const [sfcTick, setSfcTick] = useState(0);
@@ -219,6 +239,7 @@ function Flow({
   const submitKey = useRef<string | null>(null);
   const names = useRef(new Map<string, string>());
   const lastFieldWt = useRef('');
+  const lastCampWt = useRef('');
   const [personNames, setPersonNames] = useState<Map<string, string>>(new Map());
   const [peopleTick, setPeopleTick] = useState(0);
 
@@ -226,13 +247,15 @@ function Flow({
   const rows = useMemo(() => territoryRows(hqs ?? []), [hqs]);
   const hqNames = useMemo(() => new Map((hqs ?? []).map((h) => [h.id, h.name])), [hqs]);
   const branch = s.workOn?.branch;
-  const field = branch === 'field';
+  const field = isRouteDay(branch);
+  const withCalls = branch === 'field';
   const blocked = !!daySubmitted && dcr?.status !== 'submitted';
   const unlockedOpen = !!unlockedUntil && Date.parse(unlockedUntil) > Date.now();
-  const readOnly =
-    ((dcr?.status === 'submitted' || dcr?.status === 'locked' || dayLocked) && !unlockedOpen) ||
-    blocked ||
-    gone;
+  const lockedView =
+    (dcr?.status === 'submitted' || dcr?.status === 'locked' || dayLocked) && !unlockedOpen;
+  /** Today only (IST); a past day only while unlocked. Other days are view-only. */
+  const dateClosed = !dcrDateOpen(s.date, today, unlockedUntil);
+  const readOnly = lockedView || dateClosed || blocked || gone;
   const savedWorkWithIds = readOnly ? (dcr?.workWithUserIds ?? []).join(',') : '';
   const dayHqIds = useMemo(() => hqIdsOf(rows, s.territoryIds), [rows, s.territoryIds]);
   // Per HQ of the day: the picked level-'territory' rows under it, or none when the HQ itself was picked (whole HQ).
@@ -322,11 +345,13 @@ function Flow({
         next.workTypeId = d.workTypeId;
         next.territoryIds = d.territoryIds;
         next.workWith = d.workWithUserIds;
-        next.workWithDone = wo?.branch === 'field' && d.territoryIds.length > 0;
+        next.workWithDone = isRouteDay(wo?.branch) && d.territoryIds.length > 0;
         next.routeChoice = Object.fromEntries(
           d.sfcRoutes.map((x) => [x.hqTerritoryId, x.sfcRouteId]),
         );
         next.calls = callsFromDcr(d, names.current);
+        next.expenses = draftsOf(expensesOf(d));
+        next.expensesSent = next.expenses.length > 0;
         const det = d.details;
         if (det?.kind === 'meeting' || det?.kind === 'training')
           next.meeting = {
@@ -334,18 +359,18 @@ function Flow({
             mode: det.mode,
             location: det.location ?? '',
             startTime: det.startTime,
-            durationMin: String(det.durationMin),
             attendees: det.kind === 'meeting' ? (det.attendees ?? '') : '',
             remarks: det.remarks ?? '',
             trainer: det.kind === 'training' ? (det.trainer ?? '') : '',
+            ...extraFormOf(det),
           };
         if (det?.kind === 'office')
           next.office = {
             taskType: det.taskType,
             description: det.description,
             startTime: det.startTime ?? '',
-            durationMin: String(det.durationMin),
             remarks: det.remarks ?? '',
+            ...extraFormOf(det),
           };
         if (det?.kind === 'leave') next.leaveRequestId = det.leaveRequestId;
         next.deviationReason = d.deviationReason ?? '';
@@ -411,38 +436,48 @@ function Flow({
     };
   }, [field, s.territoryIds.length, peopleQ, peopleTick, readOnly, savedWorkWithIds, dcr]);
 
-  // Products for detailing. Mock: Arighna's real product names (loaded lazily, never in the real bundle path).
+  // Products for detailing (GET /v1/products).
   useEffect(() => {
-    if (!field) return;
+    if (!withCalls) return;
     let live = true;
     setProductsError(null);
     void (async () => {
-      if (MOCKING) {
-        const { MOCK_PRODUCT_SEED } = await import('@/mocks/product-seed');
-        if (live)
-          setProducts(
-            MOCK_PRODUCT_SEED.map((p) => ({ id: p.id, label: p.name, hint: p.composition })),
-          );
-        return;
-      }
-      const r = await api.GET('/v1/products', { params: { query: { limit: 200 } } });
+      const p = await getProducts();
+      const r = { ...p, data: p.data && { items: p.data } };
       if (!live) return;
       if (!r.data) return setProductsError(failureMessage(r, 'Could not load products.'));
+      const active = r.data.items.filter((p) => p.active);
       setProducts(
-        r.data.items
-          .filter((p) => p.active)
-          .map((p) => ({
-            id: p.id,
-            label: p.name,
-            hint: p.composition,
-            imageUrl: productImageUrl(p),
-          })),
+        active.map((p) => ({
+          id: p.id,
+          label: p.name,
+          hint: p.composition,
+          imageUrl: productImageUrl(p),
+          pts: p.pts,
+        })),
       );
+      // Doctor detailing lists one entry per product name (strength stripped); the SKU with a picture represents it.
+      const groups = new Map<string, typeof active>();
+      for (const p of active) groups.set(p.displayName, [...(groups.get(p.displayName) ?? []), p]);
+      const alias = new Map<string, string>();
+      const opts: SelectOption[] = [];
+      for (const [name, skus] of groups) {
+        const primary = skus.find((p) => productImageUrl(p)) ?? skus[0]!;
+        for (const k of skus) alias.set(k.id, primary.id);
+        opts.push({
+          id: primary.id,
+          label: name,
+          hint: primary.composition,
+          imageUrl: productImageUrl(primary),
+        });
+      }
+      setDetailProducts(opts.sort((a, b) => a.label.localeCompare(b.label)));
+      setSkuToDetail(alias);
     })().catch((e: unknown) => live && setProductsError(thrownMessage(e)));
     return () => {
       live = false;
     };
-  }, [field, productsTick]);
+  }, [withCalls, productsTick]);
 
   // Saved calls name their customer by id only: look the names up once per DCR (doctors in one batch).
   useEffect(() => {
@@ -474,7 +509,9 @@ function Flow({
               const params = { query: { ids: batch.join(','), limit: 100 } };
               const r =
                 kind === 'doctor'
-                  ? await api.GET('/v1/doctors', { params })
+                  ? await cachedGet(['doctors', 'ids', batch.join(',')], () =>
+                      api.GET('/v1/doctors', { params }),
+                    )
                   : kind === 'chemist'
                     ? await api.GET('/v1/chemists', { params })
                     : await api.GET('/v1/stockists', { params });
@@ -558,11 +595,19 @@ function Flow({
     // Field values stay on the page (hidden) when you look at another branch; they are never sent with it.
     update((x) => {
       if (x.workOn?.branch === 'field') lastFieldWt.current = x.workTypeId;
-      if (wo.branch !== 'field') return { workOn: wo, workTypeId: wo.workTypes[0]!.id };
-      return {
-        workOn: wo,
-        workTypeId: x.workOn?.branch === 'field' ? x.workTypeId : lastFieldWt.current,
-      };
+      if (x.workOn?.branch === 'camp') lastCampWt.current = x.workTypeId;
+      if (wo.branch === 'field')
+        return {
+          workOn: wo,
+          workTypeId: x.workOn?.branch === 'field' ? x.workTypeId : lastFieldWt.current,
+        };
+      if (wo.branch === 'camp')
+        return {
+          workOn: wo,
+          workTypeId: x.workOn?.branch === 'camp' ? x.workTypeId : lastCampWt.current,
+          calls: [],
+        };
+      return { workOn: wo, workTypeId: wo.workTypes[0]!.id };
     });
   };
   const chooseBand = (workTypeId: string) =>
@@ -656,6 +701,9 @@ function Flow({
           return false;
         }
         saved = sub.data;
+        const items = expensesOf(saved);
+        rememberCategories(saved.workTypeId, items);
+        setExpenseOutcome(linkOutcome(items, sub.data as SubmitExpenseInfo));
       }
       setDcr(saved);
       setDirty(false);
@@ -728,7 +776,7 @@ function Flow({
     hint: [p.designation, p.employeeCode].filter(Boolean).join(' · ') || null,
   }));
   const showSfc = field && s.workTypeId && s.territoryIds.length > 0 && s.workWithDone;
-  const callsOpen = field && s.sfc.state === 'ok';
+  const callsOpen = withCalls && s.sfc.state === 'ok';
 
   return (
     <div className="flex flex-col gap-6">
@@ -737,6 +785,7 @@ function Flow({
           <p className="text-sm text-muted-foreground" data-testid="dcr-date-label">
             {dateLabel(s.date)}
           </p>
+          <HolidayLine date={s.date} />
           <p className="text-sm" data-testid="dcr-status">
             <span
               className={cn(
@@ -778,6 +827,7 @@ function Flow({
                   ? 'The day is locked, so it is read-only. Request an unlock if something needs correcting.'
                   : 'It is read-only now. Ask your manager if something needs correcting.'}
               </p>
+              {expenseOutcome && <p data-testid="dcr-expense-outcome">{expenseOutcome}</p>}
             </div>
           </div>
           {(dayLocked || dcr?.status === 'locked') && (
@@ -945,10 +995,20 @@ function Flow({
         </div>
       )}
 
+      {dateClosed && !lockedView && !blocked && !gone && (
+        <div
+          className="rounded-xl border bg-muted/40 p-4 text-sm"
+          role="status"
+          data-testid="dcr-date-closed"
+        >
+          {dcrDateClosedText(s.date, today)}
+        </div>
+      )}
+
       {!dateLocked && !dcr && (
         <Step
           title="Date"
-          hint="Any day that isn’t locked. You can keep several drafts for the same day and submit one."
+          hint="Today only. A past day can be filled only after your manager reopens it."
           testId="dcr-step-date"
         >
           <div className="flex flex-col gap-1.5">
@@ -959,6 +1019,7 @@ function Flow({
               id="dcr-date"
               type="date"
               value={s.date}
+              min={today}
               max={today}
               onChange={(e) => {
                 const v = e.target.value;
@@ -1157,7 +1218,7 @@ function Flow({
         </Step>
       )}
 
-      {(callsOpen || (readOnly && field)) && (
+      {(callsOpen || (readOnly && withCalls)) && (
         <Step
           title="Calls"
           hint="One card per visit. Add as many as you made."
@@ -1173,6 +1234,8 @@ function Flow({
                   scope={customerScope}
                   names={placeNames}
                   products={products}
+                  detailProducts={detailProducts}
+                  skuToDetail={skuToDetail}
                   productsError={productsError}
                   onProductsRetry={() => setProductsTick((n) => n + 1)}
                   readOnly={readOnly}
@@ -1215,7 +1278,7 @@ function Flow({
             value={s.meeting}
             onChange={(v) => update({ meeting: v })}
             readOnly={readOnly}
-            errors={errorsByField(['title', 'location', 'startTime', 'durationMin'])}
+            errors={errorsByField(['title', 'location', 'startTime', 'endTime'])}
           />
         </Step>
       )}
@@ -1225,7 +1288,7 @@ function Flow({
             value={s.office}
             onChange={(v) => update({ office: v })}
             readOnly={readOnly}
-            errors={errorsByField(['taskType', 'description', 'durationMin'])}
+            errors={errorsByField(['taskType', 'description', 'startTime', 'endTime'])}
           />
         </Step>
       )}
@@ -1243,6 +1306,21 @@ function Flow({
             errors={errorsFor('leave')}
           />
         </Step>
+      )}
+
+      {s.workOn && (!readOnly || s.expenses.length > 0) && (
+        <DcrExpenses
+          rows={s.expenses}
+          onChange={(rows) => update({ expenses: rows })}
+          readOnly={readOnly}
+          defaultCategory={() => defaultCategory(s.workTypeId)}
+          showErrors={showErrors}
+        />
+      )}
+      {errorsFor('expenses').length > 0 && (
+        <p className="-mt-4 text-sm text-destructive" role="alert">
+          {errorsFor('expenses')[0]}
+        </p>
       )}
 
       {s.workOn && (askDeviation || !!s.deviationReason) && (
@@ -1277,9 +1355,11 @@ function Flow({
             <p className="text-sm text-muted-foreground" data-testid="dcr-review">
               {probs.length
                 ? `${probs.length} thing${probs.length > 1 ? 's' : ''} left before you can submit`
-                : field
+                : withCalls
                   ? `Ready: ${s.calls.length} call${s.calls.length === 1 ? '' : 's'}, ${s.sfc.hqs.length} SFC route${s.sfc.hqs.length === 1 ? '' : 's'}`
-                  : 'Ready to submit'}
+                  : field
+                    ? `Ready: ${s.sfc.hqs.length} SFC route${s.sfc.hqs.length === 1 ? '' : 's'}`
+                    : 'Ready to submit'}
             </p>
             <div className="grid grid-cols-2 gap-2 sm:flex">
               {dcr?.status === 'draft' && onDelete && (
@@ -1329,5 +1409,28 @@ function Flow({
         </div>
       )}
     </div>
+  );
+}
+
+function HolidayLine({ date }: { date: string }) {
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    const ac = new AbortController();
+    void (async () => {
+      await apiReady();
+      const r = await api.GET('/v1/holidays', {
+        params: { query: { from: date, to: date } },
+        signal: ac.signal,
+      });
+      if (ac.signal.aborted || r.error) return;
+      setName(r.data?.items[0]?.name ?? null);
+    })();
+    return () => ac.abort();
+  }, [date]);
+  if (!name) return null;
+  return (
+    <p className="text-sm" data-testid="dcr-holiday">
+      Holiday: {name}. This day stays open for the report.
+    </p>
   );
 }

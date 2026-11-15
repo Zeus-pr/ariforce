@@ -14,7 +14,9 @@ import { TeamModule } from './team/team.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { LeaveModule } from './leave/leave.module';
 import { AllowancesModule } from './allowances/allowances.module';
+import { SalesModule } from './sales/sales.module';
 import { SfcModule } from './sfc/sfc.module';
+import { AuditLogModule } from './audit/audit-log.module';
 import { ExceptionsModule } from './exceptions/exceptions.module';
 import { HomeModule } from './home/home.module';
 import { ProductPricesModule } from './product-prices/product-prices.module';
@@ -39,7 +41,9 @@ import { OpenApiController } from './openapi/openapi.controller';
     HomeModule,
     ProductPricesModule,
     AllowancesModule,
+    SalesModule,
     SfcModule,
+    AuditLogModule,
   ],
   controllers: [HealthController, OpenApiController, MeController],
   providers: [WorkTypesCheck],

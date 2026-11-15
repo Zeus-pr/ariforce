@@ -257,7 +257,9 @@ describe.skipIf(!OWNER || !APP)('approval details + rejection reasons (real API)
   it('tour plan: approver sees resolved days; reason required, notified, cleared on resubmit', async () => {
     const me = await http().get('/v1/me').set(as('bm2'));
     const wt = await http().get('/v1/work-types?limit=50').set(as('bm2'));
-    const field = wt.body.items.find((w: { kind: string }) => w.kind === 'field');
+    const field = wt.body.items.find(
+      (w: { kind: string; code: string }) => w.kind === 'field' && w.code.startsWith('FIELD_'),
+    );
     const entry = {
       session: 'full',
       workTypeId: field.id,
@@ -424,6 +426,21 @@ describe.skipIf(!OWNER || !APP)('approval details + rejection reasons (real API)
     expect(other.status).toBe(200);
     for (const x of other.body.items) expect(x.rejectionReason).toBeNull();
     expect((await http().get('/v1/doctors?ids=nope').set(as('rbm'))).status).toBe(422);
+    // Same ids= semantics on chemists and stockists.
+    for (const m of ['chemists', 'stockists']) {
+      const all = (await http().get(`/v1/${m}?limit=2`).set(as('rbm'))).body.items as {
+        id: string;
+      }[];
+      const want = all.map((x) => x.id);
+      const got = await http()
+        .get(`/v1/${m}?ids=${[...want, uuidv7()].join(',')}&limit=100`)
+        .set(as('rbm'));
+      expect(got.status, JSON.stringify(got.body)).toBe(200);
+      expect(got.body.items.map((x: { id: string }) => x.id).sort()).toEqual([...want].sort());
+      expect((await http().get(`/v1/${m}?ids=nope`).set(as('rbm'))).status).toBe(422);
+      const tooMany = Array.from({ length: 101 }, () => uuidv7()).join(',');
+      expect((await http().get(`/v1/${m}?ids=${tooMany}`).set(as('rbm'))).status).toBe(422);
+    }
     const many = Array.from({ length: 101 }, () => uuidv7()).join(',');
     expect((await http().get(`/v1/doctors?ids=${many}`).set(as('rbm'))).status).toBe(422);
     // Approval notifies the adder with the approver's name.

@@ -10,12 +10,12 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@ariforce/ui/components/dropdown-menu';
-import { MOCKING, api, apiReady, toApiError } from '@/lib/api';
+import { api, apiReady, toApiError } from '@/lib/api';
 import { notificationHref, type AppNotification } from './links';
 
 const POLL_MS = 45_000;
 // The mock inbox has only a few rows, so use a small page there to exercise "Load more".
-const PAGE = MOCKING ? 3 : 20;
+const PAGE = 20;
 
 function when(iso: string): string {
   const d = new Date(iso);

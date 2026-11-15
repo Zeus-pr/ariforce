@@ -15,6 +15,13 @@ export type TpItem = {
     workWithUserIds: string[];
     sfcRoutes: { hqTerritoryId: string; sfcRouteId: string }[];
     details: unknown;
+    sections?: {
+      workTypeId: string;
+      territoryIds: string[];
+      workWithUserIds: string[];
+      sfcRoutes: { hqTerritoryId: string; sfcRouteId: string }[];
+      details: unknown;
+    }[];
   };
   version: number;
   filedDates: string[];
@@ -23,6 +30,7 @@ export type TpItem = {
   submittedAt: string | null;
   decidedAt: string | null;
   decidedBy: string | null;
+  canDecide?: boolean;
 };
 
 type TpItemListResponse = { items: TpItem[]; nextCursor: string | null; serverTime: string };
@@ -65,7 +73,9 @@ export async function fetchPendingTourPlanItems(currentUserId: string): Promise<
     });
     if (!r.data || !('items' in r.data))
       throw new Error(toApiError(r).message || 'Could not load tour plans awaiting approval.');
-    items.push(...r.data.items.filter((item) => item.userId !== currentUserId));
+    items.push(
+      ...r.data.items.filter((item) => item.userId !== currentUserId && item.canDecide !== false),
+    );
     cursor = r.data.nextCursor ?? undefined;
   } while (cursor);
   return items;

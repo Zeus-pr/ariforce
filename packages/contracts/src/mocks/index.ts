@@ -407,6 +407,7 @@ function crud<
  * unless `x-mock-user: none` (behaves as signed out -> 401).
  */
 import { doctorHandlers } from './doctors';
+import { checkDcrDetailsRaw, checkDcrExpensesRaw, normaliseDcrDetails } from './dcr-details';
 
 export function mockPrincipal(request: Request): Me | undefined {
   const h = request.headers.get('x-mock-user');
@@ -534,6 +535,19 @@ export function createHandlers(baseUrl = '') {
         Territory,
         fx.territories.filter((t) => (!lvl || t.level === lvl) && (!ok || ok.includes(t.level))),
         url,
+      );
+    }),
+    http.get(`${baseUrl}/v1/territories/compact`, ({ request }) => {
+      const url = new URL(request.url);
+      const lvl = url.searchParams.get('level');
+      const parentId = url.searchParams.get('parentId');
+      const items = fx.territories
+        .filter((t) => (!lvl || t.level === lvl) && (!parentId || t.parentId === parentId))
+        .map((t) => ({ id: t.id, name: t.name, level: t.level, parentId: t.parentId }))
+        .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+      return HttpResponse.json(
+        { items, nextCursor: null },
+        { headers: { ETag: 'W/"tc-mock"', 'Cache-Control': 'private, max-age=60' } },
       );
     }),
     http.get(`${baseUrl}/v1/territories/:id`, ({ params }) => {
@@ -786,7 +800,10 @@ function fieldHandlers(baseUrl: string) {
       );
     }),
     http.put(`${baseUrl}/v1/dcrs/draft`, async ({ request }) => {
-      const b = DcrDraftPut.safeParse(await request.json());
+      const raw = (await request.json()) as { details?: unknown; expenses?: unknown };
+      const pre = checkDcrDetailsRaw(raw?.details) ?? checkDcrExpensesRaw(raw?.expenses);
+      if (pre) return pre;
+      const b = DcrDraftPut.safeParse(raw);
       if (!b.success) return validation('Invalid DCR', z.treeifyError(b.error));
       const tpItem = tpItems.find(
         (it) =>
@@ -800,10 +817,9 @@ function fieldHandlers(baseUrl: string) {
           field: 'tourPlanItemId',
           reason: 'TOUR_PLAN_ITEM_MISMATCH',
         });
-      if (b.data.date > today() && !b.data.tourPlanItemId)
-        return validation('DCR date is in the future');
       if (isLocked(b.data.date))
         return dcrError(409, 'DAY_LOCKED', 'Day locked; request a correction');
+      if (dateNotToday(b.data.date)) return dcrDateNotToday(b.data.date);
       let d: (typeof dcrs)[number] | undefined;
       if (b.data.id) {
         d = dcrs.find((x) => x.id === b.data.id && x.userId === fx.me.id);
@@ -858,6 +874,7 @@ function fieldHandlers(baseUrl: string) {
           details: null,
           workWithUserIds: [],
           sfcRoutes: [],
+          expenses: [],
           submittedBy: null,
           reviewStatus: null,
           approvedAt: null,
@@ -873,8 +890,9 @@ function fieldHandlers(baseUrl: string) {
         territoryIds: b.data.territoryIds,
         deviationReason: b.data.deviationReason ?? null,
         band,
-        details: b.data.details ?? null,
+        details: normaliseDcrDetails(b.data.details ?? null),
         workWithUserIds: b.data.workWithUserIds,
+        ...(b.data.expenses ? { expenses: b.data.expenses } : {}),
         calls: b.data.calls.map(({ clientId, ...c }) => ({
           ...c,
           id: clientId,
@@ -894,9 +912,15 @@ function fieldHandlers(baseUrl: string) {
       if (!key) return validation('Idempotency-Key header is required');
       const b = DcrSubmit.safeParse(await request.json());
       if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
+      const badExp = checkDcrExpensesRaw(b.data.expenses);
+      if (badExp) return badExp;
       // Same-key retry, also for a director's report (approved at submit).
       if ((d.status === 'submitted' || d.status === 'approved') && submitKeys.get(d.id) === key)
-        return HttpResponse.json({ ...Dcr.parse(withLock(d)), expenseDraft: null });
+        return HttpResponse.json({
+          ...Dcr.parse(withLock(d)),
+          expenseDraft: null,
+          dcrExpenses: null,
+        });
       if (d.status === 'submitted') return dcrError(409, 'ALREADY_SUBMITTED', 'Already submitted');
       if (d.status !== 'draft')
         return dcrError(409, 'ALREADY_SUBMITTED', 'Reviewed DCRs are read-only', {
@@ -905,6 +929,7 @@ function fieldHandlers(baseUrl: string) {
         });
       if (b.data.version !== d.version) return dcrError(409, 'VERSION_CONFLICT', 'Stale version');
       if (isLocked(d.date)) return dcrError(409, 'DAY_LOCKED', 'Day locked');
+      if (dateNotToday(d.date)) return dcrDateNotToday(d.date);
       const noPres = d.calls.flatMap((c, i) =>
         c.outletKind === 'doctor' && c.productsDetailed.length && !c.presentationOpenedAt
           ? [{ i, id: c.id }]
@@ -927,7 +952,10 @@ function fieldHandlers(baseUrl: string) {
       if (want && (!d.details || d.details.kind !== want))
         return validation(`details (kind '${want}') are required`, { field: 'details' });
       if (band && !d.territoryIds.length) return validation('Pick at least one territory');
-      if (band && !d.calls.length) return validation('Field work needs at least one call');
+      const camp = wt.code.toUpperCase().startsWith('CAMP_');
+      if (camp && d.calls.length)
+        return validation('Camp does not take doctor, chemist or stockist calls');
+      if (band && !camp && !d.calls.length) return validation('Field work needs at least one call');
       const hqIds = [...new Set(d.territoryIds.map(hqOf))] as string[];
       const frozenAt = serverTime();
       const routes = band
@@ -960,7 +988,27 @@ function fieldHandlers(baseUrl: string) {
         version: d.version + 1,
         updatedAt: frozenAt,
       });
-      return HttpResponse.json({ ...Dcr.parse(withLock(d)), expenseDraft: null });
+      if (b.data.expenses) d.expenses = b.data.expenses;
+      const exp = d.expenses ?? [];
+      Object.assign(d, {
+        expenseClaimId: null,
+        expenseTotal: Math.round(exp.reduce((t, e) => t + e.amount, 0) * 100) / 100,
+        expenseCount: exp.length,
+      });
+      return HttpResponse.json({
+        ...Dcr.parse(withLock(d)),
+        expenseDraft: null,
+        // The mock has no claim store here: report what the server would link.
+        dcrExpenses: {
+          status: exp.length ? ('linked' as const) : ('skipped' as const),
+          reason: exp.length ? null : ('no_expenses' as const),
+          claimId: null,
+          claimStatus: null,
+          claimCreated: false,
+          lines: exp.length,
+          total: Math.round(exp.reduce((t, e) => t + e.amount, 0) * 100) / 100,
+        },
+      });
     }),
     http.delete(`${baseUrl}/v1/dcrs/:id`, ({ params }) => {
       const d = dcrs.find((x) => x.id === params.id && x.userId === fx.me.id);
@@ -1027,6 +1075,18 @@ function fieldHandlers(baseUrl: string) {
   /** Day lock: 00:00 IST the next day; unlocked 48 h after an approved correction or a rejection. */
   const corrections = new Map<string, string>();
   const unlocked = new Map<string, number>();
+  // Mirrors the API rule (dcr-date.ts): today only; a past day only while unlocked; never future.
+  const dateNotToday = (date: string) =>
+    date !== today() && !(date < today() && (unlocked.get(date) ?? 0) > Date.now());
+  const dcrDateNotToday = (date: string) =>
+    dcrError(
+      422,
+      'DCR_DATE_NOT_TODAY',
+      date > today()
+        ? 'A DCR can only be filled for today; future days are not allowed'
+        : 'A DCR can only be filled for today; past days need an approved unlock',
+      { date, today: today() },
+    );
   const lockAt = (date: string) =>
     new Date(Date.parse(`${date}T00:00:00+05:30`) + 86_400_000).toISOString();
   // Directors' days never lock (no manager to unlock them).
@@ -1125,7 +1185,12 @@ function fieldHandlers(baseUrl: string) {
         url.searchParams.get('unlinked') === 'true'
           ? checkIns.filter((c) => c.kind === 'visit' && !linked.has(c.id))
           : checkIns;
-      return list(CheckIn, rows, url);
+      const doctorId = url.searchParams.get('doctorId');
+      return list(
+        CheckIn,
+        doctorId ? rows.filter((c) => c.outletKind === 'doctor' && c.outletId === doctorId) : rows,
+        url,
+      );
     }),
     http.get(`${baseUrl}/v1/users`, ({ request }) => {
       const url = new URL(request.url);
@@ -1288,7 +1353,10 @@ function fieldHandlers(baseUrl: string) {
       );
     }),
     http.put(`${baseUrl}/v1/tour-plans/items`, async ({ request }) => {
-      const b = TourPlanItemUpsert.safeParse(await request.json());
+      const raw = (await request.json()) as { plan?: { details?: unknown } };
+      const pre = checkDcrDetailsRaw(raw?.plan?.details);
+      if (pre) return pre;
+      const b = TourPlanItemUpsert.safeParse(raw);
       if (!b.success) return validation('Invalid body', z.treeifyError(b.error));
       const wt = fx.workTypes.find((w) => w.id === b.data.plan.workTypeId && w.active);
       if (!wt)
@@ -1321,7 +1389,7 @@ function fieldHandlers(baseUrl: string) {
           to: b.data.to,
           status: 'draft',
           rejectionReason: null,
-          plan: b.data.plan,
+          plan: { ...b.data.plan, details: normaliseDcrDetails(b.data.plan.details) },
           filedDates: [],
           version: 1,
           createdAt: ts,
@@ -1348,7 +1416,7 @@ function fieldHandlers(baseUrl: string) {
       Object.assign(it, {
         from: b.data.from,
         to: b.data.to,
-        plan: b.data.plan,
+        plan: { ...b.data.plan, details: normaliseDcrDetails(b.data.plan.details) },
         status: 'draft',
         rejectionReason: null,
         submittedAt: null,
@@ -1645,9 +1713,9 @@ function fieldHandlers(baseUrl: string) {
       if (prior?.submittedBy)
         return dcrError(409, 'ALREADY_SUBMITTED', 'Submitted DCRs are read-only');
       if (!b.success) return validation('Invalid DCR', z.treeifyError(b.error));
-      if (b.data.date > today()) return validation('DCR date is in the future');
       let d = submittedOf(b.data.date) ?? draftsOf(b.data.date)[0];
       if (isLocked(b.data.date)) return conflict('Day locked; request a correction');
+      if (dateNotToday(b.data.date)) return dcrDateNotToday(b.data.date);
       if (d && b.data.version && b.data.version !== d.version) return conflict('Stale version');
       const wt = fx.workTypes.find((w) => w.id === b.data.workTypeId);
       if (!wt) return validation('Unknown work type');
@@ -1729,6 +1797,7 @@ function fieldHandlers(baseUrl: string) {
           details: null,
           workWithUserIds: [],
           sfcRoutes: [],
+          expenses: [],
           submittedBy: null,
           reviewStatus: null,
           approvedAt: null,
@@ -1785,6 +1854,37 @@ function fieldHandlers(baseUrl: string) {
         a.requestedBy !== fx.me.id &&
         fx.me.permissions.includes('approvals:decide') &&
         (a.subjectType !== 'dcr_unlock' || fx.me.permissions.includes('dcr_unlock:decide'));
+      const scope = url.searchParams.get('scope');
+      if (scope === 'org' && !fx.me.permissions.includes('approvals:decide'))
+        return HttpResponse.json(
+          { error: { code: 'FORBIDDEN', message: 'scope=org needs approvals:decide' } },
+          { status: 403 },
+        );
+      if (url.searchParams.get('include') && scope !== 'org')
+        return validation('include needs scope=org', {});
+      if (scope === 'org' && !mine) {
+        const uid = url.searchParams.get('userId');
+        const st = url.searchParams.get('status');
+        const ty = url.searchParams.get('subjectType');
+        const from = url.searchParams.get('from');
+        const to = url.searchParams.get('to');
+        const org = approvals
+          .filter((a) => !uid || a.requestedBy === uid)
+          .filter((a) => !st || a.status === st)
+          .filter((a) => !ty || a.subjectType === ty)
+          .filter((a) => !from || a.createdAt.slice(0, 10) >= from)
+          .filter((a) => !to || a.createdAt.slice(0, 10) <= to)
+          .map((a) => ({
+            ...a,
+            canDecide: can(a),
+            requestedByRole: null,
+            level: a.status === 'pending' ? 1 : null,
+            totalLevels: 1,
+            currentApprover: null,
+            trail: [],
+          }));
+        return list(Approval, org, url);
+      }
       const rows = (
         mine === 'to_decide'
           ? approvals.filter(can)

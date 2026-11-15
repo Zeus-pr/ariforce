@@ -1,4 +1,10 @@
 import {
+  AuditLogPage,
+  AuditLogQuery,
+  TeamMemberActivity,
+  TeamMemberActivityQuery,
+} from './schemas/director';
+import {
   DcrDraftPut,
   DcrHqOptionList,
   DcrOptions,
@@ -29,6 +35,8 @@ import {
   ExceptionUpdate,
 } from './schemas/exceptions';
 import {
+  CompanyMessage,
+  CompanyMessageResult,
   JobStats,
   NotificationPage,
   NotificationQuery,
@@ -107,6 +115,10 @@ import {
   DcrUpsert,
   FieldListQuery,
   GeofenceSettings,
+  DoctorLockCap,
+  OutletLocation,
+  OutletLocationCreate,
+  OutletLocationPatch,
   TourPlan,
   TourPlanCalendar,
   StandardTourPlan,
@@ -140,6 +152,17 @@ import {
   SfcTablePut,
 } from './schemas/sfc';
 import {
+  SalesActualCreate,
+  SalesActualList,
+  SalesActualQuery,
+  SalesImportRequest,
+  SalesImportResult,
+  SalesTargetList,
+  SalesTargetQuery,
+  SalesTargetSet,
+  SalesTargetSetResult,
+} from './schemas/sales';
+import {
   Me,
   PasswordForgot,
   PasswordForgotAccepted,
@@ -151,7 +174,26 @@ import {
 import { RoleList } from './schemas/roles';
 import { Health } from './schemas/health';
 import { KpiQuery, KpiReport, ProductKpiReport } from './schemas/kpis';
-import { Territory, TerritoryListQuery } from './schemas/territories';
+import {
+  Holiday,
+  HolidayCopy,
+  HolidayCopyResult,
+  HolidayCreate,
+  HolidayList,
+  HolidayQuery,
+  HolidayUpdate,
+} from './schemas/holidays';
+import {
+  Territory,
+  TerritoryCompactHeaders,
+  TerritoryCompactList,
+  TerritoryCompactQuery,
+  TerritoryCreate,
+  TerritoryHealth,
+  TerritoryListQuery,
+  TerritoryMove,
+  TerritoryUpdate,
+} from './schemas/territories';
 import {
   Chemist,
   ChemistCreate,
@@ -251,7 +293,14 @@ import {
   TeamProfile,
   TeamProfileExportQuery,
 } from './schemas/team-profile';
-import { ConsentGrant, ConsentRecord, Device, DeviceEnrol } from './schemas/devices';
+import {
+  ConsentGrant,
+  ConsentRecord,
+  Device,
+  DeviceEnrol,
+  DevicePushToken,
+  DevicePushTokenResult,
+} from './schemas/devices';
 
 const json = <T extends z.ZodType>(schema: T) => ({ content: { 'application/json': { schema } } });
 const err = (description: string) => ({ description, ...json(ErrorBody) });
@@ -484,6 +533,44 @@ function buildDocument(): OpenApiDocument {
           requestParams: { query: TerritoryListQuery },
           responses: { '200': { description: 'Page', ...json(page(Territory, 'TerritoryPage')) } },
         }),
+        post: op({
+          tags: ['Territories'],
+          operationId: 'createTerritory',
+          summary: 'Create a territory. Code is required except for a patch under a headquarter.',
+          requestBody: json(TerritoryCreate),
+          responses: {
+            '201': { description: 'Created', ...json(Territory) },
+            '403': err('FORBIDDEN'),
+            '409': err('NATIONAL_EXISTS or CODE_TAKEN or TERRITORY_KEY_TAKEN'),
+            '422': err('TERRITORY_PARENT_LEVEL or VALIDATION'),
+          },
+        }),
+      },
+      '/v1/territories/health': {
+        get: op({
+          tags: ['Territories'],
+          operationId: 'territoryHealth',
+          summary: 'Counts of territory setup problems for a director or system admin',
+          responses: {
+            '200': { description: 'Counts only', ...json(TerritoryHealth) },
+            '403': err('FORBIDDEN'),
+          },
+        }),
+      },
+      '/v1/territories/{id}/move': {
+        post: op({
+          tags: ['Territories'],
+          operationId: 'moveTerritory',
+          requestParams: { path: IdParam },
+          requestBody: json(TerritoryMove),
+          responses: {
+            '200': { description: 'Moved', ...json(Territory) },
+            '403': err('FORBIDDEN'),
+            '404': err('Not found'),
+            '409': err('VERSION_CONFLICT or CODE_TAKEN'),
+            '422': err('TERRITORY_PARENT_LEVEL or TERRITORY_CYCLE'),
+          },
+        }),
       },
       '/v1/territories/{id}': {
         get: op({
@@ -491,6 +578,110 @@ function buildDocument(): OpenApiDocument {
           operationId: 'getTerritory',
           requestParams: { path: IdParam },
           responses: { '200': { description: 'OK', ...json(Territory) }, '404': err('Not found') },
+        }),
+        patch: op({
+          tags: ['Territories'],
+          operationId: 'updateTerritory',
+          requestParams: { path: IdParam },
+          requestBody: json(TerritoryUpdate),
+          responses: {
+            '200': { description: 'Updated', ...json(Territory) },
+            '403': err('FORBIDDEN'),
+            '404': err('Not found'),
+            '409': err('VERSION_CONFLICT or CODE_TAKEN or TERRITORY_KEY_TAKEN'),
+            '422': err('VALIDATION'),
+          },
+        }),
+        delete: op({
+          tags: ['Territories'],
+          operationId: 'deleteTerritory',
+          summary: 'Soft-delete when nothing live still uses the territory',
+          requestParams: { path: IdParam },
+          responses: {
+            '204': { description: 'Deleted' },
+            '403': err('FORBIDDEN'),
+            '404': err('Not found'),
+            '409': err('TERRITORY_IN_USE'),
+          },
+        }),
+      },
+      '/v1/holidays': {
+        get: op({
+          tags: ['Holidays'],
+          operationId: 'listHolidays',
+          summary: 'Company holiday names for a year or a date range. Does not close the day.',
+          requestParams: { query: HolidayQuery },
+          responses: {
+            '200': { description: 'Holidays', ...json(HolidayList) },
+            '422': err('VALIDATION'),
+          },
+        }),
+        post: op({
+          tags: ['Holidays'],
+          operationId: 'createHoliday',
+          requestBody: json(HolidayCreate),
+          responses: {
+            '201': { description: 'Created', ...json(Holiday) },
+            '403': err('FORBIDDEN'),
+            '409': err('HOLIDAY_DATE_TAKEN'),
+            '422': err('VALIDATION'),
+          },
+        }),
+      },
+      '/v1/holidays/copy': {
+        post: op({
+          tags: ['Holidays'],
+          operationId: 'copyHolidays',
+          summary: 'Copy holiday names onto the same month and day in another year',
+          requestBody: json(HolidayCopy),
+          responses: {
+            '200': { description: 'Copied and skipped', ...json(HolidayCopyResult) },
+            '403': err('FORBIDDEN'),
+            '422': err('VALIDATION'),
+          },
+        }),
+      },
+      '/v1/holidays/{id}': {
+        patch: op({
+          tags: ['Holidays'],
+          operationId: 'updateHoliday',
+          requestParams: { path: IdParam },
+          requestBody: json(HolidayUpdate),
+          responses: {
+            '200': { description: 'Updated', ...json(Holiday) },
+            '403': err('FORBIDDEN'),
+            '404': err('Not found'),
+            '409': err('VERSION_CONFLICT'),
+            '422': err('VALIDATION'),
+          },
+        }),
+        delete: op({
+          tags: ['Holidays'],
+          operationId: 'deleteHoliday',
+          requestParams: { path: IdParam },
+          responses: {
+            '204': { description: 'Deleted' },
+            '403': err('FORBIDDEN'),
+            '404': err('Not found'),
+          },
+        }),
+      },
+      '/v1/territories/compact': {
+        get: op({
+          tags: ['Territories'],
+          operationId: 'listTerritoriesCompact',
+          summary: 'Compact territory list (id, name, level, parentId) for pickers and trees',
+          description:
+            'Same company and caller-subtree scope as GET /v1/territories, non-deleted only, ordered by name. Default and max page 2000; follow nextCursor beyond that. Weak ETag + Cache-Control: private, max-age=60; If-None-Match -> 304 with empty body.',
+          requestParams: { query: TerritoryCompactQuery, header: TerritoryCompactHeaders },
+          responses: {
+            '200': {
+              description: 'OK (ETag, Cache-Control headers)',
+              ...json(TerritoryCompactList),
+            },
+            '304': { description: 'Not modified (If-None-Match matched); empty body' },
+            '422': err('VALIDATION'),
+          },
         }),
       },
       '/v1/specialties': {
@@ -564,6 +755,19 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '201': { description: 'Enrolled', ...json(Device) },
             '422': err('Validation failed'),
+          },
+        }),
+      },
+      '/v1/devices/{id}/push-token': {
+        post: op({
+          tags: ['Devices'],
+          operationId: 'setDevicePushToken',
+          summary: 'Save or clear the Expo push token for this install',
+          requestParams: { path: IdParam },
+          requestBody: json(DevicePushToken),
+          responses: {
+            '200': { description: 'Saved', ...json(DevicePushTokenResult) },
+            '404': err('Not found'),
           },
         }),
       },
@@ -718,13 +922,15 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '201': { description: 'Recorded', ...json(CheckIn) },
             '200': { description: 'Already recorded (same clientId)', ...json(CheckIn) },
-            '409': err('Sequence error (e.g. visit before punch-in, second punch-in)'),
+            '409': err(
+              'Sequence error, or LOCATION_LIMIT when a doctor is already at their pin cap and outside every saved pin',
+            ),
             '404': err('Outlet not found or outside your territories'),
             '412': err(
               'No active enrolled device (DEVICE_NOT_ACTIVE) or consent missing (CONSENT_REQUIRED)',
             ),
             '422': err(
-              'Validation failed; LOW_ACCURACY, MOCK_LOCATION or OUT_OF_FENCE when the company policy blocks',
+              'Validation failed; LOW_ACCURACY, MOCK_LOCATION, or OUT_OF_FENCE. A chemist or stockist with a locked pin is refused outside that pin',
             ),
           },
         }),
@@ -784,6 +990,79 @@ function buildDocument(): OpenApiDocument {
           },
         }),
       },
+      '/v1/outlets/{kind}/{id}/locations': {
+        get: op({
+          tags: ['Field'],
+          operationId: 'listOutletLocations',
+          summary: 'Active locked locations for a doctor / chemist / stockist',
+          requestParams: {
+            path: z.object({ kind: z.enum(['doctor', 'chemist', 'stockist']), id: Id }),
+          },
+          responses: {
+            '200': {
+              description: 'OK',
+              ...json(
+                z
+                  .object({ items: z.array(OutletLocation), serverTime: z.iso.datetime() })
+                  .meta({ id: 'OutletLocationList' }),
+              ),
+            },
+            '404': err('Outlet not found or outside your territories'),
+          },
+        }),
+        post: op({
+          tags: ['Field'],
+          operationId: 'createOutletLocation',
+          summary:
+            'First-time lock (or add another doctor practice). Chemist/stockist: one active only. Idempotent on clientId.',
+          requestParams: {
+            path: z.object({ kind: z.enum(['doctor', 'chemist', 'stockist']), id: Id }),
+          },
+          requestBody: json(OutletLocationCreate),
+          responses: {
+            '201': { description: 'Locked', ...json(OutletLocation) },
+            '200': { description: 'Replay', ...json(OutletLocation) },
+            '409': err(
+              'LOCATION_EXISTS (chem/stockist), LOCATION_LIMIT (doctor already at their pin cap), or IDEMPOTENCY_CONFLICT',
+            ),
+            '412': err('DEVICE_NOT_ACTIVE or CONSENT_REQUIRED'),
+            '422': err('LOW_ACCURACY / MOCK_LOCATION / invalid label'),
+          },
+        }),
+      },
+      '/v1/outlets/{kind}/{id}/lock-cap': {
+        patch: op({
+          tags: ['Field'],
+          operationId: 'patchOutletLockCap',
+          summary:
+            'ABM and above, and system admin, set how many active pins a doctor may have (1–5). Default is 1.',
+          requestParams: {
+            path: z.object({ kind: z.enum(['doctor', 'chemist', 'stockist']), id: Id }),
+          },
+          requestBody: json(DoctorLockCap),
+          responses: {
+            '200': { description: 'Saved', ...json(DoctorLockCap) },
+            '403': err('BM cannot change the cap'),
+            '404': err('Outlet not found or outside your territories'),
+            '422': err('Only a doctor has a pin cap, or the number is outside 1–5'),
+          },
+        }),
+      },
+      '/v1/outlet-locations/{id}': {
+        patch: op({
+          tags: ['Field'],
+          operationId: 'patchOutletLocation',
+          summary: 'ABM→Director (and system_admin) edit / deactivate a locked location',
+          requestParams: { path: IdParam },
+          requestBody: json(OutletLocationPatch),
+          responses: {
+            '200': { description: 'Updated', ...json(OutletLocation) },
+            '403': err('BM cannot edit'),
+            '404': err('Not found'),
+            '409': err('VERSION_CONFLICT or LOCATION_EXISTS'),
+          },
+        }),
+      },
       '/v1/me/consent': {
         get: op({
           tags: ['Me'],
@@ -825,7 +1104,7 @@ function buildDocument(): OpenApiDocument {
             '404': err('No such item'),
             '409': err('TP_LOCKED (pending/approved) or VERSION_CONFLICT'),
             '422': err(
-              'VALIDATION: to < from, more than 31 days, unknown/inactive or leave/holiday work type, details.kind mismatch, unknown or out-of-scope territories/users/SFC routes',
+              'VALIDATION: to < from, more than 31 days, unknown/inactive or leave/holiday work type, details.kind mismatch, unknown or out-of-scope territories/users/SFC routes; MEETING_TYPE_INVALID (meeting details.title not Cycle Meeting / Review Meeting; details.allowed), END_TIME_NOT_AFTER_START (end <= start, or endTime without startTime; details.startTime/endTime), DURATION_TOO_LONG (end - start > 720 min)',
             ),
           },
         }),
@@ -1124,7 +1403,7 @@ function buildDocument(): OpenApiDocument {
               'ALREADY_SUBMITTED (this DCR is not a draft), DAY_ALREADY_SUBMITTED (the date has a submitted report; details.existingId), DAY_LOCKED, VERSION_CONFLICT',
             ),
             '422': err(
-              'DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today), VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds)',
+              'DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today), VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds), MEETING_TYPE_INVALID (meeting details.title not Cycle Meeting / Review Meeting; details.allowed), END_TIME_NOT_AFTER_START (end <= start, or endTime without startTime; details.startTime/endTime), DURATION_TOO_LONG (end - start > 720 min), DCR_EXPENSE_CATEGORY_INVALID (details.index, details.allowed)',
             ),
           },
         }),
@@ -1140,7 +1419,7 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '200': {
               description:
-                "Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Audited as expense.auto_drafted. Director (no manager): the report is approved at submit by the system (status approved, approvedBy null, autoApproved true; audit dcr.auto_approved) before the expense auto-draft, and the day never locks (no DAY_LOCKED, no unlock request).",
+                "Submitted (also returned for a retry with the same key, then expenseDraft is null). When the company setting autoExpenseOnDcrSubmit is on, the server drafts the day's TA/DA lines into your month claim (created if missing) and reports it in expenseDraft; an engine failure never fails the submit (expenseDraft.status error). Independently, the DCR's expenses[] are linked into the month claim (created if missing) as origin dcr lines (dcrId), replacing all earlier origin-dcr lines of that DCR (idempotent); a submitted/approved/paid claim is not touched (dcrExpenses.status skipped, reason claim_locked) and the submit still succeeds. Audited as expense.auto_drafted. Director (no manager): the report is approved at submit by the system (status approved, approvedBy null, autoApproved true; audit dcr.auto_approved) before the expense auto-draft, and the day never locks (no DAY_LOCKED, no unlock request).",
               ...json(DcrSubmitResult),
             },
             '404': err('Not found (not your DCR)'),
@@ -1148,7 +1427,7 @@ function buildDocument(): OpenApiDocument {
               'ALREADY_SUBMITTED (other key), DAY_ALREADY_SUBMITTED (another report of the date is submitted; details.existingId), IDEMPOTENCY_CONFLICT (key used on another DCR), VERSION_CONFLICT, DAY_LOCKED',
             ),
             '422': err(
-              'DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND',
+              'DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked), VALIDATION (details.reason PRESENTATION_NOT_OPENED with callIndexes/callIds: a doctor call with productsDetailed lacks presentationOpenedAt; POB_NOT_ALLOWED_FOR_DOCTOR), SFC_NO_MATCH, SFC_ROUTE_REQUIRED, SFC_MISMATCH, DEVIATION_REASON_REQUIRED, LEAVE_NOT_FOUND, DCR_EXPENSE_CATEGORY_INVALID, MEETING_TYPE_INVALID (meeting details.title not Cycle Meeting / Review Meeting; details.allowed), END_TIME_NOT_AFTER_START (end <= start, or endTime without startTime; details.startTime/endTime), DURATION_TOO_LONG (end - start > 720 min)',
             ),
           },
         }),
@@ -1196,8 +1475,14 @@ function buildDocument(): OpenApiDocument {
         get: op({
           tags: ['Approvals'],
           operationId: 'listApprovals',
+          description:
+            'Default: your own requests and those of your reporting line (unchanged). scope=org: every request of your subtree in any state (Director: the whole company) with requestedByRole, level, totalLevels, currentApprover and trail; filters status, subjectType, userId, from/to; include=dcr,signup merges DCR reviews and signup requests into the same page (ordered createdAt desc, id).',
           requestParams: { query: ApprovalListQuery },
-          responses: { '200': { description: 'Page', ...json(page(Approval, 'ApprovalPage')) } },
+          responses: {
+            '200': { description: 'Page', ...json(page(Approval, 'ApprovalPage')) },
+            '403': err('FORBIDDEN: scope=org without approvals:decide'),
+            '422': err('VALIDATION (bad cursor, include without scope=org, from after to)'),
+          },
         }),
       },
       '/v1/team': {
@@ -1302,7 +1587,9 @@ function buildDocument(): OpenApiDocument {
             '404': err('INVITE_INVALID: unknown token, or replaced by a newer invite'),
             '409': err('INVITE_USED: already redeemed (or the account already exists)'),
             '410': err('INVITE_EXPIRED: past its expiry; ask for a new invite'),
-            '422': err('VALIDATION: password shorter than 12 characters (or token malformed)'),
+            '422': err(
+              'VALIDATION: password must be 12–128 characters with one uppercase letter, one lowercase letter, one number, and one symbol (or token malformed)',
+            ),
             '429': err('RATE_LIMITED: too many attempts from this IP; Retry-After header'),
           },
         },
@@ -1332,6 +1619,40 @@ function buildDocument(): OpenApiDocument {
               'FORBIDDEN: viewing someone else while below ABM or without reports:read (BM for others); non-hierarchy roles (System Admin, Distribution Head, Accountant) always',
             ),
             '404': err('Not in your subtree (or not a hierarchy user)'),
+          },
+        }),
+      },
+      '/v1/team/members/{userId}/activity': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'getTeamMemberActivity',
+          summary:
+            'Employee 360 activity of yourself or someone below you (Director: everyone): today by default, or any range up to 93 days',
+          description:
+            'Per day: attendance (same rules as the profile today block), approved TP coverage, the day DCR (status, work type, calls, start/end/duration, DCR expense total), call and GPS check-in counts; range totals; for a single day (from = to) also the calls and check-ins themselves. Same visibility as GET /v1/team/members/{userId}/profile (ABM+ with reports:read over their subtree, Director everyone; non-hierarchy roles 403). Batched: a fixed number of queries per request, independent of range length.',
+          requestParams: { path: z.object({ userId: Id }), query: TeamMemberActivityQuery },
+          responses: {
+            '200': { description: 'Activity', ...json(TeamMemberActivity) },
+            '403': err('FORBIDDEN: same rules as the profile'),
+            '404': err('Not in your subtree (or not a hierarchy user)'),
+            '422': err(
+              'VALIDATION (from after to, to after today) or RANGE_TOO_LONG (more than 93 days; details.maxDays)',
+            ),
+          },
+        }),
+      },
+      '/v1/audit-log': {
+        get: op({
+          tags: ['Audit'],
+          operationId: 'listAuditLog',
+          summary: 'Audit log of your company, newest first (audit:read: Director, System Admin)',
+          description:
+            "Filters: actorUserId, action (exact, or prefix ending in '.'), entityType (+ entityId), from/to (IST dates, inclusive). Cursor paging (limit default 50, max 200), ordered at desc, id desc. before/after are returned with sensitive keys (token, secret, otp, password, hash, authorization, cookie, api key, private key, signature) replaced by '[redacted]' at any depth. Reading is not itself audited.",
+          requestParams: { query: AuditLogQuery },
+          responses: {
+            '200': { description: 'Page', ...json(AuditLogPage) },
+            '403': err('FORBIDDEN: missing audit:read'),
+            '422': err('VALIDATION (bad cursor, from after to, entityId without entityType)'),
           },
         }),
       },
@@ -1486,6 +1807,19 @@ function buildDocument(): OpenApiDocument {
           },
         }),
       },
+      '/v1/notifications/company': {
+        post: op({
+          tags: ['Notifications'],
+          operationId: 'sendCompanyMessage',
+          summary: 'Director or system admin: one notification for every other active user',
+          requestBody: json(CompanyMessage),
+          responses: {
+            '200': { description: 'Queued', ...json(CompanyMessageResult) },
+            '403': err('Director or system admin only'),
+            '422': err('Validation failed'),
+          },
+        }),
+      },
       '/v1/notifications/read-all': {
         post: op({
           tags: ['Notifications'],
@@ -1620,9 +1954,15 @@ function buildDocument(): OpenApiDocument {
           tags: ['Expenses'],
           operationId: 'listExpenseClaims',
           summary:
-            'Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide',
+            'Your claims; with expenses:approve also non-draft claims of your reporting line; with expenses:pay approved/paid claims company-wide; scope=team: every claim of your subtree (drafts too; Director: company)',
+          description:
+            'Without limit and cursor: all matching claims, response { items } exactly as before. With limit and/or cursor: one page (limit default 50, max 200), ordered month desc, user name, id, and the response adds limit, total and nextCursor (null on the last page). Invalid cursor: 422 VALIDATION.',
           requestParams: { query: ExpenseClaimListQuery },
-          responses: { '200': { description: 'Claims', ...json(ExpenseClaimList) } },
+          responses: {
+            '200': { description: 'Claims', ...json(ExpenseClaimList) },
+            '403': err('FORBIDDEN: scope=team without expenses:approve'),
+            '422': err('VALIDATION (bad limit or cursor)'),
+          },
         }),
         post: op({
           tags: ['Expenses'],
@@ -1933,6 +2273,83 @@ function buildDocument(): OpenApiDocument {
           },
         }),
       },
+      '/v1/sales/targets': {
+        get: op({
+          tags: ['Sales'],
+          operationId: 'listSalesTargets',
+          summary: 'sales:write. All-products monthly targets per HQ for a month range',
+          requestParams: { query: SalesTargetQuery },
+          responses: {
+            '200': { description: 'OK', ...json(SalesTargetList) },
+            '403': err('FORBIDDEN'),
+          },
+        }),
+        put: op({
+          tags: ['Sales'],
+          operationId: 'setSalesTargets',
+          summary:
+            'sales:write. Set one HQ target for a month range (spread each|total); audited (sales.targets_set)',
+          requestBody: json(SalesTargetSet),
+          responses: {
+            '200': { description: 'Saved', ...json(SalesTargetSetResult) },
+            '403': err('FORBIDDEN'),
+            '404': err('TERRITORY_NOT_FOUND'),
+            '409': err('TARGETS_EXIST (details.months; send overwrite to replace)'),
+            '422': err('VALIDATION (not an HQ, or more than 36 months)'),
+          },
+        }),
+      },
+      '/v1/sales/actuals': {
+        get: op({
+          tags: ['Sales'],
+          operationId: 'listSalesActuals',
+          summary: 'sales:write. Actual sales rows of one month',
+          requestParams: { query: SalesActualQuery },
+          responses: {
+            '200': { description: 'OK', ...json(SalesActualList) },
+            '403': err('FORBIDDEN'),
+          },
+        }),
+        post: op({
+          tags: ['Sales'],
+          operationId: 'createSalesActual',
+          summary: 'sales:write. Add one actual row; audited (sales.actual_added)',
+          requestBody: json(SalesActualCreate),
+          responses: {
+            '200': { description: 'Created', ...json(z.object({ id: Id })) },
+            '403': err('FORBIDDEN'),
+            '404': err('TERRITORY_NOT_FOUND'),
+            '422': err('VALIDATION (not an HQ, unknown product, stockist not under the HQ)'),
+          },
+        }),
+      },
+      '/v1/sales/actuals/{id}': {
+        delete: op({
+          tags: ['Sales'],
+          operationId: 'deleteSalesActual',
+          summary: 'sales:write. Remove an actual row; audited (sales.actual_deleted)',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'Removed', ...json(z.object({ id: Id })) },
+            '403': err('FORBIDDEN'),
+            '404': err('SALES_ACTUAL_NOT_FOUND'),
+          },
+        }),
+      },
+      '/v1/sales/import': {
+        post: op({
+          tags: ['Sales'],
+          operationId: 'importSales',
+          summary:
+            'sales:write. Import targets or actuals by territory/product code (dryRun validates only)',
+          requestBody: json(SalesImportRequest),
+          responses: {
+            '200': { description: 'Per-row result', ...json(SalesImportResult) },
+            '403': err('FORBIDDEN'),
+            '422': err('VALIDATION'),
+          },
+        }),
+      },
       '/v1/expense-claims/{id}/allowances': {
         post: op({
           tags: ['Expenses', 'TA/DA'],
@@ -2079,7 +2496,9 @@ function buildDocument(): OpenApiDocument {
             '403': err(
               'PASSWORD_RESET_TOO_MANY_ATTEMPTS: 3 wrong codes already used up this code (even the right code is refused); request a new one',
             ),
-            '422': err('Validation failed (email, 6-digit code, password 12-128)'),
+            '422': err(
+              'Validation failed (email, 6-digit code, password: 12–128 characters with upper, lower, number, and symbol)',
+            ),
             '429': err('RATE_LIMITED: 20 per IP per hour (Retry-After)'),
           },
         },
@@ -2098,7 +2517,9 @@ function buildDocument(): OpenApiDocument {
             },
             '403': err('CAPTCHA_FAILED (only when TURNSTILE_SECRET is set)'),
             '409': err('SIGNUP_UNAVAILABLE: generic, also for emails that already have a login'),
-            '422': err('Validation failed (password min 12; system_admin cannot be requested)'),
+            '422': err(
+              'Validation failed (password needs 12–128 characters with upper, lower, number, and symbol; system_admin cannot be requested)',
+            ),
             '429': err('RATE_LIMITED (per IP and per email)'),
             '503': err('SIGNUP_DISABLED: company not configured'),
           },

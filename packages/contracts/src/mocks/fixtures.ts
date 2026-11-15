@@ -195,7 +195,11 @@ export const doctors: Doctor[] = [
     specialtyId: specialties[1]!.id,
     categoryId: doctorCategories[0]!.id,
     registrationNo: 'WBMC-12345',
+    dateOfBirth: null,
+    anniversary: null,
+    email: null,
     approvalStatus: 'approved',
+    maxActiveLocks: 1,
   },
 ];
 export const chemists: Chemist[] = [
@@ -308,6 +312,8 @@ export const geofence: GeofenceSettings = {
   maxAccuracyM: 100,
   blockOutOfFence: false,
   blockMockLocation: true,
+  presentationRadiusM: 300,
+  lockMaxAccuracyM: 80,
   version: 1,
 };
 export const consentState: ConsentState = {

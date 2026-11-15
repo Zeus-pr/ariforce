@@ -45,9 +45,9 @@ async function run(name, ctxOpts) {
   });
   await ctx.addInitScript(probe);
   await ctx.addInitScript(() => {
-    if (!localStorage.getItem('af:mock-session'))
+    if (!localStorage.getItem('af:session'))
       localStorage.setItem(
-        'af:mock-session',
+        'af:session',
         JSON.stringify({ userId: 'mock-abm', role: 'area_business_manager' }),
       );
   });

@@ -23,7 +23,7 @@ export type RcpaDraft = {
   quantity: string;
   prescriptions: string;
 };
-export type Opt = { id: string; name: string };
+export type Opt = { id: string; name: string; pts?: number | null };
 
 const NONE = '__none';
 const digits = (v: string, n = 6) => v.replace(/\D/g, '').slice(0, n);
@@ -96,6 +96,36 @@ export function pobRcpaMessage(
   return out.length ? out.join(' ') : null;
 }
 
+/** Live POB value at PTS (qty x pts), counting only lines with a product and quantity. */
+export function pobDraftTotal(rows: PobDraft[], byId: Map<string, Opt>) {
+  let value = 0;
+  let unpriced = 0;
+  let lines = 0;
+  for (const r of rows) {
+    const qty = Number(r.quantity);
+    if (!r.productId || !(qty > 0)) continue;
+    lines++;
+    const pts = byId.get(r.productId)?.pts;
+    if (typeof pts === 'number') value += Math.round(qty * pts * 100) / 100;
+    else unpriced++;
+  }
+  return { value, unpriced, lines };
+}
+
+function PobLineValue({ row, product }: { row: PobDraft; product: Opt | undefined }) {
+  if (!row.productId) return null;
+  const qty = Number(row.quantity);
+  const pts = product?.pts;
+  if (typeof pts !== 'number')
+    return <p className="text-xs text-warning-text">Price not set for this product</p>;
+  return (
+    <p className="text-xs text-muted-foreground tabular-nums" data-testid="pob-line-value">
+      PTS {inr.format(pts)}
+      {qty > 0 && <> · {inr.format(Math.round(qty * pts * 100) / 100)}</>}
+    </p>
+  );
+}
+
 export function PobEditor({
   rows,
   onChange,
@@ -111,71 +141,95 @@ export function PobEditor({
 }) {
   const set = (i: number, p: Partial<PobDraft>) =>
     onChange(rows.map((r, j) => (j === i ? { ...r, ...p } : r)));
+  const byId = new Map(products.map((o) => [o.id, o]));
+  const total = pobDraftTotal(rows, byId);
   return (
     <fieldset className="flex flex-col gap-2" data-testid="pob">
       <legend className="mb-1.5 text-sm font-medium">Order booked (POB)</legend>
       <p className="text-xs text-muted-foreground">
-        Value is worked out from the product price when you save.
+        Valued at the product's price to stockist (PTS); the server confirms it when you save.
       </p>
       {rows.map((r, i) => (
-        <div
-          key={i}
-          className="grid grid-cols-[1fr_5rem_auto] gap-2 sm:grid-cols-[1fr_5rem_10rem_auto]"
-          data-testid="pob-row"
-        >
-          <Select value={r.productId} onValueChange={(v) => set(i, { productId: v })}>
-            <SelectTrigger className="w-full" aria-label="Order product" data-testid="pob-product">
-              <SelectValue placeholder="Product" />
-            </SelectTrigger>
-            <SelectContent>
-              {products.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            aria-label="Order quantity"
-            inputMode="numeric"
-            placeholder="Qty"
-            className="text-right md:text-base"
-            value={r.quantity}
-            onChange={(e) => set(i, { quantity: digits(e.target.value) })}
-            data-testid="pob-qty"
-          />
-          {showStockist && (
-            <Select
-              value={r.stockistId || NONE}
-              onValueChange={(v) => set(i, { stockistId: v === NONE ? '' : v })}
-            >
+        <div key={i} className="flex flex-col gap-1">
+          <div
+            className="grid grid-cols-[1fr_5rem_auto] gap-2 sm:grid-cols-[1fr_5rem_10rem_auto]"
+            data-testid="pob-row"
+          >
+            <Select value={r.productId} onValueChange={(v) => set(i, { productId: v })}>
               <SelectTrigger
-                className="col-span-2 w-full sm:col-span-1"
-                aria-label="Supplying stockist"
-                data-testid="pob-stockist"
+                className="w-full"
+                aria-label="Order product"
+                data-testid="pob-product"
               >
-                <SelectValue placeholder="Stockist" />
+                <SelectValue placeholder="Product" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NONE}>No stockist</SelectItem>
-                {stockists.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
+                {products.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Remove order line"
-            onClick={() => onChange(rows.filter((_, j) => j !== i))}
-          >
-            <Trash2 />
-          </Button>
+            <Input
+              aria-label="Order quantity"
+              inputMode="numeric"
+              placeholder="Qty"
+              className="text-right md:text-base"
+              value={r.quantity}
+              onChange={(e) => set(i, { quantity: digits(e.target.value) })}
+              data-testid="pob-qty"
+            />
+            {showStockist && (
+              <Select
+                value={r.stockistId || NONE}
+                onValueChange={(v) => set(i, { stockistId: v === NONE ? '' : v })}
+              >
+                <SelectTrigger
+                  className="col-span-2 w-full sm:col-span-1"
+                  aria-label="Supplying stockist"
+                  data-testid="pob-stockist"
+                >
+                  <SelectValue placeholder="Stockist" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>No stockist</SelectItem>
+                  {stockists.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Remove order line"
+              onClick={() => onChange(rows.filter((_, j) => j !== i))}
+            >
+              <Trash2 />
+            </Button>
+          </div>
+          <PobLineValue row={r} product={byId.get(r.productId)} />
         </div>
       ))}
+      {total.lines > 0 && (
+        <div
+          className="flex items-center justify-between rounded-md bg-muted px-3 py-2 text-sm"
+          data-testid="pob-total"
+        >
+          <span className="font-medium">Call total</span>
+          <span className="font-semibold tabular-nums">
+            {inr.format(total.value)}
+            {total.unpriced > 0 && (
+              <span className="ml-2 text-xs font-normal text-warning-text">
+                {total.unpriced} without price
+              </span>
+            )}
+          </span>
+        </div>
+      )}
       <Button
         variant="outline"
         size="sm"

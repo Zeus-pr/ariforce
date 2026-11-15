@@ -14,21 +14,66 @@ type CallLike = {
   pob: unknown[];
   productsDetailed: unknown[];
   presentationOpenedAt?: string | null;
+  checkInId?: string | null;
 };
 const idOf = (c: CallLike) => c.clientId ?? c.id ?? null;
 
-/** POB is for chemist and stockist calls only. Returns the offending calls, or null. */
+/** POB is for chemist calls only. Returns the offending calls, or null. */
 export function doctorPob(calls: CallLike[]) {
   const bad = calls.flatMap((c, i) =>
-    c.outletKind === 'doctor' && c.pob.length ? [{ index: i, id: idOf(c) }] : [],
+    c.outletKind !== 'chemist' && c.pob.length ? [{ index: i, id: idOf(c) }] : [],
   );
   return bad.length
     ? {
-        reason: 'POB_NOT_ALLOWED_FOR_DOCTOR' as const,
+        reason: 'POB_CHEMIST_ONLY' as const,
         callIndexes: bad.map((b) => b.index),
         callIds: bad.map((b) => b.id),
       }
     : null;
+}
+
+/**
+ * Visit check-ins whose local day is not the DCR day. A call cannot reuse a check-in from
+ * another day. Captures that are missing are not listed here (the caller already rejects those).
+ */
+export function foreignDayCheckInIds(
+  dcrDate: string,
+  calls: { checkInId?: string | null }[],
+  captures: { id: string; day: string }[],
+): string[] {
+  const dayOf = new Map(captures.map((c) => [c.id, c.day]));
+  return calls.flatMap((c) => {
+    if (!c.checkInId) return [];
+    const day = dayOf.get(c.checkInId);
+    return day && day !== dcrDate ? [c.checkInId] : [];
+  });
+}
+
+/** On submit: every field call needs a visit check-in linked (geo at the outlet). */
+export function missingCheckIns(calls: CallLike[]) {
+  const bad = calls.flatMap((c, i) => (!c.checkInId ? [{ index: i, id: idOf(c) }] : []));
+  return bad.length
+    ? {
+        reason: 'CALL_NOT_CHECKED_IN' as const,
+        callIndexes: bad.map((b) => b.index),
+        callIds: bad.map((b) => b.id),
+      }
+    : null;
+}
+
+const ABOVE_BM = new Set([
+  'area_business_manager',
+  'regional_business_manager',
+  'zonal_business_manager',
+  'sales_manager',
+  'general_manager',
+  'vice_president',
+  'director',
+]);
+
+/** A business manager must open the presentation. ABM and above check in and submit. */
+export function presentationRequired(roles: readonly string[]) {
+  return roles.includes('business_manager') && !roles.some((r) => ABOVE_BM.has(r));
 }
 
 /** On submit: every doctor call with products detailed needs presentationOpenedAt. */

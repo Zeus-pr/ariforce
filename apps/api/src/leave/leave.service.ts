@@ -16,6 +16,7 @@ import type {
 import { LEAVE_DEFAULT_BACKDATE_DAYS } from '@ariforce/contracts';
 import {
   approvalRequests,
+  approvalSteps,
   leaveGrants,
   leavePolicies,
   leaveRequests,
@@ -173,16 +174,20 @@ export class LeaveService implements OnModuleInit {
         },
       },
     );
-    this.approvals.registerDetail('leave', (tx, _p, req) => this.approvalDetail(tx, req.entityId), {
-      readPermissions: ['leave:approve'],
-    });
+    this.approvals.registerDetail(
+      'leave',
+      (tx, p, req) => this.approvalDetail(tx, p, req.entityId),
+      {
+        readPermissions: ['leave:approve'],
+      },
+    );
   }
 
   /** Approver view (GET /v1/approvals/{id}): the request, its balance and peers off at the same time. */
-  private async approvalDetail(tx: Tx, id: string): Promise<ApprovalSubject | null> {
+  private async approvalDetail(tx: Tx, p: Principal, id: string): Promise<ApprovalSubject | null> {
     const [r] = await tx.select().from(leaveRequests).where(eq(leaveRequests.id, id));
     if (!r) return null;
-    const request = (await this.dtos(tx, [r]))[0]!;
+    const request = (await this.dtos(tx, p, [r]))[0]!;
     const [pol] = await tx.select().from(leavePolicies).where(eq(leavePolicies.id, r.policyId));
     const item = pol ? (await this.balanceItems(tx, r.userId, r.year, [pol]))[0]! : null;
     // pending/approved days are already held in `available`
@@ -415,10 +420,11 @@ export class LeaveService implements OnModuleInit {
 
   /** Manager over the user (leave:approve and the user in your subtree), never yourself. */
   private managesUser(p: Principal, userId: string) {
+    const admin = p.roles.includes('system_admin') && p.permissions.includes('leave:approve');
     return (
       userId !== p.userId &&
       p.permissions.includes('leave:approve') &&
-      (p.teamUserIds === null || p.teamUserIds.includes(userId))
+      (admin || p.teamUserIds === null || p.teamUserIds.includes(userId))
     );
   }
 
@@ -426,7 +432,11 @@ export class LeaveService implements OnModuleInit {
     const parts: SQL[] = [];
     if (p.permissions.includes('leave:read')) parts.push(eq(leaveRequests.userId, p.userId));
     if (p.permissions.includes('leave:approve'))
-      parts.push(p.teamUserIds ? inArray(leaveRequests.userId, p.teamUserIds) : sql`true`);
+      parts.push(
+        p.roles.includes('system_admin') || !p.teamUserIds
+          ? sql`true`
+          : inArray(leaveRequests.userId, p.teamUserIds),
+      );
     return parts.length ? or(...parts)! : sql`false`;
   }
 
@@ -440,11 +450,11 @@ export class LeaveService implements OnModuleInit {
     return r;
   }
 
-  private async dtos(tx: Tx, rows: ReqRow[]): Promise<LeaveRequest[]> {
-    return nameRejecters(tx, await this.dtosRaw(tx, rows));
+  private async dtos(tx: Tx, p: Principal, rows: ReqRow[]): Promise<LeaveRequest[]> {
+    return nameRejecters(tx, await this.dtosRaw(tx, p, rows));
   }
 
-  private async dtosRaw(tx: Tx, rows: ReqRow[]): Promise<LeaveRequest[]> {
+  private async dtosRaw(tx: Tx, p: Principal, rows: ReqRow[]): Promise<LeaveRequest[]> {
     if (!rows.length) return [];
     const pol = await tx
       .select()
@@ -457,9 +467,26 @@ export class LeaveService implements OnModuleInit {
     const reqIds = rows.map((r) => r.approvalRequestId).filter(Boolean) as string[];
     const steps = reqIds.length
       ? await tx
-          .select({ id: approvalRequests.id, step: approvalRequests.currentStep })
+          .select({
+            id: approvalRequests.id,
+            currentStep: approvalRequests.currentStep,
+            state: approvalRequests.state,
+            requestedBy: approvalRequests.requestedBy,
+            entityType: approvalRequests.entityType,
+          })
           .from(approvalRequests)
           .where(inArray(approvalRequests.id, reqIds))
+      : [];
+    const decided = reqIds.length
+      ? await tx
+          .select({
+            requestId: approvalSteps.requestId,
+            stepNo: approvalSteps.stepNo,
+            approverUserId: approvalSteps.approverUserId,
+            decidedBy: approvalSteps.decidedBy,
+          })
+          .from(approvalSteps)
+          .where(inArray(approvalSteps.requestId, reqIds))
       : [];
     return rows.map((r) => {
       const t = pol.find((x) => x.id === r.policyId)!;
@@ -480,8 +507,17 @@ export class LeaveService implements OnModuleInit {
         approvalId: r.approvalRequestId,
         approvalStep:
           r.status === 'pending'
-            ? (steps.find((s) => s.id === r.approvalRequestId)?.step ?? null)
+            ? (steps.find((s) => s.id === r.approvalRequestId)?.currentStep ?? null)
             : null,
+        canDecide: (() => {
+          const req = steps.find((s) => s.id === r.approvalRequestId);
+          if (!req || r.status !== 'pending') return false;
+          return this.approvals.canDecide(
+            p,
+            req,
+            decided.filter((s) => s.requestId === req.id),
+          );
+        })(),
         createdAt: r.createdAt.toISOString(),
         decidedAt: iso(r.decidedAt),
         decidedBy: r.decidedBy,
@@ -496,7 +532,7 @@ export class LeaveService implements OnModuleInit {
   }
 
   private async one(tx: Tx, p: Principal, id: string) {
-    return (await this.dtos(tx, [await this.row(tx, p, id)]))[0]!;
+    return (await this.dtos(tx, p, [await this.row(tx, p, id)]))[0]!;
   }
 
   // ---- requests ----
@@ -530,7 +566,7 @@ export class LeaveService implements OnModuleInit {
         )
         .orderBy(sql`${leaveRequests.fromDate} desc`, asc(leaveRequests.id))
         .limit(500);
-      return { items: await this.dtos(tx, rows) };
+      return { items: await this.dtos(tx, p, rows) };
     });
   }
 
@@ -577,7 +613,12 @@ export class LeaveService implements OnModuleInit {
       const days = b.half ? 0.5 : dates.length;
 
       const overlap = await tx
-        .select({ id: leaveRequests.id, half: leaveRequests.half, from: leaveRequests.fromDate })
+        .select({
+          id: leaveRequests.id,
+          half: leaveRequests.half,
+          from: leaveRequests.fromDate,
+          to: leaveRequests.toDate,
+        })
         .from(leaveRequests)
         .where(
           and(
@@ -588,8 +629,13 @@ export class LeaveService implements OnModuleInit {
             gte(leaveRequests.toDate, b.fromDate),
           ),
         );
-      // Two half days on the same date are fine when they are different halves.
-      const clash = overlap.filter((o) => !(b.half && o.half && o.half !== b.half));
+      // A shared weekly off is not an overlap. Two different halves of one day are not either.
+      const clash = overlap.filter((o) => {
+        const start = o.from > b.fromDate ? o.from : b.fromDate;
+        const end = o.to < b.toDate ? o.to : b.toDate;
+        if (!countedDates(start, end, s.weeklyOffDays).length) return false;
+        return !(b.half && o.half && o.half !== b.half);
+      });
       if (clash.length)
         throw err(409, 'LEAVE_OVERLAP', 'You already have leave on some of these dates', {
           requestIds: clash.map((c) => c.id),

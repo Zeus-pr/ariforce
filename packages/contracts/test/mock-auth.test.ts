@@ -19,7 +19,8 @@ describe('mock auth personas', () => {
     ]);
     const sa = (await (await me({ 'x-mock-user': 'sysadmin@demo.ariforce.in' })).json()) as Me;
     expect(sa.roles).toEqual(['system_admin']);
-    expect(sa.permissions).not.toContain('field:read');
+    expect(sa.permissions).toContain('field:read');
+    expect(sa.permissions).toContain('field:write');
     expect((await me({ 'x-mock-user': 'none' })).status).toBe(401);
   });
   it('sign-in returns a mock token honoured as bearer', async () => {

@@ -11,11 +11,12 @@ import {
 } from '@ariforce/ui/components/select';
 import { useLookups } from '@/components/masters/lookups';
 import { sortForPicker, territoryLabel, workTerritories } from '@/lib/territories';
-import { MOCKING, api, apiReady, toApiError } from '@/lib/api';
+import { api, apiReady, toApiError } from '@/lib/api';
 import { AsyncPicker, type PickOption, type PickPage } from './async-picker';
+import { cachedGet } from '@/lib/query';
 
 export type OutletKind = 'doctor' | 'chemist' | 'stockist';
-const PAGE = MOCKING ? 2 : 25;
+const PAGE = 25;
 export const APPROVAL_LABEL: Record<string, string> = {
   pending: 'Awaiting approval',
   approved: 'Approved',
@@ -49,7 +50,9 @@ async function outletPage(
   };
   const r =
     kind === 'doctor'
-      ? await api.GET('/v1/doctors', { params: { query } })
+      ? await cachedGet(['doctors', 'query', query], () =>
+          api.GET('/v1/doctors', { params: { query } }),
+        )
       : kind === 'chemist'
         ? await api.GET('/v1/chemists', { params: { query } })
         : await api.GET('/v1/stockists', { params: { query } });

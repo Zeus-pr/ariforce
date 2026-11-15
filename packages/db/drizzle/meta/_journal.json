@@ -379,6 +379,104 @@
       "when": 1793340400000,
       "tag": "0053_login_otp",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1793340500000,
+      "tag": "0054_dcr_calls_dcr_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1793340600000,
+      "tag": "0055_dcr_expenses",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1793340700000,
+      "tag": "0056_expense_lines_origin",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1793427100000,
+      "tag": "0057_expense_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1793513500000,
+      "tag": "0058_sales_write_perm",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1793599900000,
+      "tag": "0059_director_users_write",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1793686300000,
+      "tag": "0060_outlet_locations",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1793772700000,
+      "tag": "0061_system_admin_field",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793859100000,
+      "tag": "0062_doctor_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1793945500000,
+      "tag": "0063_phone_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1794031900000,
+      "tag": "0064_coverage_list_without_calls",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1794118300000,
+      "tag": "0065_camp_work_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1794200000000,
+      "tag": "0066_system_admin_field_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794300000000,
+      "tag": "0067_doctor_lock_cap",
+      "breakpoints": true
     }
   ]
 }

@@ -73,8 +73,24 @@ export function FieldInput({
       onChange={(e) => onChange(e.target.value === '' && !field.required ? null : e.target.value)}
       aria-invalid={invalid || undefined}
       placeholder={field.placeholder}
-      type={field.type === 'tel' ? 'tel' : 'text'}
-      inputMode={field.type === 'pincode' ? 'numeric' : field.type === 'tel' ? 'tel' : undefined}
+      type={
+        field.type === 'tel'
+          ? 'tel'
+          : field.type === 'email'
+            ? 'email'
+            : field.type === 'date'
+              ? 'date'
+              : 'text'
+      }
+      inputMode={
+        field.type === 'pincode'
+          ? 'numeric'
+          : field.type === 'tel'
+            ? 'tel'
+            : field.type === 'email'
+              ? 'email'
+              : undefined
+      }
       autoComplete="off"
       maxLength={field.type === 'pincode' ? 6 : undefined}
     />

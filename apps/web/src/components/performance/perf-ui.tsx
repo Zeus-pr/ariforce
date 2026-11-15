@@ -3,7 +3,6 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSyncExternalStore } from 'react';
-import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@ariforce/ui/components/card';
 import {
@@ -65,18 +64,6 @@ export function MonthSwitch({ month }: { month: string }) {
         <ChevronRight />
       </Button>
     </div>
-  );
-}
-
-export function SampleBadge({ children = 'Sample data' }: { children?: React.ReactNode }) {
-  return (
-    <Badge
-      variant="outline"
-      className="border-dashed font-normal text-muted-foreground"
-      data-testid="sample-badge"
-    >
-      {children}
-    </Badge>
   );
 }
 
