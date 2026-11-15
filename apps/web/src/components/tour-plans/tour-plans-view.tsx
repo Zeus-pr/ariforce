@@ -661,9 +661,9 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                           setSelectedTp(null);
                           setSelectedTpDate(date);
                         }}
-                        aria-label={`${dayLabel(date)}: ${empty ? (nr ? `${nr.toLowerCase()}, not required` : 'not planned') : placeLabels.join(', ') || 'planned'}${greyed ? ', not available to plan' : ''}`}
+                        aria-label={`${dayLabel(date)}${holidayNames[date] ? `, ${holidayNames[date]}` : ''}: ${empty ? (nr ? `${nr.toLowerCase()}, not required` : 'not planned') : placeLabels.join(', ') || 'planned'}${greyed ? ', not available to plan' : ''}`}
                         className={cn(
-                          'flex h-24 w-full flex-col items-start gap-0.5 overflow-hidden rounded-md border px-2 py-1.5 text-left text-sm transition-[transform,background-color] duration-150 active:scale-[0.98] disabled:cursor-default sm:h-24',
+                          'flex min-h-24 w-full flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left text-sm transition-[transform,background-color] duration-150 active:scale-[0.98] disabled:cursor-default',
                           empty ? 'border-dashed' : 'bg-card',
                           empty && nr && 'border-transparent bg-muted/40',
                           greyed &&
@@ -676,7 +676,7 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                           <span className="hidden sm:inline">{Number(date.slice(8))}</span>
                         </span>
                         {holidayNames[date] && (
-                          <span className="line-clamp-2 text-xs font-medium">
+                          <span className="line-clamp-2 shrink-0 text-xs font-medium text-foreground">
                             {holidayNames[date]}
                           </span>
                         )}

@@ -144,7 +144,11 @@ export function DcrMonthCalendar({
                   <span className="sm:hidden">{dayLabel(date)}</span>
                   <span className="hidden sm:inline">{Number(date.slice(8))}</span>
                 </span>
-                {holiday && <span className="line-clamp-2 text-xs font-medium">{holiday}</span>}
+                {holiday && (
+                  <span className="line-clamp-2 text-xs font-medium text-foreground">
+                    {holiday}
+                  </span>
+                )}
                 {empty ? (
                   <span className="text-muted-foreground">
                     {closedEmptyDays
