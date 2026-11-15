@@ -27,7 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ariforce/ui/component
 import { toast } from '@ariforce/ui/components/sonner';
 import { dateLabel, todayIST } from '@/components/attendance/format';
 import { dcrDateClosedText } from '@/lib/dcr/date-rule';
-import { thisMonthIST } from '@/components/tour-plans/month';
+import { calendarDate, datesOf, thisMonthIST } from '@/components/tour-plans/month';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { useSession } from '@/lib/auth';
 import {
@@ -234,6 +234,27 @@ function CalendarPanel({
   const deleteOnClose = useRef<string | null>(null);
   const monthLoad = useRef<{ key: string; promise: Promise<void> } | null>(null);
 
+  const [holidayNames, setHolidayNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const ac = new AbortController();
+    const days = datesOf(month);
+    const from = days[0];
+    const to = days.at(-1);
+    if (from && to) {
+      void (async () => {
+        await apiReady();
+        const r = await api.GET('/v1/holidays', {
+          params: { query: { from, to } },
+          signal: ac.signal,
+        });
+        if (ac.signal.aborted || r.error || !r.data) return;
+        setHolidayNames(
+          Object.fromEntries(r.data.items.map((h) => [calendarDate(h.date), h.name])),
+        );
+      })();
+    }
+    return () => ac.abort();
+  }, [month]);
   const cursor = useMemo(() => cursorFromYmd(`${month}-01`), [month]);
   const range = useMemo(() => monthRange(cursor.year, cursor.monthIndex), [cursor]);
 
@@ -694,6 +715,7 @@ function CalendarPanel({
             today={today}
             selected={selected}
             pills={pills}
+            holidays={holidayNames}
             onMonthChange={setMonth}
             onSelectDay={onSelectDay}
           />
