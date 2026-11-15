@@ -15,6 +15,13 @@ export type TpItem = {
     workWithUserIds: string[];
     sfcRoutes: { hqTerritoryId: string; sfcRouteId: string }[];
     details: unknown;
+    sections?: {
+      workTypeId: string;
+      territoryIds: string[];
+      workWithUserIds: string[];
+      sfcRoutes: { hqTerritoryId: string; sfcRouteId: string }[];
+      details: unknown;
+    }[];
   };
   version: number;
   filedDates: string[];

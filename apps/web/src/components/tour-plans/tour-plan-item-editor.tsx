@@ -81,6 +81,23 @@ const emptyFlow = (date: string): FlowState => ({
   expenses: [],
   expensesSent: false,
 });
+function keptRoutes(
+  previous: { hqTerritoryId: string; sfcRouteId: string }[],
+  picked: { hqTerritoryId: string; sfcRouteId: string }[],
+) {
+  const byHq = new Map<string, string[]>();
+  for (const route of previous) {
+    byHq.set(route.hqTerritoryId, [...(byHq.get(route.hqTerritoryId) ?? []), route.sfcRouteId]);
+  }
+  const out: { hqTerritoryId: string; sfcRouteId: string }[] = [];
+  for (const route of picked) {
+    const list = byHq.get(route.hqTerritoryId);
+    const ids = list?.includes(route.sfcRouteId) ? list : [route.sfcRouteId];
+    for (const sfcRouteId of ids) out.push({ hqTerritoryId: route.hqTerritoryId, sfcRouteId });
+  }
+  return out;
+}
+
 const itemDetails = (item: TpItem | null): DcrDetails | null =>
   isDetails(item?.plan.details) ? item.plan.details : null;
 
@@ -446,8 +463,9 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
           workTypeId: state.workTypeId,
           territoryIds: field ? state.territoryIds : [],
           workWithUserIds: field ? state.workWith : [],
-          sfcRoutes: routes,
+          sfcRoutes: field ? keptRoutes(existingItem?.plan.sfcRoutes ?? [], routes) : [],
           details: field ? null : selectedDetails,
+          sections: existingItem?.plan.sections ?? [],
         },
       });
       setWorkingItem(savedItem);
