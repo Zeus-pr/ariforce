@@ -12,23 +12,23 @@ type Row = {
   closingQty: number | null;
   closingValue: number | null;
   frsQty: number;
+  frsValue: number | null;
 };
 
 type Box = { x: number; w: number };
 
-const left = 18;
-const item: Box = { x: left, w: 206 };
-const pack: Box = { x: 224, w: 46 };
-const qtyW = 42;
-const valW = 84;
+const left = 16;
+const item: Box = { x: left, w: 170 };
+const pack: Box = { x: 186, w: 34 };
+const qtyW = 36;
+const valW = 85;
 const pair = qtyW + valW;
-const groupX = 270;
-const groups = ['OPENING', 'RECEIPT', 'ISSUE', 'CLOSING'].map((name, i) => {
+const groupX = 220;
+const groups = ['OPENING', 'RECEIPT', 'ISSUE', 'CLOSING', 'FRS'].map((name, i) => {
   const x = groupX + i * pair;
   return { name, qty: { x, w: qtyW }, value: { x: x + qtyW, w: valW } };
 });
-const dump: Box = { x: groupX + groups.length * pair, w: 44 };
-const right = dump.x + dump.w;
+const right = groupX + groups.length * pair;
 
 const n = (v: number | null) => (v == null ? '' : v.toFixed(2));
 const q = (v: number | null) => (v == null ? '' : String(v));
@@ -76,6 +76,7 @@ export function statementPdf(input: {
       q(row.closingQty),
       n(row.closingValue),
       q(row.frsQty),
+      n(row.frsValue),
     ];
     figureBoxes().forEach((box, i) => at(doc, cells[i] ?? '', box, cursor, 'right'));
     run.oq += row.openingQty ?? 0;
@@ -87,6 +88,7 @@ export function statementPdf(input: {
     run.cq += row.closingQty ?? 0;
     run.cv += row.closingValue ?? 0;
     run.fq += row.frsQty;
+    run.fv += row.frsValue ?? 0;
     cursor += 11;
   }
   rules(doc, ruleTop, cursor);
@@ -118,8 +120,6 @@ function header(
     at(doc, 'QTY', group.qty, y + 11, 'right');
     at(doc, 'VALUE', group.value, y + 11, 'right');
   }
-  at(doc, 'DUMP', dump, y, 'right');
-  at(doc, 'QTY', dump, y + 11, 'right');
   doc
     .moveTo(left, y + 23)
     .lineTo(right, y + 23)
@@ -128,7 +128,7 @@ function header(
 }
 
 function rules(doc: InstanceType<typeof PDFDocument>, top: number, bottom: number) {
-  const xs = [left, pack.x, ...groups.flatMap((g) => [g.qty.x, g.value.x]), dump.x, right];
+  const xs = [left, pack.x, ...groups.flatMap((g) => [g.qty.x, g.value.x]), right];
   doc.save().strokeColor('#bbbbbb').lineWidth(0.4);
   for (const x of xs) {
     doc.moveTo(x, top).lineTo(x, bottom).stroke();
@@ -154,12 +154,13 @@ function total(
     String(run.cq),
     run.cv.toFixed(2),
     String(run.fq),
+    run.fv.toFixed(2),
   ];
   figureBoxes().forEach((box, i) => at(doc, cells[i] ?? '', box, y, 'right'));
 }
 
 function figureBoxes() {
-  return groups.flatMap((group) => [group.qty, group.value]).concat(dump);
+  return groups.flatMap((group) => [group.qty, group.value]);
 }
 
 function at(
@@ -180,7 +181,7 @@ function at(
 }
 
 function emptyRun() {
-  return { oq: 0, ov: 0, pq: 0, pv: 0, sq: 0, sv: 0, cq: 0, cv: 0, fq: 0 };
+  return { oq: 0, ov: 0, pq: 0, pv: 0, sq: 0, sv: 0, cq: 0, cv: 0, fq: 0, fv: 0 };
 }
 
 function pad(n: number) {
