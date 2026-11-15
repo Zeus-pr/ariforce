@@ -8,6 +8,8 @@ export const FILE_PURPOSES = [
   'avatar',
   'import_source',
   'product_image',
+  'stock_statement_aws',
+  'stock_statement_ss',
 ] as const;
 export const FilePurpose = z.enum(FILE_PURPOSES).meta({ id: 'FilePurpose' });
 export const ALLOWED_CONTENT_TYPES = [

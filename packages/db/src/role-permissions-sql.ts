@@ -7,7 +7,7 @@
 import { DEFAULT_ROLE_PERMISSIONS, ROLE_KEYS } from '../../contracts/src/schemas/roles';
 
 /** Applied 0019 stays frozen; each permission change gets a NEW generated migration (set, not append). */
-export const ROLE_PERMISSIONS_MIGRATION = '0072_system_admin_leave';
+export const ROLE_PERMISSIONS_MIGRATION = '0074_stock_statement_perms';
 
 /** Sorted, de-duplicated permission list per role (the exact array written to roles.permissions). */
 export function rolePermissionMatrix(): Record<string, string[]> {

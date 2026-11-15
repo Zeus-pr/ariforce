@@ -67,6 +67,7 @@ const SUBJECT: Partial<Record<EntityType, Approval['subjectType']>> = {
   doctor: 'doctor',
   leave: 'leave',
   expense: 'expense',
+  stock_statement: 'stock_statement',
 };
 const ENTITY = Object.fromEntries(Object.entries(SUBJECT).map(([k, v]) => [v, k])) as Record<
   Approval['subjectType'],
@@ -116,6 +117,11 @@ export interface EntityOptions {
    */
   finalDirector?: boolean;
   onStep?: StepHook;
+  /**
+   * Both steps are stored when the request opens. Only the named user of the current step may
+   * decide it. A senior person does not skip a step, and the engine does not invent the next approver.
+   */
+  exactSteps?: boolean;
   /** Runs before any approve (every step, every route); throw to block (e.g. DCR_NOT_APPROVED). */
   beforeApprove?: (
     tx: Tx,
@@ -1230,8 +1236,10 @@ export class ApprovalsService {
         .where(eq(approvalSteps.requestId, id))
         .orderBy(asc(approvalSteps.stepNo));
       const cur = steps.find((s) => s.stepNo === req.currentStep);
-      // The current step's approver or anyone above them; never someone who decided an earlier step.
-      if (
+      if (opt.exactSteps) {
+        if (!cur || cur.approverUserId !== p.userId)
+          throw err(403, 'APPROVAL_NOT_YOUR_STEP', 'This step is waiting for its approver');
+      } else if (
         opt.route !== 'permission_holders' &&
         cur?.approverUserId &&
         p.teamUserIds &&
@@ -1249,6 +1257,55 @@ export class ApprovalsService {
           throw e;
         }
       const levels = typeof opt.levels === 'function' ? await opt.levels(tx, p) : (opt.levels ?? 1);
+      if (opt.exactSteps && cur) {
+        const next = steps.find((s) => s.stepNo === req.currentStep + 1);
+        await tx
+          .update(approvalSteps)
+          .set({
+            decision: approved ? 'approved' : 'rejected',
+            decidedBy: p.userId,
+            decidedAt: new Date(),
+            comment,
+          })
+          .where(eq(approvalSteps.id, cur.id));
+        if (approved && next?.approverUserId) {
+          await tx
+            .update(approvalRequests)
+            .set({ currentStep: next.stepNo })
+            .where(eq(approvalRequests.id, id));
+          await opt.onStep?.(tx, p, req, next.stepNo, next.approverUserId);
+          await this.audit.record(tx, p, 'approval.step_approved', {
+            entityType: req.entityType,
+            entityId: req.entityId,
+            after: { requestId: id, step: req.currentStep, nextStep: next.stepNo, comment },
+          });
+          const [fresh] = await tx
+            .select()
+            .from(approvalRequests)
+            .where(eq(approvalRequests.id, id));
+          return (await this.toDto(tx, [fresh!]))[0]!;
+        }
+        await tx
+          .update(approvalRequests)
+          .set({ state: approved ? 'approved' : 'rejected' })
+          .where(eq(approvalRequests.id, id));
+        await this.hooks.get(req.entityType)?.(tx, p, req, approved, comment);
+        const [after] = await tx
+          .select({ state: approvalRequests.state })
+          .from(approvalRequests)
+          .where(eq(approvalRequests.id, id));
+        await this.decisionNotice(tx, p, req, approved, after?.state, comment);
+        await this.audit.record(tx, p, `approval.${b.decision}`, {
+          entityType: req.entityType,
+          entityId: req.entityId,
+          after: { requestId: id, comment },
+        });
+        const [fresh] = await tx
+          .select()
+          .from(approvalRequests)
+          .where(eq(approvalRequests.id, id));
+        return (await this.toDto(tx, [fresh!]))[0]!;
+      }
       if (approved && req.currentStep < levels && cur?.approverUserId) {
         const [up] = await tx
           .select({ managerId: users.managerId })

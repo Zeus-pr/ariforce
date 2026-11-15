@@ -53,6 +53,17 @@ import {
 } from './schemas/home';
 import { ApprovalDetail } from './schemas/approval-detail';
 import {
+  StockStatement,
+  StockStatementFileConfirm,
+  StockStatementFileRequest,
+  StockStatementList,
+  StockStatementListQuery,
+  StockStatementOpen,
+  StockStatementSave,
+  StockStatementStockists,
+  StockStatementSubmit,
+} from './schemas/stock-statements';
+import {
   TourPlanItem,
   TourPlanItemDecision,
   TourPlanItemList,
@@ -2882,6 +2893,97 @@ function buildDocument(): OpenApiDocument {
             },
             '403': err('FORBIDDEN (needs products:prices)'),
             '404': err('PRODUCT_NOT_FOUND'),
+          },
+        }),
+      },
+      '/v1/stock-statements/stockists': {
+        get: op({
+          tags: ['Stock statements'],
+          operationId: 'listStockStatementStockists',
+          summary: 'Stockists the caller can file or read a statement for',
+          responses: { '200': { description: 'OK', ...json(StockStatementStockists) } },
+        }),
+      },
+      '/v1/stock-statements': {
+        get: op({
+          tags: ['Stock statements'],
+          operationId: 'listStockStatements',
+          summary: 'Statements in scope, optionally one stockist, one status, or waiting on the caller',
+          requestParams: { query: StockStatementListQuery },
+          responses: { '200': { description: 'OK', ...json(StockStatementList) } },
+        }),
+        post: op({
+          tags: ['Stock statements'],
+          operationId: 'openStockStatement',
+          summary: 'Open the month for a stockist, creating the draft when it does not exist',
+          requestBody: json(StockStatementOpen),
+          responses: {
+            '200': { description: 'The sheet', ...json(StockStatement) },
+            '422': err('MONTH_IN_FUTURE, MONTH_OUT_OF_SEQUENCE or PREVIOUS_MONTH_OPEN'),
+          },
+        }),
+      },
+      '/v1/stock-statements/{id}': {
+        get: op({
+          tags: ['Stock statements'],
+          operationId: 'getStockStatement',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'The sheet', ...json(StockStatement) },
+            '404': err('Not found'),
+          },
+        }),
+      },
+      '/v1/stock-statements/{id}/lines': {
+        post: op({
+          tags: ['Stock statements'],
+          operationId: 'saveStockStatement',
+          summary: 'Save the changed product rows of a draft or rejected statement',
+          requestParams: { path: IdParam },
+          requestBody: json(StockStatementSave),
+          responses: {
+            '200': { description: 'Saved sheet', ...json(StockStatement) },
+            '409': err('VERSION_CONFLICT or STATEMENT_LOCKED'),
+            '422': err('PRODUCT_NOT_ON_SHEET'),
+          },
+        }),
+      },
+      '/v1/stock-statements/{id}/submit': {
+        post: op({
+          tags: ['Stock statements'],
+          operationId: 'submitStockStatement',
+          requestParams: { path: IdParam },
+          requestBody: json(StockStatementSubmit),
+          responses: {
+            '200': { description: 'Submitted', ...json(StockStatement) },
+            '409': err('VERSION_CONFLICT or STATEMENT_LOCKED'),
+            '422': err('OPENING_REQUIRED, CLOSING_NEGATIVE, PTS_REQUIRED or APPROVER_MISSING'),
+          },
+        }),
+      },
+      '/v1/stock-statements/{id}/files': {
+        post: op({
+          tags: ['Stock statements'],
+          operationId: 'presignStockStatementFile',
+          summary: 'Presign an AWS or SS upload. The file does not fill the sheet.',
+          requestParams: { path: IdParam },
+          requestBody: json(StockStatementFileRequest),
+          responses: {
+            '200': { description: 'PUT the bytes here', ...json(UploadUrlResponse) },
+            '409': err('STATEMENT_LOCKED'),
+          },
+        }),
+      },
+      '/v1/stock-statements/{id}/files/confirm': {
+        post: op({
+          tags: ['Stock statements'],
+          operationId: 'confirmStockStatementFile',
+          requestParams: { path: IdParam },
+          requestBody: json(StockStatementFileConfirm),
+          responses: {
+            '200': { description: 'Confirmed', ...json(StockStatement) },
+            '409': err('UPLOAD_MISSING or STATEMENT_LOCKED'),
+            '422': err('UPLOAD_SIZE_MISMATCH or UPLOAD_FORMAT_INVALID'),
           },
         }),
       },
