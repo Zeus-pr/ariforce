@@ -1,0 +1,43 @@
+import { describe, expect, it } from 'vitest';
+import { figureLine, nextMonth, totalsOf } from './math';
+
+describe('stock statement maths', () => {
+  it('prices a line in paise and derives closing', () => {
+    const line = figureLine({
+      openingQty: 100,
+      purchaseQty: 0,
+      secondaryQty: 3,
+      frsQty: 0,
+      pts: 124.11,
+    });
+    expect(line.openingValue).toBe(12411);
+    expect(line.secondaryValue).toBe(372.33);
+    expect(line.closingQty).toBe(97);
+    expect(line.closingValue).toBe(12038.67);
+  });
+
+  it('keeps a blank opening blank and a typed zero as zero', () => {
+    expect(
+      figureLine({ openingQty: null, purchaseQty: 0, secondaryQty: 0, frsQty: 0, pts: 10 })
+        .closingQty,
+    ).toBeNull();
+    expect(
+      figureLine({ openingQty: 0, purchaseQty: 0, secondaryQty: 0, frsQty: 0, pts: 10 }).closingQty,
+    ).toBe(0);
+  });
+
+  it('actual secondary is secondary value minus FRS value', () => {
+    const totals = totalsOf([
+      figureLine({ openingQty: 50, purchaseQty: 0, secondaryQty: 10, frsQty: 2, pts: 100 }),
+    ]);
+    expect(totals.secondaryValue).toBe(1000);
+    expect(totals.frsValue).toBe(200);
+    expect(totals.actualSecondary).toBe(800);
+    expect(totals.closingQty).toBe(38);
+  });
+
+  it('steps a month forward', () => {
+    expect(nextMonth('2026-10-01')).toBe('2026-11-01');
+    expect(nextMonth('2026-12-01')).toBe('2027-01-01');
+  });
+});
