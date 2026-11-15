@@ -204,7 +204,7 @@ function Combobox({
             }
           }}
           className={cn(
-            'group/combobox flex min-h-11 w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-3 py-2 text-left text-base shadow-xs outline-none transition-[border-color,box-shadow,background-color] duration-(--duration-fast) ease-(--ease-out) md:min-h-9 md:text-sm',
+            'group/combobox relative grid h-11 w-full grid-cols-1 items-center rounded-md border border-input bg-card pr-9 pl-3 text-left text-base shadow-xs outline-none transition-[border-color,box-shadow,background-color] duration-(--duration-fast) ease-(--ease-out) md:h-9 md:text-sm',
             'hover:border-foreground/25 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[state=open]:border-ring data-[state=open]:ring-[3px] data-[state=open]:ring-ring/30',
             'disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-destructive aria-invalid:ring-destructive/20',
           )}
@@ -213,10 +213,12 @@ function Combobox({
           <span className={cn('min-w-0 truncate', !value.length && 'text-muted-foreground')}>
             {summary}
           </span>
-          <ChevronDownIcon
-            aria-hidden
-            className="size-4 shrink-0 text-muted-foreground transition-transform duration-(--duration-fast) ease-(--ease-out) group-data-[state=open]/combobox:rotate-180"
-          />
+          <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2">
+            <ChevronDownIcon
+              aria-hidden
+              className="size-4 text-muted-foreground transition-transform duration-(--duration-fast) ease-(--ease-out) group-data-[state=open]/combobox:rotate-180"
+            />
+          </span>
         </PopoverTrigger>
         <PopoverContent
           align="start"
