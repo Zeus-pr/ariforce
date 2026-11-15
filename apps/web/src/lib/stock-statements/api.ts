@@ -144,6 +144,9 @@ export const confirmFile = (id: string, kind: 'aws' | 'ss') =>
 export const fileLink = (id: string, kind: 'aws' | 'ss') =>
   call<{ downloadUrl: string }>(`/v1/stock-statements/${id}/files/${kind}`);
 
+export const removeFile = (id: string, kind: 'aws' | 'ss') =>
+  call<Statement>(`/v1/stock-statements/${id}/files/${kind}`, { method: 'DELETE' });
+
 export async function downloadPdf(id: string, name: string) {
   const blob = await call<Blob>(`/v1/stock-statements/${id}/export`);
   const url = URL.createObjectURL(blob);
