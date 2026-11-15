@@ -25,10 +25,19 @@ import {
 } from '@/lib/stock-statements/api';
 import { API_URL, apiReady } from '@/lib/api';
 
-const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
+const inr = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 2,
+});
 const monthNow = () => new Date().toISOString().slice(0, 7);
 
-type Draft = { openingQty: number | null; purchaseQty: number; secondaryQty: number; frsQty: number };
+type Draft = {
+  openingQty: number | null;
+  purchaseQty: number;
+  secondaryQty: number;
+  frsQty: number;
+};
 
 export function AwsSsScreen() {
   const [stockists, setStockists] = useState<StockistOption[] | null>(null);
@@ -71,12 +80,14 @@ export function AwsSsScreen() {
   }
 
   function lineOf(line: StatementLine): Draft {
-    return drafts[line.productId] ?? {
-      openingQty: line.openingQty,
-      purchaseQty: line.purchaseQty,
-      secondaryQty: line.secondaryQty,
-      frsQty: line.frsQty,
-    };
+    return (
+      drafts[line.productId] ?? {
+        openingQty: line.openingQty,
+        purchaseQty: line.purchaseQty,
+        secondaryQty: line.secondaryQty,
+        frsQty: line.frsQty,
+      }
+    );
   }
 
   function setQty(line: StatementLine, key: keyof Draft, raw: string) {
@@ -93,7 +104,8 @@ export function AwsSsScreen() {
       const d = lineOf(line);
       const value = (qty: number | null) =>
         qty == null || line.pts == null ? null : Math.round(qty * line.pts * 100) / 100;
-      const closingQty = d.openingQty == null ? null : d.openingQty + d.purchaseQty - d.secondaryQty - d.frsQty;
+      const closingQty =
+        d.openingQty == null ? null : d.openingQty + d.purchaseQty - d.secondaryQty - d.frsQty;
       return {
         ...line,
         ...d,
@@ -125,7 +137,9 @@ export function AwsSsScreen() {
       if (code === 'VERSION_CONFLICT') {
         const fresh = await getStatement(sheet.id);
         setSheet(fresh);
-        setError('Someone else saved this sheet. Your unsaved numbers are still here. Save again to keep them.');
+        setError(
+          'Someone else saved this sheet. Your unsaved numbers are still here. Save again to keep them.',
+        );
       } else setError(messageOf(e));
     } finally {
       setBusy(null);
@@ -139,7 +153,11 @@ export function AwsSsScreen() {
     try {
       let current = sheet;
       if (Object.keys(drafts).length) {
-        current = await saveLines(sheet.id, sheet.version, Object.entries(drafts).map(([productId, d]) => ({ productId, ...d })));
+        current = await saveLines(
+          sheet.id,
+          sheet.version,
+          Object.entries(drafts).map(([productId, d]) => ({ productId, ...d })),
+        );
         setDrafts({});
       }
       const next = await submitStatement(current.id, current.version);
@@ -183,7 +201,10 @@ export function AwsSsScreen() {
         method: 'POST',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ decision, comment: decision === 'reject' ? reason.trim() : undefined }),
+        body: JSON.stringify({
+          decision,
+          comment: decision === 'reject' ? reason.trim() : undefined,
+        }),
       });
       if (!res.ok) throw await res.json();
       setSheet(await getStatement(sheet.id));
@@ -197,7 +218,9 @@ export function AwsSsScreen() {
     }
   }
 
-  const history = (sheet?.history ?? []).filter((h) => historyStatus === 'all' || h.status === historyStatus);
+  const history = (sheet?.history ?? []).filter(
+    (h) => historyStatus === 'all' || h.status === historyStatus,
+  );
 
   return (
     <div className="flex flex-col gap-5">
@@ -233,7 +256,11 @@ export function AwsSsScreen() {
           <ul className="flex flex-col">
             {waiting.map((item) => (
               <li key={item.id}>
-                <button type="button" className="text-sm underline-offset-4 hover:underline" onClick={() => void getStatement(item.id).then(setSheet)}>
+                <button
+                  type="button"
+                  className="text-sm underline-offset-4 hover:underline"
+                  onClick={() => void getStatement(item.id).then(setSheet)}
+                >
                   {item.stockistName}, {item.month}
                 </button>
               </li>
@@ -253,32 +280,78 @@ export function AwsSsScreen() {
                 {sheet.address ? ` · ${sheet.address}` : ''} · {sheet.month} · {label(sheet.status)}
                 {sheet.currentApproverName ? ` · with ${sheet.currentApproverName}` : ''}
               </p>
-              {sheet.rejectionReason && <p className="text-sm text-destructive">Rejected: {sheet.rejectionReason}</p>}
+              {sheet.rejectionReason && (
+                <p className="text-sm text-destructive">Rejected: {sheet.rejectionReason}</p>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
-              <FileButton label={sheet.aws.status === 'confirmed' ? 'Replace AWS' : 'Upload AWS'} disabled={!sheet.editable || busy != null} onFile={(f) => void upload('aws', f)} />
-              <FileButton label={sheet.ss.status === 'confirmed' ? 'Replace SS' : 'Upload SS'} disabled={!sheet.editable || busy != null} onFile={(f) => void upload('ss', f)} />
-              {sheet.aws.status === 'confirmed' && <Button type="button" variant="ghost" onClick={() => void downloadFile('aws')}>AWS</Button>}
-              {sheet.ss.status === 'confirmed' && <Button type="button" variant="ghost" onClick={() => void downloadFile('ss')}>SS</Button>}
-              <Button type="button" variant="outline" disabled={!sheet.editable || busy != null || !Object.keys(drafts).length} onClick={() => void save()}>
+              <FileButton
+                label={sheet.aws.status === 'confirmed' ? 'Replace AWS' : 'Upload AWS'}
+                disabled={!sheet.editable || busy != null}
+                onFile={(f) => void upload('aws', f)}
+              />
+              <FileButton
+                label={sheet.ss.status === 'confirmed' ? 'Replace SS' : 'Upload SS'}
+                disabled={!sheet.editable || busy != null}
+                onFile={(f) => void upload('ss', f)}
+              />
+              {sheet.aws.status === 'confirmed' && (
+                <Button type="button" variant="ghost" onClick={() => void downloadFile('aws')}>
+                  AWS
+                </Button>
+              )}
+              {sheet.ss.status === 'confirmed' && (
+                <Button type="button" variant="ghost" onClick={() => void downloadFile('ss')}>
+                  SS
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!sheet.editable || busy != null || !Object.keys(drafts).length}
+                onClick={() => void save()}
+              >
                 {busy === 'save' ? 'Saving…' : saved ? 'Saved' : 'Save draft'}
               </Button>
-              <Button type="button" disabled={!sheet.canSubmit || busy != null} onClick={() => void submit()}>
+              <Button
+                type="button"
+                disabled={!sheet.canSubmit || busy != null}
+                onClick={() => void submit()}
+              >
                 {busy === 'submit' ? 'Submitting…' : 'Submit'}
               </Button>
-              <Button type="button" variant="outline" onClick={() => void downloadPdf(sheet.id, `${sheet.stockistName}-${sheet.month}.pdf`)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  void downloadPdf(sheet.id, `${sheet.stockistName}-${sheet.month}.pdf`)
+                }
+              >
                 Export
               </Button>
             </div>
           </div>
           {sheet.canDecide && (
             <div className="flex flex-wrap items-end gap-2">
-              <Button type="button" disabled={busy != null} onClick={() => void decide('approve')}>Approve</Button>
-              <Button type="button" variant="outline" onClick={() => setRejecting((v) => !v)}>Reject</Button>
+              <Button type="button" disabled={busy != null} onClick={() => void decide('approve')}>
+                Approve
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setRejecting((v) => !v)}>
+                Reject
+              </Button>
               {rejecting && (
                 <>
-                  <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" className="max-w-sm" />
-                  <Button type="button" disabled={reason.trim().length < 1 || busy != null} onClick={() => void decide('reject')}>
+                  <Input
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="Reason"
+                    className="max-w-sm"
+                  />
+                  <Button
+                    type="button"
+                    disabled={reason.trim().length < 1 || busy != null}
+                    onClick={() => void decide('reject')}
+                  >
                     Send back
                   </Button>
                 </>
@@ -301,17 +374,42 @@ export function AwsSsScreen() {
               <tbody>
                 {view.map((line) => (
                   <tr key={line.productId} className="border-t">
-                    <th className="sticky left-0 bg-background px-3 py-1 text-left font-normal">{line.name}</th>
+                    <th className="sticky left-0 bg-background px-3 py-1 text-left font-normal">
+                      {line.name}
+                    </th>
                     <td className="px-2 text-muted-foreground">{line.packSize}</td>
-                    <Qty value={line.openingQty} locked={!sheet.editable || line.openingLocked} onChange={(v) => setQty(line, 'openingQty', v)} />
+                    <Qty
+                      value={line.openingQty}
+                      locked={!sheet.editable || line.openingLocked}
+                      onChange={(v) => setQty(line, 'openingQty', v)}
+                    />
                     <Money value={line.openingValue} />
-                    <Qty value={line.purchaseQty} locked={!sheet.editable} onChange={(v) => setQty(line, 'purchaseQty', v)} />
+                    <Qty
+                      value={line.purchaseQty}
+                      locked={!sheet.editable}
+                      onChange={(v) => setQty(line, 'purchaseQty', v)}
+                    />
                     <Money value={line.purchaseValue} />
-                    <Qty value={line.secondaryQty} locked={!sheet.editable} onChange={(v) => setQty(line, 'secondaryQty', v)} />
+                    <Qty
+                      value={line.secondaryQty}
+                      locked={!sheet.editable}
+                      onChange={(v) => setQty(line, 'secondaryQty', v)}
+                    />
                     <Money value={line.secondaryValue} />
-                    <td className={cn('px-2 text-right', (line.closingQty ?? 0) < 0 && 'text-destructive')}>{line.closingQty ?? ''}</td>
+                    <td
+                      className={cn(
+                        'px-2 text-right',
+                        (line.closingQty ?? 0) < 0 && 'text-destructive',
+                      )}
+                    >
+                      {line.closingQty ?? ''}
+                    </td>
                     <Money value={line.closingValue} />
-                    <Qty value={line.frsQty} locked={!sheet.editable} onChange={(v) => setQty(line, 'frsQty', v)} />
+                    <Qty
+                      value={line.frsQty}
+                      locked={!sheet.editable}
+                      onChange={(v) => setQty(line, 'frsQty', v)}
+                    />
                     <Money value={line.frsValue} />
                   </tr>
                 ))}
@@ -322,19 +420,38 @@ export function AwsSsScreen() {
             <summary className="cursor-pointer text-sm font-medium">History</summary>
             <div className="mt-2 flex gap-2">
               {(['all', 'draft', 'pending', 'approved', 'rejected'] as const).map((s) => (
-                <button key={s} type="button" className={cn('rounded-full px-2 py-1 text-xs', historyStatus === s ? 'bg-foreground text-background' : 'bg-muted')} onClick={() => setHistoryStatus(s)}>
+                <button
+                  key={s}
+                  type="button"
+                  className={cn(
+                    'rounded-full px-2 py-1 text-xs',
+                    historyStatus === s ? 'bg-foreground text-background' : 'bg-muted',
+                  )}
+                  onClick={() => setHistoryStatus(s)}
+                >
                   {s}
                 </button>
               ))}
             </div>
             <ul className="mt-2 flex flex-col">
-              {history.filter((h) => h.id !== sheet.id).map((item) => (
-                <li key={item.id}>
-                  <button type="button" className="py-1 text-sm" onClick={() => void getStatement(item.id).then((next) => { setSheet(next); setDrafts({}); })}>
-                    {item.month} · {label(item.status)} · {inr.format(item.actualSecondary)}
-                  </button>
-                </li>
-              ))}
+              {history
+                .filter((h) => h.id !== sheet.id)
+                .map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      className="py-1 text-sm"
+                      onClick={() =>
+                        void getStatement(item.id).then((next) => {
+                          setSheet(next);
+                          setDrafts({});
+                        })
+                      }
+                    >
+                      {item.month} · {label(item.status)} · {inr.format(item.actualSecondary)}
+                    </button>
+                  </li>
+                ))}
             </ul>
           </details>
         </div>
@@ -369,7 +486,10 @@ function StockistDropdown({
   }, []);
   const needle = q.trim().toLowerCase();
   const items = (stockists ?? []).filter(
-    (s) => !needle || s.name.toLowerCase().includes(needle) || (s.city ?? '').toLowerCase().includes(needle),
+    (s) =>
+      !needle ||
+      s.name.toLowerCase().includes(needle) ||
+      (s.city ?? '').toLowerCase().includes(needle),
   );
   return (
     <div ref={root} className="relative flex flex-col gap-1 text-sm">
@@ -385,11 +505,23 @@ function StockistDropdown({
         <span className={cn('truncate', !selected && 'text-muted-foreground')}>
           {selected ? selected.name : stockists ? 'Choose a stockist' : 'Loading stockists…'}
         </span>
-        <ChevronDown aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
+        <ChevronDown
+          aria-hidden
+          className={cn(
+            'size-4 shrink-0 text-muted-foreground transition-transform',
+            open && 'rotate-180',
+          )}
+        />
       </button>
       {open && (
         <div className="absolute top-full z-20 mt-1 flex w-full flex-col gap-2 rounded-md border bg-background p-2 shadow-md">
-          <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or city" aria-label="Search stockists" />
+          <Input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search by name or city"
+            aria-label="Search stockists"
+          />
           <ul role="listbox" aria-label="Stockists" className="max-h-56 overflow-auto">
             {items.length === 0 ? (
               <li className="px-2 py-2 text-muted-foreground">No stockist matches.</li>
@@ -432,7 +564,15 @@ function Group({ title }: { title: string }) {
   );
 }
 
-function Qty({ value, locked, onChange }: { value: number | null; locked: boolean; onChange: (v: string) => void }) {
+function Qty({
+  value,
+  locked,
+  onChange,
+}: {
+  value: number | null;
+  locked: boolean;
+  onChange: (v: string) => void;
+}) {
   return (
     <td className="px-1">
       <Input
@@ -448,12 +588,29 @@ function Qty({ value, locked, onChange }: { value: number | null; locked: boolea
 }
 
 function Money({ value }: { value: number | null }) {
-  return <td className="px-2 text-right text-muted-foreground">{value == null ? '' : inr.format(value)}</td>;
+  return (
+    <td className="px-2 text-right text-muted-foreground">
+      {value == null ? '' : inr.format(value)}
+    </td>
+  );
 }
 
-function FileButton({ label, disabled, onFile }: { label: string; disabled: boolean; onFile: (file: File) => void }) {
+function FileButton({
+  label,
+  disabled,
+  onFile,
+}: {
+  label: string;
+  disabled: boolean;
+  onFile: (file: File) => void;
+}) {
   return (
-    <label className={cn('inline-flex h-9 cursor-pointer items-center rounded-md border px-3 text-sm', disabled && 'pointer-events-none opacity-50')}>
+    <label
+      className={cn(
+        'inline-flex h-9 cursor-pointer items-center rounded-md border px-3 text-sm',
+        disabled && 'pointer-events-none opacity-50',
+      )}
+    >
       {label}
       <input
         type="file"

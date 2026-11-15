@@ -126,11 +126,7 @@ export const submitStatement = (id: string, version: number) =>
     body: JSON.stringify({ version }),
   });
 
-export const presignFile = (
-  id: string,
-  kind: 'aws' | 'ss',
-  file: File,
-) =>
+export const presignFile = (id: string, kind: 'aws' | 'ss', file: File) =>
   call<{ uploadUrl: string; headers: Record<string, string>; method: 'PUT' }>(
     `/v1/stock-statements/${id}/files`,
     {
