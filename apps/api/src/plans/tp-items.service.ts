@@ -8,6 +8,7 @@ import {
 } from '@ariforce/contracts';
 import {
   approvalRequests,
+  approvalSteps,
   sfcRoutes,
   territories,
   tourPlanItems,
@@ -228,7 +229,7 @@ export class TourPlanItemsService {
         .limit(limit + 1)
         .offset(offset);
       return {
-        items: await itemsOut(tx, rows.slice(0, limit)),
+        items: await this.withDecide(tx, p, await itemsOut(tx, rows.slice(0, limit))),
         nextCursor: rows.length > limit ? encodeCursor(offset + limit) : null,
         serverTime: new Date().toISOString(),
       };
@@ -236,7 +237,52 @@ export class TourPlanItemsService {
   }
 
   get(p: Principal, id: string) {
-    return this.tenant.run(p, async (tx) => (await itemsOut(tx, [await this.row(tx, p, id)]))[0]!);
+    return this.tenant.run(p, async (tx) => {
+      const [item] = await this.withDecide(tx, p, await itemsOut(tx, [await this.row(tx, p, id)]));
+      return item!;
+    });
+  }
+
+  /** Pending plans only: whether this caller may approve or reject now. */
+  private async withDecide(tx: Tx, p: Principal, items: TourPlanItem[]): Promise<TourPlanItem[]> {
+    const pending = items.filter((i) => i.status === 'pending').map((i) => i.id);
+    const reqs = pending.length
+      ? await tx
+          .select()
+          .from(approvalRequests)
+          .where(
+            and(
+              eq(approvalRequests.entityType, 'tour_plan_item'),
+              inArray(approvalRequests.entityId, pending),
+              eq(approvalRequests.state, 'pending'),
+            ),
+          )
+      : [];
+    const reqIds = reqs.map((r) => r.id);
+    const steps = reqIds.length
+      ? await tx
+          .select({
+            requestId: approvalSteps.requestId,
+            stepNo: approvalSteps.stepNo,
+            approverUserId: approvalSteps.approverUserId,
+            decidedBy: approvalSteps.decidedBy,
+          })
+          .from(approvalSteps)
+          .where(inArray(approvalSteps.requestId, reqIds))
+      : [];
+    return items.map((item) => {
+      const req = reqs.find((r) => r.entityId === item.id);
+      return {
+        ...item,
+        canDecide:
+          !!req &&
+          this.approvals.canDecide(
+            p,
+            req,
+            steps.filter((s) => s.requestId === req.id),
+          ),
+      };
+    });
   }
 
   upsert(p: Principal, b: TourPlanItemUpsert) {
