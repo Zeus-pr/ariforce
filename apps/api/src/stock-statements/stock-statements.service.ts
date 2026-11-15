@@ -90,7 +90,7 @@ export class StockStatementsService implements OnModuleInit {
             .select()
             .from(stockStatements)
             .where(eq(stockStatements.id, req.entityId));
-          if (row) await this.assertReady(tx, row);
+          if (row) await this.assertReady(tx, row, 'sheet');
         },
         onStep: async (tx, p, req, _step, nextApproverId) => {
           const [row] = await tx
@@ -235,6 +235,12 @@ export class StockStatementsService implements OnModuleInit {
           });
       }
       await this.retotal(tx, row);
+      if (row.status === 'pending')
+        await this.audit.record(tx, p, 'stock_statement.edited', {
+          entityType: 'stock_statement',
+          entityId: row.id,
+          after: { lines: inputs.length },
+        });
       const [fresh] = await tx.select().from(stockStatements).where(eq(stockStatements.id, row.id));
       return this.sheet(tx, p, fresh!);
     });
@@ -250,7 +256,7 @@ export class StockStatementsService implements OnModuleInit {
         throw err(409, 'VERSION_CONFLICT', 'This statement was saved somewhere else. Reload it.', {
           version: row.version,
         });
-      await this.assertReady(tx, row);
+      await this.assertReady(tx, row, 'catalog');
       const chain = await this.approvers(tx, p.userId);
       await tx
         .update(approvalRequests)
@@ -443,9 +449,10 @@ export class StockStatementsService implements OnModuleInit {
     return (await this.stepUser(tx, row.approvalRequestId, req.step)) === p.userId;
   }
 
-  private async assertReady(tx: Tx, row: StatementRow) {
+  private async assertReady(tx: Tx, row: StatementRow, scope: 'sheet' | 'catalog') {
     const lines = await this.merged(tx, row.id);
-    const blank = lines.filter((l) => l.openingQty == null).map((l) => l.name);
+    const check = scope === 'sheet' ? lines.filter((l) => l.onSheet) : lines;
+    const blank = check.filter((l) => l.openingQty == null).map((l) => l.name);
     if (blank.length)
       throw err(
         422,
@@ -453,12 +460,12 @@ export class StockStatementsService implements OnModuleInit {
         'Type an opening for every product, using 0 where there is none',
         { products: blank.slice(0, 20) },
       );
-    const negative = lines.filter((l) => (l.closingQty ?? 0) < 0).map((l) => l.name);
+    const negative = check.filter((l) => (l.closingQty ?? 0) < 0).map((l) => l.name);
     if (negative.length)
       throw err(422, 'CLOSING_NEGATIVE', 'Closing cannot be negative', {
         products: negative.slice(0, 20),
       });
-    const unpriced = lines
+    const unpriced = check
       .filter(
         (l) =>
           l.pts == null && (l.openingQty != null || l.purchaseQty || l.secondaryQty || l.frsQty),
@@ -636,6 +643,7 @@ export class StockStatementsService implements OnModuleInit {
       name: line?.productName || product.name,
       packSize: line?.packSize ?? product.packSize,
       openingLocked: line?.openingSource === 'carried',
+      onSheet: line != null,
     };
   }
 
@@ -900,6 +908,7 @@ type Merged = FiguredLine & {
   name: string;
   packSize: string | null;
   openingLocked: boolean;
+  onSheet: boolean;
 };
 
 function sniff(type: string, b: Uint8Array) {
