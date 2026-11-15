@@ -333,19 +333,31 @@ export class KpisService {
               select user_id, date, least(sum(fraction), 1) as fraction from off_rows
                group by user_id, date
             ) days_off
+          ), listed as (
+            select l.doctor_id, max(l.required_visits) as required_visits
+              from kpi_user_doctor_list l
+             where l.user_id = any(${u})
+               ${g.territoryId ? sql`and l.territory_id in (select node_id from nodes)` : sql``}
+             group by l.doctor_id
+          ), seen_month as (
+            select m.doctor_id, m.month, sum(m.visits) as visits
+              from kpi_user_doctor_month m
+              join listed on listed.doctor_id = m.doctor_id
+             where m.user_id = any(${u}) and m.month = any(${txt(ms)}::date[])
+             group by m.doctor_id, m.month
           ), monthly as (
-            select coalesce(sum(msl_size), 0) as msl,
-                   coalesce(sum(unique_doctors_seen), 0) as seen,
-                   coalesce(sum(frequency_met_doctors), 0) as freq
-              from kpi_user_month where user_id = any(${u}) and month = any(${txt(ms)}::date[])
-               ${
-                 g.territoryId
-                   ? sql`and user_id in (
-                       select ut.user_id from user_territories ut
-                        where ut.territory_id in (select node_id from nodes)
-                     )`
-                   : sql``
-               }
+            select coalesce(sum(msl), 0) as msl,
+                   coalesce(sum(seen), 0) as seen,
+                   coalesce(sum(freq), 0) as freq
+              from (
+                select count(*) as msl,
+                       count(*) filter (where coalesce(s.visits, 0) > 0) as seen,
+                       count(*) filter (where coalesce(s.visits, 0) >= listed.required_visits) as freq
+                  from unnest(${txt(ms)}::date[]) as mo(month)
+                  cross join listed
+                  left join seen_month s on s.doctor_id = listed.doctor_id and s.month = mo.month
+                 group by mo.month
+              ) per_month
           ), pob as (
             select coalesce(sum(p.value), 0) as value
               from dcr_day_calls c
