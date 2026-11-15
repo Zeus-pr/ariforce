@@ -131,6 +131,14 @@ export const NAV: NavItem[] = [
     section: 'business',
   },
   {
+    slug: 'aws-ss',
+    title: 'AWS & SS',
+    href: '/aws-ss',
+    icon: ScrollText,
+    roles: SALES,
+    section: 'business',
+  },
+  {
     slug: 'sales',
     title: 'Sales',
     href: '/sales',
