@@ -61,6 +61,7 @@ export function AwsSsScreen() {
   const historyRef = useRef<HTMLDialogElement>(null);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     listStockists()
@@ -205,8 +206,18 @@ export function AwsSsScreen() {
     setBusy('decide');
     setError(null);
     try {
+      let current = sheet;
+      if (Object.keys(drafts).length) {
+        current = await saveLines(
+          sheet.id,
+          sheet.version,
+          Object.entries(drafts).map(([productId, d]) => ({ productId, ...d })),
+        );
+        setDrafts({});
+        setSheet(current);
+      }
       await apiReady();
-      const res = await fetch(`${API_URL}/v1/approvals/${sheet.approvalRequestId}/decision`, {
+      const res = await fetch(`${API_URL}/v1/approvals/${current.approvalRequestId}/decision`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
@@ -216,7 +227,7 @@ export function AwsSsScreen() {
         }),
       });
       if (!res.ok) throw await res.json();
-      setSheet(await getStatement(sheet.id));
+      setSheet(await getStatement(current.id));
       setRejecting(false);
       setReason('');
       setWaiting((await listStatements({ waiting: true })).items);
@@ -227,6 +238,10 @@ export function AwsSsScreen() {
     }
   }
 
+  useEffect(() => {
+    setEditing(false);
+  }, [sheet?.id, sheet?.status]);
+  const fieldsOpen = !!sheet && sheet.editable && (sheet.status !== 'pending' || editing);
   const history = (sheet?.history ?? []).filter(
     (h) => historyStatus === 'all' || h.status === historyStatus,
   );
@@ -300,6 +315,15 @@ export function AwsSsScreen() {
                 Actual secondary {inr.format(Math.round(actual * 100) / 100)}
               </p>
             </div>
+            {sheet.canDecide && !editing && (
+              <button
+                type="button"
+                className="h-9 w-28 shrink-0 rounded-md border text-sm"
+                onClick={() => setEditing(true)}
+              >
+                Edit
+              </button>
+            )}
             <div className="ml-auto grid w-[42rem] shrink-0 grid-cols-6 gap-2">
               <button
                 type="button"
@@ -310,19 +334,19 @@ export function AwsSsScreen() {
               </button>
               <FileButton
                 label={sheet.aws.status === 'confirmed' ? 'Replace AWS' : 'Upload AWS'}
-                disabled={!sheet.editable || busy != null}
+                disabled={!fieldsOpen || busy != null}
                 onFile={(f) => void upload('aws', f)}
               />
               <FileButton
                 label={sheet.ss.status === 'confirmed' ? 'Replace SS' : 'Upload SS'}
-                disabled={!sheet.editable || busy != null}
+                disabled={!fieldsOpen || busy != null}
                 onFile={(f) => void upload('ss', f)}
               />
               <Button
                 type="button"
                 variant="outline"
                 className="w-full"
-                disabled={!sheet.editable || busy != null || !Object.keys(drafts).length}
+                disabled={!fieldsOpen || busy != null || !Object.keys(drafts).length}
                 onClick={() => void save()}
               >
                 {busy === 'save' ? 'Saving…' : saved ? 'Saved' : 'Save draft'}
@@ -462,21 +486,21 @@ export function AwsSsScreen() {
                     <Qty
                       tone={groups[0].cell}
                       value={line.openingQty}
-                      locked={!sheet.editable || line.openingLocked}
+                      locked={!fieldsOpen || line.openingLocked}
                       onChange={(v) => setQty(line, 'openingQty', v)}
                     />
                     <Money tone={groups[0].cell} value={line.openingValue} edge />
                     <Qty
                       tone={groups[1].cell}
                       value={line.purchaseQty}
-                      locked={!sheet.editable}
+                      locked={!fieldsOpen}
                       onChange={(v) => setQty(line, 'purchaseQty', v)}
                     />
                     <Money tone={groups[1].cell} value={line.purchaseValue} edge />
                     <Qty
                       tone={groups[2].cell}
                       value={line.secondaryQty}
-                      locked={!sheet.editable}
+                      locked={!fieldsOpen}
                       onChange={(v) => setQty(line, 'secondaryQty', v)}
                     />
                     <Money tone={groups[2].cell} value={line.secondaryValue} edge />
@@ -494,7 +518,7 @@ export function AwsSsScreen() {
                     <Qty
                       tone={groups[4].cell}
                       value={line.frsQty}
-                      locked={!sheet.editable}
+                      locked={!fieldsOpen}
                       onChange={(v) => setQty(line, 'frsQty', v)}
                     />
                     <Money tone={groups[4].cell} value={line.frsValue} edge />
