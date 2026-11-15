@@ -175,11 +175,24 @@ import { RoleList } from './schemas/roles';
 import { Health } from './schemas/health';
 import { KpiQuery, KpiReport, ProductKpiReport } from './schemas/kpis';
 import {
+  Holiday,
+  HolidayCopy,
+  HolidayCopyResult,
+  HolidayCreate,
+  HolidayList,
+  HolidayQuery,
+  HolidayUpdate,
+} from './schemas/holidays';
+import {
   Territory,
   TerritoryCompactHeaders,
   TerritoryCompactList,
   TerritoryCompactQuery,
+  TerritoryCreate,
+  TerritoryHealth,
   TerritoryListQuery,
+  TerritoryMove,
+  TerritoryUpdate,
 } from './schemas/territories';
 import {
   Chemist,
@@ -520,6 +533,138 @@ function buildDocument(): OpenApiDocument {
           requestParams: { query: TerritoryListQuery },
           responses: { '200': { description: 'Page', ...json(page(Territory, 'TerritoryPage')) } },
         }),
+        post: op({
+          tags: ['Territories'],
+          operationId: 'createTerritory',
+          summary: 'Create a territory. Code is required except for a patch under a headquarter.',
+          requestBody: json(TerritoryCreate),
+          responses: {
+            '201': { description: 'Created', ...json(Territory) },
+            '403': err('FORBIDDEN'),
+            '409': err('NATIONAL_EXISTS or CODE_TAKEN or TERRITORY_KEY_TAKEN'),
+            '422': err('TERRITORY_PARENT_LEVEL or VALIDATION'),
+          },
+        }),
+      },
+      '/v1/territories/health': {
+        get: op({
+          tags: ['Territories'],
+          operationId: 'territoryHealth',
+          summary: 'Counts of territory setup problems for a director or system admin',
+          responses: {
+            '200': { description: 'Counts only', ...json(TerritoryHealth) },
+            '403': err('FORBIDDEN'),
+          },
+        }),
+      },
+      '/v1/territories/{id}/move': {
+        post: op({
+          tags: ['Territories'],
+          operationId: 'moveTerritory',
+          requestParams: { path: IdParam },
+          requestBody: json(TerritoryMove),
+          responses: {
+            '200': { description: 'Moved', ...json(Territory) },
+            '403': err('FORBIDDEN'),
+            '404': err('Not found'),
+            '409': err('VERSION_CONFLICT or CODE_TAKEN'),
+            '422': err('TERRITORY_PARENT_LEVEL or TERRITORY_CYCLE'),
+          },
+        }),
+      },
+      '/v1/territories/{id}': {
+        get: op({
+          tags: ['Territories'],
+          operationId: 'getTerritory',
+          requestParams: { path: IdParam },
+          responses: { '200': { description: 'OK', ...json(Territory) }, '404': err('Not found') },
+        }),
+        patch: op({
+          tags: ['Territories'],
+          operationId: 'updateTerritory',
+          requestParams: { path: IdParam },
+          requestBody: json(TerritoryUpdate),
+          responses: {
+            '200': { description: 'Updated', ...json(Territory) },
+            '403': err('FORBIDDEN'),
+            '404': err('Not found'),
+            '409': err('VERSION_CONFLICT or CODE_TAKEN or TERRITORY_KEY_TAKEN'),
+            '422': err('VALIDATION'),
+          },
+        }),
+        delete: op({
+          tags: ['Territories'],
+          operationId: 'deleteTerritory',
+          summary: 'Soft-delete when nothing live still uses the territory',
+          requestParams: { path: IdParam },
+          responses: {
+            '204': { description: 'Deleted' },
+            '403': err('FORBIDDEN'),
+            '404': err('Not found'),
+            '409': err('TERRITORY_IN_USE'),
+          },
+        }),
+      },
+      '/v1/holidays': {
+        get: op({
+          tags: ['Holidays'],
+          operationId: 'listHolidays',
+          summary: 'Company holiday names for a year or a date range. Does not close the day.',
+          requestParams: { query: HolidayQuery },
+          responses: {
+            '200': { description: 'Holidays', ...json(HolidayList) },
+            '422': err('VALIDATION'),
+          },
+        }),
+        post: op({
+          tags: ['Holidays'],
+          operationId: 'createHoliday',
+          requestBody: json(HolidayCreate),
+          responses: {
+            '201': { description: 'Created', ...json(Holiday) },
+            '403': err('FORBIDDEN'),
+            '409': err('HOLIDAY_DATE_TAKEN'),
+            '422': err('VALIDATION'),
+          },
+        }),
+      },
+      '/v1/holidays/copy': {
+        post: op({
+          tags: ['Holidays'],
+          operationId: 'copyHolidays',
+          summary: 'Copy holiday names onto the same month and day in another year',
+          requestBody: json(HolidayCopy),
+          responses: {
+            '200': { description: 'Copied and skipped', ...json(HolidayCopyResult) },
+            '403': err('FORBIDDEN'),
+            '422': err('VALIDATION'),
+          },
+        }),
+      },
+      '/v1/holidays/{id}': {
+        patch: op({
+          tags: ['Holidays'],
+          operationId: 'updateHoliday',
+          requestParams: { path: IdParam },
+          requestBody: json(HolidayUpdate),
+          responses: {
+            '200': { description: 'Updated', ...json(Holiday) },
+            '403': err('FORBIDDEN'),
+            '404': err('Not found'),
+            '409': err('VERSION_CONFLICT'),
+            '422': err('VALIDATION'),
+          },
+        }),
+        delete: op({
+          tags: ['Holidays'],
+          operationId: 'deleteHoliday',
+          requestParams: { path: IdParam },
+          responses: {
+            '204': { description: 'Deleted' },
+            '403': err('FORBIDDEN'),
+            '404': err('Not found'),
+          },
+        }),
       },
       '/v1/territories/compact': {
         get: op({
@@ -537,14 +682,6 @@ function buildDocument(): OpenApiDocument {
             '304': { description: 'Not modified (If-None-Match matched); empty body' },
             '422': err('VALIDATION'),
           },
-        }),
-      },
-      '/v1/territories/{id}': {
-        get: op({
-          tags: ['Territories'],
-          operationId: 'getTerritory',
-          requestParams: { path: IdParam },
-          responses: { '200': { description: 'OK', ...json(Territory) }, '404': err('Not found') },
         }),
       },
       '/v1/specialties': {
