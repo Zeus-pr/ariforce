@@ -138,20 +138,25 @@ export function OrganizationScreen() {
         )}
       </section>
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(18rem,26rem)_1fr]">
-        <Tree nodes={live} selected={selected} onSelect={setSelected} />
-        {node ? (
-          <NodePanel node={node} nodes={live} onError={fail} onSaved={refresh} />
-        ) : (
-          <p className="text-sm text-muted-foreground">Choose a place in the tree.</p>
-        )}
+        <div className="min-h-0 lg:max-h-[calc(100dvh-var(--header-height)-2rem)] lg:overflow-y-auto">
+          <Tree nodes={live} selected={selected} onSelect={setSelected} />
+        </div>
+        <div className="min-h-0 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-var(--header-height)-2rem)] lg:overflow-y-auto">
+          {node ? (
+            <NodePanel node={node} nodes={live} onError={fail} onSaved={refresh} />
+          ) : (
+            <p className="text-sm text-muted-foreground">Choose a place in the tree.</p>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 function startsOpen(node: Territory, siblings: number, kids: Territory[]) {
-  if (node.level === 'headquarter' || node.level === 'territory') return false;
-  if (node.level === 'zone' || node.level === 'region' || node.level === 'area') return true;
+  if (node.level === 'area' || node.level === 'headquarter' || node.level === 'territory')
+    return false;
+  if (node.level === 'zone' || node.level === 'region') return true;
   if (siblings > 1) return true;
   const childLevel = kids[0]?.level;
   return (
