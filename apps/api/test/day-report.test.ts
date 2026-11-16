@@ -91,6 +91,13 @@ describe('resolveDraftTarget', () => {
       code: 'VERSION_CONFLICT',
     });
   });
+  it('updates a rejected report in place', () => {
+    const rejected = row('r', 'rejected', '2026-10-28T11:00:00Z', 4);
+    expect(resolveDraftTarget({ id: 'r', date: D, version: 4 }, rejected, [rejected])).toEqual({
+      action: 'update',
+      row: rejected,
+    });
+  });
   it('a day with a submitted report takes no draft saves', () => {
     for (const input of [{ date: D }, { id: 'a', date: D }, { date: D, version: 2 }])
       expect(resolveDraftTarget(input, input.id ? a : undefined, [a, sub])).toEqual({

@@ -296,7 +296,7 @@ export class DcrFlowService {
           usesSfc: workTypeBand(w) !== null,
           detailsKind: dcrDetailsKind(w),
         })),
-        dcr: submitted ?? drafts[0] ?? null,
+        dcr: submitted ?? drafts[0] ?? rejected[0] ?? null,
         submitted,
         drafts,
         rejected,
@@ -812,16 +812,11 @@ export class DcrFlowService {
         };
       if (cur.status === 'submitted')
         throw err(409, 'ALREADY_SUBMITTED', 'Already submitted; request a correction', { id });
-      // Reviewed reports are read-only: approved stays, rejected is history (file a new draft).
-      if (cur.status !== 'draft')
-        throw err(
-          409,
-          'ALREADY_SUBMITTED',
-          cur.status === 'rejected'
-            ? 'Rejected DCRs are read-only; save a new draft for the day'
-            : 'Approved DCRs are read-only',
-          { id, status: cur.status },
-        );
+      if (cur.status !== 'draft' && cur.status !== 'rejected')
+        throw err(409, 'ALREADY_SUBMITTED', 'Approved DCRs are read-only', {
+          id,
+          status: cur.status,
+        });
       const [reused] = await tx
         .select({ id: dcrs.id })
         .from(dcrs)
@@ -1086,6 +1081,9 @@ export class DcrFlowService {
               submittedAt: new Date(),
               submittedBy: p.userId,
               submitIdempotencyKey: key,
+              rejectedAt: null,
+              rejectedBy: null,
+              rejectionReason: null,
               expenses: items,
               band,
               tourPlanId: plan.tourPlanId,

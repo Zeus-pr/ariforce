@@ -48,7 +48,7 @@ export type Resolution<T> =
 /**
  * PUT /v1/dcrs/draft target. `byId` is the caller's live DCR with input.id (undefined if none);
  * `day` are the caller's live DCRs of input.date.
- * - id: update that draft (404 if missing, 409 ALREADY_SUBMITTED if not a draft, 422 on another date).
+ * - id: update that draft or rejected report (404 if missing, 409 if submitted or approved, 422 on another date).
  * - no id, version (older clients that upserted per day): update the latest draft of the date.
  * - no id, no version: create a new draft.
  * A date that already has a submitted report takes no draft saves (409 DAY_ALREADY_SUBMITTED).
@@ -62,7 +62,7 @@ export function resolveDraftTarget<T extends DayRow>(
   if (input.id) {
     if (!byId || byId.deletedAt)
       return { action: 'error', status: 404, code: 'NOT_FOUND', message: 'Draft not found' };
-    if (byId.status !== 'draft')
+    if (byId.status !== 'draft' && byId.status !== 'rejected')
       return {
         action: 'error',
         status: 409,
