@@ -18,6 +18,7 @@ export type PersonPatch = {
   employeeCode?: string | null;
   designation?: string | null;
   joinedOn?: string | null;
+  dateOfBirth?: string | null;
   role?: Role;
   territoryIds?: string[];
   managerId?: string | null;

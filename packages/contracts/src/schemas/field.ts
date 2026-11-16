@@ -85,6 +85,10 @@ export const UserSummary = z
     phone: z.string().nullable().optional(),
     designation: z.string().nullable().optional(),
     joinedOn: z.iso.date().nullable().optional(),
+    dateOfBirth: z.iso.date().nullable().optional().meta({
+      description:
+        'Birthday. The direct manager is reminded daily from five days before through the day',
+    }),
     roles: z.array(RoleKey),
     primaryRole: RoleKey.nullable()
       .optional()
