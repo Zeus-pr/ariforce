@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Trash2 } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
@@ -10,6 +10,7 @@ import {
   downloadPdf,
   fileLink,
   getStatement,
+  removeFile,
   listStatements,
   listStockists,
   messageOf,
@@ -30,7 +31,10 @@ const inr = new Intl.NumberFormat('en-IN', {
   currency: 'INR',
   maximumFractionDigits: 2,
 });
-const monthNow = () => new Date().toISOString().slice(0, 7);
+const monthNow = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
 
 const groups = [
   { title: 'Opening', head: 'bg-emerald-100', cell: 'bg-emerald-50' },
@@ -62,6 +66,7 @@ export function AwsSsScreen() {
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
   const [editing, setEditing] = useState(false);
+  const versionRef = useRef(0);
 
   useEffect(() => {
     listStockists()
@@ -74,16 +79,35 @@ export function AwsSsScreen() {
 
   const selected = (stockists ?? []).find((s) => s.id === stockistId) ?? null;
 
+  function remember(stockist: string, m: string) {
+    const q = new URLSearchParams(window.location.search);
+    if (stockist) q.set('stockist', stockist);
+    else q.delete('stockist');
+    if (m) q.set('month', m);
+    window.history.replaceState(null, '', `${window.location.pathname}?${q}`);
+  }
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const s = q.get('stockist');
+    const m = q.get('month');
+    if (m) setMonth(m);
+    if (s) {
+      setStockistId(s);
+      void load(s, m || monthNow());
+    }
+  }, []);
+
   async function load(id: string, m: string) {
     setBusy('open');
     setError(null);
     setSaved(false);
-    setSheet(null);
     setDrafts({});
     try {
       const next = await openStatement(id, m);
       setSheet(next);
     } catch (e) {
+      setSheet(null);
       setError(messageOf(e));
     } finally {
       setBusy(null);
@@ -103,7 +127,8 @@ export function AwsSsScreen() {
 
   function setQty(line: StatementLine, key: keyof Draft, raw: string) {
     const current = lineOf(line);
-    const value = raw === '' && key === 'openingQty' ? null : Number(raw);
+    const trimmed = raw.trim();
+    const value = trimmed === '' && key === 'openingQty' ? null : Number(trimmed);
     if (value != null && (!Number.isInteger(value) || value < 0)) return;
     setDrafts((d) => ({ ...d, [line.productId]: { ...current, [key]: value } }));
     setSaved(false);
@@ -114,7 +139,7 @@ export function AwsSsScreen() {
     return sheet.lines.map((line) => {
       const d = lineOf(line);
       const value = (qty: number | null) =>
-        qty == null || line.pts == null ? null : Math.round(qty * line.pts * 100) / 100;
+        qty == null ? null : line.pts == null ? 0 : Math.round(qty * line.pts * 100) / 100;
       const closingQty =
         d.openingQty == null ? null : d.openingQty + d.purchaseQty - d.secondaryQty - d.frsQty;
       return {
@@ -131,6 +156,26 @@ export function AwsSsScreen() {
   }, [sheet, drafts]);
 
   const actual = view.reduce((s, l) => s + (l.secondaryValue ?? 0) - (l.frsValue ?? 0), 0);
+  const totals = useMemo(() => {
+    const sum = (pick: (line: (typeof view)[number]) => number | null) =>
+      view.reduce((s, line) => s + (pick(line) ?? 0), 0);
+    return {
+      openingQty: sum((l) => l.openingQty),
+      openingValue: sum((l) => l.openingValue),
+      purchaseQty: sum((l) => l.purchaseQty),
+      purchaseValue: sum((l) => l.purchaseValue),
+      secondaryQty: sum((l) => l.secondaryQty),
+      secondaryValue: sum((l) => l.secondaryValue),
+      closingQty: sum((l) => l.closingQty),
+      closingValue: sum((l) => l.closingValue),
+      frsQty: sum((l) => l.frsQty),
+      frsValue: sum((l) => l.frsValue),
+    };
+  }, [view]);
+
+  useEffect(() => {
+    if (sheet) versionRef.current = sheet.version;
+  }, [sheet]);
 
   async function save() {
     if (!sheet) return;
@@ -138,8 +183,10 @@ export function AwsSsScreen() {
     if (!lines.length) return;
     setBusy('save');
     setError(null);
+    const send = (version: number) => saveLines(sheet.id, version, lines);
     try {
-      const next = await saveLines(sheet.id, sheet.version, lines);
+      const next = await send(versionRef.current);
+      versionRef.current = next.version;
       setSheet(next);
       setDrafts({});
       setSaved(true);
@@ -147,11 +194,19 @@ export function AwsSsScreen() {
       const code = (e as { code?: string }).code;
       if (code === 'VERSION_CONFLICT') {
         const fresh = await getStatement(sheet.id);
-        setSheet(fresh);
-        setError(
-          'Someone else saved this sheet. Your unsaved numbers are still here. Save again to keep them.',
-        );
-      } else setError(messageOf(e));
+        versionRef.current = fresh.version;
+        try {
+          const next = await send(fresh.version);
+          versionRef.current = next.version;
+          setSheet(next);
+          setDrafts({});
+          setSaved(true);
+          return;
+        } catch {
+          setSheet(fresh);
+        }
+      }
+      setError(messageOf(e));
     } finally {
       setBusy(null);
     }
@@ -166,12 +221,13 @@ export function AwsSsScreen() {
       if (Object.keys(drafts).length) {
         current = await saveLines(
           sheet.id,
-          sheet.version,
+          versionRef.current,
           Object.entries(drafts).map(([productId, d]) => ({ productId, ...d })),
         );
+        versionRef.current = current.version;
         setDrafts({});
       }
-      const next = await submitStatement(current.id, current.version);
+      const next = await submitStatement(current.id, versionRef.current);
       setSheet(next);
     } catch (e) {
       setError(messageOf(e));
@@ -196,10 +252,30 @@ export function AwsSsScreen() {
     }
   }
 
+  async function deleteFile(kind: 'aws' | 'ss') {
+    if (!sheet) return;
+    setBusy(kind);
+    setError(null);
+    try {
+      const next = await removeFile(sheet.id, kind);
+      versionRef.current = next.version;
+      setSheet(next);
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function downloadFile(kind: 'aws' | 'ss') {
     if (!sheet) return;
-    const { downloadUrl } = await fileLink(sheet.id, kind);
-    window.open(downloadUrl, '_blank', 'noopener');
+    setError(null);
+    try {
+      const { downloadUrl } = await fileLink(sheet.id, kind);
+      window.open(downloadUrl, '_blank', 'noopener');
+    } catch (e) {
+      setError(messageOf(e));
+    }
   }
 
   async function decide(decision: 'approve' | 'reject') {
@@ -211,9 +287,10 @@ export function AwsSsScreen() {
       if (decision === 'approve' && Object.keys(drafts).length) {
         current = await saveLines(
           sheet.id,
-          sheet.version,
+          versionRef.current,
           Object.entries(drafts).map(([productId, d]) => ({ productId, ...d })),
         );
+        versionRef.current = current.version;
         setDrafts({});
         setSheet(current);
       }
@@ -255,9 +332,11 @@ export function AwsSsScreen() {
           selected={selected}
           onSelect={(id) => {
             setStockistId(id);
-            setSheet(null);
             setDrafts({});
-            if (id) void load(id, month);
+            if (id) {
+              remember(id, month);
+              void load(id, month);
+            }
           }}
         />
         <label className="flex flex-col gap-1 text-sm">
@@ -269,7 +348,10 @@ export function AwsSsScreen() {
             onChange={(e) => {
               const next = e.target.value;
               setMonth(next);
-              if (stockistId && next) void load(stockistId, next);
+              if (stockistId && next) {
+                remember(stockistId, next);
+                void load(stockistId, next);
+              }
             }}
           />
         </label>
@@ -284,7 +366,13 @@ export function AwsSsScreen() {
                 <button
                   type="button"
                   className="text-sm underline-offset-4 hover:underline"
-                  onClick={() => void getStatement(item.id).then(setSheet)}
+                  onClick={() => {
+                    const next = item.month.slice(0, 7);
+                    setStockistId(item.stockistId);
+                    setMonth(next);
+                    remember(item.stockistId, next);
+                    void load(item.stockistId, next);
+                  }}
                 >
                   {item.stockistName}, {item.month}
                 </button>
@@ -307,7 +395,7 @@ export function AwsSsScreen() {
               <p className="text-sm text-destructive">Rejected: {sheet.rejectionReason}</p>
             )}
           </div>
-          <div className="sticky top-0 z-40 -mx-4 flex min-h-[4.25rem] items-center gap-4 border-b bg-background/95 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
+          <div className="sticky top-0 z-40 -mx-4 flex flex-col gap-3 border-b bg-background/95 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
             <div className="min-w-0">
               <p className="truncate font-medium" title={sheet.stockistName}>
                 {sheet.stockistName}
@@ -316,23 +404,15 @@ export function AwsSsScreen() {
                 Actual secondary {inr.format(Math.round(actual * 100) / 100)}
               </p>
             </div>
-            {sheet.canDecide && !editing && (
-              <button
+            <div className="flex flex-wrap gap-2">
+              <Button
                 type="button"
-                className="h-9 w-28 shrink-0 rounded-md border text-sm"
-                onClick={() => setEditing(true)}
-              >
-                Edit
-              </button>
-            )}
-            <div className="ml-auto grid w-[42rem] shrink-0 grid-cols-6 gap-2">
-              <button
-                type="button"
-                className="h-9 w-full rounded-md border text-sm"
+                variant="outline"
+                className="h-9"
                 onClick={() => historyRef.current?.showModal()}
               >
                 History
-              </button>
+              </Button>
               <FileButton
                 label={sheet.aws.status === 'confirmed' ? 'Replace AWS' : 'Upload AWS'}
                 disabled={!fieldsOpen || busy != null}
@@ -343,10 +423,20 @@ export function AwsSsScreen() {
                 disabled={!fieldsOpen || busy != null}
                 onFile={(f) => void upload('ss', f)}
               />
+              {sheet.canDecide && !editing && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9"
+                  onClick={() => setEditing(true)}
+                >
+                  Edit
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"
-                className="w-full"
+                className="h-9"
                 disabled={!fieldsOpen || busy != null || !Object.keys(drafts).length}
                 onClick={() => void save()}
               >
@@ -354,7 +444,7 @@ export function AwsSsScreen() {
               </Button>
               <Button
                 type="button"
-                className="w-full"
+                className="h-9"
                 disabled={!sheet.canSubmit || busy != null}
                 onClick={() => void submit()}
               >
@@ -363,7 +453,7 @@ export function AwsSsScreen() {
               <Button
                 type="button"
                 variant="outline"
-                className="w-full"
+                className="h-9"
                 onClick={() =>
                   void downloadPdf(sheet.id, `${sheet.stockistName}-${sheet.month}.pdf`)
                 }
@@ -371,29 +461,61 @@ export function AwsSsScreen() {
                 Export
               </Button>
             </div>
+            {(sheet.aws.status === 'confirmed' || sheet.ss.status === 'confirmed') && (
+              <div className="flex flex-wrap gap-3">
+                {sheet.aws.status === 'confirmed' && (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9"
+                      onClick={() => void downloadFile('aws')}
+                    >
+                      Download AWS
+                    </Button>
+                    {fieldsOpen && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="size-9"
+                        aria-label="Delete AWS"
+                        disabled={busy != null}
+                        onClick={() => void deleteFile('aws')}
+                      >
+                        <Trash2 />
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {sheet.ss.status === 'confirmed' && (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9"
+                      onClick={() => void downloadFile('ss')}
+                    >
+                      Download SS
+                    </Button>
+                    {fieldsOpen && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="size-9"
+                        aria-label="Delete SS"
+                        disabled={busy != null}
+                        onClick={() => void deleteFile('ss')}
+                      >
+                        <Trash2 />
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          {(sheet.aws.status === 'confirmed' || sheet.ss.status === 'confirmed') && (
-            <div className="flex gap-4 text-sm">
-              {sheet.aws.status === 'confirmed' && (
-                <button
-                  type="button"
-                  className="underline-offset-4 hover:underline"
-                  onClick={() => void downloadFile('aws')}
-                >
-                  Download AWS
-                </button>
-              )}
-              {sheet.ss.status === 'confirmed' && (
-                <button
-                  type="button"
-                  className="underline-offset-4 hover:underline"
-                  onClick={() => void downloadFile('ss')}
-                >
-                  Download SS
-                </button>
-              )}
-            </div>
-          )}
           {sheet.canDecide && (
             <div className="flex flex-wrap items-end gap-2">
               <Button type="button" disabled={busy != null} onClick={() => void decide('approve')}>
@@ -425,7 +547,7 @@ export function AwsSsScreen() {
             tabIndex={0}
             role="region"
             aria-label="Stock and sales lines"
-            className="rounded-md border"
+            className="max-h-[calc(100dvh-20rem)] overflow-auto rounded-md border"
           >
             <table className="w-full min-w-[62rem] table-fixed border-separate border-spacing-0 border-border text-sm tabular-nums [&_tbody_td]:border-b [&_tbody_th]:border-b [&_td]:border-border [&_th]:border-border">
               <colgroup>
@@ -434,21 +556,21 @@ export function AwsSsScreen() {
                 {groups.map((group) => (
                   <Fragment key={group.title}>
                     <col className="w-[4.75rem]" />
-                    <col className="w-[5.25rem]" />
+                    <col className="w-[7rem]" />
                   </Fragment>
                 ))}
               </colgroup>
-              <thead className="sticky top-[4.25rem] z-20 text-left">
+              <thead className="sticky top-0 z-20 text-left">
                 <tr>
                   <th
-                    rowSpan={2}
+                    rowSpan={3}
                     scope="col"
                     className="sticky left-0 z-30 border-r-2 border-b bg-background px-2 py-2 align-bottom font-medium"
                   >
                     Product
                   </th>
                   <th
-                    rowSpan={2}
+                    rowSpan={3}
                     scope="col"
                     className="border-r-2 border-b bg-background px-1 py-2 align-bottom font-medium"
                   >
@@ -472,6 +594,42 @@ export function AwsSsScreen() {
                   {groups.map((group) => (
                     <Pair key={group.title} title={group.title} head={group.head} />
                   ))}
+                </tr>
+                <tr>
+                  <Total label="Qty" value={totals.openingQty} tone={groups[0].head} />
+                  <Total
+                    label="Value"
+                    value={totals.openingValue}
+                    money
+                    tone={groups[0].head}
+                    edge
+                  />
+                  <Total label="Qty" value={totals.purchaseQty} tone={groups[1].head} />
+                  <Total
+                    label="Value"
+                    value={totals.purchaseValue}
+                    money
+                    tone={groups[1].head}
+                    edge
+                  />
+                  <Total label="Qty" value={totals.secondaryQty} tone={groups[2].head} />
+                  <Total
+                    label="Value"
+                    value={totals.secondaryValue}
+                    money
+                    tone={groups[2].head}
+                    edge
+                  />
+                  <Total label="Qty" value={totals.closingQty} tone={groups[3].head} />
+                  <Total
+                    label="Value"
+                    value={totals.closingValue}
+                    money
+                    tone={groups[3].head}
+                    edge
+                  />
+                  <Total label="Qty" value={totals.frsQty} tone={groups[4].head} />
+                  <Total label="Value" value={totals.frsValue} money tone={groups[4].head} edge />
                 </tr>
               </thead>
               <tbody>
@@ -571,25 +729,30 @@ export function AwsSsScreen() {
               ))}
             </div>
             <ul className="mt-4 flex flex-col">
-              {history
-                .filter((h) => h.id !== sheet.id)
-                .map((item) => (
-                  <li key={item.id} className="border-b">
-                    <button
-                      type="button"
-                      className="w-full py-3 text-left text-sm"
-                      onClick={() => {
-                        historyRef.current?.close();
-                        void getStatement(item.id).then((next) => {
-                          setSheet(next);
-                          setDrafts({});
-                        });
-                      }}
-                    >
-                      {item.month} · {label(item.status)} · {inr.format(item.actualSecondary)}
-                    </button>
-                  </li>
-                ))}
+              {history.length === 0 && (
+                <li className="py-3 text-sm text-muted-foreground">No months for this stockist.</li>
+              )}
+              {history.map((item) => (
+                <li key={item.id} className="border-b">
+                  <button
+                    type="button"
+                    className={cn(
+                      'w-full py-3 text-left text-sm',
+                      item.id === sheet.id && 'font-medium',
+                    )}
+                    onClick={() => {
+                      const next = item.month.slice(0, 7);
+                      historyRef.current?.close();
+                      setMonth(next);
+                      remember(sheet.stockistId, next);
+                      void load(sheet.stockistId, next);
+                    }}
+                  >
+                    {item.month.slice(0, 7)} · {label(item.status)} ·{' '}
+                    {inr.format(item.actualSecondary)}
+                  </button>
+                </li>
+              ))}
             </ul>
           </dialog>
         </div>
@@ -713,6 +876,34 @@ function StockistDropdown({
   );
 }
 
+function Total({
+  label,
+  value,
+  money,
+  tone,
+  edge,
+}: {
+  label: string;
+  value: number;
+  money?: boolean;
+  tone: string;
+  edge?: boolean;
+}) {
+  return (
+    <th
+      scope="col"
+      className={cn(
+        'border-b px-1 py-1 text-right font-medium tabular-nums',
+        edge ? 'border-r-2' : 'border-r',
+        tone,
+      )}
+    >
+      <span className="sr-only">Total {label} </span>
+      {money ? inr.format(Math.round(value * 100) / 100) : value}
+    </th>
+  );
+}
+
 function Pair({ title, head }: { title: string; head: string }) {
   return (
     <>
@@ -760,7 +951,7 @@ function Money({ value, tone, edge }: { value: number | null; tone: string; edge
         tone,
       )}
     >
-      <span className="block h-8 truncate leading-8">{value == null ? '' : inr.format(value)}</span>
+      <span className="block h-8 leading-8">{value == null ? '' : inr.format(value)}</span>
     </td>
   );
 }
@@ -777,7 +968,7 @@ function FileButton({
   return (
     <label
       className={cn(
-        'inline-flex h-9 w-full cursor-pointer items-center justify-center rounded-md border px-2 text-sm',
+        'inline-flex h-9 cursor-pointer items-center justify-center rounded-md border px-3 text-sm',
         disabled && 'pointer-events-none opacity-50',
       )}
     >
