@@ -13,7 +13,13 @@ import { TenantService } from '../common/tenant.service';
 import { JobsRunner } from '../jobs/jobs.runner';
 import { JobsService } from '../jobs/jobs.service';
 import { AUTO_APPROVE_REASON } from '../plans/auto-approve';
-import { doctorOccasionRecipients, occasionSummary, occasionTitle } from './occasions';
+import {
+  birthdaySummary,
+  doctorOccasionRecipients,
+  employeeBirthdayRecipients,
+  occasionSummary,
+  occasionTitle,
+} from './occasions';
 import { deadPushTokens, isExpoPushToken, pushTicketsSettled, sendExpoPush } from './push';
 import { render, type NotifyData } from './templates';
 
@@ -263,7 +269,19 @@ export class NotificationsService {
         data: { title: occasionTitle(lines), summary: occasionSummary(lines) },
       });
     }
-    this.log.log(`occasions ${runDate}: ${grouped.size} people`);
+    const birthdays = await employeeBirthdayRecipients(tx, runDate);
+    for (const [userId, lines] of birthdays) {
+      await this.deliver(tx, companyId, {
+        type: 'employee.birthday',
+        recipientId: userId,
+        actorId: null,
+        entityType: null,
+        entityId: null,
+        dedupeKey: `${runDate}:birthdays`,
+        data: { title: 'Birthdays', summary: birthdaySummary(lines) },
+      });
+    }
+    this.log.log(`occasions ${runDate}: ${grouped.size} people, ${birthdays.size} managers`);
   }
 
   /** Best-effort phone banner. A failure retries the job and does not remove the inbox row. */

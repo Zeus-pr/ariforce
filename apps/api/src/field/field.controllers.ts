@@ -363,6 +363,7 @@ export class UsersController {
           phone: u.phone,
           designation: u.designation,
           joinedOn: u.joinedOn,
+          dateOfBirth: u.dateOfBirth,
           roles: ur,
           primaryRole: top,
           rank: top ? ROLE_RANK[top] : 0,

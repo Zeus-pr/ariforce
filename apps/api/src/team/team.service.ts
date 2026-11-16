@@ -60,6 +60,7 @@ export type Person = {
   employeeCode: string | null;
   designation: string | null;
   joinedOn: string | null;
+  dateOfBirth: string | null;
   managerId: string | null;
   status: 'invited' | 'active' | 'suspended';
   hasLogin: boolean;
@@ -133,6 +134,7 @@ export class TeamService {
           employeeCode: u.employeeCode,
           designation: u.designation,
           joinedOn: u.joinedOn,
+          dateOfBirth: u.dateOfBirth,
           managerId: u.managerId,
           status: u.status as Person['status'], // pending/rejected filtered out above
           hasLogin: !!u.authUserId,
@@ -664,6 +666,7 @@ export class TeamService {
         phone: b.phone,
         designation: b.designation,
         joinedOn: b.joinedOn,
+        dateOfBirth: b.dateOfBirth,
         managerId: mgrAfter === t.managerId ? undefined : mgrAfter,
         status: b.status,
         updatedAt: new Date(),
