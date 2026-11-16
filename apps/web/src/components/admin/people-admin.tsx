@@ -358,6 +358,7 @@ type Form = {
   employeeCode: string;
   designation: string;
   joinedOn: string;
+  dateOfBirth: string;
   role: Role;
   territoryId: string;
   managerId: string | null;
@@ -370,6 +371,7 @@ const toForm = (p: Person): Form => ({
   employeeCode: p.employeeCode ?? '',
   designation: p.designation ?? '',
   joinedOn: p.joinedOn ?? '',
+  dateOfBirth: p.dateOfBirth ?? '',
   role: (topRole(p) ?? 'business_manager') as Role,
   territoryId: hqOf(p)?.id ?? p.territoryIds[0] ?? '',
   managerId: p.managerId,
@@ -495,6 +497,7 @@ function PersonSheet({
     if (t(f.employeeCode) !== orig.employeeCode) p.employeeCode = t(f.employeeCode) || null;
     if (t(f.designation) !== orig.designation) p.designation = t(f.designation) || null;
     if (f.joinedOn !== orig.joinedOn) p.joinedOn = f.joinedOn || null;
+    if (f.dateOfBirth !== orig.dateOfBirth) p.dateOfBirth = f.dateOfBirth || null;
     if (f.role !== orig.role) p.role = f.role;
     if (isFunctional) {
       if (base.territoryIds.length) p.territoryIds = [];
@@ -722,6 +725,16 @@ function PersonSheet({
                   type="date"
                   value={f.joinedOn}
                   onChange={(e) => set({ joinedOn: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-dob">Date of birth</Label>
+                <Input
+                  id="edit-dob"
+                  data-testid="edit-dob"
+                  type="date"
+                  value={f.dateOfBirth}
+                  onChange={(e) => set({ dateOfBirth: e.target.value })}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
