@@ -154,5 +154,10 @@ export function render(type: NotificationType, d: NotifyData): { title: string; 
         title: s(d.title).slice(0, 120) || 'Doctor dates coming up',
         body: s(d.summary).slice(0, 500) || 'A doctor birthday or anniversary is coming up.',
       };
+    case 'employee.birthday':
+      return {
+        title: s(d.title).slice(0, 120) || 'Birthdays',
+        body: s(d.summary).slice(0, 500) || 'Someone on your team has a birthday coming up.',
+      };
   }
 }

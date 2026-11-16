@@ -1,4 +1,4 @@
-import { doctors, userTerritories, users, type Tx } from '@ariforce/db';
+import { doctors, roles, userRoles, userTerritories, users, type Tx } from '@ariforce/db';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 export type OccasionKind = 'birthday' | 'anniversary';
@@ -59,7 +59,7 @@ export function occasionSummary(
 
 /**
  * Approved doctors whose birthday or anniversary is today or within the next 5 days.
- * Recipients are people assigned to the doctor's HQ (or local territory) and the managers above them.
+ * Recipients are the business managers on the doctor's HQ or patch, and every manager above them.
  */
 export async function doctorOccasionRecipients(tx: Tx, runDate: string) {
   const rows = await tx
@@ -110,11 +110,14 @@ export async function doctorOccasionRecipients(tx: Tx, runDate: string) {
     .select({ userId: userTerritories.userId, territoryId: userTerritories.territoryId })
     .from(userTerritories)
     .innerJoin(users, eq(users.id, userTerritories.userId))
+    .innerJoin(userRoles, eq(userRoles.userId, users.id))
+    .innerJoin(roles, eq(roles.id, userRoles.roleId))
     .where(
       and(
         inArray(userTerritories.territoryId, territoryIds),
         isNull(users.deletedAt),
         eq(users.status, 'active'),
+        eq(roles.key, 'business_manager'),
       ),
     );
 
@@ -158,4 +161,33 @@ export async function doctorOccasionRecipients(tx: Tx, runDate: string) {
     }
   }
   return out;
+}
+
+/** Direct managers of employees whose birthday is today or within the next 5 days. */
+export async function employeeBirthdayRecipients(tx: Tx, runDate: string) {
+  const rows = await tx
+    .select({
+      name: users.name,
+      managerId: users.managerId,
+      dateOfBirth: users.dateOfBirth,
+    })
+    .from(users)
+    .where(and(isNull(users.deletedAt), eq(users.status, 'active')));
+  const out = new Map<string, { name: string; days: number }[]>();
+  for (const row of rows) {
+    if (!row.managerId) continue;
+    const days = daysUntilOccasion(row.dateOfBirth, runDate);
+    if (days === null) continue;
+    const list = out.get(row.managerId) ?? [];
+    list.push({ name: row.name, days });
+    out.set(row.managerId, list);
+  }
+  return out;
+}
+
+export function birthdaySummary(lines: { name: string; days: number }[]): string {
+  const shown = lines.slice(0, 12);
+  const text = shown.map((l) => `${l.name}: birthday ${occasionWhen(l.days)}`).join('\n');
+  const more = lines.length - shown.length;
+  return more > 0 ? `${text}\n+${more} more` : text;
 }

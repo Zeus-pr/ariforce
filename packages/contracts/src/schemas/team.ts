@@ -116,6 +116,7 @@ export const EmployeeUpdate = z
     phone: Phone.nullable().optional(),
     designation: z.string().trim().max(100).nullable().optional(),
     joinedOn: z.iso.date().nullable().optional(),
+    dateOfBirth: z.iso.date().nullable().optional(),
     role: RoleKey.optional(),
     territoryIds: z.array(Id).optional().meta({
       description:

@@ -106,6 +106,8 @@ export const users = pgTable(
     designation: text('designation'),
     /** Date of joining (from HR import); nullable. */
     joinedOn: date('joined_on'),
+    /** Birthday. The direct manager is reminded each day from five days before through the day. */
+    dateOfBirth: date('date_of_birth'),
     /** Reporting manager (people hierarchy; may differ from territory hierarchy). */
     managerId: uuid('manager_id'),
     status: userStatus('status').notNull().default('active'),

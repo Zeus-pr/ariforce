@@ -4118,6 +4118,7 @@ export interface components {
       phone?: string | null;
       designation?: string | null;
       joinedOn?: string | null;
+      dateOfBirth?: string | null;
       role?: components['schemas']['RoleKey'];
       /** @description Replaces all territories (first = primary). Hierarchy roles need at least one; functional roles may send [] */
       territoryIds?: string[];
@@ -5767,6 +5768,8 @@ export interface components {
       phone?: string | null;
       designation?: string | null;
       joinedOn?: string | null;
+      /** @description Birthday. The direct manager is reminded daily from five days before through the day */
+      dateOfBirth?: string | null;
       roles: components['schemas']['RoleKey'][];
       /** @description Highest-ranked role (the one the UI shows) */
       primaryRole?: components['schemas']['RoleKey'] | null;
@@ -7817,6 +7820,7 @@ export interface components {
       | 'dcr_unlock.rejected'
       | 'company.message'
       | 'doctor.occasion'
+      | 'employee.birthday'
       | 'stock_statement.submitted'
       | 'stock_statement.approved'
       | 'stock_statement.rejected';

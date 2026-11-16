@@ -23,7 +23,7 @@ const Address = {
     .regex(/^[1-9][0-9]{5}$/)
     .nullable(),
   location: GeoPoint.nullable(),
-  phone: z.string().max(20).nullable(),
+  phone: z.string().max(35).nullable(),
 };
 
 /** Calendar day stored as text (doctors.date_of_birth / anniversary). Omit or null when unknown. */
