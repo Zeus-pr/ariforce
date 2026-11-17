@@ -18,8 +18,10 @@ import {
   asFailure,
   getSettings,
   saveRate,
+  getSheet,
   listEmployees,
   listHqs,
+  listPeople,
   type SfcEmployee,
   type SfcHq,
 } from '@/lib/sfc/adapter';
@@ -42,6 +44,8 @@ export function SfcScreen() {
   // The HQ list folds to one line once an HQ is picked; Change opens it again.
   const [hqOpen, setHqOpen] = useState(true);
   const [emps, setEmps] = useState<SfcEmployee[] | null>(null);
+  const [people, setPeople] = useState<SfcEmployee[] | null>(null);
+  const [personQ, setPersonQ] = useState('');
   const [emp, setEmp] = useState<SfcEmployee | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -56,6 +60,12 @@ export function SfcScreen() {
       .then(setHqs)
       .catch((e) => {
         setHqs([]);
+        setErr(asFailure(e).message);
+      });
+    listPeople()
+      .then(setPeople)
+      .catch((e) => {
+        setPeople([]);
         setErr(asFailure(e).message);
       });
   }, []);
@@ -92,6 +102,36 @@ export function SfcScreen() {
       setDirty(false);
       setEmp(e);
     });
+  const openFromSearch = (e: SfcEmployee) => {
+    if (!e.canEdit) return;
+    guard(() => {
+      setDirty(false);
+      void getSheet(e.id)
+        .then((sheet) => {
+          const hqId = sheet.hqId ?? e.hqId;
+          if (!hqId) {
+            setErr('This person has no headquarters, so a chart cannot be saved.');
+            return;
+          }
+          const known = (hqs ?? []).find((h) => h.id === hqId);
+          setHq(
+            known ?? { id: hqId, name: 'Headquarters', code: null, areaId: null, areaName: null },
+          );
+          setHqOpen(false);
+          setEmp({ ...e, hqId });
+          setPersonQ('');
+          setErr(null);
+        })
+        .catch((err) => setErr(asFailure(err).message));
+    });
+  };
+  const found = useMemo(() => {
+    const q = personQ.trim().toLowerCase();
+    if (!q) return [];
+    return (people ?? []).filter((p) =>
+      `${p.name} ${p.employeeCode ?? ''}`.toLowerCase().includes(q),
+    );
+  }, [people, personQ]);
 
   const groups = useMemo(() => {
     const q = hqQ.trim().toLowerCase();
@@ -127,6 +167,60 @@ export function SfcScreen() {
           {err}
         </p>
       )}
+      <section className={step} data-testid="sfc-search">
+        <h2 className={stepTitle}>Find a person</h2>
+        <Input
+          aria-label="Search people"
+          placeholder="Search by name or employee code"
+          value={personQ}
+          onChange={(e) => setPersonQ(e.target.value)}
+          data-testid="sfc-person-search"
+          autoComplete="off"
+        />
+        {personQ.trim() ? (
+          <ul className="max-h-64 divide-y overflow-y-auto rounded-md border">
+            {people === null ? (
+              <li className="p-3 text-sm text-muted-foreground">Loading…</li>
+            ) : found.length === 0 ? (
+              <li className="p-3 text-sm text-muted-foreground" data-testid="sfc-person-none">
+                No one matches.
+              </li>
+            ) : (
+              found.map((e) =>
+                e.canEdit ? (
+                  <li key={e.id}>
+                    <button
+                      type="button"
+                      onClick={() => openFromSearch(e)}
+                      className="flex w-full justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-muted/60"
+                      data-testid="sfc-person"
+                    >
+                      <span>{e.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {[e.employeeCode, roleLabel(e.role)].filter(Boolean).join(' · ')}
+                      </span>
+                    </button>
+                  </li>
+                ) : (
+                  <li
+                    key={e.id}
+                    className="bg-muted/40 px-3 py-2 text-muted-foreground"
+                    data-testid="sfc-person-locked"
+                  >
+                    <div className="flex justify-between gap-2 text-sm">
+                      <span>{e.name}</span>
+                      <span className="text-xs">
+                        {[e.employeeCode, roleLabel(e.role)].filter(Boolean).join(' · ')}
+                      </span>
+                    </div>
+                    <p className="text-xs">You can’t edit this person’s SFC.</p>
+                  </li>
+                ),
+              )
+            )}
+          </ul>
+        ) : null}
+      </section>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <section className={step} data-testid="sfc-step-hq">
           <h2 className={stepTitle}>1. HQ</h2>
