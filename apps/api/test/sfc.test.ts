@@ -229,7 +229,27 @@ describe.skipIf(!OWNER || !APP)('SFC routes (real API)', () => {
     );
     expect(emp.items.some((e) => e.id === U.area)).toBe(true);
     expect(emp.items.some((e) => e.id === U.rep)).toBe(true);
-    expect(emp.items.some((e) => e.id === U.regional)).toBe(false);
+    expect(emp.items.some((e) => e.id === U.regional)).toBe(true);
+    expect(emp.items.some((e) => e.id === U.zonal)).toBe(false);
+    const region = await http().get(url(U.regional)).set(as('director'));
+    expect(region.status).toBe(200);
+    const regionPut = await http()
+      .put(url(U.regional))
+      .set(as('director'))
+      .send({
+        etag: region.body.etag,
+        hqTerritoryId: T.hq,
+        routes: [{ fromPlace: 'Burdwan', toPlace: 'Anamoy', oneWayKm: 12, category: 'ex' }],
+      });
+    expect(regionPut.status).toBe(200);
+    expect(regionPut.body.routes).toHaveLength(1);
+    const zone = await http().get(url(U.zonal)).set(as('director'));
+    const zonePut = await http()
+      .put(url(U.zonal))
+      .set(as('director'))
+      .send({ etag: zone.body.etag, hqTerritoryId: T.hq, routes: [] });
+    expect(zonePut.status).toBe(422);
+    expect(zonePut.body.error.code).toBe('SFC_HQ_NOT_ASSIGNED');
     const g = await http().get(url(U.area)).set(as('director'));
     expect(g.status).toBe(200);
     const put = await http()

@@ -185,7 +185,8 @@ export class SfcService {
              join territories root on root.id = ${territoryId}::uuid
              where ut2.user_id = su.id and (
                t2.path = root.path or starts_with(t2.path, root.path || '.')
-               or (root.level = 'headquarter' and t2.level = 'area' and t2.id = root.parent_id)))`
+               or (root.level = 'headquarter' and t2.level in ('area', 'region')
+                 and starts_with(root.path, t2.path || '.'))))`
         : sql``;
       const rows = await tx.execute<{
         id: string;
@@ -286,8 +287,10 @@ export class SfcService {
               where ut.user_id = ${u.id}::uuid and ut.territory_id = hq.id)
             or (hq.level = 'headquarter' and exists (
               select 1 from user_territories ut
-              join territories area on area.id = ut.territory_id and area.deleted_at is null
-              where ut.user_id = ${u.id}::uuid and area.level = 'area' and area.id = hq.parent_id)))`);
+              join territories above on above.id = ut.territory_id and above.deleted_at is null
+              where ut.user_id = ${u.id}::uuid
+                and above.level in ('area', 'region')
+                and starts_with(hq.path, above.path || '.'))))`);
       if (!hq.rows.length)
         throw err(422, 'SFC_HQ_NOT_ASSIGNED', 'hqTerritoryId is not assigned to this employee');
       const before = await tx
