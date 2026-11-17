@@ -224,25 +224,36 @@ export const listHqs = () =>
       areaName: h.parentName,
     })),
   );
+type ApiEmployee = {
+  id: string;
+  name: string;
+  employeeCode: string | null;
+  role: string | null;
+  rank: number;
+  hqTerritoryIds: string[];
+  canEdit: boolean;
+};
+const toEmployee = (e: ApiEmployee, hqId: string | null): SfcEmployee => ({
+  id: e.id,
+  name: e.name,
+  employeeCode: e.employeeCode,
+  role: e.role,
+  hqId,
+  canEdit: e.canEdit,
+});
 export const listEmployees = (hqId: string) =>
-  call<{
-    items: {
-      id: string;
-      name: string;
-      employeeCode: string | null;
-      role: string | null;
-      hqTerritoryIds: string[];
-      canEdit: boolean;
-    }[];
-  }>(`/v1/sfc/employees?territoryId=${encodeURIComponent(hqId)}`).then((r) =>
-    r.items.map((e) => ({
-      id: e.id,
-      name: e.name,
-      employeeCode: e.employeeCode,
-      role: e.role,
-      hqId: e.hqTerritoryIds.includes(hqId) ? hqId : (e.hqTerritoryIds[0] ?? null),
-      canEdit: e.canEdit,
-    })),
+  call<{ items: ApiEmployee[] }>(`/v1/sfc/employees?territoryId=${encodeURIComponent(hqId)}`).then(
+    (r) =>
+      r.items
+        .filter((e) => e.rank >= 1)
+        .map((e) =>
+          toEmployee(e, e.hqTerritoryIds.includes(hqId) ? hqId : (e.hqTerritoryIds[0] ?? null)),
+        ),
+  );
+/** Every sales person the caller can see, for the search box. */
+export const listPeople = () =>
+  call<{ items: ApiEmployee[] }>('/v1/sfc/employees').then((r) =>
+    r.items.filter((e) => e.rank >= 1).map((e) => toEmployee(e, e.hqTerritoryIds[0] ?? null)),
   );
 /** HQ/EX/EX HQ/OS/OUT EX HQ/EX / OS/MEETING, or the raw text when it is not one of those. */
 function categoryForSave(label: string): string | null {
