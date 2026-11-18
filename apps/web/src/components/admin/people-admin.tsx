@@ -20,14 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@ariforce/ui/components/select';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@ariforce/ui/components/sheet';
 import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
 import {
@@ -461,22 +453,32 @@ function PersonSheet({
   onGone: () => void;
 }) {
   const [base, setBase] = useState<Person | null>(person);
-  const [f, setF] = useState<Form | null>(null);
+  const [f, setF] = useState<Form | null>(person ? toForm(person) : null);
   const [error, setError] = useState<Failure | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState<string[] | null>(null);
   const [mgrName, setMgrName] = useState<string | null>(null);
   const [reportNames, setReportNames] = useState<Record<string, string>>({});
-
-  useEffect(() => {
+  const personKey = person?.id ?? null;
+  const [shown, setShown] = useState(personKey);
+  if (personKey !== shown) {
+    setShown(personKey);
     setBase(person);
     setF(person ? toForm(person) : null);
     setError(null);
     setMgrName(null);
-    // Only when a different person opens.
-  }, [person?.id]);
+    setReportNames({});
+  }
 
-  if (!person || !f || !base) return <Sheet open={false} />;
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = dialogRef.current;
+    if (!d) return;
+    if (person && base && !d.open) d.showModal();
+    if (!person && d.open) d.close();
+  }, [person, base]);
+
+  if (!person || !f || !base) return null;
   const set = (patch: Partial<Form>) => setF((x) => (x ? { ...x, ...patch } : x));
   const orig = toForm(base);
   const isFunctional = functional(f.role);
@@ -614,267 +616,266 @@ function PersonSheet({
 
   return (
     <>
-      <Sheet open onOpenChange={(o) => !o && onClose()}>
-        <SheetContent
-          className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-lg"
-          data-testid="person-sheet"
-        >
-          <SheetHeader>
-            <SheetTitle>{base.name}</SheetTitle>
-            <SheetDescription>
-              {base.email}. Changes save for everyone straight away.
-            </SheetDescription>
-          </SheetHeader>
-          <form className="flex flex-col gap-4 px-4 pb-4" onSubmit={onSubmit} noValidate>
-            {error && (
-              <p
-                role="alert"
-                className={cn(
-                  'rounded-md border p-3 text-sm',
-                  error.kind === 'conflict'
-                    ? 'border-warning/40 bg-warning/5 text-foreground'
-                    : 'border-destructive/30 bg-destructive/5 text-destructive',
-                )}
-                data-testid="edit-error"
-                data-kind={error.kind}
-              >
-                {error.message}
-                {error.userIds?.length ? (
-                  <span className="mt-1 block" data-testid="edit-error-reports">
-                    {error.userIds.map((id) => reportNames[id] ?? 'Unknown person').join(', ')}
+      <dialog
+        ref={dialogRef}
+        closedby="any"
+        aria-labelledby="person-record-title"
+        data-testid="person-sheet"
+        className="master-record m-auto w-[min(56rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-y-auto rounded-xl border bg-background p-6 text-foreground shadow-lg open:flex"
+        onClose={onClose}
+      >
+        <div className="mb-4">
+          <h2 id="person-record-title" className="text-lg font-semibold">
+            {base.name}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {base.email}. Changes save for everyone straight away.
+          </p>
+        </div>
+        <form className="flex flex-col gap-4 px-4 pb-4" onSubmit={onSubmit} noValidate>
+          {error && (
+            <p
+              role="alert"
+              className={cn(
+                'rounded-md border p-3 text-sm',
+                error.kind === 'conflict'
+                  ? 'border-warning/40 bg-warning/5 text-foreground'
+                  : 'border-destructive/30 bg-destructive/5 text-destructive',
+              )}
+              data-testid="edit-error"
+              data-kind={error.kind}
+            >
+              {error.message}
+              {error.userIds?.length ? (
+                <span className="mt-1 block" data-testid="edit-error-reports">
+                  {error.userIds.map((id) => reportNames[id] ?? 'Unknown person').join(', ')}
+                </span>
+              ) : null}
+            </p>
+          )}
+          {self && (
+            <p
+              className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground"
+              data-testid="edit-self"
+            >
+              This is you. Another System Admin has to change your own record.
+            </p>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <Label htmlFor="edit-name">Name</Label>
+              <Input
+                id="edit-name"
+                data-testid="edit-name"
+                value={f.name}
+                onChange={(e) => set({ name: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <Label htmlFor="edit-email">Email</Label>
+              {base.hasLogin ? (
+                <p className="text-sm" data-testid="edit-email-readonly">
+                  {base.email}
+                  <span className="block text-xs text-muted-foreground">
+                    They already sign in with this email, so it can’t be changed.
                   </span>
-                ) : null}
-              </p>
-            )}
-            {self && (
-              <p
-                className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground"
-                data-testid="edit-self"
+                </p>
+              ) : (
+                <>
+                  <Input
+                    id="edit-email"
+                    data-testid="edit-email"
+                    type="email"
+                    value={f.email}
+                    onChange={(e) => set({ email: e.target.value })}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    A waiting invite is cancelled and sent again to the new email.
+                  </span>
+                </>
+              )}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-phone">Phone</Label>
+              <Input
+                id="edit-phone"
+                data-testid="edit-phone"
+                type="tel"
+                inputMode="tel"
+                value={f.phone}
+                onChange={(e) => set({ phone: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-code">Employee code</Label>
+              <Input
+                id="edit-code"
+                data-testid="edit-code"
+                value={f.employeeCode}
+                onChange={(e) => set({ employeeCode: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-designation">Designation</Label>
+              <Input
+                id="edit-designation"
+                data-testid="edit-designation"
+                value={f.designation}
+                onChange={(e) => set({ designation: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-joined">Joined on</Label>
+              <Input
+                id="edit-joined"
+                data-testid="edit-joined"
+                type="date"
+                value={f.joinedOn}
+                onChange={(e) => set({ joinedOn: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-dob">Date of birth</Label>
+              <Input
+                id="edit-dob"
+                data-testid="edit-dob"
+                type="date"
+                value={f.dateOfBirth}
+                onChange={(e) => set({ dateOfBirth: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-role">Role</Label>
+              <Select
+                value={f.role}
+                onValueChange={(v) =>
+                  set({
+                    role: v as Role,
+                    territoryId:
+                      (v === 'business_manager') === (orig.role === 'business_manager')
+                        ? f.territoryId
+                        : '',
+                    managerId: v === 'director' || functional(v as Role) ? null : f.managerId,
+                  })
+                }
               >
-                This is you. Another System Admin has to change your own record.
-              </p>
-            )}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="flex flex-col gap-1.5 sm:col-span-2">
-                <Label htmlFor="edit-name">Name</Label>
-                <Input
-                  id="edit-name"
-                  data-testid="edit-name"
-                  value={f.name}
-                  onChange={(e) => set({ name: e.target.value })}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5 sm:col-span-2">
-                <Label htmlFor="edit-email">Email</Label>
-                {base.hasLogin ? (
-                  <p className="text-sm" data-testid="edit-email-readonly">
-                    {base.email}
-                    <span className="block text-xs text-muted-foreground">
-                      They already sign in with this email, so it can’t be changed.
-                    </span>
-                  </p>
-                ) : (
-                  <>
-                    <Input
-                      id="edit-email"
-                      data-testid="edit-email"
-                      type="email"
-                      value={f.email}
-                      onChange={(e) => set({ email: e.target.value })}
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      A waiting invite is cancelled and sent again to the new email.
-                    </span>
-                  </>
-                )}
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-phone">Phone</Label>
-                <Input
-                  id="edit-phone"
-                  data-testid="edit-phone"
-                  type="tel"
-                  inputMode="tel"
-                  value={f.phone}
-                  onChange={(e) => set({ phone: e.target.value })}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-code">Employee code</Label>
-                <Input
-                  id="edit-code"
-                  data-testid="edit-code"
-                  value={f.employeeCode}
-                  onChange={(e) => set({ employeeCode: e.target.value })}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-designation">Designation</Label>
-                <Input
-                  id="edit-designation"
-                  data-testid="edit-designation"
-                  value={f.designation}
-                  onChange={(e) => set({ designation: e.target.value })}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-joined">Joined on</Label>
-                <Input
-                  id="edit-joined"
-                  data-testid="edit-joined"
-                  type="date"
-                  value={f.joinedOn}
-                  onChange={(e) => set({ joinedOn: e.target.value })}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-dob">Date of birth</Label>
-                <Input
-                  id="edit-dob"
-                  data-testid="edit-dob"
-                  type="date"
-                  value={f.dateOfBirth}
-                  onChange={(e) => set({ dateOfBirth: e.target.value })}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-role">Role</Label>
+                <SelectTrigger id="edit-role" className="w-full" data-testid="edit-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {rolesByRank.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {ROLE_LABEL[r]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-status">Status</Label>
+              {statusEditable ? (
                 <Select
-                  value={f.role}
-                  onValueChange={(v) =>
-                    set({
-                      role: v as Role,
-                      territoryId:
-                        (v === 'business_manager') === (orig.role === 'business_manager')
-                          ? f.territoryId
-                          : '',
-                      managerId: v === 'director' || functional(v as Role) ? null : f.managerId,
-                    })
-                  }
+                  value={f.status}
+                  onValueChange={(v) => set({ status: v as Person['status'] })}
                 >
-                  <SelectTrigger id="edit-role" className="w-full" data-testid="edit-role">
+                  <SelectTrigger id="edit-status" className="w-full" data-testid="edit-status">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {rolesByRank.map((r) => (
-                      <SelectItem key={r} value={r}>
-                        {ROLE_LABEL[r]}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="suspended">Suspended</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
+              ) : (
+                <p className="text-sm text-muted-foreground" data-testid="edit-status-readonly">
+                  {STATUS_LABEL[base.status]}. Becomes active when they accept their invite.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {isFunctional ? (
+            <p className="text-sm text-muted-foreground" data-testid="edit-functional">
+              {ROLE_LABEL[f.role]} works company-wide: no HQ and no manager.
+            </p>
+          ) : (base.territoryIds?.length ?? 0) > 1 ? (
+            <div className="text-sm" data-testid="edit-places-readonly">
+              <p className="font-medium">Places</p>
+              <ul className="mt-1 text-muted-foreground">
+                {(base.territories ?? []).map((t) => (
+                  <li key={t.id}>
+                    {t.name} ({t.level})
+                  </li>
+                ))}
+              </ul>
+              <a className="mt-2 inline-block underline" href="/admin/organization">
+                Change these on Organization
+              </a>
+            </div>
+          ) : (
+            <>
+              <TerritoryPick
+                terrs={terrs}
+                value={f.territoryId}
+                onChange={(id) => set({ territoryId: id })}
+                hqOnly={f.role === 'business_manager'}
+              />
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="edit-status">Status</Label>
-                {statusEditable ? (
-                  <Select
-                    value={f.status}
-                    onValueChange={(v) => set({ status: v as Person['status'] })}
-                  >
-                    <SelectTrigger id="edit-status" className="w-full" data-testid="edit-status">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="suspended">Suspended</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <span className="text-sm font-medium">Reports to</span>
+                {needsManager ? (
+                  <>
+                    <p
+                      className="flex items-center gap-2 text-sm"
+                      data-testid="edit-manager-current"
+                    >
+                      {managerLabel}
+                      {f.managerId && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => set({ managerId: null })}
+                          data-testid="edit-manager-clear"
+                        >
+                          Remove
+                        </Button>
+                      )}
+                    </p>
+                    <UserSearch
+                      key={f.role}
+                      label="Pick a manager"
+                      testId="edit-manager-search"
+                      filter={(u) =>
+                        u.id !== base.id &&
+                        u.status !== 'suspended' &&
+                        u.roles.some((r) => roleLevel(r as Role) > roleLevel(f.role))
+                      }
+                      onPick={(u) => {
+                        set({ managerId: u.id });
+                        setMgrName(u.name);
+                      }}
+                    />
+                    <span className="text-xs text-muted-foreground" data-testid="edit-manager-hint">
+                      Only people above {ROLE_LABEL[f.role]} are listed. The manager will also see
+                      this person’s territory.
+                    </span>
+                  </>
                 ) : (
-                  <p className="text-sm text-muted-foreground" data-testid="edit-status-readonly">
-                    {STATUS_LABEL[base.status]}. Becomes active when they accept their invite.
-                  </p>
+                  <span className="text-sm text-muted-foreground">A director has no manager.</span>
                 )}
               </div>
-            </div>
-
-            {isFunctional ? (
-              <p className="text-sm text-muted-foreground" data-testid="edit-functional">
-                {ROLE_LABEL[f.role]} works company-wide: no HQ and no manager.
-              </p>
-            ) : (base.territoryIds?.length ?? 0) > 1 ? (
-              <div className="text-sm" data-testid="edit-places-readonly">
-                <p className="font-medium">Places</p>
-                <ul className="mt-1 text-muted-foreground">
-                  {(base.territories ?? []).map((t) => (
-                    <li key={t.id}>
-                      {t.name} ({t.level})
-                    </li>
-                  ))}
-                </ul>
-                <a className="mt-2 inline-block underline" href="/admin/organization">
-                  Change these on Organization
-                </a>
-              </div>
-            ) : (
-              <>
-                <TerritoryPick
-                  terrs={terrs}
-                  value={f.territoryId}
-                  onChange={(id) => set({ territoryId: id })}
-                  hqOnly={f.role === 'business_manager'}
-                />
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-sm font-medium">Reports to</span>
-                  {needsManager ? (
-                    <>
-                      <p
-                        className="flex items-center gap-2 text-sm"
-                        data-testid="edit-manager-current"
-                      >
-                        {managerLabel}
-                        {f.managerId && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => set({ managerId: null })}
-                            data-testid="edit-manager-clear"
-                          >
-                            Remove
-                          </Button>
-                        )}
-                      </p>
-                      <UserSearch
-                        key={f.role}
-                        label="Pick a manager"
-                        testId="edit-manager-search"
-                        filter={(u) =>
-                          u.id !== base.id &&
-                          u.status !== 'suspended' &&
-                          u.roles.some((r) => roleLevel(r as Role) > roleLevel(f.role))
-                        }
-                        onPick={(u) => {
-                          set({ managerId: u.id });
-                          setMgrName(u.name);
-                        }}
-                      />
-                      <span
-                        className="text-xs text-muted-foreground"
-                        data-testid="edit-manager-hint"
-                      >
-                        Only people above {ROLE_LABEL[f.role]} are listed. The manager will also see
-                        this person’s territory.
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">
-                      A director has no manager.
-                    </span>
-                  )}
-                </div>
-              </>
-            )}
-            <SheetFooter className="flex-row justify-end gap-2 px-0">
-              <Button type="button" variant="outline" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={saving || self} data-testid="edit-save">
-                {saving ? 'Saving…' : 'Save changes'}
-              </Button>
-            </SheetFooter>
-          </form>
-        </SheetContent>
-      </Sheet>
+            </>
+          )}
+          <div className="flex flex-row justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving || self} data-testid="edit-save">
+              {saving ? 'Saving…' : 'Save changes'}
+            </Button>
+          </div>
+        </form>
+      </dialog>
       <Dialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent data-testid="edit-confirm">
           <DialogHeader>

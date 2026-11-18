@@ -32,6 +32,7 @@ import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { CheckInsService, capDate, err, toCheckIn, type CheckInQuery } from './checkins.service';
 import { MAX_RANGE_DAYS, companySettings, dateRange, localDate } from './field.util';
 import { isSubmittedReport } from '../dcr/day-report';
+import { employeeProfile } from '../team/team.service';
 
 @Controller({ path: 'check-ins', version: '1' })
 export class CheckInsController {
@@ -364,6 +365,7 @@ export class UsersController {
           designation: u.designation,
           joinedOn: u.joinedOn,
           dateOfBirth: u.dateOfBirth,
+          ...employeeProfile(u),
           roles: ur,
           primaryRole: top,
           rank: top ? ROLE_RANK[top] : 0,

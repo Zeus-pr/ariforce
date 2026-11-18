@@ -23,7 +23,7 @@ import {
 } from '@/lib/auth';
 import { canSee, homeFor } from '@/lib/nav';
 
-export function SignInForm() {
+export function SignInForm({ desk = 'field' }: { desk?: 'field' | 'hr' }) {
   const router = useRouter();
   const params = useSearchParams();
   const [email, setEmail] = useState('');
@@ -66,7 +66,7 @@ export function SignInForm() {
       canSee(role, next.split('?')[0] ?? next)
         ? next
         : null;
-    router.replace(safe ?? homeFor(role));
+    router.replace(desk === 'hr' ? '/hr' : (safe ?? homeFor(role)));
   };
 
   const restart = (message?: string) => {
@@ -202,7 +202,7 @@ export function SignInForm() {
             className="af-enter af-enter-form grid gap-1.5"
             style={{ '--i': 1 } as React.CSSProperties}
           >
-            <Label htmlFor={`${id}-email`}>Work email</Label>
+            <Label htmlFor={`${id}-email`}>{desk === 'hr' ? 'User ID' : 'Work email'}</Label>
             <Input
               ref={emailRef}
               id={`${id}-email`}
@@ -212,12 +212,22 @@ export function SignInForm() {
               autoComplete="username"
               autoCapitalize="none"
               spellCheck={false}
+              required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               aria-invalid={!!err('email')}
-              aria-describedby={err('email') ? `${id}-email-err` : undefined}
+              aria-describedby={
+                [err('email') ? `${id}-email-err` : null, desk === 'hr' ? `${id}-email-hint` : null]
+                  .filter(Boolean)
+                  .join(' ') || undefined
+              }
               className="h-10 text-base md:text-base"
             />
+            {desk === 'hr' && (
+              <p id={`${id}-email-hint`} className="text-[13px] text-muted-foreground">
+                The work email is the user ID.
+              </p>
+            )}
             {err('email') && (
               <p id={`${id}-email-err`} className="af-fade text-[13px] text-destructive">
                 {err('email')}
@@ -237,6 +247,7 @@ export function SignInForm() {
                 name="password"
                 type={show ? 'text' : 'password'}
                 autoComplete="current-password"
+                required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 aria-invalid={!!err('password')}
@@ -274,24 +285,26 @@ export function SignInForm() {
           <div className="af-enter af-enter-form" style={{ '--i': 3 } as React.CSSProperties}>
             <Button type="submit" className="h-10 w-full text-[15px]" disabled={pending}>
               {pending && <LoaderCircle className="animate-spin motion-reduce:animate-none" />}
-              Sign in
+              {desk === 'hr' ? 'Sign in to HR' : 'Sign in'}
             </Button>
           </div>
         </form>
 
-        <p
-          className="af-enter af-enter-form mt-4 text-center text-sm text-muted-foreground"
-          style={{ '--i': 4 } as React.CSSProperties}
-        >
-          New to AriForce?{' '}
-          <Link
-            href="/sign-up"
-            data-testid="sign-up-link"
-            className="font-medium text-primary underline-offset-4 hover:underline"
+        {desk === 'field' && (
+          <p
+            className="af-enter af-enter-form mt-4 text-center text-sm text-muted-foreground"
+            style={{ '--i': 4 } as React.CSSProperties}
           >
-            Request an account
-          </Link>
-        </p>
+            New to AriForce?{' '}
+            <Link
+              href="/sign-up"
+              data-testid="sign-up-link"
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Request an account
+            </Link>
+          </p>
+        )}
       </div>
     </>
   );

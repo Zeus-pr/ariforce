@@ -3138,6 +3138,7 @@ export interface components {
       | 'vice_president'
       | 'director'
       | 'system_admin'
+      | 'hr'
       | 'distribution_head'
       | 'accountant';
     TerritoryCreate: {
@@ -4114,6 +4115,8 @@ export interface components {
       designation: string | null;
       /** @default null */
       joinedOn: string | null;
+      /** @default null */
+      dateOfBirth: string | null;
       /** @description Must be a hierarchy role strictly below the caller's; a system admin (users:write) may grant any role */
       role: components['schemas']['RoleKey'];
       /**
@@ -4126,6 +4129,53 @@ export interface components {
        * @default null
        */
       managerId: string | null;
+      series?: string | null;
+      gender?: ('Male' | 'Female' | 'Other' | 'Prefer not to say') | null;
+      salutation?: ('Mr' | 'Ms' | 'Mrs' | 'Dr') | null;
+      firstName?: string | null;
+      middleName?: string | null;
+      lastName?: string | null;
+      hrUserId?: string | null;
+      createUser?: boolean | null;
+      department?: string | null;
+      branch?: string | null;
+      grade?: string | null;
+      employeeGroup?: string | null;
+      employmentType?: ('Full-time' | 'Part-time' | 'Contract' | 'Intern' | 'Probation') | null;
+      hrStatus?: ('Active' | 'Inactive' | 'Suspended' | 'Left') | null;
+      personalEmail?: string | null;
+      currentAddress?: string | null;
+      permanentAddress?: string | null;
+      city?: string | null;
+      state?: string | null;
+      pincode?: string | null;
+      emergencyName?: string | null;
+      emergencyPhone?: string | null;
+      attendanceDeviceId?: string | null;
+      holidayList?: string | null;
+      defaultShift?: string | null;
+      leaveApprover?: string | null;
+      ctc?: number | null;
+      salaryMode?: ('Bank' | 'Cash' | 'Cheque') | null;
+      bankName?: string | null;
+      bankAccount?: string | null;
+      ifsc?: string | null;
+      pan?: string | null;
+      pfAccount?: string | null;
+      esiNumber?: string | null;
+      maritalStatus?: ('Single' | 'Married' | 'Divorced' | 'Widowed') | null;
+      bloodGroup?: ('A+' | 'A-' | 'B+' | 'B-' | 'O+' | 'O-' | 'AB+' | 'AB-') | null;
+      passport?: string | null;
+      family?: string | null;
+      confirmationDate?: string | null;
+      contractEnd?: string | null;
+      noticeDays?: number | null;
+      retirementDate?: string | null;
+      resignationDate?: string | null;
+      relievingDate?: string | null;
+      leaveEncashed?: ('Yes' | 'No') | null;
+      reasonForLeaving?: string | null;
+      feedback?: string | null;
     };
     EmployeeInviteBulk: {
       employees: components['schemas']['EmployeeCreate'][];
@@ -4154,6 +4204,53 @@ export interface components {
        * @enum {string}
        */
       status?: 'active' | 'suspended';
+      series?: string | null;
+      gender?: ('Male' | 'Female' | 'Other' | 'Prefer not to say') | null;
+      salutation?: ('Mr' | 'Ms' | 'Mrs' | 'Dr') | null;
+      firstName?: string | null;
+      middleName?: string | null;
+      lastName?: string | null;
+      hrUserId?: string | null;
+      createUser?: boolean | null;
+      department?: string | null;
+      branch?: string | null;
+      grade?: string | null;
+      employeeGroup?: string | null;
+      employmentType?: ('Full-time' | 'Part-time' | 'Contract' | 'Intern' | 'Probation') | null;
+      hrStatus?: ('Active' | 'Inactive' | 'Suspended' | 'Left') | null;
+      personalEmail?: string | null;
+      currentAddress?: string | null;
+      permanentAddress?: string | null;
+      city?: string | null;
+      state?: string | null;
+      pincode?: string | null;
+      emergencyName?: string | null;
+      emergencyPhone?: string | null;
+      attendanceDeviceId?: string | null;
+      holidayList?: string | null;
+      defaultShift?: string | null;
+      leaveApprover?: string | null;
+      ctc?: number | null;
+      salaryMode?: ('Bank' | 'Cash' | 'Cheque') | null;
+      bankName?: string | null;
+      bankAccount?: string | null;
+      ifsc?: string | null;
+      pan?: string | null;
+      pfAccount?: string | null;
+      esiNumber?: string | null;
+      maritalStatus?: ('Single' | 'Married' | 'Divorced' | 'Widowed') | null;
+      bloodGroup?: ('A+' | 'A-' | 'B+' | 'B-' | 'O+' | 'O-' | 'AB+' | 'AB-') | null;
+      passport?: string | null;
+      family?: string | null;
+      confirmationDate?: string | null;
+      contractEnd?: string | null;
+      noticeDays?: number | null;
+      retirementDate?: string | null;
+      resignationDate?: string | null;
+      relievingDate?: string | null;
+      leaveEncashed?: ('Yes' | 'No') | null;
+      reasonForLeaving?: string | null;
+      feedback?: string | null;
     };
     InviteAccept: {
       token: string;
@@ -4837,7 +4934,7 @@ export interface components {
       id: string;
       key: components['schemas']['RoleKey'];
       name: string;
-      /** @description 1..8 sales hierarchy; 0 = outside it (system_admin, distribution_head, accountant) */
+      /** @description 1..8 sales hierarchy; 0 = outside it (system_admin, hr, distribution_head, accountant) */
       rank: number;
       inHierarchy: boolean;
       permissions: components['schemas']['Permission'][];
@@ -5836,6 +5933,53 @@ export interface components {
       inviteStatus?: 'none' | 'pending' | 'expired' | 'accepted';
       /** @description Expiry of the latest open (unused, unrevoked) invite */
       inviteExpiresAt?: string | null;
+      series?: string | null;
+      gender?: ('Male' | 'Female' | 'Other' | 'Prefer not to say') | null;
+      salutation?: ('Mr' | 'Ms' | 'Mrs' | 'Dr') | null;
+      firstName?: string | null;
+      middleName?: string | null;
+      lastName?: string | null;
+      hrUserId?: string | null;
+      createUser?: boolean | null;
+      department?: string | null;
+      branch?: string | null;
+      grade?: string | null;
+      employeeGroup?: string | null;
+      employmentType?: ('Full-time' | 'Part-time' | 'Contract' | 'Intern' | 'Probation') | null;
+      hrStatus?: ('Active' | 'Inactive' | 'Suspended' | 'Left') | null;
+      personalEmail?: string | null;
+      currentAddress?: string | null;
+      permanentAddress?: string | null;
+      city?: string | null;
+      state?: string | null;
+      pincode?: string | null;
+      emergencyName?: string | null;
+      emergencyPhone?: string | null;
+      attendanceDeviceId?: string | null;
+      holidayList?: string | null;
+      defaultShift?: string | null;
+      leaveApprover?: string | null;
+      ctc?: number | null;
+      salaryMode?: ('Bank' | 'Cash' | 'Cheque') | null;
+      bankName?: string | null;
+      bankAccount?: string | null;
+      ifsc?: string | null;
+      pan?: string | null;
+      pfAccount?: string | null;
+      esiNumber?: string | null;
+      maritalStatus?: ('Single' | 'Married' | 'Divorced' | 'Widowed') | null;
+      bloodGroup?: ('A+' | 'A-' | 'B+' | 'B-' | 'O+' | 'O-' | 'AB+' | 'AB-') | null;
+      passport?: string | null;
+      family?: string | null;
+      confirmationDate?: string | null;
+      contractEnd?: string | null;
+      noticeDays?: number | null;
+      retirementDate?: string | null;
+      resignationDate?: string | null;
+      relievingDate?: string | null;
+      leaveEncashed?: ('Yes' | 'No') | null;
+      reasonForLeaving?: string | null;
+      feedback?: string | null;
     };
     CheckInPage: {
       items: components['schemas']['CheckIn'][];
@@ -7231,7 +7375,8 @@ export interface components {
     };
     EmployeeCreated: {
       employee: components['schemas']['TeamNode'];
-      invite: components['schemas']['Invite'];
+      /** @description Null when createUser is false and no sign-in invite is issued */
+      invite: components['schemas']['Invite'] | null;
     };
     Invite: {
       /**

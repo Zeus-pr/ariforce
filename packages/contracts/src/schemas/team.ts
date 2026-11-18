@@ -5,7 +5,7 @@ import { NON_HIERARCHY_ROLE_KEYS, ROLE_RANK, RoleKey } from './roles';
 
 /**
  * Team hierarchy and manager-side employee management (docs/RBAC.md "Team and employees").
- * No payroll/HR data (PAN, bank, CTC, nominee) is ever part of these schemas.
+ * HR profile fields (address, salary, joining, exit) live on the same employee row.
  */
 
 /** Highest hierarchy rank among a user's roles (0 = none / outside the hierarchy). */
@@ -75,6 +75,64 @@ export const TeamTree = z
 export type TeamTree = z.infer<typeof TeamTree>;
 
 const Phone = z.string().trim().min(6).max(20);
+const optText = (max: number) => z.string().trim().max(max).nullable().optional();
+const optDate = z.iso.date().nullable().optional();
+const oneOf = (values: readonly string[]) => z.enum(values).nullable().optional();
+
+/** Extra HR columns. Empty means unchanged on update; null clears the column. */
+export const EmployeeProfile = z
+  .object({
+    series: optText(40),
+    gender: oneOf(['Male', 'Female', 'Other', 'Prefer not to say']),
+    salutation: oneOf(['Mr', 'Ms', 'Mrs', 'Dr']),
+    firstName: optText(80),
+    middleName: optText(80),
+    lastName: optText(80),
+    hrUserId: optText(80),
+    createUser: z.boolean().nullable().optional(),
+    department: optText(100),
+    branch: optText(100),
+    grade: optText(100),
+    employeeGroup: optText(100),
+    employmentType: oneOf(['Full-time', 'Part-time', 'Contract', 'Intern', 'Probation']),
+    hrStatus: oneOf(['Active', 'Inactive', 'Suspended', 'Left']),
+    personalEmail: z.email().nullable().optional(),
+    currentAddress: optText(500),
+    permanentAddress: optText(500),
+    city: optText(80),
+    state: optText(80),
+    pincode: optText(12),
+    emergencyName: optText(120),
+    emergencyPhone: optText(20),
+    attendanceDeviceId: optText(80),
+    holidayList: optText(120),
+    defaultShift: optText(80),
+    leaveApprover: optText(120),
+    ctc: z.int().min(0).max(100_000_000).nullable().optional(),
+    salaryMode: oneOf(['Bank', 'Cash', 'Cheque']),
+    bankName: optText(120),
+    bankAccount: optText(40),
+    ifsc: optText(20),
+    pan: optText(12),
+    pfAccount: optText(40),
+    esiNumber: optText(40),
+    maritalStatus: oneOf(['Single', 'Married', 'Divorced', 'Widowed']),
+    bloodGroup: oneOf(['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-']),
+    passport: optText(20),
+    family: optText(1000),
+    confirmationDate: optDate,
+    contractEnd: optDate,
+    noticeDays: z.int().min(0).max(3650).nullable().optional(),
+    retirementDate: optDate,
+    resignationDate: optDate,
+    relievingDate: optDate,
+    leaveEncashed: oneOf(['Yes', 'No']),
+    reasonForLeaving: optText(1000),
+    feedback: optText(1000),
+  })
+  .meta({ id: 'EmployeeProfile' });
+export type EmployeeProfile = z.infer<typeof EmployeeProfile>;
+
 export const EmployeeCreate = z
   .object({
     name: z.string().trim().min(1).max(200),
@@ -83,6 +141,7 @@ export const EmployeeCreate = z
     employeeCode: z.string().trim().min(1).max(50).nullable().default(null),
     designation: z.string().trim().max(100).nullable().default(null),
     joinedOn: z.iso.date().nullable().default(null),
+    dateOfBirth: z.iso.date().nullable().default(null),
     role: RoleKey.meta({
       description:
         "Must be a hierarchy role strictly below the caller's; a system admin (users:write) may grant any role",
@@ -95,6 +154,7 @@ export const EmployeeCreate = z
       .default(null)
       .meta({ description: 'Default = caller; must be the caller or in their subtree' }),
   })
+  .extend(EmployeeProfile.shape)
   .meta({ id: 'EmployeeCreate' });
 
 export const EmployeeUpdate = z
@@ -130,6 +190,7 @@ export const EmployeeUpdate = z
       description: 'suspended = deactivate (sign-in blocked); active = reactivate',
     }),
   })
+  .extend(EmployeeProfile.shape)
   .meta({ id: 'EmployeeUpdate' });
 
 export const ManagerAssign = z
@@ -149,7 +210,12 @@ export const Invite = z
   .meta({ id: 'Invite' });
 
 export const EmployeeCreated = z
-  .object({ employee: TeamNode, invite: Invite })
+  .object({
+    employee: TeamNode,
+    invite: Invite.nullable().meta({
+      description: 'Null when createUser is false and no sign-in invite is issued',
+    }),
+  })
   .meta({ id: 'EmployeeCreated' });
 
 /** Minimum password length when accepting an invite (#26). */
