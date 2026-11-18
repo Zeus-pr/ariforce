@@ -16,6 +16,7 @@ export const ROLE_DEFS = [
   { key: 'vice_president', name: 'Vice President', rank: 7 },
   { key: 'distribution_head', name: 'Distribution Head', rank: 0 },
   { key: 'accountant', name: 'Accountant', rank: 0 },
+  { key: 'hr', name: 'HR', rank: 0 },
 ] as const;
 
 export const T = {

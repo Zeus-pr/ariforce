@@ -23,7 +23,13 @@ import { CommandPalette } from '@/components/search/command-palette';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { useRole } from './role-context';
 
-export function SiteHeader() {
+export function SiteHeader({
+  homeHref = '/',
+  showSearch = true,
+}: {
+  homeHref?: string;
+  showSearch?: boolean;
+}) {
   const { role, user } = useRole();
   const router = useRouter();
   const name = user?.name ?? '';
@@ -54,7 +60,7 @@ export function SiteHeader() {
     <header className="z-30 flex h-(--header-height) w-full shrink-0 items-center gap-2 border-b bg-card px-3 pt-[env(safe-area-inset-top)] sm:px-4">
       {/* The splash logo lands on this exact box ([data-af-header-logo]); keep its size and position stable. */}
       <Link
-        href="/"
+        href={homeHref}
         className="flex items-center gap-2.5 rounded-md pr-1"
         aria-label="AriForce home"
       >
@@ -80,36 +86,42 @@ export function SiteHeader() {
           <TooltipContent>Toggle sidebar (Ctrl/⌘ B)</TooltipContent>
         </Tooltip>
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.currentTarget.focus(); // Safari does not focus buttons on click; focus returns here on close
-            setSearchOpen(true);
-          }}
-          aria-haspopup="dialog"
-          aria-keyshortcuts={mac ? 'Meta+K' : 'Control+K'}
-          data-testid="search-trigger"
-          className="ml-2 hidden h-9 max-w-sm flex-1 items-center gap-2 rounded-md border border-input bg-background px-2.5 text-left text-sm text-muted-foreground shadow-xs transition-colors hover:border-ring/60 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none md:flex"
-        >
-          <Search className="size-4 shrink-0" aria-hidden />
-          <span className="flex-1 truncate">Search doctors, chemists, team…</span>
-          <kbd className="rounded border bg-muted px-1.5 py-0.5 font-sans text-[11px]">
-            {mac ? '⌘K' : 'Ctrl K'}
-          </kbd>
-        </button>
-        <CommandPalette role={role} open={searchOpen} onOpenChange={setSearchOpen} />
+        {showSearch && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.currentTarget.focus(); // Safari does not focus buttons on click; focus returns here on close
+              setSearchOpen(true);
+            }}
+            aria-haspopup="dialog"
+            aria-keyshortcuts={mac ? 'Meta+K' : 'Control+K'}
+            data-testid="search-trigger"
+            className="ml-2 hidden h-9 max-w-sm flex-1 items-center gap-2 rounded-md border border-input bg-background px-2.5 text-left text-sm text-muted-foreground shadow-xs transition-colors hover:border-ring/60 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none md:flex"
+          >
+            <Search className="size-4 shrink-0" aria-hidden />
+            <span className="flex-1 truncate">Search doctors, chemists, team…</span>
+            <kbd className="rounded border bg-muted px-1.5 py-0.5 font-sans text-[11px]">
+              {mac ? '⌘K' : 'Ctrl K'}
+            </kbd>
+          </button>
+        )}
+        {showSearch && (
+          <CommandPalette role={role} open={searchOpen} onOpenChange={setSearchOpen} />
+        )}
 
         <div className="ml-auto flex items-center gap-1.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Search"
-            data-testid="search-trigger-mobile"
-            className="text-muted-foreground md:hidden"
-            onClick={() => setSearchOpen(true)}
-          >
-            <Search className="size-4" />
-          </Button>
+          {showSearch && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Search"
+              data-testid="search-trigger-mobile"
+              className="text-muted-foreground md:hidden"
+              onClick={() => setSearchOpen(true)}
+            >
+              <Search className="size-4" />
+            </Button>
+          )}
           <NotificationBell />
 
           <DropdownMenu>

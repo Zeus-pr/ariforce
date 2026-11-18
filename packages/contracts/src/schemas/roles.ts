@@ -17,13 +17,15 @@ export const HIERARCHY_ROLE_KEYS = [
 ] as const;
 /** Technical, non-hierarchy role: users and masters, no reporting line, no field data unless granted. */
 export const SYSTEM_ADMIN = 'system_admin' as const;
+/** People desk. Rank 0, no field work, no reporting line. A system admin assigns it. */
+export const HR = 'hr' as const;
 /**
  * Functional roles outside the sales hierarchy (rank 0, like system_admin): no reporting line, never
  * a manager or approver, not shown in the team tree. Data scope = company-wide read of their own
  * domain permission only (sales:read / finance:read); no field, doctor or chemist data by default.
  */
 export const FUNCTIONAL_ROLE_KEYS = ['distribution_head', 'accountant'] as const;
-export const NON_HIERARCHY_ROLE_KEYS = [SYSTEM_ADMIN, ...FUNCTIONAL_ROLE_KEYS] as const;
+export const NON_HIERARCHY_ROLE_KEYS = [SYSTEM_ADMIN, HR, ...FUNCTIONAL_ROLE_KEYS] as const;
 export const ROLE_KEYS = [...HIERARCHY_ROLE_KEYS, ...NON_HIERARCHY_ROLE_KEYS] as const;
 export const RoleKey = z.enum(ROLE_KEYS).meta({ id: 'RoleKey' });
 export type RoleKey = z.infer<typeof RoleKey>;
@@ -51,6 +53,7 @@ export const ROLE_NAMES: Record<RoleKey, string> = {
   vice_president: 'Vice President',
   director: 'Director',
   system_admin: 'System Admin',
+  hr: 'HR',
   distribution_head: 'Distribution Head',
   accountant: 'Accountant',
 };
@@ -66,6 +69,7 @@ export const ROLE_RANK: Record<RoleKey, number> = {
   vice_president: 7,
   director: 8,
   system_admin: 0,
+  hr: 0,
   distribution_head: 0,
   accountant: 0,
 };
@@ -228,6 +232,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'leave:read',
     'leave:approve',
   ],
+  hr: ['me:read', 'roles:read', 'territories:read', 'users:read', 'users:write'],
   // Accepted by lead: read-only, company-wide; no doctors/chemists; never masters write.
   distribution_head: [
     'me:read',
@@ -256,7 +261,7 @@ export const Role = z
     name: z.string(),
     rank: z.int().min(0).max(8).meta({
       description:
-        '1..8 sales hierarchy; 0 = outside it (system_admin, distribution_head, accountant)',
+        '1..8 sales hierarchy; 0 = outside it (system_admin, hr, distribution_head, accountant)',
     }),
     inHierarchy: z.boolean(),
     permissions: z.array(Permission),

@@ -43,11 +43,77 @@ import { TenantService } from '../common/tenant.service';
 import { DB } from '../db/db.module';
 import { err } from '../field/checkins.service';
 
+const PROFILE_KEYS = [
+  'series',
+  'gender',
+  'salutation',
+  'firstName',
+  'middleName',
+  'lastName',
+  'hrUserId',
+  'createUser',
+  'department',
+  'branch',
+  'grade',
+  'employeeGroup',
+  'employmentType',
+  'hrStatus',
+  'personalEmail',
+  'currentAddress',
+  'permanentAddress',
+  'city',
+  'state',
+  'pincode',
+  'emergencyName',
+  'emergencyPhone',
+  'attendanceDeviceId',
+  'holidayList',
+  'defaultShift',
+  'leaveApprover',
+  'ctc',
+  'salaryMode',
+  'bankName',
+  'bankAccount',
+  'ifsc',
+  'pan',
+  'pfAccount',
+  'esiNumber',
+  'maritalStatus',
+  'bloodGroup',
+  'passport',
+  'family',
+  'confirmationDate',
+  'contractEnd',
+  'noticeDays',
+  'retirementDate',
+  'resignationDate',
+  'relievingDate',
+  'leaveEncashed',
+  'reasonForLeaving',
+  'feedback',
+] as const;
+
+type ProfileKey = (typeof PROFILE_KEYS)[number];
+
+export function employeeProfile(row: Pick<typeof users.$inferSelect, ProfileKey>) {
+  return Object.fromEntries(PROFILE_KEYS.map((key) => [key, row[key]])) as Pick<
+    typeof users.$inferSelect,
+    ProfileKey
+  >;
+}
+
+function profileFromBody(b: Partial<Record<ProfileKey, unknown>>) {
+  const out: Partial<Record<ProfileKey, unknown>> = {};
+  for (const key of PROFILE_KEYS) if (b[key] !== undefined) out[key] = b[key];
+  return out as Partial<typeof users.$inferInsert>;
+}
+
 const INVITE_DAYS = 7;
 /** System admin or director (with users:write) may create/manage any role, including director and functional roles. */
 const isAdmin = (p: Principal) =>
   (p.roles.includes('system_admin') || p.roles.includes('director')) &&
   p.permissions.includes('users:write');
+const isHr = (p: Principal) => p.roles.includes('hr') && p.permissions.includes('users:write');
 /** Only the system admin sits outside the reporting line; a director defaults to being the manager. */
 const outsideLine = (p: Principal) => p.roles.includes('system_admin');
 const DIRECTOR_RANK = ROLE_RANK.director;
@@ -283,6 +349,11 @@ export class TeamService {
     const myRank = hierarchyRank(p.roles);
     if (id === p.userId) throw err(403, 'FORBIDDEN', 'You cannot change your own record here');
     if (isAdmin(p)) return t;
+    if (isHr(p)) {
+      if (t.roles.includes('system_admin'))
+        throw err(403, 'FORBIDDEN', 'Only a system admin can change a system admin');
+      return t;
+    }
     if (myRank < MIN_MANAGER_RANK || t.rank >= myRank || !t.roles.every(isHierarchyRole))
       throw err(403, 'FORBIDDEN', 'You can only manage people below your level');
     const inTree = p.scopePaths === null || this.subtree(all, p.userId).has(id);
@@ -298,6 +369,10 @@ export class TeamService {
       });
     const r = ROLE_RANK[role];
     if (isAdmin(p)) return;
+    if (isHr(p)) {
+      if (r > 0) return;
+      throw err(403, 'FORBIDDEN', 'HR can add a field role only');
+    }
     if (!(r > 0 && r < hierarchyRank(p.roles)))
       throw err(403, 'FORBIDDEN', 'Role must be a hierarchy role below your own');
   }
@@ -416,7 +491,7 @@ export class TeamService {
   create(p: Principal, b: z.infer<typeof EmployeeCreate>) {
     return this.runThenMail(p, async (tx, outbox) => {
       const admin = isAdmin(p);
-      if (!admin && hierarchyRank(p.roles) < MIN_MANAGER_RANK)
+      if (!admin && !isHr(p) && hierarchyRank(p.roles) < MIN_MANAGER_RANK)
         throw err(403, 'FORBIDDEN', 'Only ABM and above can add employees');
       this.assertRole(p, b.role);
       if (isHierarchyRole(b.role) && !b.territoryIds.length)
@@ -426,7 +501,9 @@ export class TeamService {
       const all = await this.people(tx);
       // System admin is outside the reporting line: no default manager; a director never has one.
       const mgrId =
-        outsideLine(p) || b.role === 'director' ? b.managerId : (b.managerId ?? p.userId);
+        outsideLine(p) || isHr(p) || b.role === 'director'
+          ? b.managerId
+          : (b.managerId ?? p.userId);
       if (mgrId) this.assertManager(p, all, mgrId, ROLE_RANK[b.role]);
       const dup = await tx
         .select({ id: users.id })
@@ -447,8 +524,10 @@ export class TeamService {
           employeeCode: b.employeeCode,
           designation: b.designation,
           joinedOn: b.joinedOn,
+          dateOfBirth: b.dateOfBirth,
           managerId: mgrId,
           status: 'invited',
+          ...profileFromBody(b),
         })
         .returning();
       await tx
@@ -468,7 +547,7 @@ export class TeamService {
         entityId: u!.id,
         after: { ...b },
       });
-      const invite = await this.issueInvite(tx, p, u!.id, outbox);
+      const invite = b.createUser === false ? null : await this.issueInvite(tx, p, u!.id, outbox);
       const all2 = await this.people(tx);
       const [employee] = await this.nodes(tx, all2, [[all2.get(u!.id)!, 1]]);
       return { employee: employee!, invite };
@@ -481,7 +560,7 @@ export class TeamService {
    * The batch itself is audited once as employee.invite_bulk with per-row status (no emails).
    */
   async inviteBulk(p: Principal, rows: unknown[]) {
-    if (!isAdmin(p) && hierarchyRank(p.roles) < MIN_MANAGER_RANK)
+    if (!isAdmin(p) && !isHr(p) && hierarchyRank(p.roles) < MIN_MANAGER_RANK)
       throw err(403, 'FORBIDDEN', 'Only ABM and above can add employees');
     type Row = z.infer<typeof InviteBulkItemResult>;
     const results: Row[] = [];
@@ -526,8 +605,8 @@ export class TeamService {
           ...base,
           status: 'invited',
           employeeId: r.employee.id,
-          inviteId: r.invite.id,
-          inviteUrl: r.invite.inviteUrl,
+          inviteId: r.invite?.id ?? null,
+          inviteUrl: r.invite?.inviteUrl ?? null,
         });
       } catch (e) {
         if (!(e instanceof HttpException)) {
@@ -667,6 +746,7 @@ export class TeamService {
         designation: b.designation,
         joinedOn: b.joinedOn,
         dateOfBirth: b.dateOfBirth,
+        ...profileFromBody(b),
         managerId: mgrAfter === t.managerId ? undefined : mgrAfter,
         status: b.status,
         updatedAt: new Date(),

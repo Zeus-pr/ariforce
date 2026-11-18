@@ -34,7 +34,7 @@ import { ROLES, isApprover, isSystemAdmin, roleLevel, type Role } from './roles'
 
 export { ROLE_LABEL, type Role } from './roles';
 
-export const SALES = ROLES.filter((r) => !isSystemAdmin(r));
+export const SALES = ROLES.filter((r) => !isSystemAdmin(r) && r !== 'hr');
 export const APPROVERS = ROLES.filter(isApprover);
 
 export type NavSectionId =
@@ -111,7 +111,7 @@ export const NAV: NavItem[] = [
     title: 'Doctors',
     href: '/doctors',
     icon: Stethoscope,
-    roles: [...ROLES],
+    roles: ROLES.filter((r) => r !== 'hr'),
     section: 'business',
   },
   {
@@ -119,7 +119,7 @@ export const NAV: NavItem[] = [
     title: 'Chemists',
     href: '/chemists',
     icon: Pill,
-    roles: [...ROLES],
+    roles: ROLES.filter((r) => r !== 'hr'),
     section: 'business',
   },
   {
@@ -127,7 +127,7 @@ export const NAV: NavItem[] = [
     title: 'Stockists',
     href: '/stockists',
     icon: Package,
-    roles: [...ROLES],
+    roles: ROLES.filter((r) => r !== 'hr'),
     section: 'business',
   },
   {
@@ -293,6 +293,7 @@ export const NAV: NavItem[] = [
 
 /** Where a role lands after sign-in: the first nav item it can see (SFC is a tool, never a landing page). */
 export function homeFor(role: Role): string {
+  if (role === 'hr') return '/hr';
   // SFC is never a landing page; System Admin pays claims but lands on the masters, not Expenses.
   const skip = (slug: string) => slug === 'sfc' || (slug === 'expenses' && isSystemAdmin(role));
   return NAV.find((n) => !skip(n.slug) && n.roles.includes(role))?.href ?? '/';

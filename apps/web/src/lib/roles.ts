@@ -32,6 +32,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   vice_president: 'Vice President',
   director: 'Director',
   system_admin: 'System Admin',
+  hr: 'HR',
   distribution_head: NEUTRAL_ROLE_LABEL,
   accountant: NEUTRAL_ROLE_LABEL,
 };
@@ -46,6 +47,7 @@ export const ROLE_SHORT: Record<Role, string> = {
   vice_president: 'VP',
   director: 'Director',
   system_admin: 'Admin',
+  hr: 'HR',
   distribution_head: 'Other',
   accountant: 'Other',
 };

@@ -5,7 +5,7 @@
  * /v1/employees/{id} takes {version, name?, email?, employeeCode?, phone?, designation?, joinedOn?,
  * role?, territoryIds?, managerId?, status?: active|suspended}.
  */
-import type { components } from '@ariforce/contracts';
+import type { components, EmployeeProfile } from '@ariforce/contracts';
 import { api, apiReady, toApiError } from '@/lib/api';
 import type { Role } from '@/lib/roles';
 
@@ -23,7 +23,7 @@ export type PersonPatch = {
   territoryIds?: string[];
   managerId?: string | null;
   status?: 'active' | 'suspended';
-};
+} & Partial<EmployeeProfile>;
 export type PeopleQuery = {
   q?: string;
   role?: Role;

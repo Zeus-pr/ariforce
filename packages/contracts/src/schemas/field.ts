@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { EmployeeProfile } from './team';
 import { DcrBand, DcrDetails, DcrSfcRoute, DcrSfcRouteChoice, DcrExpenses } from './dcr-parts';
 import { UserRef, DateOnly, GeoPoint, Id, Month, Syncable, Timestamp, listQuery } from './common';
 import { RoleKey } from './roles';
@@ -124,6 +125,7 @@ export const UserSummary = z
       .optional()
       .meta({ description: 'Expiry of the latest open (unused, unrevoked) invite' }),
   })
+  .extend(EmployeeProfile.shape)
   .meta({ id: 'UserSummary' });
 export type UserSummary = z.infer<typeof UserSummary>;
 export const UserListQuery = listQuery(['name', 'employeeCode'] as const, {
