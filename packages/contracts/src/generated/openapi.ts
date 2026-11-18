@@ -380,6 +380,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/outlet-codes/next': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Next Arighna code for a doctor, chemist, or stockist
+     * @description ARIDOC, ARICHM, or ARISTK plus six digits. Does not reserve the code. Saving a new record assigns this code when it is still free, otherwise the next free number.
+     */
+    get: operations['nextOutletCode'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/doctors/import': {
     parameters: {
       query?: never;
@@ -3254,6 +3274,7 @@ export interface components {
       phone: string | null;
       /** @description Create even when a doctor with the same name (without "Dr.") and pincode exists (409 DOCTOR_POSSIBLE_DUPLICATE). A registration number match can never be overridden. */
       allowPossibleDuplicate?: boolean;
+      code?: string;
     };
     GeoPoint: {
       lat: number;
@@ -3303,6 +3324,7 @@ export interface components {
       pincode: string | null;
       location: components['schemas']['GeoPoint'] | null;
       phone: string | null;
+      code?: string;
     };
     ChemistUpdate: {
       /**
@@ -3320,6 +3342,7 @@ export interface components {
       pincode?: string | null;
       location?: components['schemas']['GeoPoint'] | null;
       phone?: string | null;
+      code?: string;
       version: number;
     };
     StockistCreate: {
@@ -3338,6 +3361,7 @@ export interface components {
       pincode: string | null;
       location: components['schemas']['GeoPoint'] | null;
       phone: string | null;
+      code?: string;
     };
     StockistUpdate: {
       /**
@@ -3355,6 +3379,7 @@ export interface components {
       pincode?: string | null;
       location?: components['schemas']['GeoPoint'] | null;
       phone?: string | null;
+      code?: string;
       version: number;
     };
     ProductCreate: {
@@ -5135,6 +5160,9 @@ export interface components {
        */
       at: string;
     };
+    OutletCodeNext: {
+      code: string;
+    };
     ImportJob: {
       /**
        * Format: uuid
@@ -5257,6 +5285,7 @@ export interface components {
        */
       localTerritoryId: string | null;
       name: string;
+      code: string;
       qualification: string | null;
       specialtyId: string | null;
       categoryId: string | null;
@@ -5372,6 +5401,7 @@ export interface components {
        */
       localTerritoryId: string | null;
       name: string;
+      code: string;
       gstin: string | null;
       drugLicenseNo: string | null;
       addressLine: string | null;
@@ -5434,6 +5464,7 @@ export interface components {
       pincode: string | null;
       location: components['schemas']['GeoPointOutput'] | null;
       phone: string | null;
+      code: string;
     };
     ProductPage: {
       items: components['schemas']['Product'][];
@@ -11053,6 +11084,55 @@ export interface operations {
       };
       /** @description Not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  nextOutletCode: {
+    parameters: {
+      query: {
+        kind: 'doctor' | 'chemist' | 'stockist';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Next code */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OutletCodeNext'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description VALIDATION */
+      422: {
         headers: {
           [name: string]: unknown;
         };

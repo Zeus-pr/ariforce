@@ -1,7 +1,7 @@
 'use client';
 
-import { Loader2, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Loader2, Trash2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
 import {
@@ -13,15 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@ariforce/ui/components/dialog';
+import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@ariforce/ui/components/sheet';
 import { toast } from '@ariforce/ui/components/sonner';
 import { api, toApiError } from '@/lib/api';
 import { APPROVAL_LABEL } from '@/components/pickers/pickers';
@@ -65,6 +58,9 @@ export function RecordSheet({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [code, setCode] = useState('');
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const outletKind = kind === 'doctors' ? 'doctor' : kind === 'chemists' ? 'chemist' : 'stockist';
   // Doctors only (add form): live duplicate check and the 409 outcome of the last save.
   const [matches, setMatches] = useState<Match[]>([]);
   const [conflict, setConflict] = useState<'hard' | 'soft' | null>(null);
@@ -97,11 +93,28 @@ export function RecordSheet({
       for (const k of Object.keys(base))
         base[k] = ((row as Record<string, unknown>)[k] as string | null) ?? base[k]!;
     setValues(base);
+    setCode(row && 'code' in row && typeof row.code === 'string' ? row.code : '');
     setErrors({});
   }, [open, row, kind]);
 
+  useEffect(() => {
+    const d = dialogRef.current;
+    if (!d) return;
+    if (open && !d.open) d.showModal();
+    if (!open && d.open) d.close();
+  }, [open]);
+
+  async function generate() {
+    const res = await api.GET('/v1/outlet-codes/next', {
+      params: { query: { kind: outletKind } },
+    });
+    if (res.error || !res.data) return toast.error(toApiError(res.error).message);
+    setCode(res.data.code);
+  }
+
   const body = () => {
     const out: Record<string, unknown> = { ...values };
+    if (!row && code) out.code = code;
     if (row) out.location = row.location;
     return out;
   };
@@ -178,105 +191,130 @@ export function RecordSheet({
 
   return (
     <>
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
-          <SheetHeader className="border-b">
-            <SheetTitle>
+      <dialog
+        ref={dialogRef}
+        closedby="any"
+        aria-labelledby="master-record-title"
+        className="master-record m-auto w-[min(56rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] flex-col gap-0 rounded-xl border bg-background p-0 text-foreground shadow-lg open:flex"
+        onClose={() => onOpenChange(false)}
+      >
+        <div className="flex items-start justify-between gap-4 border-b px-6 py-4">
+          <div>
+            <h2 id="master-record-title" className="text-lg font-semibold">
               {readOnly
                 ? (row?.name ?? cfg.singular)
                 : row
                   ? `Edit ${cfg.singular}`
                   : `Add ${cfg.singular}`}
-            </SheetTitle>
-            <SheetDescription>
+            </h2>
+            <p className="text-sm text-muted-foreground">
               {readOnly
                 ? `${cfg.singular[0]!.toUpperCase()}${cfg.singular.slice(1)} details`
                 : row
                   ? row.name
-                  : `Fields marked * are required.`}
-            </SheetDescription>
-          </SheetHeader>
-          {readOnly ? (
-            <ReadOnlyDetails kind={kind} values={values} rowId={row?.id} />
-          ) : (
-            <form
-              id="record-form"
-              onSubmit={save}
-              noValidate
-              className="flex-1 overflow-y-auto overscroll-contain p-4"
-            >
-              <div className="grid gap-4">
-                {cfg.fields.map((f) => {
-                  const id = `f-${f.key}`;
-                  return (
-                    <div key={f.key} className="grid gap-1.5">
-                      <Label htmlFor={id}>
-                        {f.label}
-                        {f.required && <span className="text-danger">*</span>}
-                      </Label>
-                      <FieldInput
-                        id={id}
-                        field={f}
-                        value={values[f.key] ?? null}
-                        invalid={!!errors[f.key]}
-                        onChange={(v) => {
-                          setValues((s) => ({ ...s, [f.key]: v }));
-                          if (errors[f.key]) setErrors(({ [f.key]: _, ...rest }) => rest);
-                        }}
-                      />
-                      {errors[f.key] && <p className="text-xs text-danger">{errors[f.key]}</p>}
-                    </div>
-                  );
-                })}
-              </div>
-              {dupCheck && matches.length > 0 && (
-                <DuplicatePanel
-                  matches={matches}
-                  conflict={conflict}
-                  busy={busy}
-                  onAddAnyway={() => void save(null, true)}
-                />
-              )}
-              {row && kind !== 'doctors' ? (
-                <div className="mt-6 border-t pt-4">
-                  <OutletLocksCard
-                    compact
-                    outletKind={kind === 'chemists' ? 'chemist' : 'stockist'}
-                    outletId={row.id}
-                  />
+                  : 'Fields marked * are required.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+            aria-label="Close"
+            onClick={() => onOpenChange(false)}
+          >
+            <X />
+          </button>
+        </div>
+        {readOnly ? (
+          <ReadOnlyDetails kind={kind} values={values} code={code} rowId={row?.id} />
+        ) : (
+          <form
+            id="record-form"
+            onSubmit={save}
+            noValidate
+            className="flex-1 overflow-y-auto overscroll-contain p-4"
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-1.5 sm:col-span-2">
+                <Label htmlFor="f-code">ARIP code</Label>
+                <div className="flex gap-2">
+                  <Input id="f-code" readOnly value={code} placeholder="ARIDOC000001" />
+                  {!row && (
+                    <Button type="button" variant="outline" onClick={() => void generate()}>
+                      Generate code
+                    </Button>
+                  )}
                 </div>
-              ) : null}
-            </form>
-          )}
-          {!readOnly && (
-            <SheetFooter className="flex-row border-t pb-[max(1rem,env(safe-area-inset-bottom))]">
-              {row && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="mr-auto text-danger"
-                  onClick={() => setConfirm(true)}
-                  disabled={busy}
-                >
-                  <Trash2 /> Remove
-                </Button>
-              )}
+              </div>
+              {cfg.fields.map((f) => {
+                const id = `f-${f.key}`;
+                return (
+                  <div key={f.key} className="grid gap-1.5">
+                    <Label htmlFor={id}>
+                      {f.label}
+                      {f.required && <span className="text-danger">*</span>}
+                    </Label>
+                    <FieldInput
+                      id={id}
+                      field={f}
+                      value={values[f.key] ?? null}
+                      invalid={!!errors[f.key]}
+                      onChange={(v) => {
+                        setValues((s) => ({ ...s, [f.key]: v }));
+                        if (errors[f.key]) setErrors(({ [f.key]: _, ...rest }) => rest);
+                      }}
+                    />
+                    {errors[f.key] && <p className="text-xs text-danger">{errors[f.key]}</p>}
+                  </div>
+                );
+              })}
+            </div>
+            {dupCheck && matches.length > 0 && (
+              <DuplicatePanel
+                matches={matches}
+                conflict={conflict}
+                busy={busy}
+                onAddAnyway={() => void save(null, true)}
+              />
+            )}
+            {row && kind !== 'doctors' ? (
+              <div className="mt-6 border-t pt-4">
+                <OutletLocksCard
+                  compact
+                  outletKind={kind === 'chemists' ? 'chemist' : 'stockist'}
+                  outletId={row.id}
+                />
+              </div>
+            ) : null}
+          </form>
+        )}
+        {!readOnly && (
+          <div className="flex flex-row gap-2 border-t px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            {row && (
               <Button
                 type="button"
-                variant="outline"
-                className={row ? '' : 'ml-auto'}
-                onClick={() => onOpenChange(false)}
+                variant="ghost"
+                className="mr-auto text-danger"
+                onClick={() => setConfirm(true)}
+                disabled={busy}
               >
-                Cancel
+                <Trash2 /> Remove
               </Button>
-              <Button type="submit" form="record-form" disabled={busy}>
-                {busy && <Loader2 className="animate-spin" />}
-                {row ? 'Save' : 'Add'}
-              </Button>
-            </SheetFooter>
-          )}
-        </SheetContent>
-      </Sheet>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              className={row ? '' : 'ml-auto'}
+              onClick={() => onOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" form="record-form" disabled={busy}>
+              {busy && <Loader2 className="animate-spin" />}
+              {row ? 'Save' : 'Add'}
+            </Button>
+          </div>
+        )}
+      </dialog>
       <Dialog open={confirm} onOpenChange={setConfirm}>
         <DialogContent>
           <DialogHeader>
@@ -376,16 +414,22 @@ function showDay(iso: string) {
 function ReadOnlyDetails({
   kind,
   values,
+  code,
   rowId,
 }: {
   kind: MasterKind;
   values: Values;
+  code: string;
   rowId?: string;
 }) {
   const { byId } = useLookups();
   return (
     <div className="flex flex-1 flex-col overflow-y-auto" data-testid="master-details">
       <dl className="grid content-start gap-3 p-4 text-sm">
+        <div className="grid gap-0.5">
+          <dt className="text-xs text-muted-foreground">ARIP code</dt>
+          <dd>{code || '—'}</dd>
+        </div>
         {MASTERS[kind].fields.map((f) => {
           const raw = values[f.key];
           const v =

@@ -66,6 +66,11 @@ function DoctorList() {
   const source = useMemo(() => masterSource('doctors', lk), [lk]);
   const columns: Column<Doctor>[] = [
     {
+      id: 'code',
+      header: 'ARIP code',
+      cell: (d) => d.code,
+    },
+    {
       id: 'name',
       header: 'Doctor',
       mobile: 'primary',

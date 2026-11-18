@@ -366,8 +366,20 @@ function crud<
       const extra = onCreate?.(body.data as Record<string, unknown>, request, rows) ?? {};
       if (extra instanceof Response) return extra;
       const ts = serverTime();
+      const prefix =
+        path === '/v1/doctors'
+          ? 'ARIDOC'
+          : path === '/v1/chemists'
+            ? 'ARICHM'
+            : path === '/v1/stockists'
+              ? 'ARISTK'
+              : '';
+      const given = (body.data as { code?: string }).code;
+      const code =
+        prefix && !given ? `${prefix}${String(rows.length + 1).padStart(6, '0')}` : undefined;
       const row = {
         ...(body.data as object),
+        ...(code ? { code } : {}),
         ...extra,
         id: crypto.randomUUID(),
         companyId: fx.COMPANY_ID,

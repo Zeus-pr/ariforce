@@ -217,6 +217,8 @@ import {
   DoctorDuplicateResult,
   DoctorListQuery,
   DoctorUpdate,
+  OutletCodeNext,
+  OutletCodeQuery,
   OutletListQuery,
   ChemistListQuery,
   Specialty,
@@ -792,6 +794,20 @@ function buildDocument(): OpenApiDocument {
           responses: {
             '201': { description: 'Recorded', ...json(ConsentRecord) },
             '404': err('Not found'),
+          },
+        }),
+      },
+      '/v1/outlet-codes/next': {
+        get: op({
+          tags: ['Masters'],
+          operationId: 'nextOutletCode',
+          summary: 'Next Arighna code for a doctor, chemist, or stockist',
+          description:
+            'ARIDOC, ARICHM, or ARISTK plus six digits. Does not reserve the code. Saving a new record assigns this code when it is still free, otherwise the next free number.',
+          requestParams: { query: OutletCodeQuery },
+          responses: {
+            '200': { description: 'Next code', ...json(OutletCodeNext) },
+            '422': err('VALIDATION'),
           },
         }),
       },
