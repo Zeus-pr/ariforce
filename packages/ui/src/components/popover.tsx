@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { Popover as PopoverPrimitive } from 'radix-ui';
+import { useDialogContainer } from '../lib/dialog-layer';
 import { cn } from '../lib/utils';
 
 function Popover({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
@@ -18,19 +19,23 @@ function PopoverContent({
   sideOffset = 4,
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Content>) {
+  const { marker, container } = useDialogContainer();
   return (
-    <PopoverPrimitive.Portal>
-      <PopoverPrimitive.Content
-        data-slot="popover-content"
-        align={align}
-        sideOffset={sideOffset}
-        className={cn(
-          'z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden',
-          className,
-        )}
-        {...props}
-      />
-    </PopoverPrimitive.Portal>
+    <>
+      <span ref={marker} hidden />
+      <PopoverPrimitive.Portal container={container}>
+        <PopoverPrimitive.Content
+          data-slot="popover-content"
+          align={align}
+          sideOffset={sideOffset}
+          className={cn(
+            'z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden',
+            className,
+          )}
+          {...props}
+        />
+      </PopoverPrimitive.Portal>
+    </>
   );
 }
 
