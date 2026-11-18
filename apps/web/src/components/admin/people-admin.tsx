@@ -621,7 +621,7 @@ function PersonSheet({
         closedby="any"
         aria-labelledby="person-record-title"
         data-testid="person-sheet"
-        className="master-record m-auto w-[min(56rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-y-auto rounded-xl border bg-background p-6 text-foreground shadow-lg open:flex"
+        className="master-record m-auto w-[min(56rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] flex-col gap-0 rounded-xl border bg-background p-6 text-foreground shadow-lg open:flex"
         onClose={onClose}
       >
         <div className="mb-4">
@@ -632,7 +632,11 @@ function PersonSheet({
             {base.email}. Changes save for everyone straight away.
           </p>
         </div>
-        <form className="flex flex-col gap-4 px-4 pb-4" onSubmit={onSubmit} noValidate>
+        <form
+          className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4"
+          onSubmit={onSubmit}
+          noValidate
+        >
           {error && (
             <p
               role="alert"
