@@ -87,6 +87,9 @@ html.af-splash [data-af-header-logo] {
 dialog:modal {
   overscroll-behavior: contain;
 }
+dialog.master-record[open] {
+  display: flex;
+}
 dialog::backdrop {
   overflow: hidden;
   overscroll-behavior: contain;

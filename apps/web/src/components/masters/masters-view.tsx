@@ -35,6 +35,11 @@ function useColumns(kind: MasterKind): Column<MasterRow>[] {
       mobile: 'secondary',
       cell: (r) => name(r.territoryId),
     };
+    const code: Column<MasterRow> = {
+      id: 'code',
+      header: 'ARIP code',
+      cell: (r) => r.code,
+    };
     const title: Column<MasterRow> = {
       id: 'name',
       header: 'Name',
@@ -49,6 +54,7 @@ function useColumns(kind: MasterKind): Column<MasterRow>[] {
     };
     if (kind === 'doctors')
       return [
+        code,
         title,
         {
           id: 'qualification',
@@ -73,6 +79,7 @@ function useColumns(kind: MasterKind): Column<MasterRow>[] {
         place,
       ];
     return [
+      code,
       title,
       {
         id: 'gstin',
