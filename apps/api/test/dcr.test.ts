@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
+import { Pool } from 'pg';
 import request from 'supertest';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -299,7 +300,17 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
     const saved = await http().put('/v1/dcrs').set(as('bm')).send(body);
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
     expect(saved.body.unlockedUntil).toEqual(expect.any(String));
+    const pool = new Pool({ connectionString: OWNER });
+    await pool.query(`update dcrs set date = '2020-02-02' where id = $1`, [saved.body.id]);
+    await pool.end();
+    const one = await http().get(`/v1/dcrs/${saved.body.id}`).set(as('abm'));
+    expect(one.status).toBe(200);
+    expect(one.body.status).toBe('submitted');
+    expect(one.body.reviewStatus).toBe('pending');
+    const queue = await http().get('/v1/dcrs?status=submitted').set(as('abm'));
+    expect(queue.body.items.some((d: { id: string }) => d.id === saved.body.id)).toBe(true);
     const lockedList = await http().get(`/v1/dcrs?status=locked`).set(as('bm'));
     expect(lockedList.status).toBe(200);
+    expect(lockedList.body.items.some((d: { id: string }) => d.id === saved.body.id)).toBe(false);
   });
 });

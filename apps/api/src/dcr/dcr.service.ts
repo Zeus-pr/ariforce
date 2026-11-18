@@ -322,13 +322,11 @@ export class DcrService {
         tourPlanItemId: r.tourPlanItemId ?? null,
         deviationReason: r.deviationReason,
         status:
-          r.status === 'approved' || r.status === 'rejected'
+          r.status === 'approved' || r.status === 'rejected' || r.status === 'submitted'
             ? r.status
             : li.locked
               ? 'locked'
-              : r.status === 'submitted'
-                ? 'submitted'
-                : 'draft',
+              : 'draft',
         reviewStatus:
           r.status === 'submitted'
             ? 'pending'
@@ -435,8 +433,8 @@ export class DcrService {
           ? sql`${dcrs.territoryIds} && array(${this.checkIns.territorySubtree(tx, q.territoryId)})`
           : undefined,
         q.status === 'locked'
-          ? and(inArray(dcrs.status, ['draft', 'submitted']), locked)
-          : q.status === 'approved' || q.status === 'rejected'
+          ? and(eq(dcrs.status, 'draft'), locked)
+          : q.status === 'approved' || q.status === 'rejected' || q.status === 'submitted'
             ? eq(dcrs.status, q.status)
             : q.status
               ? and(eq(dcrs.status, q.status), sql`not ${locked}`)
