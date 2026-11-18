@@ -48,7 +48,13 @@ describe.skipIf(!OWNER || !APP)('Postgres RLS tenant isolation (app role, non-su
       .onConflictDoNothing();
     await o
       .insert(doctors)
-      .values({ id: B_DOC, companyId: B, territoryId: B_TERR, name: 'Dr. Other' })
+      .values({
+        id: B_DOC,
+        companyId: B,
+        territoryId: B_TERR,
+        name: 'Dr. Other',
+        code: 'ARIDOC000001',
+      })
       .onConflictDoNothing();
   });
   afterAll(async () => {
@@ -81,7 +87,12 @@ describe.skipIf(!OWNER || !APP)('Postgres RLS tenant isolation (app role, non-su
   it('cannot insert a row for another company', async () => {
     await expect(
       withTenant(db(), { companyId: A }, (tx) =>
-        tx.insert(doctors).values({ companyId: B, territoryId: B_TERR, name: 'Injected' }),
+        tx.insert(doctors).values({
+          companyId: B,
+          territoryId: B_TERR,
+          name: 'Injected',
+          code: 'ARIDOC000099',
+        }),
       ),
     ).rejects.toThrow();
   });
