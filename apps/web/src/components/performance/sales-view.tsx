@@ -47,7 +47,11 @@ export function SalesView() {
       {mayWrite && <TabBar tab={tab} setTab={setTab} />}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground" data-testid="perf-scope">
-          {role === 'director' ? 'Whole company' : by ? 'Your team' : 'Your own numbers'}
+          {role === 'director' || role === 'distribution_head'
+            ? 'Whole company · primary in, secondary out'
+            : by
+              ? 'Your team'
+              : 'Your own numbers'}
         </p>
         <MonthSwitch month={month} />
       </div>

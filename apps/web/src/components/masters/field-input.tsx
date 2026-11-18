@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Input } from '@ariforce/ui/components/input';
 import {
   Select,
@@ -39,6 +40,20 @@ export function FieldInput({
               group: '',
             }))
           : null;
+
+  if (field.type === 'territory' && options) {
+    return (
+      <TerritorySearch
+        id={id}
+        value={value}
+        options={options}
+        required={field.required}
+        invalid={invalid}
+        ready={lk.ready}
+        onChange={onChange}
+      />
+    );
+  }
 
   if (options) {
     return (
@@ -94,5 +109,109 @@ export function FieldInput({
       autoComplete="off"
       maxLength={field.type === 'pincode' ? 6 : undefined}
     />
+  );
+}
+
+function TerritorySearch({
+  id,
+  value,
+  options,
+  required,
+  invalid,
+  ready,
+  onChange,
+}: {
+  id: string;
+  value: string | null;
+  options: { value: string; label: string; group: string }[];
+  required?: boolean;
+  invalid?: boolean;
+  ready: boolean;
+  onChange: (v: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const current = options.find((o) => o.value === value);
+  const needle = q.trim().toLowerCase();
+  const matched = options.filter(
+    (o) => !needle || `${o.label} ${o.group}`.toLowerCase().includes(needle),
+  );
+  const shown = needle ? matched : matched.slice(0, 80);
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        aria-controls={`${id}-list`}
+        aria-invalid={invalid || undefined}
+        disabled={!ready}
+        placeholder={ready ? 'Search territory' : 'Loading…'}
+        value={open ? q : (current?.label ?? '')}
+        autoComplete="off"
+        onFocus={() => {
+          setOpen(true);
+          setQ('');
+        }}
+        onBlur={() => setOpen(false)}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setOpen(true);
+        }}
+      />
+      {open && (
+        <ul
+          id={`${id}-list`}
+          role="listbox"
+          className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md"
+        >
+          {!required && (
+            <li>
+              <button
+                type="button"
+                className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(null);
+                  setOpen(false);
+                }}
+              >
+                None
+              </button>
+            </li>
+          )}
+          {shown.map((o) => (
+            <li key={o.value}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={o.value === value}
+                className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(o.value);
+                  setQ('');
+                  setOpen(false);
+                }}
+              >
+                {o.label}
+                {o.group && (
+                  <span className="ml-1 text-xs text-muted-foreground capitalize">{o.group}</span>
+                )}
+              </button>
+            </li>
+          ))}
+          {matched.length === 0 && (
+            <li className="px-2 py-1.5 text-sm text-muted-foreground">No territory matches.</li>
+          )}
+          {!needle && matched.length > shown.length && (
+            <li className="px-2 py-1.5 text-xs text-muted-foreground">
+              Type to search {matched.length} territories.
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
   );
 }

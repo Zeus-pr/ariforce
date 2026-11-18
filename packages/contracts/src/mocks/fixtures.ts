@@ -179,6 +179,7 @@ export const doctorCategories: DoctorCategory[] = [
 const addr = {
   addressLine: 'Shyambazar',
   city: 'Kolkata',
+  district: null,
   state: 'West Bengal',
   pincode: '700004',
   location: { lat: 22.6, lng: 88.37 },

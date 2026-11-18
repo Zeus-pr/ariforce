@@ -97,6 +97,23 @@ const n = (v: string | number | null | undefined) =>
 const nn = (v: string | null) => (v === null ? null : Number(v));
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 const r1 = (x: number) => Math.round(x * 10) / 10;
+
+function eligibleOn(joinedOn: string) {
+  const [y, m, d] = joinedOn.split('-').map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1 + 6, d)).toISOString().slice(0, 10);
+}
+
+/** Annual quota is 0 until six months after joining. LOP is unchanged. A missing joining date keeps the setup default. */
+function annualQuota(
+  pol: { code: string; annualQuota: string | null; grantOnly: boolean },
+  joinedOn: string | null,
+  asOf: string,
+) {
+  const waiting = pol.code !== 'LOP' && joinedOn !== null && asOf < eligibleOn(joinedOn);
+  const unlimited = !waiting && pol.annualQuota === null && !pol.grantOnly;
+  const quota = waiting || pol.grantOnly ? 0 : unlimited ? null : Number(pol.annualQuota);
+  return { unlimited, quota };
+}
 const ACTIVE: z.infer<typeof LeaveStatus>[] = ['pending', 'approved'];
 const MAX_CALENDAR_DAYS = 92;
 
@@ -189,7 +206,7 @@ export class LeaveService implements OnModuleInit {
     if (!r) return null;
     const request = (await this.dtos(tx, p, [r]))[0]!;
     const [pol] = await tx.select().from(leavePolicies).where(eq(leavePolicies.id, r.policyId));
-    const item = pol ? (await this.balanceItems(tx, r.userId, r.year, [pol]))[0]! : null;
+    const item = pol ? (await this.balanceItems(tx, p, r.userId, r.year, [pol]))[0]! : null;
     // pending/approved days are already held in `available`
     const held = r.status === 'pending' || r.status === 'approved';
     const balance = item
@@ -344,7 +361,14 @@ export class LeaveService implements OnModuleInit {
     }));
   }
 
+  private assertLeaveDesk(p: Principal) {
+    if (p.permissions.includes('settings:write')) return;
+    if (p.roles.includes('hr') && p.permissions.includes('users:write')) return;
+    throw new ForbiddenException('Missing permission: settings:write');
+  }
+
   putType(p: Principal, code: string, b: z.infer<typeof LeaveTypeUpdate>) {
+    this.assertLeaveDesk(p);
     return this.tenant.run(p, async (tx) => {
       const cur = (await this.policyRows(tx, p)).find((r) => r.code === code);
       if (cur && b.version && b.version !== cur.version)
@@ -392,6 +416,7 @@ export class LeaveService implements OnModuleInit {
   }
 
   putSettings(p: Principal, b: z.infer<typeof LeaveSettingsUpdate>) {
+    this.assertLeaveDesk(p);
     return this.tenant.run(p, async (tx) => {
       const cur = await this.settingsRow(tx, p.companyId);
       if (b.version && b.version !== cur.version)
@@ -657,7 +682,7 @@ export class LeaveService implements OnModuleInit {
             },
           );
       }
-      const bal = (await this.balanceItems(tx, p.userId, year, [pol]))[0]!;
+      const bal = (await this.balanceItems(tx, p, p.userId, year, [pol]))[0]!;
       if (bal.available !== null && bal.available < days)
         throw err(
           422,
@@ -793,7 +818,18 @@ export class LeaveService implements OnModuleInit {
 
   // ---- balances ----
 
-  private async balanceItems(tx: Tx, userId: string, year: number, pols: PolicyRow[]) {
+  private async balanceItems(
+    tx: Tx,
+    p: Principal,
+    userId: string,
+    year: number,
+    pols: PolicyRow[],
+  ) {
+    const [person] = await tx
+      .select({ joinedOn: users.joinedOn })
+      .from(users)
+      .where(eq(users.id, userId));
+    const asOf = localDate(new Date(), (await companySettings(tx, p)).timezone);
     const grants = await tx
       .select({
         policyId: leaveGrants.policyId,
@@ -830,10 +866,9 @@ export class LeaveService implements OnModuleInit {
     const rq = (pid: string, st: string) =>
       n(reqs.find((x) => x.policyId === pid && x.status === st)?.days);
     return pols.map((pol) => {
-      const unlimited = pol.annualQuota === null && !pol.grantOnly;
+      const { unlimited, quota } = annualQuota(pol, person?.joinedOn ?? null, asOf);
       const carriedForward = g(pol.id, 'carry_forward');
       const opening = r1(g(pol.id, 'opening') + carriedForward);
-      const quota = unlimited ? null : pol.grantOnly ? 0 : Number(pol.annualQuota);
       const granted = r1(g(pol.id, 'grant') + g(pol.id, 'adjustment'));
       const used = rq(pol.id, 'approved');
       const pending = rq(pol.id, 'pending');
@@ -870,7 +905,7 @@ export class LeaveService implements OnModuleInit {
         q.year ??
         Number(localDate(new Date(), (await companySettings(tx, p)).timezone).slice(0, 4));
       const pols = (await this.policyRows(tx, p)).filter((r) => r.active);
-      return { userId, year, items: await this.balanceItems(tx, userId, year, pols) };
+      return { userId, year, items: await this.balanceItems(tx, p, userId, year, pols) };
     });
   }
 
@@ -903,6 +938,7 @@ export class LeaveService implements OnModuleInit {
       reason: string;
     },
   ) {
+    if (!p.permissions.includes('leave:approve')) this.assertLeaveDesk(p);
     return this.tenant.run(p, async (tx) => {
       if (b.userId === p.userId)
         throw err(403, 'LEAVE_SELF_GRANT', 'You cannot grant leave to yourself');
@@ -959,10 +995,11 @@ export class LeaveService implements OnModuleInit {
 
   /** Year-end: carries min(cap, available) of carry-forward types into next year. Re-runnable. */
   carryForward(p: Principal, fromYear: number) {
+    this.assertLeaveDesk(p);
     return this.tenant.run(p, async (tx) => {
       const pols = (await this.policyRows(tx, p)).filter((r) => r.carryForward && r.active);
       const people = await tx
-        .select({ id: users.id })
+        .select({ id: users.id, joinedOn: users.joinedOn })
         .from(users)
         .where(and(isNull(users.deletedAt), ne(users.status, 'rejected')));
       const userIds = people.map((u) => u.id);
@@ -1035,9 +1072,9 @@ export class LeaveService implements OnModuleInit {
         for (const pol of pols) {
           const grant = (kind: string) => grantTotals.get(`${u.id}:${pol.id}:${kind}`) ?? 0;
           const request = (status: string) => requestTotals.get(`${u.id}:${pol.id}:${status}`) ?? 0;
-          const unlimited = pol.annualQuota === null && !pol.grantOnly;
+          const { unlimited, quota: setup } = annualQuota(pol, u.joinedOn, `${fromYear}-12-31`);
           const opening = r1(grant('opening') + grant('carry_forward'));
-          const quota = unlimited ? 0 : pol.grantOnly ? 0 : Number(pol.annualQuota);
+          const quota = unlimited ? 0 : (setup ?? 0);
           const granted = r1(grant('grant') + grant('adjustment'));
           const available = unlimited
             ? null

@@ -24,7 +24,7 @@ export interface Principal {
 }
 
 /** Sees the whole company (top of the sales hierarchy). */
-export const COMPANY_WIDE_ROLES: RoleKey[] = ['director', 'hr'];
+export const COMPANY_WIDE_ROLES: RoleKey[] = ['director', 'hr', 'distribution_head'];
 /**
  * Technical admin outside the hierarchy: company-wide masters/users/settings, no reporting line.
  * Field data (check-ins, DCRs, reports) is gated by field:read / reports:read, which it lacks by default.

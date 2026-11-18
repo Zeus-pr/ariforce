@@ -25,6 +25,7 @@ import {
   type StockistOption,
 } from '@/lib/stock-statements/api';
 import { API_URL, apiReady } from '@/lib/api';
+import { useRole } from '@/components/shell/role-context';
 
 const inr = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -52,6 +53,8 @@ type Draft = {
 };
 
 export function AwsSsScreen() {
+  const { role } = useRole();
+  const viewOnly = role === 'distribution_head';
   const [stockists, setStockists] = useState<StockistOption[] | null>(null);
   const [stockistId, setStockistId] = useState('');
   const [month, setMonth] = useState(monthNow);
@@ -319,7 +322,8 @@ export function AwsSsScreen() {
   useEffect(() => {
     setEditing(false);
   }, [sheet?.id, sheet?.status]);
-  const fieldsOpen = !!sheet && sheet.editable && (sheet.status !== 'pending' || editing);
+  const fieldsOpen =
+    !viewOnly && !!sheet && sheet.editable && (sheet.status !== 'pending' || editing);
   const history = (sheet?.history ?? []).filter(
     (h) => historyStatus === 'all' || h.status === historyStatus,
   );
@@ -413,17 +417,21 @@ export function AwsSsScreen() {
               >
                 History
               </Button>
-              <FileButton
-                label={sheet.aws.status === 'confirmed' ? 'Replace AWS' : 'Upload AWS'}
-                disabled={!fieldsOpen || busy != null}
-                onFile={(f) => void upload('aws', f)}
-              />
-              <FileButton
-                label={sheet.ss.status === 'confirmed' ? 'Replace SS' : 'Upload SS'}
-                disabled={!fieldsOpen || busy != null}
-                onFile={(f) => void upload('ss', f)}
-              />
-              {sheet.canDecide && !editing && (
+              {!viewOnly && (
+                <FileButton
+                  label={sheet.aws.status === 'confirmed' ? 'Replace AWS' : 'Upload AWS'}
+                  disabled={!fieldsOpen || busy != null}
+                  onFile={(f) => void upload('aws', f)}
+                />
+              )}
+              {!viewOnly && (
+                <FileButton
+                  label={sheet.ss.status === 'confirmed' ? 'Replace SS' : 'Upload SS'}
+                  disabled={!fieldsOpen || busy != null}
+                  onFile={(f) => void upload('ss', f)}
+                />
+              )}
+              {!viewOnly && sheet.canDecide && !editing && (
                 <Button
                   type="button"
                   variant="outline"
@@ -433,23 +441,27 @@ export function AwsSsScreen() {
                   Edit
                 </Button>
               )}
-              <Button
-                type="button"
-                variant="outline"
-                className="h-9"
-                disabled={!fieldsOpen || busy != null || !Object.keys(drafts).length}
-                onClick={() => void save()}
-              >
-                {busy === 'save' ? 'Saving…' : saved ? 'Saved' : 'Save draft'}
-              </Button>
-              <Button
-                type="button"
-                className="h-9"
-                disabled={!sheet.canSubmit || busy != null}
-                onClick={() => void submit()}
-              >
-                {busy === 'submit' ? 'Submitting…' : 'Submit'}
-              </Button>
+              {!viewOnly && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9"
+                  disabled={!fieldsOpen || busy != null || !Object.keys(drafts).length}
+                  onClick={() => void save()}
+                >
+                  {busy === 'save' ? 'Saving…' : saved ? 'Saved' : 'Save draft'}
+                </Button>
+              )}
+              {!viewOnly && (
+                <Button
+                  type="button"
+                  className="h-9"
+                  disabled={!sheet.canSubmit || busy != null}
+                  onClick={() => void submit()}
+                >
+                  {busy === 'submit' ? 'Submitting…' : 'Submit'}
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"

@@ -194,7 +194,7 @@ export function LeaveMaster() {
 
       <section
         id="holidays"
-        className="flex flex-col gap-4 rounded-xl border-2 border-teal-500 p-4 sm:p-6"
+        className="flex flex-col gap-4 rounded-xl border bg-card p-4 sm:p-6"
         aria-labelledby="holidays-heading"
       >
         <div>
@@ -295,7 +295,7 @@ export function LeaveMaster() {
 
       <section
         id="leave"
-        className="flex flex-col gap-6 rounded-xl border-2 border-teal-500 p-4 sm:p-6"
+        className="flex flex-col gap-6 rounded-xl border bg-card p-4 sm:p-6"
         aria-labelledby="leave-heading"
       >
         <div>
@@ -404,24 +404,27 @@ function Types({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border-2 border-teal-500 p-4">
+    <div className="flex flex-col gap-3">
       <h3 className="text-base font-medium">Days each person gets</h3>
-      {types.map((t) => (
-        <label key={t.code} className="flex items-center justify-between gap-3 text-sm">
-          <span>
-            {t.name} <span className="text-muted-foreground">{t.code}</span>
-          </span>
-          <Input
-            className="w-28"
-            inputMode="decimal"
-            aria-label={`${t.name} days per year`}
-            value={draft[t.code] ?? quotaOf(t)}
-            placeholder={t.grantOnly ? 'Granted' : 'No limit'}
-            disabled={t.grantOnly}
-            onChange={(e) => setDraft((d) => ({ ...d, [t.code]: e.target.value }))}
-          />
-        </label>
-      ))}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {types.map((t) => (
+          <label
+            key={t.code}
+            className="flex flex-col gap-2 rounded-xl border bg-background p-3 text-sm"
+          >
+            <span className="font-medium">{t.name}</span>
+            <span className="text-xs text-muted-foreground">{t.code}</span>
+            <Input
+              inputMode="decimal"
+              aria-label={`${t.name} days per year`}
+              value={draft[t.code] ?? quotaOf(t)}
+              placeholder={t.grantOnly ? 'Granted' : 'No limit'}
+              disabled={t.grantOnly}
+              onChange={(e) => setDraft((d) => ({ ...d, [t.code]: e.target.value }))}
+            />
+          </label>
+        ))}
+      </div>
       <Button type="button" className="w-fit" disabled={!dirty} onClick={() => void save()}>
         Save
       </Button>

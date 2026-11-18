@@ -47,7 +47,7 @@ export class LeaveController {
   }
 
   @Put('types/:code')
-  @RequirePermissions('settings:write')
+  @RequirePermissions('me:read')
   putType(
     @CurrentPrincipal() p: Principal,
     @Param('code') code: string,
@@ -64,7 +64,7 @@ export class LeaveController {
   }
 
   @Put('settings')
-  @RequirePermissions('settings:write')
+  @RequirePermissions('me:read')
   putSettings(
     @CurrentPrincipal() p: Principal,
     @Body(new ZodPipe(LeaveSettingsUpdate)) b: z.infer<typeof LeaveSettingsUpdate>,
@@ -139,7 +139,7 @@ export class LeaveController {
 
   @Post('grants')
   @HttpCode(201)
-  @RequirePermissions('leave:approve')
+  @RequirePermissions('me:read')
   grant(
     @CurrentPrincipal() p: Principal,
     @Body(new ZodPipe(LeaveGrantCreate)) b: z.infer<typeof LeaveGrantCreate>,
@@ -149,7 +149,7 @@ export class LeaveController {
 
   @Post('carry-forward')
   @HttpCode(200)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('me:read')
   carryForward(
     @CurrentPrincipal() p: Principal,
     @Body(new ZodPipe(LeaveCarryForward)) b: z.infer<typeof LeaveCarryForward>,

@@ -14,7 +14,7 @@ export const TREND_MONTHS = 6;
 
 /** Breakdown rows by role: Director by territory (top level's children), managers by person, a BM only themself. */
 export function breakdownFor(role: Role): 'byTerritory' | 'byUser' | null {
-  if (role === 'director') return 'byTerritory';
+  if (role === 'director' || role === 'distribution_head') return 'byTerritory';
   return isApprover(role) ? 'byUser' : null;
 }
 
@@ -26,7 +26,13 @@ async function get(query: Record<string, string>) {
 }
 
 /** Headline + breakdown for one month, and a headline trend over the last six months. */
-export function usePerf(role: Role, month: string | null, kpis: readonly string[], refresh = 0) {
+export function usePerf(
+  role: Role,
+  month: string | null,
+  kpis: readonly string[],
+  refresh = 0,
+  trendMonths = TREND_MONTHS,
+) {
   const [state, setState] = useState<{
     head: Row | null;
     rows: Row[];
@@ -42,8 +48,8 @@ export function usePerf(role: Role, month: string | null, kpis: readonly string[
       try {
         const rollup = rollupFor(role);
         const by = breakdownFor(role);
-        const months = Array.from({ length: TREND_MONTHS }, (_, i) =>
-          addMonths(month, i - TREND_MONTHS + 1),
+        const months = Array.from({ length: trendMonths }, (_, i) =>
+          addMonths(month, i - trendMonths + 1),
         );
         let root: string | undefined;
         if (by === 'byTerritory') {
@@ -80,7 +86,7 @@ export function usePerf(role: Role, month: string | null, kpis: readonly string[
     return () => {
       live = false;
     };
-  }, [role, month, key, refresh]);
+  }, [role, month, key, refresh, trendMonths]);
   return state;
 }
 

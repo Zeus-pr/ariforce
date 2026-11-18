@@ -237,7 +237,7 @@ const FIELDS: {
   span?: 2 | 3;
   section?: string;
 }[] = [
-  { tab: 'overview', key: 'series', label: 'Series', kind: 'text', required: true },
+  { tab: 'overview', key: 'series', label: 'Series', kind: 'text' },
   {
     tab: 'overview',
     key: 'gender',
@@ -414,7 +414,6 @@ export function EmployeeForm({ personId }: { personId: string | null }) {
     e.preventDefault();
     const name = displayName(draft);
     if (
-      !draft.series.trim() ||
       !draft.firstName.trim() ||
       !draft.gender ||
       !draft.joinedOn ||
@@ -422,9 +421,7 @@ export function EmployeeForm({ personId }: { personId: string | null }) {
       !draft.hrStatus
     ) {
       setTab('overview');
-      setError(
-        'Series, first name, gender, date of joining, date of birth, and status are required.',
-      );
+      setError('First name, gender, date of joining, date of birth, and status are required.');
       return;
     }
     if (!draft.email.trim()) {

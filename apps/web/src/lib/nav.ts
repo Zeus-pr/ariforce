@@ -34,7 +34,9 @@ import { ROLES, isApprover, isSystemAdmin, roleLevel, type Role } from './roles'
 
 export { ROLE_LABEL, type Role } from './roles';
 
-export const SALES = ROLES.filter((r) => !isSystemAdmin(r) && r !== 'hr');
+export const SALES = ROLES.filter(
+  (r) => !isSystemAdmin(r) && r !== 'hr' && r !== 'distribution_head',
+);
 export const APPROVERS = ROLES.filter(isApprover);
 
 export type NavSectionId =
@@ -69,7 +71,7 @@ export const NAV: NavItem[] = [
     title: 'Dashboard',
     href: '/',
     icon: LayoutDashboard,
-    roles: SALES,
+    roles: [...SALES, 'distribution_head'],
     section: 'workspace',
   },
   { slug: 'dcr', title: 'DCR', href: '/dcr', icon: ClipboardList, roles: SALES, section: 'field' },
@@ -111,7 +113,7 @@ export const NAV: NavItem[] = [
     title: 'Doctors',
     href: '/doctors',
     icon: Stethoscope,
-    roles: ROLES.filter((r) => r !== 'hr'),
+    roles: ROLES.filter((r) => r !== 'hr' && r !== 'distribution_head'),
     section: 'business',
   },
   {
@@ -119,7 +121,7 @@ export const NAV: NavItem[] = [
     title: 'Chemists',
     href: '/chemists',
     icon: Pill,
-    roles: ROLES.filter((r) => r !== 'hr'),
+    roles: ROLES.filter((r) => r !== 'hr' && r !== 'distribution_head'),
     section: 'business',
   },
   {
@@ -135,7 +137,7 @@ export const NAV: NavItem[] = [
     title: 'AWS & SS',
     href: '/aws-ss',
     icon: ScrollText,
-    roles: SALES,
+    roles: [...SALES, 'distribution_head'],
     section: 'business',
   },
   {
@@ -143,7 +145,7 @@ export const NAV: NavItem[] = [
     title: 'Sales',
     href: '/sales',
     icon: IndianRupee,
-    roles: SALES,
+    roles: [...SALES, 'distribution_head'],
     section: 'performance',
   },
   {
@@ -237,13 +239,21 @@ export const NAV: NavItem[] = [
     section: 'admin',
   },
   {
+    slug: 'org-chart',
+    title: 'Organizational chart',
+    href: '/admin/org-chart',
+    icon: Network,
+    roles: ['director', 'system_admin'],
+    section: 'admin',
+  },
+  {
     slug: 'organization',
     title: 'Organization',
     href: '/admin/organization',
     icon: Map,
     roles: ROLES.filter(
       (r) =>
-        (isSystemAdmin(r) || r === 'director') &&
+        (isSystemAdmin(r) || r === 'director' || r === 'hr') &&
         (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('users:write' as never),
     ),
     section: 'admin',

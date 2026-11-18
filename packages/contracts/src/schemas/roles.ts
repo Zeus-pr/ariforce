@@ -31,14 +31,11 @@ export const RoleKey = z.enum(ROLE_KEYS).meta({ id: 'RoleKey' });
 export type RoleKey = z.infer<typeof RoleKey>;
 
 /**
- * Retired roles (2026-10-27): no path may assign them any more (422 ROLE_RETIRED), they are hidden
- * from role lists, and holders cannot sign in or accept an invite. Rows, role rows and permission
- * seeds are kept so existing records still read. See docs/RBAC.md.
+ * Retired roles: no path may assign them (422 ROLE_RETIRED), they are hidden from role lists, and
+ * holders cannot sign in or accept an invite. Distribution Head is active again. Accountant stays
+ * retired. Rows and permission seeds are kept so existing records still read. See docs/RBAC.md.
  */
-export const RETIRED_ROLE_KEYS = [
-  'distribution_head',
-  'accountant',
-] as const satisfies readonly RoleKey[];
+export const RETIRED_ROLE_KEYS = ['accountant'] as const satisfies readonly RoleKey[];
 export const isRetiredRole = (r: string) => (RETIRED_ROLE_KEYS as readonly string[]).includes(r);
 /** Roles that can still be assigned (everything except RETIRED_ROLE_KEYS). */
 export const ASSIGNABLE_ROLE_KEYS = ROLE_KEYS.filter((r) => !isRetiredRole(r)) as RoleKey[];
@@ -232,7 +229,16 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'leave:read',
     'leave:approve',
   ],
-  hr: ['me:read', 'roles:read', 'territories:read', 'users:read', 'users:write'],
+  hr: [
+    'me:read',
+    'roles:read',
+    'territories:read',
+    'users:read',
+    'users:write',
+    'leave:read',
+    'expenses:read',
+    'expenses:pay',
+  ],
   // Accepted by lead: read-only, company-wide; no doctors/chemists; never masters write.
   distribution_head: [
     'me:read',

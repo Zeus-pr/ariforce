@@ -229,7 +229,7 @@ describe.skipIf(!OWNER || !APP)('System admin People page (list + edit)', () => 
 
   it('to and from system_admin; retired roles rejected; territories may be empty', async () => {
     expect((await patch(id.b!, { territoryIds: [] })).status).toBe(422);
-    for (const role of ['accountant', 'distribution_head']) {
+    for (const role of ['accountant']) {
       const r = await patch(id.b!, { role, territoryIds: [] });
       expect(r.status, JSON.stringify(r.body)).toBe(422);
       expect(r.body.error.code).toBe('ROLE_RETIRED');
@@ -255,13 +255,10 @@ describe.skipIf(!OWNER || !APP)('System admin People page (list + edit)', () => 
   });
 
   it('retired-role holder (no login): listed, editable to a live role or status, never re-assigned', async () => {
-    const { id: h } = await insertRetiredHolder(
-      `${RUN}.dh-legacy@demo.ariforce.in`,
-      'distribution_head',
-    );
+    const { id: h } = await insertRetiredHolder(`${RUN}.acc-legacy@demo.ariforce.in`, 'accountant');
     const list = await http().get('/v1/users').query({ q: RUN, limit: 100 }).set(as('sysadmin'));
     const row = list.body.items.find((u: { id: string }) => u.id === h);
-    expect(row).toMatchObject({ roles: ['distribution_head'], hasLogin: false, status: 'invited' });
+    expect(row).toMatchObject({ roles: ['accountant'], hasLogin: false, status: 'invited' });
     const team = await http().get('/v1/team').set(as('sysadmin'));
     expect(team.status).toBe(200);
     const roles = await http().get('/v1/roles').set(as('sysadmin'));
@@ -276,7 +273,7 @@ describe.skipIf(!OWNER || !APP)('System admin People page (list + edit)', () => 
     });
     expect(mv.status, JSON.stringify(mv.body)).toBe(200);
     expect(mv.body).toMatchObject({ role: 'business_manager', managerId: U.area });
-    const back = await patch(h, { role: 'distribution_head', territoryIds: [] });
+    const back = await patch(h, { role: 'accountant', territoryIds: [] });
     expect(back.status).toBe(422);
     expect(back.body.error.code).toBe('ROLE_RETIRED');
   });

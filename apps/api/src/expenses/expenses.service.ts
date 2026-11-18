@@ -420,6 +420,22 @@ export class ExpensesService implements OnModuleInit {
       for (const [id, u] of um)
         u.role = primaryRole(rr.filter((r) => r.userId === id).map((r) => r.key));
     }
+    const hrRows = cs.length
+      ? await tx
+          .select({ userId: userRoles.userId })
+          .from(userRoles)
+          .innerJoin(roles, eq(roles.id, userRoles.roleId))
+          .where(
+            and(
+              inArray(
+                userRoles.userId,
+                cs.map((c) => c.userId),
+              ),
+              eq(roles.key, 'hr'),
+            ),
+          )
+      : [];
+    const hrUsers = new Set(hrRows.map((r) => r.userId));
     const out = new Map<string, ExpenseTrailFields>();
     for (const c of cs) {
       const req = reqs.find((r) => r.id === c.approvalRequestId) ?? null;
@@ -433,11 +449,12 @@ export class ExpensesService implements OnModuleInit {
           !!req &&
           p.permissions.includes('expenses:approve') &&
           this.approvals.canDecide(p, req, st),
-        // Mirrors pay(): expenses:pay (route guard), approved, not your own claim.
+        // Mirrors pay(): expenses:pay, approved, not your own claim. HR cannot pay an HR claim.
         canPay:
           c.status === 'approved' &&
           c.userId !== p.userId &&
-          p.permissions.includes('expenses:pay'),
+          p.permissions.includes('expenses:pay') &&
+          !(p.roles.includes('hr') && hrUsers.has(c.userId)),
         paidBy: c.paidBy ? { id: c.paidBy, name: um.get(c.paidBy)?.name ?? '' } : null,
         userRole: (um.get(c.userId)?.role ?? null) as ExpenseClaim['userRole'],
       });
@@ -993,6 +1010,14 @@ export class ExpensesService implements OnModuleInit {
     return this.tenant.run(p, async (tx) => {
       const c = await this.claimRow(tx, p, id, true);
       if (c.userId === p.userId) throw new ForbiddenException('You cannot pay your own claim');
+      if (p.roles.includes('hr')) {
+        const [owner] = await tx
+          .select({ key: roles.key })
+          .from(userRoles)
+          .innerJoin(roles, eq(roles.id, userRoles.roleId))
+          .where(and(eq(userRoles.userId, c.userId), eq(roles.key, 'hr')));
+        if (owner) throw new ForbiddenException('HR cannot mark an HR expense paid');
+      }
       if (c.status !== 'approved') throw err(409, 'CONFLICT', `Claim is ${c.status}`);
       await tx
         .update(expenseClaims)

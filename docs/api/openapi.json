@@ -19634,6 +19634,18 @@
               }
             ]
           },
+          "district": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "state": {
             "anyOf": [
               {
@@ -19858,6 +19870,17 @@
               }
             ]
           },
+          "district": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "state": {
             "anyOf": [
               {
@@ -20005,6 +20028,18 @@
               }
             ]
           },
+          "district": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "state": {
             "anyOf": [
               {
@@ -20115,6 +20150,18 @@
             ]
           },
           "city": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "district": {
+            "default": null,
             "anyOf": [
               {
                 "type": "string",
@@ -20241,6 +20288,18 @@
               }
             ]
           },
+          "district": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "state": {
             "anyOf": [
               {
@@ -20351,6 +20410,18 @@
             ]
           },
           "city": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "district": {
+            "default": null,
             "anyOf": [
               {
                 "type": "string",
@@ -27562,6 +27633,17 @@
               }
             ]
           },
+          "district": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "state": {
             "anyOf": [
               {
@@ -27674,6 +27756,7 @@
           "email",
           "addressLine",
           "city",
+          "district",
           "state",
           "pincode",
           "location",
@@ -27928,6 +28011,17 @@
               }
             ]
           },
+          "district": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "state": {
             "anyOf": [
               {
@@ -27987,6 +28081,7 @@
           "drugLicenseNo",
           "addressLine",
           "city",
+          "district",
           "state",
           "pincode",
           "location",
@@ -28134,6 +28229,17 @@
               }
             ]
           },
+          "district": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "state": {
             "anyOf": [
               {
@@ -28195,6 +28301,7 @@
           "drugLicenseNo",
           "addressLine",
           "city",
+          "district",
           "state",
           "pincode",
           "location",

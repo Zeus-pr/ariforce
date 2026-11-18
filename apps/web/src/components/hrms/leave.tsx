@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { LeaveMaster } from '@/components/admin/leave-master';
 import { api, toApiError } from '@/lib/api';
 
 type Request = {
@@ -78,6 +79,12 @@ export function HrLeave() {
           </table>
         </div>
       )}
+      <h2 className="pt-2 text-lg font-semibold">Leave setup</h2>
+      <p className="text-sm text-muted-foreground">
+        Holidays and the number of days people get. Paid leave stays at zero until six months after
+        the joining date. Loss of pay is unchanged.
+      </p>
+      <LeaveMaster />
     </div>
   );
 }

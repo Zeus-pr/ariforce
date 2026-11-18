@@ -1,9 +1,23 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { TreeFlow } from '@/components/flow/tree-flow';
 import { listPeople, type Person } from '@/lib/people/adapter';
 import { roleLabel } from '@/lib/roles';
+
+const ROLE_COLOR: Record<string, string> = {
+  director: '#7c3aed',
+  vice_president: '#6d28d9',
+  general_manager: '#1d4ed8',
+  sales_manager: '#0369a1',
+  zonal_business_manager: '#0e7490',
+  regional_business_manager: '#0f766e',
+  area_business_manager: '#047857',
+  business_manager: '#b45309',
+  hr: '#be185d',
+  system_admin: '#475569',
+  distribution_head: '#0f766e',
+};
 
 export function OrgChart() {
   const [people, setPeople] = useState<Person[] | null>(null);
@@ -31,59 +45,34 @@ export function OrgChart() {
     };
   }, []);
 
-  const byManager = new Map<string | null, Person[]>();
-  for (const person of people ?? []) {
-    const key = person.managerId;
-    byManager.set(key, [...(byManager.get(key) ?? []), person]);
-  }
   const ids = new Set((people ?? []).map((p) => p.id));
-  const roots = (people ?? []).filter((p) => !p.managerId || !ids.has(p.managerId));
+  const items = (people ?? []).map((person) => {
+    const role = person.primaryRole ?? person.roles[0] ?? '';
+    return {
+      id: person.id,
+      parentId: person.managerId && ids.has(person.managerId) ? person.managerId : null,
+      title: person.name,
+      subtitle: [person.employeeCode, person.designation, roleLabel(role)]
+        .filter(Boolean)
+        .join(' · '),
+      color: ROLE_COLOR[role] ?? '#64748b',
+    };
+  });
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-6">
-      <h1 className="text-lg font-semibold">Organizational chart</h1>
-      <p className="text-sm text-muted-foreground">
-        Who reports to whom, from the employee records.
-      </p>
+    <div className="relative h-[calc(100dvh-var(--header-height))] min-h-0">
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="absolute top-3 left-3 z-10 text-sm text-destructive">
           {error}
         </p>
       )}
-      {people === null && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
-      {people && roots.length === 0 && (
-        <p className="text-sm text-muted-foreground">No employees yet.</p>
+      {people === null && !error && (
+        <p className="absolute top-3 left-3 z-10 text-sm text-muted-foreground">Loading…</p>
       )}
-      {people && roots.length > 0 && <Tree nodes={roots} byManager={byManager} />}
+      {people && items.length === 0 && (
+        <p className="p-6 text-sm text-muted-foreground">No employees yet.</p>
+      )}
+      {people && items.length > 0 && <TreeFlow nodes={items} label="Organizational chart" />}
     </div>
-  );
-}
-
-function Tree({ nodes, byManager }: { nodes: Person[]; byManager: Map<string | null, Person[]> }) {
-  if (!nodes.length) return null;
-  return (
-    <ul className="grid gap-2">
-      {nodes.map((person) => (
-        <li key={person.id} className="rounded-lg border p-3">
-          <Link href={`/hr/employees/${person.id}`} className="font-medium text-primary">
-            {person.name}
-          </Link>
-          <p className="text-xs text-muted-foreground">
-            {[
-              person.employeeCode,
-              person.designation,
-              roleLabel(person.primaryRole ?? person.roles[0]),
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-          </p>
-          {(byManager.get(person.id)?.length ?? 0) > 0 && (
-            <div className="mt-2 border-l pl-3">
-              <Tree nodes={byManager.get(person.id) ?? []} byManager={byManager} />
-            </div>
-          )}
-        </li>
-      ))}
-    </ul>
   );
 }

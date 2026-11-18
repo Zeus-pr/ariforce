@@ -7,7 +7,7 @@
 import { DEFAULT_ROLE_PERMISSIONS, ROLE_KEYS } from '../../contracts/src/schemas/roles';
 
 /** Applied 0019 stays frozen; each permission change gets a NEW generated migration (set, not append). */
-export const ROLE_PERMISSIONS_MIGRATION = '0079_hr_role_perms';
+export const ROLE_PERMISSIONS_MIGRATION = '0081_hr_pay_perms';
 
 /** Sorted, de-duplicated permission list per role (the exact array written to roles.permissions). */
 export function rolePermissionMatrix(): Record<string, string[]> {
@@ -26,8 +26,9 @@ export function rolePermissionsSql(): string {
 -- Baseline permissions for EVERY role in EVERY company. SETs (does not append) the full array,
 -- so re-running converges. Only roles.permissions is changed; no other column is touched.
 -- Expenses (#52): expenses:read/write for the sales hierarchy, expenses:approve for ABM and up,
--- expenses:pay (mark paid; approved/paid claims and reports company-wide) for director and
--- system_admin (0040). finance:read/write stay on the retired accountant row only, unchecked.
+-- expenses:pay (mark paid; approved/paid claims and reports company-wide) for director,
+-- system_admin (0040) and HR. HR cannot pay an HR claim; that rule is in the expense service.
+-- finance:read/write stay on the retired accountant row only, unchecked.
 -- Leave (#51): leave:read/write for the sales hierarchy, leave:approve for ABM and up.
 -- Field: field:read for the sales hierarchy; field:write (own DCR) for BM and, since 0044, ABM and up.
 -- Product prices admin: products:prices for system_admin only.
@@ -35,8 +36,8 @@ export function rolePermissionsSql(): string {
 -- DCR review (0049): dcr:review (approve/reject submitted DCRs of the reporting line) for ABM and up + system_admin.
 -- DCR unlock/correction decisions (0051): dcr_unlock:decide for director only (not system_admin).
 -- Sales targets and actuals (0058): sales:write for director and system_admin.
--- Masters: BM/ABM read-only; RBM and above + system_admin write. distribution_head / accountant
--- are retired (no assignment, no sign-in); their rows keep their old sets (docs/RBAC.md).`;
+-- Masters: BM/ABM read-only; RBM and above + system_admin write. Distribution Head is active
+-- (stockists, products, sales, stock statements). Accountant stays retired (docs/RBAC.md).`;
   const stmts = ROLE_KEYS.map(
     (k) => `UPDATE roles SET permissions = ${lit(m[k]!)}
 WHERE key::text = '${k}' AND permissions IS DISTINCT FROM ${lit(m[k]!)};`,

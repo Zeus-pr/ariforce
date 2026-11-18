@@ -16,6 +16,7 @@
     "@ariforce/contracts": "workspace:*",
     "@ariforce/ui": "workspace:*",
     "@tanstack/react-query": "^5.105.3",
+    "@xyflow/react": "^13.0.2",
     "jspdf": "4.2.1",
     "jspdf-autotable": "5.0.9",
     "lucide-react": "^1.61.0",
