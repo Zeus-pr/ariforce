@@ -2111,6 +2111,78 @@
         }
       }
     },
+    "/v1/outlet-codes/next": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Masters"
+        ],
+        "operationId": "nextOutletCode",
+        "summary": "Next Arighna code for a doctor, chemist, or stockist",
+        "description": "ARIDOC, ARICHM, or ARISTK plus six digits. Does not reserve the code. Saving a new record assigns this code when it is still free, otherwise the next free number.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "doctor",
+                "chemist",
+                "stockist"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Next code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutletCodeNext"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in but not allowed (role, hierarchy or tenant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/doctors/import": {
       "post": {
         "security": [
@@ -19607,6 +19679,10 @@
           "allowPossibleDuplicate": {
             "description": "Create even when a doctor with the same name (without \"Dr.\") and pincode exists (409 DOCTOR_POSSIBLE_DUPLICATE). A registration number match can never be overridden.",
             "type": "boolean"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^ARIDOC\\d{6}$"
           }
         },
         "required": [
@@ -19970,6 +20046,10 @@
                 "type": "null"
               }
             ]
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^ARICHM\\d{6}$"
           }
         },
         "required": [
@@ -20087,6 +20167,10 @@
               }
             ]
           },
+          "code": {
+            "type": "string",
+            "pattern": "^ARICHM\\d{6}$"
+          },
           "version": {
             "type": "integer",
             "minimum": 1,
@@ -20198,6 +20282,10 @@
                 "type": "null"
               }
             ]
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^ARISTK\\d{6}$"
           }
         },
         "required": [
@@ -20314,6 +20402,10 @@
                 "type": "null"
               }
             ]
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^ARISTK\\d{6}$"
           },
           "version": {
             "type": "integer",
@@ -25823,6 +25915,18 @@
         ],
         "additionalProperties": false
       },
+      "OutletCodeNext": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      },
       "ImportJob": {
         "type": "object",
         "properties": {
@@ -26193,6 +26297,10 @@
             "minLength": 1,
             "maxLength": 160
           },
+          "code": {
+            "type": "string",
+            "pattern": "^ARIDOC\\d{6}$"
+          },
           "qualification": {
             "anyOf": [
               {
@@ -26418,6 +26526,7 @@
           "territoryId",
           "localTerritoryId",
           "name",
+          "code",
           "qualification",
           "specialtyId",
           "categoryId",
@@ -26633,6 +26742,10 @@
             "minLength": 1,
             "maxLength": 160
           },
+          "code": {
+            "type": "string",
+            "pattern": "^ARICHM\\d{6}$"
+          },
           "gstin": {
             "anyOf": [
               {
@@ -26731,6 +26844,7 @@
           "territoryId",
           "localTerritoryId",
           "name",
+          "code",
           "gstin",
           "drugLicenseNo",
           "addressLine",
@@ -26924,6 +27038,10 @@
                 "type": "null"
               }
             ]
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^ARISTK\\d{6}$"
           }
         },
         "required": [
@@ -26942,7 +27060,8 @@
           "state",
           "pincode",
           "location",
-          "phone"
+          "phone",
+          "code"
         ],
         "additionalProperties": false
       },

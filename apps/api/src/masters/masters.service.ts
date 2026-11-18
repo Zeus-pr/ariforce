@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- generic drizzle glue over many master tables */
 import { authContextWriteIf } from '../auth/auth-context-cache';
+import { assignOutletCode, type OutletCodeKind } from './outlet-code';
 import {
   ConflictException,
   ForbiddenException,
@@ -222,6 +223,13 @@ export class MastersService {
     if (isDoctor)
       // Field-added doctors need manager approval (#26); company-wide roles add approved masters.
       values.approvalStatus = p.scopePaths === null ? 'approved' : 'pending';
+    if (def.entity === 'doctor' || def.entity === 'chemist' || def.entity === 'stockist')
+      values.code = await assignOutletCode(
+        tx,
+        p.companyId,
+        def.entity as OutletCodeKind,
+        fields.code,
+      );
     const [row] = await tx
       .insert(def.table)
       .values(values as any)
@@ -259,6 +267,7 @@ export class MastersService {
     if (def.territoryCol && changes.territoryId && changes.territoryId !== before.territoryId)
       await this.assertTerritory(tx, p, changes.territoryId);
     const set: Row = def.toRow ? def.toRow(changes, p) : { ...changes };
+    delete set.code;
     // The territory link sits under the HQ: a new HQ drops it (TERRITORY-MODEL.md).
     if (
       'localTerritoryId' in before &&

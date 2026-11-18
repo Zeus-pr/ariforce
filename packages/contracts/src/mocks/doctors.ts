@@ -60,7 +60,12 @@ export function doctorHandlers(
       );
     const p = mockPrincipal(req);
     const wide = !!p && (p.roles.includes('director') || p.roles.includes('system_admin'));
-    return { allowPossibleDuplicate: undefined, approvalStatus: wide ? 'approved' : 'pending' };
+    const n = rows.length + 1;
+    return {
+      allowPossibleDuplicate: undefined,
+      approvalStatus: wide ? 'approved' : 'pending',
+      code: typeof b.code === 'string' ? b.code : `ARIDOC${String(n).padStart(6, '0')}`,
+    };
   }, all);
   return [
     http.post(`${baseUrl}/v1/doctors/duplicate-check`, async ({ request }) => {

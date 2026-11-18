@@ -102,6 +102,8 @@ export const doctors = pgTable(
     /** Territory (level 'territory') under the HQ in territory_id (0042); null until backfilled. */
     localTerritoryId: uuid('local_territory_id').references(() => territories.id),
     name: text('name').notNull(),
+    /** ARIDOC plus six digits. Assigned once. Never reused. */
+    code: text('code').notNull(),
     qualification: text('qualification'),
     specialtyId: uuid('specialty_id').references(() => specialties.id),
     categoryId: uuid('category_id').references(() => doctorCategories.id),
@@ -125,6 +127,7 @@ export const doctors = pgTable(
     ...syncCols(),
   },
   (t) => [
+    uniqueIndex('doctors_code_uq').on(t.companyId, t.code),
     index('doctors_territory_idx').on(t.companyId, t.territoryId),
     index('doctors_local_territory_idx').on(t.companyId, t.localTerritoryId),
     index('doctors_updated_idx').on(t.companyId, t.updatedAt),
@@ -152,12 +155,15 @@ export const chemists = pgTable(
     /** Territory (level 'territory') under the HQ in territory_id (0042); null until backfilled. */
     localTerritoryId: uuid('local_territory_id').references(() => territories.id),
     name: text('name').notNull(),
+    /** ARICHM plus six digits. Assigned once. Never reused. */
+    code: text('code').notNull(),
     gstin: text('gstin'),
     drugLicenseNo: text('drug_license_no'),
     ...contact(),
     ...syncCols(),
   },
   (t) => [
+    uniqueIndex('chemists_code_uq').on(t.companyId, t.code),
     index('chemists_territory_idx').on(t.companyId, t.territoryId),
     index('chemists_local_territory_idx').on(t.companyId, t.localTerritoryId),
     index('chemists_updated_idx').on(t.companyId, t.updatedAt),
@@ -175,12 +181,15 @@ export const stockists = pgTable(
     /** Territory (level 'territory') under the HQ in territory_id (0042); null until backfilled. */
     localTerritoryId: uuid('local_territory_id').references(() => territories.id),
     name: text('name').notNull(),
+    /** ARISTK plus six digits. Assigned once. Never reused. */
+    code: text('code').notNull(),
     gstin: text('gstin'),
     drugLicenseNo: text('drug_license_no'),
     ...contact(),
     ...syncCols(),
   },
   (t) => [
+    uniqueIndex('stockists_code_uq').on(t.companyId, t.code),
     index('stockists_territory_idx').on(t.companyId, t.territoryId),
     index('stockists_local_territory_idx').on(t.companyId, t.localTerritoryId),
     index('stockists_updated_idx').on(t.companyId, t.updatedAt),
