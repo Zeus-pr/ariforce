@@ -147,7 +147,7 @@ const outlet = (
     updatedAt: table.updatedAt,
     createdAt: table.createdAt,
   },
-  search: [table.name, table.gstin, table.drugLicenseNo, table.city, table.pincode],
+  search: [table.name, table.code, table.gstin, table.drugLicenseNo, table.city, table.pincode],
   filters: (q) => [
     q.territoryId ? inSubtree(table.territoryId, String(q.territoryId)) : undefined,
     linksTerritory ? localTerritory(table.localTerritoryId, q.localTerritoryId) : undefined,
@@ -175,7 +175,14 @@ export const MASTERS: Record<string, MasterDef> = {
       updatedAt: doctors.updatedAt,
       createdAt: doctors.createdAt,
     },
-    search: [doctors.name, doctors.registrationNo, doctors.city, doctors.pincode, doctors.email],
+    search: [
+      doctors.name,
+      doctors.code,
+      doctors.registrationNo,
+      doctors.city,
+      doctors.pincode,
+      doctors.email,
+    ],
     filters: (q) => [
       q.territoryId ? inSubtree(doctors.territoryId, String(q.territoryId)) : undefined,
       localTerritory(doctors.localTerritoryId, q.localTerritoryId),

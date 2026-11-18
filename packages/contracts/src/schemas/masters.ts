@@ -51,6 +51,7 @@ export const Doctor = Syncable.extend({
   territoryId: Id,
   localTerritoryId,
   name: z.string().min(1).max(160),
+  code: z.string().regex(/^ARIDOC\d{6}$/),
   qualification: z.string().max(120).nullable(),
   specialtyId: Id.nullable(),
   categoryId: Id.nullable(),
@@ -77,6 +78,7 @@ export const Chemist = Syncable.extend({
   territoryId: Id,
   localTerritoryId,
   name: z.string().min(1).max(160),
+  code: z.string().regex(/^ARICHM\d{6}$/),
   gstin: z.string().max(15).nullable(),
   drugLicenseNo: z.string().max(60).nullable(),
   ...Address,
@@ -84,7 +86,9 @@ export const Chemist = Syncable.extend({
 export type Chemist = z.infer<typeof Chemist>;
 
 /** Stockists have the DB column (0042) but are not linked yet (TERRITORY-MODEL.md: later). */
-export const Stockist = Chemist.omit({ localTerritoryId: true }).meta({ id: 'Stockist' });
+export const Stockist = Chemist.omit({ localTerritoryId: true, code: true })
+  .extend({ code: z.string().regex(/^ARISTK\d{6}$/) })
+  .meta({ id: 'Stockist' });
 export type Stockist = z.infer<typeof Stockist>;
 
 const writable = {
@@ -97,6 +101,7 @@ const writable = {
 } as const;
 const DoctorFields = Doctor.omit({
   ...writable,
+  code: true,
   localTerritoryId: true,
   approvalStatus: true,
   maxActiveLocks: true,
@@ -112,17 +117,35 @@ export const DoctorCreate = DoctorFields.extend({
     description:
       'Create even when a doctor with the same name (without "Dr.") and pincode exists (409 DOCTOR_POSSIBLE_DUPLICATE). A registration number match can never be overridden.',
   }),
+  code: z
+    .string()
+    .regex(/^ARIDOC\d{6}$/)
+    .optional(),
 }).meta({ id: 'DoctorCreate' });
 export const DoctorUpdate = DoctorFields.partial()
   .extend({ version: z.int().min(1) })
   .meta({ id: 'DoctorUpdate' });
-export const ChemistCreate = Chemist.omit({ ...writable, localTerritoryId: true }).meta({
-  id: 'ChemistCreate',
-});
+export const ChemistCreate = Chemist.omit({ ...writable, localTerritoryId: true, code: true })
+  .extend({
+    code: z
+      .string()
+      .regex(/^ARICHM\d{6}$/)
+      .optional(),
+  })
+  .meta({
+    id: 'ChemistCreate',
+  });
 export const ChemistUpdate = ChemistCreate.partial()
   .extend({ version: z.int().min(1) })
   .meta({ id: 'ChemistUpdate' });
-export const StockistCreate = Stockist.omit(writable).meta({ id: 'StockistCreate' });
+export const StockistCreate = Stockist.omit({ ...writable, code: true })
+  .extend({
+    code: z
+      .string()
+      .regex(/^ARISTK\d{6}$/)
+      .optional(),
+  })
+  .meta({ id: 'StockistCreate' });
 export const StockistUpdate = StockistCreate.partial()
   .extend({ version: z.int().min(1) })
   .meta({ id: 'StockistUpdate' });
@@ -132,6 +155,13 @@ export type ChemistCreate = z.infer<typeof ChemistCreate>;
 export type ChemistUpdate = z.infer<typeof ChemistUpdate>;
 export type StockistCreate = z.infer<typeof StockistCreate>;
 export type StockistUpdate = z.infer<typeof StockistUpdate>;
+
+export const OutletCodeQuery = z
+  .object({ kind: z.enum(['doctor', 'chemist', 'stockist']) })
+  .meta({ id: 'OutletCodeQuery' });
+export type OutletCodeQuery = z.infer<typeof OutletCodeQuery>;
+export const OutletCodeNext = z.object({ code: z.string() }).meta({ id: 'OutletCodeNext' });
+export type OutletCodeNext = z.infer<typeof OutletCodeNext>;
 
 const territoryFilter = Id.optional().meta({
   description: 'Only rows in this territory or any descendant (within the caller scope)',
