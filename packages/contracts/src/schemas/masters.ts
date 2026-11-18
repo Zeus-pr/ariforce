@@ -17,6 +17,7 @@ export type DoctorCategory = z.infer<typeof DoctorCategory>;
 const Address = {
   addressLine: z.string().max(300).nullable(),
   city: z.string().max(80).nullable(),
+  district: z.string().max(80).nullable(),
   state: z.string().max(80).nullable(),
   pincode: z
     .string()
@@ -110,6 +111,7 @@ const DoctorFields = Doctor.omit({
   rejectedAt: true,
 });
 export const DoctorCreate = DoctorFields.extend({
+  district: z.string().max(80).nullable().default(null),
   dateOfBirth: IsoDay.nullable().default(null),
   anniversary: IsoDay.nullable().default(null),
   email: z.email().max(160).nullable().default(null),
@@ -127,6 +129,7 @@ export const DoctorUpdate = DoctorFields.partial()
   .meta({ id: 'DoctorUpdate' });
 export const ChemistCreate = Chemist.omit({ ...writable, localTerritoryId: true, code: true })
   .extend({
+    district: z.string().max(80).nullable().default(null),
     code: z
       .string()
       .regex(/^ARICHM\d{6}$/)
@@ -140,6 +143,7 @@ export const ChemistUpdate = ChemistCreate.partial()
   .meta({ id: 'ChemistUpdate' });
 export const StockistCreate = Stockist.omit({ ...writable, code: true })
   .extend({
+    district: z.string().max(80).nullable().default(null),
     code: z
       .string()
       .regex(/^ARISTK\d{6}$/)

@@ -20,6 +20,7 @@ import { isApprover, isFieldRole, type Role } from '@/lib/roles';
 import { ApprovalsQueue as Approvals } from '@/components/approvals/approvals-queue';
 import { formatKpi, HEADLINE, KPI_META, TEAM_COLUMNS } from './kpi-meta';
 import { KpiCards } from './kpi-cards';
+import { DistributionDashboard } from './distribution-dashboard';
 import { rollupFor } from './rollup';
 
 type Severity = 'high' | 'medium' | 'low';
@@ -91,6 +92,7 @@ export function useKpis(month: string, rollup: Rollup, kpis?: readonly string[])
 }
 
 function Dashboard({ role, month }: { role: Role; month: string }) {
+  if (role === 'distribution_head') return <DistributionDashboard role={role} month={month} />;
   const rollup = rollupFor(role);
   const field = isFieldRole(role);
   const approver = isApprover(role);

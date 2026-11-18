@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Button } from '@ariforce/ui/components/button';
+import { Input } from '@ariforce/ui/components/input';
 import { api, toApiError } from '@/lib/api';
 
 type Claim = {
@@ -9,11 +11,13 @@ type Claim = {
   month: string;
   status: string;
   total: number;
+  canPay?: boolean;
 };
 
 export function HrExpenses() {
   const [rows, setRows] = useState<Claim[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -35,7 +39,7 @@ export function HrExpenses() {
     return () => {
       live = false;
     };
-  }, []);
+  }, [tick]);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-6">
@@ -59,6 +63,7 @@ export function HrExpenses() {
                 <th className="px-3 py-2 font-medium">Month</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 text-right font-medium">Total</th>
+                <th className="px-3 py-2 font-medium">Payment</th>
               </tr>
             </thead>
             <tbody>
@@ -70,11 +75,18 @@ export function HrExpenses() {
                   <td className="px-3 py-2 text-right tabular-nums">
                     {c.total.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                   </td>
+                  <td className="px-3 py-2">
+                    {c.canPay ? (
+                      <Pay id={c.id} onPaid={() => setTick((n) => n + 1)} />
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-3 py-6 text-muted-foreground">
+                  <td colSpan={5} className="px-3 py-6 text-muted-foreground">
                     No claims you can see.
                   </td>
                 </tr>
@@ -84,5 +96,52 @@ export function HrExpenses() {
         </div>
       )}
     </div>
+  );
+}
+
+function Pay({ id, onPaid }: { id: string; onPaid: () => void }) {
+  const [ref, setRef] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      className="flex flex-wrap items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const paymentRef = ref.trim();
+        if (!paymentRef || busy) return;
+        setBusy(true);
+        setError(null);
+        void api
+          .POST('/v1/expense-claims/{id}/pay', {
+            params: { path: { id } },
+            body: { paymentRef },
+          })
+          .then((r) => {
+            if (r.error) {
+              setError(toApiError(r).message || 'Could not mark this paid.');
+              setBusy(false);
+              return;
+            }
+            onPaid();
+          });
+      }}
+    >
+      <Input
+        aria-label="Payment reference"
+        placeholder="UTR / cheque no."
+        value={ref}
+        onChange={(e) => setRef(e.target.value)}
+        className="h-8 w-36"
+      />
+      <Button type="submit" size="sm" disabled={!ref.trim() || busy}>
+        Mark paid
+      </Button>
+      {error && (
+        <span role="alert" className="text-xs text-destructive">
+          {error}
+        </span>
+      )}
+    </form>
   );
 }

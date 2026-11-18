@@ -12,10 +12,10 @@ export const SALES_LADDER = HIERARCHY_ROLE_KEYS;
 export type SalesRole = (typeof HIERARCHY_ROLE_KEYS)[number];
 export type Role = RoleKey;
 /**
- * Distribution Head and Accountant have no portal access: they are in no picker, nav, filter or
- * persona. The contract may still return them on a user; show NEUTRAL_ROLE_LABEL for those.
+ * Accountant has no portal access: it is in no picker, nav, filter or persona. The contract may
+ * still return it on a user; show NEUTRAL_ROLE_LABEL for that. Distribution Head is active.
  */
-export const RETIRED_ROLES: readonly Role[] = ['distribution_head', 'accountant'];
+export const RETIRED_ROLES: readonly Role[] = ['accountant'];
 export const isPortalRole = (r: string): r is Role =>
   (ROLE_KEYS as readonly string[]).includes(r) && !RETIRED_ROLES.includes(r as Role);
 /** Roles that can use the web portal (everything in pickers, nav and permission maps). */
@@ -33,7 +33,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   director: 'Director',
   system_admin: 'System Admin',
   hr: 'HR',
-  distribution_head: NEUTRAL_ROLE_LABEL,
+  distribution_head: 'Distribution Head',
   accountant: NEUTRAL_ROLE_LABEL,
 };
 
@@ -48,7 +48,7 @@ export const ROLE_SHORT: Record<Role, string> = {
   director: 'Director',
   system_admin: 'Admin',
   hr: 'HR',
-  distribution_head: 'Other',
+  distribution_head: 'DH',
   accountant: 'Other',
 };
 

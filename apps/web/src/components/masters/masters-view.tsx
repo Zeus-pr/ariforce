@@ -29,6 +29,12 @@ function useColumns(kind: MasterKind): Column<MasterRow>[] {
       mobile: 'secondary',
       cell: (r) => r.city ?? dash,
     };
+    const district: Column<MasterRow> = {
+      id: 'district',
+      header: 'District',
+      mobile: 'secondary',
+      cell: (r) => r.district ?? dash,
+    };
     const territory: Column<MasterRow> = {
       id: 'territory',
       header: 'Territory',
@@ -77,6 +83,7 @@ function useColumns(kind: MasterKind): Column<MasterRow>[] {
         },
         territory,
         place,
+        district,
       ];
     return [
       code,
@@ -94,6 +101,7 @@ function useColumns(kind: MasterKind): Column<MasterRow>[] {
       },
       territory,
       place,
+      district,
       { id: 'phone', header: 'Phone', mobile: 'secondary', cell: (r) => r.phone ?? dash },
       {
         id: 'updated',

@@ -1,12 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
-import type { Territory, TerritoryLevel } from '@ariforce/contracts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  TERRITORY_LEVELS,
+  type RoleKey,
+  type Territory,
+  type TerritoryLevel,
+} from '@ariforce/contracts';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { adminMessage } from '@/lib/admin/messages';
 import { invalidateTerritories, useTerritories } from '@/lib/query';
+import { TreeFlow } from '@/components/flow/tree-flow';
 
 const NEXT: Partial<Record<TerritoryLevel, TerritoryLevel>> = {
   national: 'zone',
@@ -23,21 +29,15 @@ const LABEL: Record<TerritoryLevel, string> = {
   headquarter: 'BM HQ',
   territory: 'Territory',
 };
-const HEALTH: Record<string, string> = {
-  no_territory: 'No place assigned',
-  sfc_hq_invisible: 'Not on a BM HQ',
-  bm_without_hq: 'Business manager without a BM HQ',
-  hq_without_bm: 'BM HQ with no business manager',
-  area_without_holder: 'ABM HQ with nobody on it',
-  assignment_to_deleted: 'Assigned to a retired place',
+const PLACE_COLOR: Record<TerritoryLevel, string> = {
+  national: '#1e3a5f',
+  zone: '#1d4ed8',
+  region: '#0369a1',
+  area: '#0f766e',
+  headquarter: '#b45309',
+  territory: '#7c3aed',
 };
 
-type HealthItem = {
-  code: string;
-  count: number;
-  people: { id: string; name: string; territoryId: string | null }[];
-  places: { id: string; name: string }[];
-};
 type Person = {
   id: string;
   name: string;
@@ -46,359 +46,255 @@ type Person = {
   territoryIds: string[];
   territories: { id: string; name: string; level: string }[];
 };
+type FormKind = 'rename' | 'add' | 'move' | 'people' | 'retire' | 'role';
+
+const STATE_ROLES: { role: RoleKey; label: string }[] = [
+  { role: 'zonal_business_manager', label: 'Add ZBM' },
+  { role: 'sales_manager', label: 'Add Sales Manager' },
+  { role: 'general_manager', label: 'Add General Manager' },
+  { role: 'vice_president', label: 'Add Vice President' },
+  { role: 'director', label: 'Add Director' },
+];
+
+function parentLevel(level: TerritoryLevel): TerritoryLevel | null {
+  const index = TERRITORY_LEVELS.indexOf(level);
+  return index <= 0 ? null : TERRITORY_LEVELS[index - 1]!;
+}
+
+function inside(rootId: string, place: Territory, byId: Map<string, Territory>) {
+  let current: string | null = place.id;
+  const seen = new Set<string>();
+  while (current && !seen.has(current)) {
+    if (current === rootId) return true;
+    seen.add(current);
+    current = byId.get(current)?.parentId ?? null;
+  }
+  return false;
+}
 
 export function OrganizationScreen() {
   const terrs = useTerritories();
   const live = useMemo(() => (terrs.data ?? []).filter((t) => !t.deletedAt), [terrs.data]);
-  const [health, setHealth] = useState<HealthItem[] | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const node = live.find((t) => t.id === selected) ?? null;
-
-  async function loadHealth() {
-    await apiReady();
-    const r = await api.GET('/v1/territories/health');
-    if (r.error) {
-      const a = toApiError(r);
-      if (a.code === 'NOT_FOUND') return;
-      return setError(adminMessage(a.code, a.message));
-    }
-    setHealth(r.data?.items ?? []);
-  }
-  useEffect(() => {
-    void loadHealth();
-  }, []);
-
-  function fail(e: unknown) {
-    const a = toApiError(e);
-    setNotice(null);
-    setError(adminMessage(a.code, a.message));
-  }
-  async function refresh(message: string) {
-    setError(null);
-    setNotice(message);
-    await invalidateTerritories();
-    await loadHealth();
-  }
-
-  return (
-    <div className="flex flex-col gap-6">
-      {error && (
-        <p
-          role="alert"
-          className="af-fade rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
-        >
-          {error}
-        </p>
-      )}
-      {notice && <p className="af-fade text-sm text-muted-foreground">{notice}</p>}
-      <section className="flex flex-col gap-2" aria-label="Setup problems">
-        {(health ?? [])
-          .filter((h) => h.count > 0)
-          .map((h) => (
-            <div key={h.code} className="rounded-lg border p-3">
-              <p className="text-sm font-medium">
-                {HEALTH[h.code] ?? h.code} · {h.count}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {h.people.map((person) => (
-                  <Button
-                    key={person.id}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (person.territoryId) setSelected(person.territoryId);
-                      else
-                        setError(
-                          `${person.name} has no place yet. Add them from a place in the tree.`,
-                        );
-                    }}
-                  >
-                    {person.name}
-                  </Button>
-                ))}
-                {h.places.map((place) => (
-                  <Button
-                    key={place.id}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSelected(place.id)}
-                  >
-                    {place.name}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          ))}
-        {health && health.every((h) => h.count === 0) && (
-          <p className="text-sm text-muted-foreground">The map has no setup problems.</p>
-        )}
-      </section>
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(18rem,26rem)_1fr]">
-        <div className="min-h-0 lg:max-h-[calc(100dvh-var(--header-height)-2rem)] lg:overflow-y-auto">
-          <Tree nodes={live} selected={selected} onSelect={setSelected} />
-        </div>
-        <div className="min-h-0 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-var(--header-height)-2rem)] lg:overflow-y-auto">
-          {node ? (
-            <NodePanel node={node} nodes={live} onError={fail} onSaved={refresh} />
-          ) : (
-            <p className="text-sm text-muted-foreground">Choose a place in the tree.</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function startsOpen(node: Territory, siblings: number, kids: Territory[]) {
-  if (node.level === 'area' || node.level === 'headquarter' || node.level === 'territory')
-    return false;
-  if (node.level === 'zone' || node.level === 'region') return true;
-  if (siblings > 1) return true;
-  const childLevel = kids[0]?.level;
-  return (
-    childLevel === 'zone' ||
-    childLevel === 'region' ||
-    childLevel === 'area' ||
-    childLevel === 'headquarter'
-  );
-}
-
-function countLabel(kids: Territory[]) {
-  const level = kids[0]?.level;
-  if (!level || kids.some((k) => k.level !== level)) return `${kids.length} places`;
-  const plural: Record<TerritoryLevel, [string, string]> = {
-    national: ['country', 'countries'],
-    zone: ['state', 'states'],
-    region: ['RBM HQ', 'RBM HQs'],
-    area: ['ABM HQ', 'ABM HQs'],
-    headquarter: ['BM HQ', 'BM HQs'],
-    territory: ['territory', 'territories'],
-  };
-  const [one, many] = plural[level];
-  return `${kids.length} ${kids.length === 1 ? one : many}`;
-}
-
-function initialOpen(nodes: Territory[], kidsOf: Map<string, Territory[]>) {
-  const open = new Set<string>();
-  const roots = nodes.filter((t) => !t.parentId || !nodes.some((p) => p.id === t.parentId));
-  const walk = (node: Territory, siblings: number) => {
-    const kids = kidsOf.get(node.id) ?? [];
-    if (startsOpen(node, siblings, kids)) open.add(node.id);
-    for (const kid of kids) walk(kid, kids.length);
-  };
-  for (const root of roots) walk(root, roots.length);
-  return open;
-}
-
-function Tree({
-  nodes,
-  selected,
-  onSelect,
-}: {
-  nodes: Territory[];
-  selected: string | null;
-  onSelect: (id: string) => void;
-}) {
-  const kidsOf = useMemo(() => {
-    const m = new Map<string, Territory[]>();
-    for (const t of nodes) {
-      if (!t.parentId) continue;
-      const list = m.get(t.parentId) ?? [];
-      list.push(t);
-      m.set(t.parentId, list);
-    }
-    return m;
-  }, [nodes]);
-  const byId = useMemo(() => new Map(nodes.map((t) => [t.id, t])), [nodes]);
-  const [openIds, setOpenIds] = useState<Set<string> | null>(null);
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [form, setForm] = useState<{
+    id: string;
+    kind: FormKind;
+    level: TerritoryLevel | null;
+    role: RoleKey | null;
+  } | null>(null);
   const [query, setQuery] = useState('');
-  if (openIds === null && nodes.length > 0) setOpenIds(initialOpen(nodes, kidsOf));
+  const [error, setError] = useState<string | null>(null);
+  const node = live.find((t) => t.id === (form?.id ?? menu?.id)) ?? null;
 
   const needle = query.trim().toLowerCase();
   const visible = useMemo(() => {
+    const byId = new Map(live.map((t) => [t.id, t]));
+    const kids = new Map<string, Territory[]>();
+    for (const t of live) {
+      if (!t.parentId) continue;
+      kids.set(t.parentId, [...(kids.get(t.parentId) ?? []), t]);
+    }
     const keep = new Set<string>();
     if (!needle) {
-      for (const t of nodes) keep.add(t.id);
+      for (const t of live) keep.add(t.id);
       return keep;
     }
     const hit = (id: string): boolean => {
-      const node = byId.get(id);
-      if (!node) return false;
-      if (node.name.toLowerCase().includes(needle)) return true;
-      return (kidsOf.get(id) ?? []).some((k) => hit(k.id));
+      const place = byId.get(id);
+      if (!place) return false;
+      if (place.name.toLowerCase().includes(needle)) return true;
+      return (kids.get(id) ?? []).some((k) => hit(k.id));
     };
-    for (const t of nodes) if (hit(t.id)) keep.add(t.id);
+    for (const t of live) if (hit(t.id)) keep.add(t.id);
     return keep;
-  }, [needle, nodes, byId, kidsOf]);
+  }, [live, needle]);
+  const items = live
+    .filter((t) => visible.has(t.id))
+    .map((t) => ({
+      id: t.id,
+      parentId: t.parentId && visible.has(t.parentId) ? t.parentId : null,
+      title: t.name,
+      subtitle: LABEL[t.level],
+      color: PLACE_COLOR[t.level],
+    }));
 
-  useEffect(() => {
-    if (!needle) return;
-    setOpenIds((prev) => {
-      if (!prev) return prev;
-      const next = new Set(prev);
-      for (const t of nodes) {
-        if (!t.name.toLowerCase().includes(needle)) continue;
-        let parent = t.parentId;
-        while (parent) {
-          next.add(parent);
-          parent = byId.get(parent)?.parentId ?? null;
-        }
-      }
-      return next.size === prev.size ? prev : next;
-    });
-  }, [needle, nodes, byId]);
-
-  useEffect(() => {
-    if (!selected) return;
-    setOpenIds((prev) => {
-      if (!prev) return prev;
-      const next = new Set(prev);
-      let parent = byId.get(selected)?.parentId;
-      let changed = false;
-      while (parent) {
-        if (!next.has(parent)) {
-          next.add(parent);
-          changed = true;
-        }
-        parent = byId.get(parent)?.parentId;
-      }
-      return changed ? next : prev;
-    });
-  }, [selected, byId]);
-
-  const roots = nodes.filter((t) => !t.parentId || !byId.has(t.parentId));
-  const shown = roots.filter((t) => visible.has(t.id));
+  function fail(e: unknown) {
+    const a = toApiError(e);
+    setError(adminMessage(a.code, a.message));
+  }
+  async function saved() {
+    setError(null);
+    setForm(null);
+    await invalidateTerritories();
+  }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="relative h-[calc(100dvh-var(--header-height))] min-h-0">
+      <TreeFlow
+        nodes={items}
+        label="Company map"
+        onMenu={(id, x, y) => {
+          if (!id || x < 0) setMenu(null);
+          else setMenu({ id, x, y });
+        }}
+      />
       <Input
         aria-label="Find a place"
         placeholder="Find a place"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
+        className="absolute top-3 right-3 z-10 w-56 bg-white"
       />
-      {shown.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No place matches.</p>
-      ) : (
-        <ul className="org-place flex flex-col gap-0.5 text-sm" aria-label="Company map">
-          {shown.map((n) => (
-            <Branch
-              key={n.id}
-              node={n}
-              kidsOf={kidsOf}
-              visible={visible}
-              selected={selected}
-              openIds={openIds ?? new Set()}
-              setOpenIds={setOpenIds}
-              onSelect={onSelect}
-            />
-          ))}
-        </ul>
+      {error && (
+        <p
+          role="alert"
+          className="absolute bottom-3 left-14 z-10 max-w-md rounded-md border border-destructive/30 bg-white px-3 py-2 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      )}
+      {menu && node && (
+        <PlaceMenu
+          node={node}
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          onPick={(kind, level, role) => {
+            setMenu(null);
+            setForm({ id: node.id, kind, level: level ?? null, role: role ?? null });
+          }}
+        />
+      )}
+      {form && node && (
+        <PlaceDialog
+          node={node}
+          nodes={live}
+          kind={form.kind}
+          level={form.level}
+          role={form.role}
+          onClose={() => setForm(null)}
+          onError={fail}
+          onSaved={saved}
+        />
       )}
     </div>
   );
 }
 
-function Branch({
+function PlaceMenu({
   node,
-  kidsOf,
-  visible,
-  selected,
-  openIds,
-  setOpenIds,
-  onSelect,
+  x,
+  y,
+  onClose,
+  onPick,
 }: {
   node: Territory;
-  kidsOf: Map<string, Territory[]>;
-  visible: Set<string>;
-  selected: string | null;
-  openIds: Set<string>;
-  setOpenIds: Dispatch<SetStateAction<Set<string> | null>>;
-  onSelect: (id: string) => void;
+  x: number;
+  y: number;
+  onClose: () => void;
+  onPick: (kind: FormKind, level?: TerritoryLevel, role?: RoleKey) => void;
 }) {
-  const kids = (kidsOf.get(node.id) ?? []).filter((k) => visible.has(k.id));
-  const row = `flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted ${selected === node.id ? 'bg-muted font-medium' : ''}`;
-  if (kids.length === 0) {
-    return (
-      <li>
-        <button type="button" className={row} onClick={() => onSelect(node.id)}>
-          <span className="inline-block size-2 shrink-0" aria-hidden />
-          <span className="min-w-0 flex-1 truncate">{node.name}</span>
-          <span className="shrink-0 text-xs text-muted-foreground">{LABEL[node.level]}</span>
-        </button>
-      </li>
-    );
-  }
+  const next = NEXT[node.level];
+  const items: { kind: FormKind; label: string; level?: TerritoryLevel; role?: RoleKey }[] = [
+    { kind: 'rename', label: 'Rename' },
+    ...(next
+      ? [
+          {
+            kind: 'add' as const,
+            label: node.level === 'zone' && next === 'region' ? 'Add RBM' : `Add ${LABEL[next]}`,
+            level: next,
+          },
+        ]
+      : []),
+    ...(node.level === 'zone'
+      ? STATE_ROLES.map((role) => ({ kind: 'role' as const, label: role.label, role: role.role }))
+      : []),
+    ...(node.level === 'national' ? [] : [{ kind: 'move' as const, label: 'Move under…' }]),
+    { kind: 'people', label: 'People' },
+    { kind: 'retire', label: 'Retire' },
+  ];
   return (
-    <li>
-      <details
-        open={openIds.has(node.id)}
-        onToggle={(e) => {
-          const open = e.currentTarget.open;
-          setOpenIds((prev) => {
-            if (!prev || prev.has(node.id) === open) return prev;
-            const next = new Set(prev);
-            if (open) next.add(node.id);
-            else next.delete(node.id);
-            return next;
-          });
+    <>
+      <button
+        type="button"
+        aria-label="Close menu"
+        className="fixed inset-0 z-40"
+        onClick={onClose}
+      />
+      <ul
+        role="menu"
+        className="fixed z-50 max-h-80 min-w-44 overflow-auto rounded-lg border bg-white p-1 shadow-lg"
+        style={{
+          left: Math.min(x, window.innerWidth - 200),
+          top: Math.min(y, window.innerHeight - 320),
         }}
       >
-        <summary className={row} onClick={() => onSelect(node.id)}>
-          <span className="min-w-0 flex-1 truncate">{node.name}</span>
-          <span className="shrink-0 text-xs text-muted-foreground">{LABEL[node.level]}</span>
-          <span className="shrink-0 text-xs text-muted-foreground">{countLabel(kids)}</span>
-        </summary>
-        <ul className="ms-3 border-s border-border ps-1">
-          {kids.map((k) => (
-            <Branch
-              key={k.id}
-              node={k}
-              kidsOf={kidsOf}
-              visible={visible}
-              selected={selected}
-              openIds={openIds}
-              setOpenIds={setOpenIds}
-              onSelect={onSelect}
-            />
-          ))}
-        </ul>
-      </details>
-    </li>
+        {items.map((item) => (
+          <li key={`${item.kind}-${item.level ?? ''}-${item.role ?? ''}`}>
+            <button
+              type="button"
+              role="menuitem"
+              className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
+              onClick={() => onPick(item.kind, item.level, item.role)}
+            >
+              {item.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
-function NodePanel({
+function PlaceDialog({
   node,
   nodes,
+  kind,
+  level,
+  role,
+  onClose,
   onError,
   onSaved,
 }: {
   node: Territory;
   nodes: Territory[];
+  kind: FormKind;
+  level: TerritoryLevel | null;
+  role: RoleKey | null;
+  onClose: () => void;
   onError: (e: unknown) => void;
-  onSaved: (message: string) => Promise<void>;
+  onSaved: () => Promise<void>;
 }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const parents = nodes.filter((t) => NEXT[t.level] === node.level);
+  const adding = kind === 'add' ? level : null;
+  const needs = adding ? parentLevel(adding) : null;
+  const byId = useMemo(() => new Map(nodes.map((t) => [t.id, t])), [nodes]);
+  const holders =
+    needs === null ? [] : nodes.filter((t) => t.level === needs && inside(node.id, t, byId));
+  const direct = needs !== null && node.level === needs;
   const [name, setName] = useState(node.name);
   const [child, setChild] = useState('');
+  const [email, setEmail] = useState('');
+  const [parentId, setParentId] = useState('');
   const [people, setPeople] = useState<Person[] | null>(null);
   const [find, setFind] = useState('');
   const [found, setFound] = useState<Person[]>([]);
-  const next = NEXT[node.level];
-  const parents = nodes.filter((t) => NEXT[t.level] === node.level);
 
   useEffect(() => {
-    setName(node.name);
-    setChild('');
+    const d = ref.current;
+    if (d && !d.open) d.showModal();
+  }, []);
+
+  useEffect(() => {
+    if (kind !== 'people') return;
+    let live = true;
     void (async () => {
       await apiReady();
       const r = await api.GET('/v1/users', {
         params: { query: { territoryId: node.id, limit: 100 } },
       });
+      if (!live) return;
       if (r.error) return onError(r);
       const items = (r.data?.items ?? []) as Person[];
       setPeople(
@@ -407,50 +303,69 @@ function NodePanel({
         ),
       );
     })();
-  }, [node.id, node.name]);
+    return () => {
+      live = false;
+    };
+  }, [kind, node.id]);
 
-  async function saveName() {
+  async function rename() {
     const nextName = name.trim();
-    if (!nextName || nextName === node.name) return;
+    if (!nextName || nextName === node.name) {
+      onClose();
+      return;
+    }
     const r = await api.PATCH('/v1/territories/{id}', {
       params: { path: { id: node.id } },
       body: { version: node.version, name: nextName },
     });
     if (r.error) return onError(r);
-    await onSaved(`Renamed to ${nextName}.`);
+    await onSaved();
   }
-
   async function addChild() {
     const nextName = child.trim();
-    if (!next || !nextName) return;
+    const parent = direct ? node.id : parentId;
+    if (!adding || !nextName || !parent) return;
     const r = await api.POST('/v1/territories', {
-      body: { name: nextName, level: next, parentId: node.id },
+      body: { name: nextName, level: adding, parentId: parent },
     });
     if (r.error) return onError(r);
-    setChild('');
-    await onSaved(`${LABEL[next]} “${nextName}” added.`);
+    await onSaved();
   }
-
-  async function moveTo(parentId: string) {
-    const parent = nodes.find((t) => t.id === parentId);
-    if (!parent) return;
-    if (!window.confirm(`Move ${node.name} under ${parent.name}? Everything under it moves too.`))
-      return;
+  async function addRole() {
+    const nextName = name.trim();
+    const nextEmail = email.trim();
+    if (!role || !nextName || !nextEmail) return;
+    const r = await api.POST('/v1/employees', {
+      body: {
+        name: nextName,
+        email: nextEmail,
+        phone: null,
+        employeeCode: null,
+        designation: null,
+        joinedOn: null,
+        dateOfBirth: null,
+        role,
+        territoryIds: [node.id],
+        managerId: null,
+      },
+    });
+    if (r.error) return onError(r);
+    await onSaved();
+  }
+  async function move() {
+    if (!parentId) return;
     const r = await api.POST('/v1/territories/{id}/move', {
       params: { path: { id: node.id } },
       body: { version: node.version, parentId },
     });
     if (r.error) return onError(r);
-    await onSaved(`${node.name} now sits under ${parent.name}.`);
+    await onSaved();
   }
-
   async function retire() {
-    if (!window.confirm(`Retire ${node.name}? This only works when nothing still uses it.`)) return;
     const r = await api.DELETE('/v1/territories/{id}', { params: { path: { id: node.id } } });
     if (r.error) return onError(r);
-    await onSaved(`${node.name} was retired.`);
+    await onSaved();
   }
-
   async function searchPeople(q: string) {
     setFind(q);
     if (q.trim().length < 2) return setFound([]);
@@ -460,7 +375,6 @@ function NodePanel({
     if (r.error) return onError(r);
     setFound((r.data?.items ?? []) as Person[]);
   }
-
   async function addPerson(person: Person) {
     const ids = person.territoryIds.includes(node.id)
       ? person.territoryIds
@@ -472,122 +386,231 @@ function NodePanel({
     if (r.error) return onError(r);
     setFind('');
     setFound([]);
-    await onSaved(`${person.name} is now on ${node.name}.`);
-    const again = await api.GET('/v1/users', {
-      params: { query: { territoryId: node.id, limit: 100 } },
-    });
-    if (again.data) {
-      const items = again.data.items as Person[];
-      setPeople(items.filter((p) => p.territoryIds.includes(node.id)));
-    }
+    setPeople((list) => [
+      ...(list ?? []).filter((p) => p.id !== person.id),
+      { ...person, territoryIds: ids },
+    ]);
   }
-
   async function removePerson(person: Person) {
     const ids = person.territoryIds.filter((id) => id !== node.id);
-    if (
-      ids.length === 0 &&
-      !window.confirm(`${person.name} would have no place. Remove them anyway?`)
-    )
-      return;
     const r = await api.PATCH('/v1/employees/{id}', {
       params: { path: { id: person.id } },
       body: { version: person.version, territoryIds: ids },
     });
     if (r.error) return onError(r);
-    await onSaved(`${person.name} was removed from ${node.name}.`);
+    setPeople((list) => (list ?? []).filter((p) => p.id !== person.id));
   }
 
+  const title =
+    kind === 'rename'
+      ? `Rename ${node.name}`
+      : kind === 'add' && adding
+        ? `Add ${LABEL[adding]}`
+        : kind === 'role' && role
+          ? `Add ${STATE_ROLES.find((item) => item.role === role)?.label.replace('Add ', '') ?? 'person'} on ${node.name}`
+          : kind === 'move'
+            ? `Move ${node.name}`
+            : kind === 'people'
+              ? `People on ${node.name}`
+              : `Retire ${node.name}`;
+
   return (
-    <div className="af-reveal flex flex-col gap-4" data-open="true">
-      <div>
-        <p className="text-sm text-muted-foreground">{LABEL[node.level]}</p>
-        <Input
-          aria-label="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() => void saveName()}
-        />
-        <p className="mt-1 text-xs text-muted-foreground">
-          Code {node.code}. A code change is a separate save because it moves the path.
-        </p>
-      </div>
-      {next && (
+    <dialog
+      ref={ref}
+      closedby="any"
+      className="master-record m-auto w-[min(28rem,calc(100vw-2rem))] flex-col gap-3 rounded-xl border bg-card p-4 shadow-xl"
+      onClose={onClose}
+    >
+      <h2 className="text-base font-semibold">{title}</h2>
+      {kind === 'rename' && (
         <form
-          className="flex gap-2"
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void rename();
+          }}
+        >
+          <Input aria-label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit">Save</Button>
+          </div>
+        </form>
+      )}
+      {kind === 'add' && adding && needs && (
+        <form
+          className="flex flex-col gap-3"
           onSubmit={(e) => {
             e.preventDefault();
             void addChild();
           }}
         >
-          <Input
-            aria-label={`New ${LABEL[next]} name`}
-            placeholder={`New ${LABEL[next].toLowerCase()} name`}
-            value={child}
-            onChange={(e) => setChild(e.target.value)}
-          />
-          <Button type="submit">Add</Button>
+          {!direct && holders.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Add a {LABEL[needs]} under {node.name} first. A {LABEL[adding]} sits under a{' '}
+              {LABEL[needs]}.
+            </p>
+          )}
+          {!direct && holders.length > 0 && (
+            <select
+              aria-label={LABEL[needs]}
+              className="rounded-md border bg-background px-2 py-2 text-sm"
+              value={parentId}
+              onChange={(e) => setParentId(e.target.value)}
+            >
+              <option value="">Choose a {LABEL[needs]}</option>
+              {holders.map((place) => (
+                <option key={place.id} value={place.id}>
+                  {place.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {(direct || holders.length > 0) && (
+            <Input
+              aria-label={`${LABEL[adding]} name`}
+              placeholder={`${LABEL[adding]} name`}
+              value={child}
+              onChange={(e) => setChild(e.target.value)}
+            />
+          )}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!direct && !parentId}>
+              Add
+            </Button>
+          </div>
         </form>
       )}
-      {parents.length > 0 && node.level !== 'national' && (
-        <label className="flex flex-col gap-1 text-sm">
-          Move under
+      {kind === 'role' && role && (
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void addRole();
+          }}
+        >
+          <Input
+            aria-label="Name"
+            placeholder="Name"
+            value={name === node.name ? '' : name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <Input
+            aria-label="Email"
+            type="email"
+            placeholder="Work email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!email.trim() || !name.trim() || name === node.name}>
+              Add
+            </Button>
+          </div>
+        </form>
+      )}
+      {kind === 'move' && (
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void move();
+          }}
+        >
           <select
-            className="rounded-md border bg-background px-2 py-2"
-            defaultValue=""
-            onChange={(e) => e.target.value && void moveTo(e.target.value)}
+            aria-label="New parent"
+            className="rounded-md border bg-background px-2 py-2 text-sm"
+            value={parentId}
+            onChange={(e) => setParentId(e.target.value)}
           >
-            <option value="">Choose…</option>
+            <option value="">Choose a place</option>
             {parents.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
             ))}
           </select>
-        </label>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!parentId}>
+              Move
+            </Button>
+          </div>
+        </form>
       )}
-      <div>
-        <h2 className="text-sm font-medium">People on this place</h2>
-        <ul className="mt-2 flex flex-col gap-1">
-          {(people ?? []).map((p) => (
-            <li key={p.id} className="flex items-center justify-between gap-2 text-sm">
-              <span>
-                {p.name} <span className="text-muted-foreground">{p.primaryRole}</span>
-              </span>
-              <Button type="button" variant="ghost" size="sm" onClick={() => void removePerson(p)}>
-                Remove
-              </Button>
-            </li>
-          ))}
-          {people && people.length === 0 && (
-            <li className="text-sm text-muted-foreground">Nobody is assigned here.</li>
-          )}
-        </ul>
-        <Input
-          className="mt-2"
-          aria-label="Find a person to add"
-          placeholder="Find a person"
-          value={find}
-          onChange={(e) => void searchPeople(e.target.value)}
-        />
-        {found.length > 0 && (
-          <ul className="mt-1 rounded-md border">
-            {found.map((p) => (
-              <li key={p.id}>
-                <button
+      {kind === 'people' && (
+        <div className="flex flex-col gap-3">
+          <ul className="flex max-h-40 flex-col gap-1 overflow-auto">
+            {(people ?? []).map((p) => (
+              <li key={p.id} className="flex items-center justify-between gap-2 text-sm">
+                <span>{p.name}</span>
+                <Button
                   type="button"
-                  className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                  onClick={() => void addPerson(p)}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void removePerson(p)}
                 >
-                  {p.name}
-                </button>
+                  Remove
+                </Button>
               </li>
             ))}
+            {people && people.length === 0 && (
+              <li className="text-sm text-muted-foreground">Nobody is assigned here.</li>
+            )}
           </ul>
-        )}
-      </div>
-      <Button type="button" variant="outline" onClick={() => void retire()}>
-        Retire this place
-      </Button>
-    </div>
+          <Input
+            aria-label="Find a person to add"
+            placeholder="Find a person"
+            value={find}
+            onChange={(e) => void searchPeople(e.target.value)}
+          />
+          {found.length > 0 && (
+            <ul className="rounded-md border">
+              {found.map((p) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                    onClick={() => void addPerson(p)}
+                  >
+                    {p.name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Done
+            </Button>
+          </div>
+        </div>
+      )}
+      {kind === 'retire' && (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            {node.name} can be retired only when nothing still uses it.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void retire()}>
+              Retire
+            </Button>
+          </div>
+        </div>
+      )}
+    </dialog>
   );
 }

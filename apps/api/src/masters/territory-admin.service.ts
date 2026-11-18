@@ -19,7 +19,7 @@ import { err } from '../field/checkins.service';
 import { childPath } from './territory-path';
 
 const isAdmin = (p: Principal) =>
-  (p.roles.includes('system_admin') || p.roles.includes('director')) &&
+  (p.roles.includes('system_admin') || p.roles.includes('director') || p.roles.includes('hr')) &&
   p.permissions.includes('users:write');
 
 const keyOf = (raw: string) =>

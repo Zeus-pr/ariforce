@@ -135,14 +135,19 @@ describe.skipIf(!OWNER || !APP)('Sign-up requests (real API)', () => {
     expect((await submit({ email: high, requestedRole: 'regional_business_manager' })).status).toBe(
       202,
     );
-    // Retired roles cannot even be requested.
     const dhTry = await submit({
       email: email('dh'),
       requestedRole: 'distribution_head',
       territoryId: null,
     });
-    expect(dhTry.status).toBe(422);
-    expect(dhTry.body.error.code).toBe('ROLE_RETIRED');
+    expect(dhTry.status).toBe(202);
+    const accTry = await submit({
+      email: email('acc'),
+      requestedRole: 'accountant',
+      territoryId: null,
+    });
+    expect(accTry.status).toBe(422);
+    expect(accTry.body.error.code).toBe('ROLE_RETIRED');
     const ids = (await http().get('/v1/signup-requests').set(as('abm'))).body.items.map(
       (x: { id: string }) => x.id,
     );
@@ -166,7 +171,7 @@ describe.skipIf(!OWNER || !APP)('Sign-up requests (real API)', () => {
       (x: { id: string }) => x.id,
     );
     for (const e of [out, high]) expect(all).toContain(await reqId(e));
-    for (const role of ['distribution_head', 'accountant']) {
+    for (const role of ['accountant']) {
       const no = await http()
         .post(`/v1/signup-requests/${await reqId(high)}/approve`)
         .set(as('sysadmin'))

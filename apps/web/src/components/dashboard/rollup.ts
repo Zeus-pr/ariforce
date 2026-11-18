@@ -5,6 +5,6 @@ type Rollup = KpiReport['rollup'];
 
 /** The widest rollup the contract allows this role (docs/kpi-definitions.md). */
 export function rollupFor(role: Role): Rollup {
-  if (role === 'director') return 'company';
+  if (role === 'director' || role === 'distribution_head') return 'company';
   return isApprover(role) ? 'team' : 'self';
 }

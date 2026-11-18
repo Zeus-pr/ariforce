@@ -3269,6 +3269,8 @@ export interface components {
       email: string | null;
       addressLine: string | null;
       city: string | null;
+      /** @default null */
+      district: string | null;
       state: string | null;
       pincode: string | null;
       location: components['schemas']['GeoPoint'] | null;
@@ -3298,6 +3300,7 @@ export interface components {
       email?: string | null;
       addressLine?: string | null;
       city?: string | null;
+      district?: string | null;
       state?: string | null;
       pincode?: string | null;
       location?: components['schemas']['GeoPoint'] | null;
@@ -3321,6 +3324,8 @@ export interface components {
       drugLicenseNo: string | null;
       addressLine: string | null;
       city: string | null;
+      /** @default null */
+      district: string | null;
       state: string | null;
       pincode: string | null;
       location: components['schemas']['GeoPoint'] | null;
@@ -3339,6 +3344,8 @@ export interface components {
       drugLicenseNo?: string | null;
       addressLine?: string | null;
       city?: string | null;
+      /** @default null */
+      district: string | null;
       state?: string | null;
       pincode?: string | null;
       location?: components['schemas']['GeoPoint'] | null;
@@ -3358,6 +3365,8 @@ export interface components {
       drugLicenseNo: string | null;
       addressLine: string | null;
       city: string | null;
+      /** @default null */
+      district: string | null;
       state: string | null;
       pincode: string | null;
       location: components['schemas']['GeoPoint'] | null;
@@ -3376,6 +3385,8 @@ export interface components {
       drugLicenseNo?: string | null;
       addressLine?: string | null;
       city?: string | null;
+      /** @default null */
+      district: string | null;
       state?: string | null;
       pincode?: string | null;
       location?: components['schemas']['GeoPoint'] | null;
@@ -5392,6 +5403,7 @@ export interface components {
       email: string | null;
       addressLine: string | null;
       city: string | null;
+      district: string | null;
       state: string | null;
       pincode: string | null;
       location: components['schemas']['GeoPointOutput'] | null;
@@ -5503,6 +5515,7 @@ export interface components {
       drugLicenseNo: string | null;
       addressLine: string | null;
       city: string | null;
+      district: string | null;
       state: string | null;
       pincode: string | null;
       location: components['schemas']['GeoPointOutput'] | null;
@@ -5557,6 +5570,7 @@ export interface components {
       drugLicenseNo: string | null;
       addressLine: string | null;
       city: string | null;
+      district: string | null;
       state: string | null;
       pincode: string | null;
       location: components['schemas']['GeoPointOutput'] | null;

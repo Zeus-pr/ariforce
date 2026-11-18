@@ -133,17 +133,17 @@ describe.skipIf(!OWNER || !APP)('auth + RBAC (better-auth, hierarchy scope, RLS)
     expect(sys.body.managerId).toBeNull();
   });
 
-  it('retired roles (distribution_head / accountant): sign-in refused with ROLE_RETIRED; hidden from GET /v1/roles', async () => {
-    for (const email of ['dh@demo.ariforce.in', 'accountant@demo.ariforce.in']) {
-      const res = await signIn(email);
-      expect(res.status, JSON.stringify(res.body)).toBe(403);
-      expect(res.body.code).toBe('ROLE_RETIRED');
-      expect(res.headers['set-auth-token']).toBeFalsy();
-    }
+  it('accountant is retired: sign-in refused with ROLE_RETIRED; hidden from GET /v1/roles. Distribution Head can sign in', async () => {
+    const acc = await signIn('accountant@demo.ariforce.in');
+    expect(acc.status, JSON.stringify(acc.body)).toBe(403);
+    expect(acc.body.code).toBe('ROLE_RETIRED');
+    expect(acc.headers['set-auth-token']).toBeFalsy();
+    const dh = await signIn('dh@demo.ariforce.in');
+    expect(dh.status, JSON.stringify(dh.body)).toBe(200);
     const dirTok = await token('director@demo.ariforce.in');
     const roles = await http().get('/v1/roles').set('authorization', dirTok);
     const keys = roles.body.items.map((r: { key: string }) => r.key);
-    expect(keys).not.toContain('distribution_head');
+    expect(keys).toContain('distribution_head');
     expect(keys).not.toContain('accountant');
     expect(keys).toContain('business_manager');
   });

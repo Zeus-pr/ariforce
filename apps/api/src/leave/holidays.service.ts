@@ -17,7 +17,7 @@ import { err } from '../field/checkins.service';
 import { holidayDate } from './holiday-date';
 
 const isAdmin = (p: Principal) =>
-  (p.roles.includes('system_admin') || p.roles.includes('director')) &&
+  (p.roles.includes('system_admin') || p.roles.includes('director') || p.roles.includes('hr')) &&
   p.permissions.includes('users:write');
 
 const span = (from: string, to: string) => {
@@ -37,7 +37,7 @@ export class HolidaysService {
 
   private gate(p: Principal) {
     if (!isAdmin(p))
-      throw err(403, 'FORBIDDEN', 'Only a director or system admin can edit holidays');
+      throw err(403, 'FORBIDDEN', 'Only HR, a director, or a system admin can edit holidays');
   }
 
   private dto(r: Row): Holiday {

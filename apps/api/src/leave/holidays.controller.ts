@@ -26,7 +26,7 @@ export class HolidaysController {
   }
 
   @Post('copy')
-  @RequirePermissions('settings:write')
+  @RequirePermissions('me:read')
   copy(
     @CurrentPrincipal() p: Principal,
     @Body(new ZodPipe(HolidayCopy)) b: z.infer<typeof HolidayCopy>,
@@ -36,7 +36,7 @@ export class HolidaysController {
 
   @Post()
   @HttpCode(201)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('me:read')
   create(
     @CurrentPrincipal() p: Principal,
     @Body(new ZodPipe(HolidayCreate)) b: z.infer<typeof HolidayCreate>,
@@ -45,7 +45,7 @@ export class HolidaysController {
   }
 
   @Patch(':id')
-  @RequirePermissions('settings:write')
+  @RequirePermissions('me:read')
   update(
     @CurrentPrincipal() p: Principal,
     @Param('id') i: string,
@@ -56,7 +56,7 @@ export class HolidaysController {
 
   @Delete(':id')
   @HttpCode(204)
-  @RequirePermissions('settings:write')
+  @RequirePermissions('me:read')
   remove(@CurrentPrincipal() p: Principal, @Param('id') i: string) {
     return this.svc.remove(p, id(i));
   }

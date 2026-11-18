@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import { axisProps, CHART, ChartFrame, ChartTooltip } from '@/components/charts/chart';
 import { listPeople, type Person } from '@/lib/people/adapter';
+import { roleLabel } from '@/lib/roles';
 import { useReducedMotion } from '@/lib/use-reduced-motion';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -271,6 +272,14 @@ export function HrDashboard() {
           </section>
 
           <div className="grid gap-3 lg:grid-cols-2">
+            <Donut
+              title="Employees by Role"
+              data={tally(current, (p) => roleLabel(p.primaryRole ?? p.roles[0]))}
+            />
+            <Donut
+              title="Employees by Status"
+              data={tally(current, (p) => p.hrStatus ?? p.status)}
+            />
             <Donut title="Gender Diversity Ratio" data={tally(current, (p) => p.gender ?? '')} />
             <Donut title="Employees by Type" data={tally(current, (p) => p.employmentType ?? '')} />
             <Donut title="Employees by Grade" data={tally(current, (p) => p.grade ?? '')} />

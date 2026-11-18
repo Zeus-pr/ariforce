@@ -101,6 +101,7 @@ function DoctorList() {
     },
     { id: 'territory', header: 'Territory', cell: (d) => lk.byId.get(d.territoryId) ?? '—' },
     { id: 'city', header: 'City', mobile: 'secondary', cell: (d) => d.city ?? '—' },
+    { id: 'district', header: 'District', mobile: 'secondary', cell: (d) => d.district ?? '—' },
     {
       id: 'approval',
       header: 'Status',

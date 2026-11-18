@@ -35,6 +35,7 @@ const address: FieldDef[] = [
     aliases: ['address', 'addressline', 'address1'],
   },
   { key: 'city', label: 'City', type: 'text', aliases: ['city', 'town'] },
+  { key: 'district', label: 'District', type: 'text', aliases: ['district'] },
   { key: 'state', label: 'State', type: 'text', aliases: ['state'] },
   {
     key: 'pincode',

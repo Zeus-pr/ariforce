@@ -85,6 +85,7 @@ export const verificationState = pgEnum('verification_state', [
 const contact = () => ({
   addressLine: text('address_line'),
   city: text('city'),
+  district: text('district'),
   state: text('state'),
   pincode: text('pincode'),
   phone: text('phone'),

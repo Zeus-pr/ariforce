@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { T, U } from '@ariforce/db';
-import { FUNCTIONAL_ROLE_KEYS, HIERARCHY_ROLE_KEYS } from '@ariforce/contracts';
+import { HIERARCHY_ROLE_KEYS } from '@ariforce/contracts';
 import { bearerFor, insertRetiredHolder, otherHq } from './support';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
@@ -57,7 +57,7 @@ describe.skipIf(!OWNER || !APP)('System admin invites any role / any territory',
   });
 
   it('retired roles cannot be created (422 ROLE_RETIRED); another system admin can', async () => {
-    for (const role of FUNCTIONAL_ROLE_KEYS) {
+    for (const role of ['accountant'] as const) {
       for (const over of [{}, { territoryIds: [T.hq] }]) {
         const res = await post('sysadmin', emp(role, over));
         expect(res.status, `${role} ${JSON.stringify(res.body)}`).toBe(422);
@@ -75,6 +75,9 @@ describe.skipIf(!OWNER || !APP)('System admin invites any role / any territory',
     created.accountant = (
       await insertRetiredHolder(`${RUN}.legacy-acc@demo.ariforce.in`, 'accountant')
     ).id;
+    const dh = await post('sysadmin', emp('distribution_head'));
+    expect(dh.status, JSON.stringify(dh.body)).toBe(201);
+    expect(dh.body.employee.roles).toEqual(['distribution_head']);
   });
 
   it('validation still applies to the system admin', async () => {
@@ -132,10 +135,9 @@ describe.skipIf(!OWNER || !APP)('System admin invites any role / any territory',
     expect(res.status, JSON.stringify(res.body)).toBeLessThan(300);
     expect(res.body.results.map((r: { status: string }) => r.status)).toEqual([
       'invited',
-      'failed',
+      'invited',
       'invited',
     ]);
-    expect(res.body.results[1].code).toBe('ROLE_RETIRED');
   });
 
   it('resends invites; a retired-role holder gets 422 ROLE_RETIRED but can still be edited', async () => {
@@ -152,11 +154,10 @@ describe.skipIf(!OWNER || !APP)('System admin invites any role / any territory',
       .set(as('sysadmin'))
       .send({ version: 1, designation: 'Senior Accountant', role: 'accountant' });
     expect(pa.status, JSON.stringify(pa.body)).toBe(200);
-    // Assigning a retired role to someone who does not hold it: 422.
     const other = await http()
-      .patch(`/v1/employees/${created.accountant}`)
+      .patch(`/v1/employees/${created.business_manager}`)
       .set(as('sysadmin'))
-      .send({ version: pa.body.version, role: 'distribution_head' });
+      .send({ version: 1, role: 'accountant', territoryIds: [] });
     expect(other.status, JSON.stringify(other.body)).toBe(422);
     expect(other.body.error.code).toBe('ROLE_RETIRED');
     expect(
@@ -181,8 +182,10 @@ describe.skipIf(!OWNER || !APP)('System admin invites any role / any territory',
   it('non-admin limits are unchanged', async () => {
     for (const role of ['system_admin', 'director'])
       expect((await post('abm', emp(role, { territoryIds: [T.hq] }))).status).toBe(403);
-    for (const role of ['accountant', 'distribution_head'])
-      expect((await post('abm', emp(role, { territoryIds: [T.hq] }))).status).toBe(422);
+    expect((await post('abm', emp('accountant', { territoryIds: [T.hq] }))).status).toBe(422);
+    expect((await post('abm', emp('distribution_head', { territoryIds: [T.hq] }))).status).toBe(
+      403,
+    );
     expect(
       (await post('abm', emp('business_manager', { territoryIds: [T.otherArea] }))).status,
     ).toBe(403);
