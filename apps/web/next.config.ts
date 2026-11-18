@@ -6,6 +6,9 @@ const real = process.env.NEXT_PUBLIC_API_MODE === 'real';
 
 const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? (real ? '.next-real' : '.next'),
+  experimental: {
+    agentUpgrade: 'security',
+  },
   // Doctors, Chemists and Stockists are standalone pages; old /masters links keep working (query kept).
   async redirects() {
     return [
