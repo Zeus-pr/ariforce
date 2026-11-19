@@ -485,10 +485,6 @@ export class LeaveService implements OnModuleInit {
       .select()
       .from(leavePolicies)
       .where(inArray(leavePolicies.id, [...new Set(rows.map((r) => r.policyId))]));
-    const names = await tx
-      .select({ id: users.id, name: users.name })
-      .from(users)
-      .where(inArray(users.id, [...new Set(rows.map((r) => r.userId))]));
     const reqIds = rows.map((r) => r.approvalRequestId).filter(Boolean) as string[];
     const steps = reqIds.length
       ? await tx
@@ -513,6 +509,17 @@ export class LeaveService implements OnModuleInit {
           .from(approvalSteps)
           .where(inArray(approvalSteps.requestId, reqIds))
       : [];
+    const names = await tx
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(
+        inArray(users.id, [
+          ...new Set([
+            ...rows.map((r) => r.userId),
+            ...decided.map((s) => s.approverUserId).filter((id): id is string => !!id),
+          ]),
+        ]),
+      );
     return rows.map((r) => {
       const t = pol.find((x) => x.id === r.policyId)!;
       return {
@@ -534,6 +541,15 @@ export class LeaveService implements OnModuleInit {
           r.status === 'pending'
             ? (steps.find((s) => s.id === r.approvalRequestId)?.currentStep ?? null)
             : null,
+        currentApprover: (() => {
+          const req = steps.find((s) => s.id === r.approvalRequestId);
+          if (!req || r.status !== 'pending') return null;
+          const step = decided.find((s) => s.requestId === req.id && s.stepNo === req.currentStep);
+          const person = step?.approverUserId
+            ? names.find((n) => n.id === step.approverUserId)
+            : undefined;
+          return person ? { id: person.id, name: person.name } : null;
+        })(),
         canDecide: (() => {
           const req = steps.find((s) => s.id === r.approvalRequestId);
           if (!req || r.status !== 'pending') return false;

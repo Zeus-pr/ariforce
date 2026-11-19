@@ -8072,6 +8072,16 @@ export interface components {
       approvalId: string | null;
       /** @description Current step while pending */
       approvalStep: number | null;
+      /** @description Who the current step is waiting for; null once decided */
+      currentApprover?: {
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        id: string;
+        name: string;
+      } | null;
       /** @description True when this pending request is waiting for you */
       canDecide?: boolean;
       /**
