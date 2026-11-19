@@ -265,7 +265,7 @@ export const DcrSfcCandidate = z
     da: z.number().nullable(),
     version: z.int(),
     source: DcrSfcSource.optional().meta({
-      description: "own = the filer's route; hq = HQ fallback (filer has no live route on that HQ)",
+      description: "own = a route on the filer's own SFC chart",
     }),
   })
   .meta({ id: 'DcrSfcCandidate' });
@@ -280,7 +280,7 @@ export const DcrSfcHqMatch = z
 export const DcrSfcMatch = z.object({ band: DcrBand, hqs: z.array(DcrSfcHqMatch) }).meta({
   id: 'DcrSfcMatch',
   description:
-    "Candidates per HQ of the day (HQ + band): the filer's own routes on an HQ where they have any, else that HQ's routes from any owner (source 'hq', de-duplicated). 404 SFC_NO_MATCH lists the same per-HQ result in details when any HQ has none.",
+    "Candidates per territory of the day. Each list is that person's own SFC chart in the band, not split by headquarters. 404 SFC_NO_MATCH lists the same per-territory result in details when the chart has no route in the band.",
 });
 export type DcrSfcMatch = z.infer<typeof DcrSfcMatch>;
 

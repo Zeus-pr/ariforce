@@ -6708,13 +6708,13 @@ export interface components {
        * @description ISO-8601 timestamp (UTC)
        */
       frozenAt: string;
-      /** @description own | hq (fallback). Absent on snapshots frozen before the fallback existed */
+      /** @description own = a route on the filer's own SFC chart. Absent on older snapshots */
       source?: components['schemas']['DcrSfcSource'];
     };
     /** @enum {string} */
     SfcCategory: 'ex' | 'hq' | 'os';
     /**
-     * @description own = the filer's route; hq = the filer has no live route on that HQ, so the HQ's routes (any owner) are offered
+     * @description own = a route on the filer's chart
      * @enum {string}
      */
     DcrSfcSource: 'own' | 'hq';
@@ -7102,7 +7102,7 @@ export interface components {
       employeeCode: string | null;
       designation: string | null;
     };
-    /** @description Candidates per HQ of the day (HQ + band): the filer's own routes on an HQ where they have any, else that HQ's routes from any owner (source 'hq', de-duplicated). 404 SFC_NO_MATCH lists the same per-HQ result in details when any HQ has none. */
+    /** @description Candidates per territory of the day. Each list is that person's own SFC chart in the band, not split by headquarters. 404 SFC_NO_MATCH lists the same per-territory result in details when the chart has no route in the band. */
     DcrSfcMatch: {
       band: components['schemas']['DcrBand'];
       hqs: components['schemas']['DcrSfcHqMatch'][];
@@ -7138,7 +7138,7 @@ export interface components {
       band: components['schemas']['DcrBand'];
       da: number | null;
       version: number;
-      /** @description own = the filer's route; hq = HQ fallback (filer has no live route on that HQ) */
+      /** @description own = a route on the filer's own SFC chart */
       source?: components['schemas']['DcrSfcSource'];
     };
     DcrSubmitResult: {
