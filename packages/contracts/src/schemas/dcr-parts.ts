@@ -7,11 +7,10 @@ import { ExpenseCategory } from './expenses';
 
 /** Field-day band; fixed by the work type (work_types.allowance_band). */
 export const DcrBand = z.enum(['hq', 'ex_hq', 'outstation']).meta({ id: 'DcrBand' });
-/** Where an SFC candidate came from: the filer's own route, or the HQ fallback (no own route on that HQ). */
+/** Where an SFC candidate came from. Matches now are always the person's own chart. */
 export const DcrSfcSource = z.enum(['own', 'hq']).meta({
   id: 'DcrSfcSource',
-  description:
-    "own = the filer's route; hq = the filer has no live route on that HQ, so the HQ's routes (any owner) are offered",
+  description: "own = a route on the filer's chart",
 });
 export type DcrSfcSource = z.infer<typeof DcrSfcSource>;
 export type DcrBand = z.infer<typeof DcrBand>;
@@ -172,7 +171,7 @@ export const DcrSfcSnapshot = z
     ratePerKm: z.number().meta({ description: 'Company TA rate per km at submit' }),
     frozenAt: Timestamp,
     source: DcrSfcSource.optional().meta({
-      description: 'own | hq (fallback). Absent on snapshots frozen before the fallback existed',
+      description: "own = a route on the filer's own SFC chart. Absent on older snapshots",
     }),
   })
   .meta({ id: 'DcrSfcSnapshot' });

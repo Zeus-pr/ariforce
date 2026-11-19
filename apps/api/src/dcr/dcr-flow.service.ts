@@ -217,24 +217,42 @@ export class DcrFlowService {
     return hqIds.map((id) => ({ id, name: names.find((n) => n.id === id)?.name ?? '' }));
   }
 
-  /**
-   * SFC candidates on these HQs in `band`: the caller's own routes on an HQ where they have any,
-   * else that HQ's routes from any owner (de-duplicated). Single source of truth for sfc-match,
-   * draft/submit validation and the submit snapshot; rules in ./sfc-resolve.ts. Reads go through
-   * the tenant transaction, so RLS keeps them to the caller's company.
-   */
-  private async candidates(
-    tx: Tx,
-    userId: string,
-    hqIds: string[],
-    band: DcrBand,
-  ): Promise<RouteRow[]> {
-    if (!hqIds.length) return [];
+  /** The person's own chart in `band`. Rules in ./sfc-resolve.ts. */
+  private async chart(tx: Tx, userId: string, band: DcrBand): Promise<RouteRow[]> {
     const rows = await tx
       .select()
       .from(sfcRoutes)
-      .where(and(inArray(sfcRoutes.hqTerritoryId, hqIds), isNull(sfcRoutes.deletedAt)));
-    return resolveSfcCandidates(rows, userId, hqIds, band);
+      .where(and(eq(sfcRoutes.userId, userId), isNull(sfcRoutes.deletedAt)));
+    return resolveSfcCandidates(rows, userId, band);
+  }
+
+  /** Routes chosen for the day's territories, taken from that one chart. */
+  private selectRoutes(
+    chart: RouteRow[],
+    hqs: Hq[],
+    chosen: { hqTerritoryId: string; sfcRouteId: string }[],
+  ) {
+    const routes: RouteRow[] = [];
+    const seen = new Set<string>();
+    const none: string[] = [];
+    const many: { hqTerritoryId: string; candidates: number }[] = [];
+    const take = (row: RouteRow) => {
+      if (seen.has(row.id)) return;
+      seen.add(row.id);
+      routes.push(row);
+    };
+    for (const h of hqs) {
+      const picks = chosen.filter((c) => c.hqTerritoryId === h.id);
+      if (picks.length) {
+        for (const pick of picks) {
+          const row = chart.find((r) => r.id === pick.sfcRouteId);
+          if (row) take(row);
+        }
+      } else if (chart.length === 1) take(chart[0]!);
+      else if (!chart.length) none.push(h.id);
+      else many.push({ hqTerritoryId: h.id, candidates: chart.length });
+    }
+    return { routes, none, many };
   }
 
   /**
@@ -464,26 +482,19 @@ export class DcrFlowService {
       const hqs = await this.resolveHqs(tx, p, q.territoryIds);
       let rows: RouteRow[];
       try {
-        rows = await this.candidates(
-          tx,
-          p.userId,
-          hqs.map((h) => h.id),
-          band,
-        );
+        rows = await this.chart(tx, p.userId, band);
       } catch {
         throw err(503, 'SFC_UNAVAILABLE', 'SFC lookup failed; retry');
       }
+      const listed = rows.map(candidate);
       const out = {
         band,
-        hqs: hqs.map((h) => {
-          const c = rows.filter((r) => r.hqTerritoryId === h.id).map(candidate);
-          return {
-            hqTerritoryId: h.id,
-            hqName: h.name,
-            candidates: c,
-            autoSelectedId: c.length === 1 ? c[0]!.id : null,
-          };
-        }),
+        hqs: hqs.map((h) => ({
+          hqTerritoryId: h.id,
+          hqName: h.name,
+          candidates: listed,
+          autoSelectedId: listed.length === 1 ? listed[0]!.id : null,
+        })),
       };
       const missingHqIds = out.hqs.filter((h) => !h.candidates.length).map((h) => h.hqTerritoryId);
       if (missingHqIds.length)
@@ -495,7 +506,7 @@ export class DcrFlowService {
     });
   }
 
-  /** Chosen routes must be candidates: on that HQ, live, in the band, own or HQ fallback. */
+  /** Chosen routes must be on this person's chart, live, and in the band. */
   private async checkChoices(
     tx: Tx,
     p: Principal,
@@ -513,25 +524,13 @@ export class DcrFlowService {
       throw err(422, 'SFC_MISMATCH', 'Route HQ is not an HQ of the chosen territories', {
         hqTerritoryIds: foreignHq.map((c) => c.hqTerritoryId),
       });
-    const ok = await this.candidates(
-      tx,
-      p.userId,
-      choices.map((c) => c.hqTerritoryId),
-      band,
-    );
-    const bad = choices.filter(
-      (c) => !ok.some((r) => r.id === c.sfcRouteId && r.hqTerritoryId === c.hqTerritoryId),
-    );
+    const ok = await this.chart(tx, p.userId, band);
+    const bad = choices.filter((c) => !ok.some((r) => r.id === c.sfcRouteId));
     if (bad.length)
-      throw err(
-        422,
-        'SFC_MISMATCH',
-        'Route is not a candidate: not yours (or HQ fallback), not on that HQ, deleted, or not in the band',
-        {
-          sfcRouteIds: bad.map((c) => c.sfcRouteId),
-          band,
-        },
-      );
+      throw err(422, 'SFC_MISMATCH', 'Route is not on your SFC for this band', {
+        sfcRouteIds: bad.map((c) => c.sfcRouteId),
+        band,
+      });
   }
 
   private checkDetailsKind(wt: WorkTypeRow, details: DcrDetails | null | undefined) {
@@ -926,41 +925,22 @@ export class DcrFlowService {
       // TP feature: changes from the approved tour plan no longer need a deviation reason
       // (deviationReason stays optional and is stored as given).
 
-      // One route per HQ of the day: chosen and valid, or the single candidate.
       const chosen = band
         ? dto.sfcRoutes.filter((r) => hqs.some((h) => h.id === r.hqTerritoryId))
         : [];
       await this.checkChoices(tx, p, chosen, hqs, band);
       const routes: RouteRow[] = [];
       if (band) {
-        const all = await this.candidates(
-          tx,
-          p.userId,
-          hqs.map((h) => h.id),
-          band,
-        );
-        const none: string[] = [];
-        const many: { hqTerritoryId: string; candidates: number }[] = [];
-        for (const h of hqs) {
-          const picks = chosen.filter((c) => c.hqTerritoryId === h.id);
-          const c = all.filter((r) => r.hqTerritoryId === h.id);
-          if (picks.length) {
-            for (const pick of picks) {
-              const row = c.find((r) => r.id === pick.sfcRouteId);
-              if (row) routes.push(row);
-            }
-          } else if (c.length === 1) routes.push(c[0]!);
-          else if (!c.length) none.push(h.id);
-          else many.push({ hqTerritoryId: h.id, candidates: c.length });
-        }
-        if (none.length)
-          throw err(422, 'SFC_NO_MATCH', 'No SFC route for some HQ of the day', {
-            hqTerritoryIds: none,
+        const picked = this.selectRoutes(await this.chart(tx, p.userId, band), hqs, chosen);
+        routes.push(...picked.routes);
+        if (picked.none.length)
+          throw err(422, 'SFC_NO_MATCH', 'No SFC route on your chart for this band', {
+            hqTerritoryIds: picked.none,
             band,
           });
-        if (many.length)
+        if (picked.many.length)
           throw err(422, 'SFC_ROUTE_REQUIRED', 'Choose at least one SFC route for each HQ', {
-            hqs: many,
+            hqs: picked.many,
           });
       }
       const [co] = await tx
@@ -1006,46 +986,30 @@ export class DcrFlowService {
           sfcRouteId: r.sfcRouteId,
         }));
         await this.checkChoices(tx, p, secChosen, secHqs, section.band);
-        const secAll = await this.candidates(
-          tx,
-          p.userId,
-          secHqs.map((h) => h.id),
-          section.band,
+        const picked = this.selectRoutes(
+          await this.chart(tx, p.userId, section.band),
+          secHqs,
+          secChosen,
         );
-        const secRoutes: RouteRow[] = [];
-        const none: string[] = [];
-        const many: { hqTerritoryId: string; candidates: number }[] = [];
-        for (const h of secHqs) {
-          const picks = secChosen.filter((c) => c.hqTerritoryId === h.id);
-          const c = secAll.filter((r) => r.hqTerritoryId === h.id);
-          if (picks.length) {
-            for (const pick of picks) {
-              const row = c.find((r) => r.id === pick.sfcRouteId);
-              if (row) secRoutes.push(row);
-            }
-          } else if (c.length === 1) secRoutes.push(c[0]!);
-          else if (!c.length) none.push(h.id);
-          else many.push({ hqTerritoryId: h.id, candidates: c.length });
-        }
-        if (none.length)
-          throw err(422, 'SFC_NO_MATCH', 'No SFC route for some HQ of the day', {
-            hqTerritoryIds: none,
+        if (picked.none.length)
+          throw err(422, 'SFC_NO_MATCH', 'No SFC route on your chart for this band', {
+            hqTerritoryIds: picked.none,
             band: section.band,
             section: index,
           });
-        if (many.length)
+        if (picked.many.length)
           throw err(422, 'SFC_ROUTE_REQUIRED', 'Choose at least one SFC route for each HQ', {
-            hqs: many,
+            hqs: picked.many,
             section: index,
           });
         await this.writeChoices(
           tx,
           p,
           cur.id,
-          secRoutes.map((r) => ({ hqTerritoryId: r.hqTerritoryId, sfcRouteId: r.id })),
+          picked.routes.map((r) => ({ hqTerritoryId: r.hqTerritoryId, sfcRouteId: r.id })),
           index,
         );
-        for (const r of secRoutes) {
+        for (const r of picked.routes) {
           const snapshot: DcrSfcSnapshot = {
             ...candidate(r),
             sfcRouteId: r.id,

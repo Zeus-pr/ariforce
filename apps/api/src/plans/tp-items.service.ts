@@ -165,11 +165,11 @@ export class TourPlanItemsService {
     const rr = plan.sfcRoutes.map((r) => r.sfcRouteId);
     if (rr.length) {
       const found = await tx
-        .select({ id: sfcRoutes.id, hq: sfcRoutes.hqTerritoryId })
+        .select({ id: sfcRoutes.id, userId: sfcRoutes.userId })
         .from(sfcRoutes)
         .where(and(inArray(sfcRoutes.id, rr), isNull(sfcRoutes.deletedAt)));
       const m = plan.sfcRoutes
-        .filter((c) => !found.some((f) => f.id === c.sfcRouteId && f.hq === c.hqTerritoryId))
+        .filter((c) => !found.some((f) => f.id === c.sfcRouteId && f.userId === p.userId))
         .map((c) => c.sfcRouteId);
       if (m.length) bad['plan.sfcRoutes'] = m;
     }

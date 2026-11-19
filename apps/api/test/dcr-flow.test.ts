@@ -162,10 +162,12 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
     expect(m.hqs).toHaveLength(2);
     const a = m.hqs.find((x) => x.hqTerritoryId === T.hq)!;
     const b = m.hqs.find((x) => x.hqTerritoryId === hq2)!;
-    expect(a.candidates).toHaveLength(2);
+    const own = [r1, r2, r3].sort();
+    expect(a.candidates.map((c) => c.id).sort()).toEqual(own);
+    expect(b.candidates.map((c) => c.id).sort()).toEqual(own);
+    expect(a.candidates.every((c) => c.source === 'own')).toBe(true);
     expect(a.autoSelectedId).toBeNull();
-    expect(b.candidates.map((c) => c.id)).toEqual([r3]);
-    expect(b.autoSelectedId).toBe(r3);
+    expect(b.autoSelectedId).toBeNull();
   });
 
   it('Meeting rejects sfcRoutes', async () => {
@@ -214,6 +216,7 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
         sfcRoutes: [
           { hqTerritoryId: T.hq, sfcRouteId: r1 },
           { hqTerritoryId: T.hq, sfcRouteId: r2 },
+          { hqTerritoryId: hq2, sfcRouteId: r3 },
         ],
         calls: [call()],
         version: d.version,
