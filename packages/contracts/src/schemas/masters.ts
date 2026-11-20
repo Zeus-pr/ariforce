@@ -45,7 +45,10 @@ export const DoctorApprovalStatus = z.enum(['pending', 'approved', 'rejected']).
 });
 const localTerritoryId = Id.nullable().default(null).meta({
   description:
-    'Territory (level `territory`) under the HQ `territoryId`, or null when not linked yet. Read-only: set by POST /v1/imports/territory-links; cleared when territoryId (the HQ) changes. docs/TERRITORY-MODEL.md',
+    'Territory under the headquarters in territoryId. Null when not linked yet. On create and update, a territory sent as territoryId is stored here and its parent headquarters is stored as territoryId.',
+});
+const localTerritoryWrite = Id.nullable().optional().meta({
+  description: 'Territory under the headquarters. Null clears it.',
 });
 
 export const Doctor = Syncable.extend({
@@ -123,13 +126,15 @@ export const DoctorCreate = DoctorFields.extend({
     .string()
     .regex(/^ARIDOC\d{6}$/)
     .optional(),
+  localTerritoryId: localTerritoryWrite,
 }).meta({ id: 'DoctorCreate' });
 export const DoctorUpdate = DoctorFields.partial()
-  .extend({ version: z.int().min(1) })
+  .extend({ version: z.int().min(1), localTerritoryId: localTerritoryWrite })
   .meta({ id: 'DoctorUpdate' });
 export const ChemistCreate = Chemist.omit({ ...writable, localTerritoryId: true, code: true })
   .extend({
     district: z.string().max(80).nullable().default(null),
+    localTerritoryId: localTerritoryWrite,
     code: z
       .string()
       .regex(/^ARICHM\d{6}$/)

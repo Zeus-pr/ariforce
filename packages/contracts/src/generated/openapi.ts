@@ -3278,6 +3278,8 @@ export interface components {
       /** @description Create even when a doctor with the same name (without "Dr.") and pincode exists (409 DOCTOR_POSSIBLE_DUPLICATE). A registration number match can never be overridden. */
       allowPossibleDuplicate?: boolean;
       code?: string;
+      /** @description Territory under the headquarters. Null clears it. */
+      localTerritoryId?: string | null;
     };
     GeoPoint: {
       lat: number;
@@ -3306,6 +3308,8 @@ export interface components {
       location?: components['schemas']['GeoPoint'] | null;
       phone?: string | null;
       version: number;
+      /** @description Territory under the headquarters. Null clears it. */
+      localTerritoryId?: string | null;
     };
     DoctorDuplicateCheck: {
       name: string;
@@ -3330,6 +3334,8 @@ export interface components {
       pincode: string | null;
       location: components['schemas']['GeoPoint'] | null;
       phone: string | null;
+      /** @description Territory under the headquarters. Null clears it. */
+      localTerritoryId?: string | null;
       code?: string;
     };
     ChemistUpdate: {
@@ -3350,6 +3356,8 @@ export interface components {
       pincode?: string | null;
       location?: components['schemas']['GeoPoint'] | null;
       phone?: string | null;
+      /** @description Territory under the headquarters. Null clears it. */
+      localTerritoryId?: string | null;
       code?: string;
       version: number;
     };
@@ -5388,7 +5396,7 @@ export interface components {
        */
       territoryId: string;
       /**
-       * @description Territory (level `territory`) under the HQ `territoryId`, or null when not linked yet. Read-only: set by POST /v1/imports/territory-links; cleared when territoryId (the HQ) changes. docs/TERRITORY-MODEL.md
+       * @description Territory under the headquarters in territoryId. Null when not linked yet. On create and update, a territory sent as territoryId is stored here and its parent headquarters is stored as territoryId.
        * @default null
        */
       localTerritoryId: string | null;
@@ -5505,7 +5513,7 @@ export interface components {
        */
       territoryId: string;
       /**
-       * @description Territory (level `territory`) under the HQ `territoryId`, or null when not linked yet. Read-only: set by POST /v1/imports/territory-links; cleared when territoryId (the HQ) changes. docs/TERRITORY-MODEL.md
+       * @description Territory under the headquarters in territoryId. Null when not linked yet. On create and update, a territory sent as territoryId is stored here and its parent headquarters is stored as territoryId.
        * @default null
        */
       localTerritoryId: string | null;

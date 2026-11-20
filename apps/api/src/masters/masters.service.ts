@@ -10,7 +10,20 @@ import {
 } from '@nestjs/common';
 import { Id } from '@ariforce/contracts';
 import { territories, type Tx } from '@ariforce/db';
-import { and, asc, count, desc, eq, gt, ilike, isNull, or, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  ilike,
+  inArray,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
@@ -19,6 +32,7 @@ import { StorageService } from '../files/storage.service';
 import { PRICE_KEYS, recordPriceChange } from '../product-prices/product-prices.service';
 import { DoctorsService } from './doctors.service';
 import { baseFromRow, type MasterDef } from './master-defs';
+import { OutletPlaceError, placeOutletTerritory } from './outlet-territory';
 
 type Row = Record<string, unknown>;
 type Q = Record<string, unknown> & {
@@ -193,6 +207,47 @@ export class MastersService {
     if (!t) throw new ForbiddenException('Territory outside your hierarchy');
   }
 
+  /** Headquarters on territoryId, the town on localTerritoryId. A town sent as the HQ is split. */
+  private async placeOutlet(
+    tx: Tx,
+    p: Principal,
+    territoryId: string,
+    localTerritoryId: string | null,
+  ) {
+    await this.assertTerritory(tx, p, territoryId);
+    if (localTerritoryId) await this.assertTerritory(tx, p, localTerritoryId);
+    const ids = [territoryId, ...(localTerritoryId ? [localTerritoryId] : [])];
+    const rows = await tx
+      .select({
+        id: territories.id,
+        parentId: territories.parentId,
+        level: territories.level,
+      })
+      .from(territories)
+      .where(and(inArray(territories.id, ids), isNull(territories.deletedAt)));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const chosen = byId.get(territoryId);
+    if (chosen?.level === 'territory' && chosen.parentId && !byId.has(chosen.parentId)) {
+      await this.assertTerritory(tx, p, chosen.parentId);
+      const [parent] = await tx
+        .select({
+          id: territories.id,
+          parentId: territories.parentId,
+          level: territories.level,
+        })
+        .from(territories)
+        .where(and(eq(territories.id, chosen.parentId), isNull(territories.deletedAt)));
+      if (parent) byId.set(parent.id, parent);
+    }
+    try {
+      return placeOutletTerritory(territoryId, localTerritoryId, byId);
+    } catch (e) {
+      if (e instanceof OutletPlaceError)
+        throw new HttpException({ code: 'TERRITORY_NOT_UNDER_HQ', message: e.message }, 422);
+      throw e;
+    }
+  }
+
   /** Price changes through the generic product routes are recorded in price history (source 'masters'). */
   private async trackPrices(tx: Tx, def: MasterDef, p: Principal, row: Row, before?: Row) {
     if (def.entity !== 'product') return;
@@ -208,7 +263,16 @@ export class MastersService {
 
   /** Insert inside an existing transaction (used by import too). */
   async insert(tx: Tx, def: MasterDef, p: Principal, body: Row, action = 'create') {
-    if (def.territoryCol && 'territoryId' in body)
+    if (def.entity === 'doctor' || def.entity === 'chemist') {
+      const placed = await this.placeOutlet(
+        tx,
+        p,
+        String(body.territoryId),
+        (body.localTerritoryId as string | null) ?? null,
+      );
+      body.territoryId = placed.territoryId;
+      body.localTerritoryId = placed.localTerritoryId;
+    } else if (def.territoryCol && 'territoryId' in body)
       await this.assertTerritory(tx, p, body.territoryId);
     const isDoctor = def.entity === 'doctor';
     const { allowPossibleDuplicate: _allow, ...fields } = body;
@@ -264,18 +328,28 @@ export class MastersService {
   async patch(tx: Tx, def: MasterDef, p: Principal, id: string, body: Row, action = 'update') {
     const before = await this.findRow(tx, def, p, id);
     const { version, ...changes } = body;
-    if (def.territoryCol && changes.territoryId && changes.territoryId !== before.territoryId)
-      await this.assertTerritory(tx, p, changes.territoryId);
-    const set: Row = def.toRow ? def.toRow(changes, p) : { ...changes };
-    delete set.code;
-    // The territory link sits under the HQ: a new HQ drops it (TERRITORY-MODEL.md).
-    if (
-      'localTerritoryId' in before &&
-      before.localTerritoryId &&
+    if (def.entity === 'doctor' || def.entity === 'chemist') {
+      const hqSent = typeof changes.territoryId === 'string';
+      const localSent = Object.prototype.hasOwnProperty.call(changes, 'localTerritoryId');
+      if (hqSent || localSent) {
+        const nextHq = hqSent ? String(changes.territoryId) : String(before.territoryId);
+        const nextLocal = localSent
+          ? ((changes.localTerritoryId as string | null) ?? null)
+          : hqSent && String(changes.territoryId) !== String(before.territoryId)
+            ? null
+            : ((before.localTerritoryId as string | null) ?? null);
+        const placed = await this.placeOutlet(tx, p, nextHq, nextLocal);
+        changes.territoryId = placed.territoryId;
+        changes.localTerritoryId = placed.localTerritoryId;
+      }
+    } else if (
+      def.territoryCol &&
       changes.territoryId &&
       changes.territoryId !== before.territoryId
     )
-      set.localTerritoryId = null;
+      await this.assertTerritory(tx, p, changes.territoryId);
+    const set: Row = def.toRow ? def.toRow(changes, p) : { ...changes };
+    delete set.code;
     // A rejected field-added doctor goes back for approval when its owner edits it (#26).
     const resubmit =
       def.entity === 'doctor' && before.approvalStatus === 'rejected' && p.scopePaths !== null;
