@@ -16,6 +16,7 @@ import { FEATURES } from '@/lib/features';
 import {
   APPROVAL_LABEL,
   FILTERS,
+  aripCode,
   isMasterKind,
   isPlaceholderName,
   MASTERS,
@@ -29,14 +30,14 @@ import {
 import { canWriteMasters } from '@/lib/roles';
 import { colors, layout, radius, shadows, spacing, touch } from '@/theme';
 
-const FILTER_LABEL = { territoryId: 'Territory', specialtyId: 'Specialty', categoryId: 'Category' };
+const FILTER_LABEL = { territoryId: 'HQ', specialtyId: 'Specialty', categoryId: 'Category' };
 const ALL_LABEL = {
-  territoryId: 'All territories',
+  territoryId: 'All HQs',
   specialtyId: 'All specialties',
   categoryId: 'All categories',
 };
 const FILTER_TYPE = {
-  territoryId: 'territory',
+  territoryId: 'hq',
   specialtyId: 'specialty',
   categoryId: 'category',
 } as const;
@@ -79,10 +80,11 @@ function MasterList({ kind }: { kind: MasterKind }) {
 
   const subtitle = (r: MasterRow) => {
     const name = (id: string | null | undefined) => (id ? lk.byId.get(id) : undefined);
+    const town = 'localTerritoryId' in r ? name(r.localTerritoryId) : undefined;
     const parts =
       kind === 'doctors' && 'specialtyId' in r
-        ? [name(r.specialtyId), name(r.territoryId), r.city]
-        : [name(r.territoryId), r.city, r.phone];
+        ? [aripCode(r), name(r.specialtyId), town, name(r.territoryId), r.city]
+        : [aripCode(r), town, name(r.territoryId), r.city, r.phone];
     return parts.filter(Boolean).join(' · ') || '—';
   };
 

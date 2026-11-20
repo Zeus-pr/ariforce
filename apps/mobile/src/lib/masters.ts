@@ -41,7 +41,17 @@ export const isMasterKind = (k: unknown): k is MasterKind =>
 export type FieldDef = {
   key: string;
   label: string;
-  type: 'text' | 'territory' | 'specialty' | 'category' | 'tel' | 'pincode' | 'date' | 'email';
+  type:
+    | 'text'
+    | 'territory'
+    | 'hq'
+    | 'town'
+    | 'specialty'
+    | 'category'
+    | 'tel'
+    | 'pincode'
+    | 'date'
+    | 'email';
   required?: boolean;
   /** Contract max length (zod .max). */
   max?: number;
@@ -49,12 +59,20 @@ export type FieldDef = {
 };
 
 const address: FieldDef[] = [
-  { key: 'phone', label: 'Phone', type: 'tel', max: 20 },
+  { key: 'phone', label: 'Phone', type: 'tel', max: 35 },
   { key: 'addressLine', label: 'Address', type: 'text', max: 300 },
   { key: 'city', label: 'City', type: 'text', max: 80 },
   { key: 'state', label: 'State', type: 'text', max: 80 },
   { key: 'pincode', label: 'PIN code', type: 'pincode' },
 ];
+
+const hq: FieldDef = { key: 'territoryId', label: 'HQ', type: 'hq', required: true };
+const town: FieldDef = {
+  key: 'localTerritoryId',
+  label: 'Territory',
+  type: 'town',
+  required: true,
+};
 
 const trade: FieldDef[] = [
   { key: 'name', label: 'Name', type: 'text', required: true, max: 160 },
@@ -74,7 +92,8 @@ export const MASTERS: Record<
     path: '/v1/doctors',
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true, max: 160 },
-      { key: 'territoryId', label: 'Territory', type: 'territory', required: true },
+      hq,
+      town,
       {
         key: 'qualification',
         label: 'Qualification',
@@ -91,7 +110,12 @@ export const MASTERS: Record<
       ...address,
     ],
   },
-  chemists: { title: 'Chemists', singular: 'chemist', path: '/v1/chemists', fields: trade },
+  chemists: {
+    title: 'Chemists',
+    singular: 'chemist',
+    path: '/v1/chemists',
+    fields: [trade[0]!, hq, town, ...trade.slice(2)],
+  },
   stockists: { title: 'Stockists', singular: 'stockist', path: '/v1/stockists', fields: trade },
 };
 
@@ -117,6 +141,11 @@ export function blankRecord(kind: MasterKind): Values {
   const out: Values = {};
   for (const f of MASTERS[kind].fields) out[f.key] = f.required ? '' : null;
   return out;
+}
+
+export function aripCode(row: object | null | undefined) {
+  const code = row && 'code' in row ? (row as { code?: unknown }).code : undefined;
+  return typeof code === 'string' ? code : '';
 }
 
 export function valuesFrom(kind: MasterKind, row: MasterRow | null): Values {
@@ -208,18 +237,28 @@ export function useLookups(): Lookups {
 export type Option = { value: string; label: string; hint?: string };
 
 /** Select options per field type (web field-input.tsx). */
-export function optionsFor(type: FieldDef['type'], lk: Lookups): Option[] | null {
-  const o = optionsUnsorted(type, lk);
+export function optionsFor(
+  type: FieldDef['type'],
+  lk: Lookups,
+  hqId?: string | null,
+): Option[] | null {
+  const o = optionsUnsorted(type, lk, hqId);
   return o && sortByLabel(o);
 }
 
-function optionsUnsorted(type: FieldDef['type'], lk: Lookups): Option[] | null {
-  if (type === 'territory')
-    return lk.territories.map((t) => ({
-      value: t.id,
-      label: `${t.name} (${t.code})`,
-      hint: t.level,
-    }));
+function optionsUnsorted(
+  type: FieldDef['type'],
+  lk: Lookups,
+  hqId?: string | null,
+): Option[] | null {
+  const place = (rows: Territory[]) =>
+    rows.map((t) => ({ value: t.id, label: `${t.name} (${t.code})`, hint: t.level }));
+  if (type === 'hq') return place(lk.territories.filter((t) => t.level === 'headquarter'));
+  if (type === 'town')
+    return place(
+      lk.territories.filter((t) => t.level === 'territory' && (!hqId || t.parentId === hqId)),
+    );
+  if (type === 'territory') return place(lk.territories);
   if (type === 'specialty') return lk.specialties.map((s) => ({ value: s.id, label: s.name }));
   if (type === 'category')
     return lk.categories.map((c) => ({
@@ -271,9 +310,11 @@ export function useSaveMaster(kind: MasterKind, row: MasterRow | null) {
     mutationFn: async ({
       values,
       allowPossibleDuplicate,
+      code,
     }: {
       values: Values;
       allowPossibleDuplicate?: boolean;
+      code?: string;
     }) => {
       const path = MASTERS[kind].path;
       if (row)
@@ -287,6 +328,7 @@ export function useSaveMaster(kind: MasterKind, row: MasterRow | null) {
         body: {
           ...values,
           location: null,
+          ...(code ? { code } : {}),
           ...(allowPossibleDuplicate ? { allowPossibleDuplicate: true } : {}),
         },
       });

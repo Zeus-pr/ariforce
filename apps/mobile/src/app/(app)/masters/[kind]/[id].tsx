@@ -16,6 +16,7 @@ import { useAuth } from '@/lib/auth-context';
 import { FEATURES } from '@/lib/features';
 import type { OutletKind } from '@/lib/field';
 import {
+  aripCode,
   APPROVAL_LABEL,
   isMasterKind,
   isPlaceholderName,
@@ -40,7 +41,7 @@ export default function MasterDetailScreen() {
   return <MasterDetail kind={kind} id={id} />;
 }
 
-const LOOKUP_TYPES = ['territory', 'specialty', 'category'];
+const LOOKUP_TYPES = ['territory', 'hq', 'town', 'specialty', 'category'];
 
 function dayLabel(iso: string) {
   const [y, m, d] = iso.split('-').map(Number);
@@ -99,7 +100,8 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
         doctor.registrationNo && `Reg. ${doctor.registrationNo}`,
       ]
     : ['gstin' in row && row.gstin && `GSTIN ${row.gstin}`];
-  const place = [row.addressLine, row.city, lk.byId.get(row.territoryId)]
+  const town = 'localTerritoryId' in row ? lk.byId.get(row.localTerritoryId ?? '') : undefined;
+  const place = [row.addressLine, row.city, town, lk.byId.get(row.territoryId)]
     .filter(Boolean)
     .join(', ');
 
@@ -116,6 +118,7 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
             <AppText variant="name" accessibilityRole="header">
               {row.name}
             </AppText>
+            {aripCode(row) ? <AppText variant="subhead">ARIP code {aripCode(row)}</AppText> : null}
             <View style={styles.chips}>
               {category ? <Chip label={category.name} tone="teal" /> : null}
               {doctor && doctor.approvalStatus !== 'approved' ? (
@@ -176,8 +179,16 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
             </View>
           ) : null}
 
-          <Card>
-            {cfg.fields.map((f, i) => {
+          <OutletLocksCard
+            outletKind={OUTLET_KIND[kind]}
+            outletId={row.id}
+            roles={user?.roles ?? []}
+          />
+
+          <OutletActivity kind={OUTLET_KIND[kind]} outletId={row.id} />
+
+          <Card style={styles.facts}>
+            {cfg.fields.map((f) => {
               const raw = values[f.key];
               const v =
                 raw && LOOKUP_TYPES.includes(f.type)
@@ -188,7 +199,7 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
               return (
                 <View
                   key={f.key}
-                  style={[styles.field, i < cfg.fields.length - 1 && styles.divider]}
+                  style={styles.fact}
                   accessible
                   accessibilityLabel={`${f.label}: ${v || 'none'}`}
                 >
@@ -198,14 +209,6 @@ function MasterDetail({ kind, id }: { kind: MasterKind; id: string }) {
               );
             })}
           </Card>
-
-          <OutletActivity kind={OUTLET_KIND[kind]} outletId={row.id} />
-
-          <OutletLocksCard
-            outletKind={OUTLET_KIND[kind]}
-            outletId={row.id}
-            roles={user?.roles ?? []}
-          />
 
           {canWrite ? (
             <Button
@@ -242,6 +245,12 @@ const styles = StyleSheet.create({
     borderColor: colors.dangerBorder,
   },
   rejectionTitle: { color: colors.danger },
-  field: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: 2 },
-  divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator },
+  fact: { width: '48%', paddingVertical: spacing.sm, gap: 2 },
+  facts: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
 });
