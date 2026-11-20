@@ -17,31 +17,40 @@ const NONE = '__none';
 export function FieldInput({
   field,
   value,
+  hqId,
   onChange,
   invalid,
   id,
 }: {
   field: FieldDef;
   value: string | null;
+  hqId?: string | null;
   onChange: (v: string | null) => void;
   invalid?: boolean;
   id: string;
 }) {
   const lk = useLookups();
-  const options =
-    field.type === 'territory'
-      ? lk.territories.map((t) => ({ value: t.id, label: `${t.name} (${t.code})`, group: t.level }))
-      : field.type === 'specialty'
-        ? lk.specialties.map((s) => ({ value: s.id, label: s.name, group: '' }))
-        : field.type === 'category'
-          ? lk.categories.map((c) => ({
-              value: c.id,
-              label: `${c.name} · ${c.visitsPerMonth}/month`,
-              group: '',
-            }))
+  const places =
+    field.type === 'hq'
+      ? lk.territories.filter((t) => t.level === 'headquarter')
+      : field.type === 'town'
+        ? lk.territories.filter((t) => t.level === 'territory' && (!hqId || t.parentId === hqId))
+        : field.type === 'territory'
+          ? lk.territories
           : null;
+  const options = places
+    ? places.map((t) => ({ value: t.id, label: `${t.name} (${t.code})`, group: t.level }))
+    : field.type === 'specialty'
+      ? lk.specialties.map((s) => ({ value: s.id, label: s.name, group: '' }))
+      : field.type === 'category'
+        ? lk.categories.map((c) => ({
+            value: c.id,
+            label: `${c.name} · ${c.visitsPerMonth}/month`,
+            group: '',
+          }))
+        : null;
 
-  if (field.type === 'territory' && options) {
+  if ((field.type === 'territory' || field.type === 'hq' || field.type === 'town') && options) {
     return (
       <TerritorySearch
         id={id}
@@ -50,6 +59,7 @@ export function FieldInput({
         required={field.required}
         invalid={invalid}
         ready={lk.ready}
+        placeholder={lk.ready ? `Search ${field.label}` : 'Loading…'}
         onChange={onChange}
       />
     );
@@ -119,6 +129,7 @@ function TerritorySearch({
   required,
   invalid,
   ready,
+  placeholder,
   onChange,
 }: {
   id: string;
@@ -127,6 +138,7 @@ function TerritorySearch({
   required?: boolean;
   invalid?: boolean;
   ready: boolean;
+  placeholder: string;
   onChange: (v: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -147,7 +159,7 @@ function TerritorySearch({
         aria-controls={`${id}-list`}
         aria-invalid={invalid || undefined}
         disabled={!ready}
-        placeholder={ready ? 'Search territory' : 'Loading…'}
+        placeholder={placeholder}
         value={open ? q : (current?.label ?? '')}
         autoComplete="off"
         onFocus={() => {

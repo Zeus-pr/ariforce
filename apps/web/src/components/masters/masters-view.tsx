@@ -41,6 +41,18 @@ function useColumns(kind: MasterKind): Column<MasterRow>[] {
       mobile: 'secondary',
       cell: (r) => name(r.territoryId),
     };
+    const hq: Column<MasterRow> = {
+      id: 'hq',
+      header: 'HQ',
+      mobile: 'secondary',
+      cell: (r) => name(r.territoryId),
+    };
+    const patch: Column<MasterRow> = {
+      id: 'patch',
+      header: 'Territory',
+      mobile: 'secondary',
+      cell: (r) => name('localTerritoryId' in r ? r.localTerritoryId : null),
+    };
     const code: Column<MasterRow> = {
       id: 'code',
       header: 'ARIP code',
@@ -81,10 +93,12 @@ function useColumns(kind: MasterKind): Column<MasterRow>[] {
             return c ? <Badge variant="secondary">{c}</Badge> : dash;
           },
         },
-        territory,
+        hq,
+        patch,
         place,
         district,
       ];
+    const places = kind === 'chemists' ? [hq, patch] : [territory];
     return [
       code,
       title,
@@ -99,7 +113,7 @@ function useColumns(kind: MasterKind): Column<MasterRow>[] {
         header: 'Drug licence',
         cell: (r) => ('drugLicenseNo' in r && r.drugLicenseNo) || dash,
       },
-      territory,
+      ...places,
       place,
       district,
       { id: 'phone', header: 'Phone', mobile: 'secondary', cell: (r) => r.phone ?? dash },

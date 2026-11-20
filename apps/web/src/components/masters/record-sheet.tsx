@@ -54,6 +54,7 @@ export function RecordSheet({
   onSaved: () => void;
 }) {
   const cfg = MASTERS[kind];
+  const lk = useLookups();
   const [values, setValues] = useState<Values>(() => blankRecord(kind));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -136,16 +137,24 @@ export function RecordSheet({
       setErrors(errs);
       return;
     }
+    const payload: Record<string, unknown> = { ...(parsed.data as object) };
+    if (kind === 'doctors' || kind === 'chemists') {
+      if (!values.localTerritoryId) {
+        setErrors({ localTerritoryId: 'Required.' });
+        return;
+      }
+      payload.localTerritoryId = values.localTerritoryId;
+    }
     setBusy(true);
     const res = row
       ? await api.PATCH(`${cfg.path}/{id}`, {
           params: { path: { id: row.id } },
-          body: { ...(parsed.data as object), version: row.version } as never,
+          body: { ...payload, version: row.version } as never,
         })
       : await api.POST(cfg.path, {
           body: (allowPossibleDuplicate
-            ? { ...(parsed.data as object), allowPossibleDuplicate: true }
-            : parsed.data) as never,
+            ? { ...payload, allowPossibleDuplicate: true }
+            : payload) as never,
           headers: { 'idempotency-key': crypto.randomUUID() },
         });
     setBusy(false);
@@ -257,9 +266,17 @@ export function RecordSheet({
                       id={id}
                       field={f}
                       value={values[f.key] ?? null}
+                      hqId={values.territoryId}
                       invalid={!!errors[f.key]}
                       onChange={(v) => {
-                        setValues((s) => ({ ...s, [f.key]: v }));
+                        setValues((s) => {
+                          const next = { ...s, [f.key]: v };
+                          if (f.key === 'territoryId' && s.localTerritoryId) {
+                            const town = lk.territories.find((t) => t.id === s.localTerritoryId);
+                            if (!town || town.parentId !== v) next.localTerritoryId = null;
+                          }
+                          return next;
+                        });
                         if (errors[f.key]) setErrors(({ [f.key]: _, ...rest }) => rest);
                       }}
                     />
@@ -433,7 +450,7 @@ function ReadOnlyDetails({
         {MASTERS[kind].fields.map((f) => {
           const raw = values[f.key];
           const v =
-            raw && ['territory', 'specialty', 'category'].includes(f.type)
+            raw && ['territory', 'hq', 'town', 'specialty', 'category'].includes(f.type)
               ? (byId.get(raw) ?? raw)
               : raw && f.type === 'date'
                 ? showDay(raw)
