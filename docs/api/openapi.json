@@ -19696,6 +19696,21 @@
           "code": {
             "type": "string",
             "pattern": "^ARIDOC\\d{6}$"
+          },
+          "localTerritoryId": {
+            "description": "Territory under the headquarters. Null clears it.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -19928,6 +19943,21 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 9007199254740991
+          },
+          "localTerritoryId": {
+            "description": "Territory under the headquarters. Null clears it.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -20083,6 +20113,21 @@
               }
             ]
           },
+          "localTerritoryId": {
+            "description": "Territory under the headquarters. Null clears it.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "code": {
             "type": "string",
             "pattern": "^ARICHM\\d{6}$"
@@ -20209,6 +20254,21 @@
               {
                 "type": "string",
                 "maxLength": 35
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "localTerritoryId": {
+            "description": "Territory under the headquarters. Null clears it.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUIDv7 identifier",
+                "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
               },
               {
                 "type": "null"
@@ -27487,7 +27547,7 @@
           },
           "localTerritoryId": {
             "default": null,
-            "description": "Territory (level `territory`) under the HQ `territoryId`, or null when not linked yet. Read-only: set by POST /v1/imports/territory-links; cleared when territoryId (the HQ) changes. docs/TERRITORY-MODEL.md",
+            "description": "Territory under the headquarters in territoryId. Null when not linked yet. On create and update, a territory sent as territoryId is stored here and its parent headquarters is stored as territoryId.",
             "anyOf": [
               {
                 "type": "string",
@@ -27944,7 +28004,7 @@
           },
           "localTerritoryId": {
             "default": null,
-            "description": "Territory (level `territory`) under the HQ `territoryId`, or null when not linked yet. Read-only: set by POST /v1/imports/territory-links; cleared when territoryId (the HQ) changes. docs/TERRITORY-MODEL.md",
+            "description": "Territory under the headquarters in territoryId. Null when not linked yet. On create and update, a territory sent as territoryId is stored here and its parent headquarters is stored as territoryId.",
             "anyOf": [
               {
                 "type": "string",
