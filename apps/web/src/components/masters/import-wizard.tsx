@@ -94,13 +94,17 @@ function autoMatch(fields: FieldDef[], headers: string[]): Record<string, number
 /** Resolve a lookup cell by code or name (case-insensitive). */
 function resolver(lk: Lookups, type: FieldDef['type']) {
   const list =
-    type === 'territory'
-      ? lk.territories
-      : type === 'specialty'
-        ? lk.specialties
-        : type === 'category'
-          ? lk.categories
-          : [];
+    type === 'hq'
+      ? lk.territories.filter((t) => t.level === 'headquarter')
+      : type === 'town'
+        ? lk.territories.filter((t) => t.level === 'territory')
+        : type === 'territory'
+          ? lk.territories
+          : type === 'specialty'
+            ? lk.specialties
+            : type === 'category'
+              ? lk.categories
+              : [];
   const map = new Map<string, string>();
   for (const r of list) {
     map.set(normHeader(r.name), r.id);

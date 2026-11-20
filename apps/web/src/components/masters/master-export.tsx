@@ -28,6 +28,7 @@ const DOCTOR_COLS = [
   'Qualification',
   'Specialty',
   'Category',
+  'HQ',
   'Territory',
   'Registration no.',
   'Phone',
@@ -39,6 +40,18 @@ const DOCTOR_COLS = [
   'Date of birth',
   'Anniversary',
   'Status',
+];
+const CHEMIST_COLS = [
+  'Name',
+  'HQ',
+  'Territory',
+  'GSTIN',
+  'Drug licence',
+  'Phone',
+  'Address',
+  'City',
+  'State',
+  'PIN code',
 ];
 const TRADE_COLS = [
   'Name',
@@ -63,6 +76,7 @@ function doctorRow(d: Doctor, name: (id: string | null | undefined) => ExportCel
     name(d.specialtyId),
     name(d.categoryId),
     name(d.territoryId),
+    name(d.localTerritoryId),
     text(d.registrationNo),
     text(d.phone),
     text(d.email),
@@ -73,6 +87,21 @@ function doctorRow(d: Doctor, name: (id: string | null | undefined) => ExportCel
     text(d.dateOfBirth),
     text(d.anniversary),
     APPROVAL_LABEL[d.approvalStatus] ?? d.approvalStatus,
+  ];
+}
+
+function chemistRow(r: Chemist, name: (id: string | null | undefined) => ExportCell): ExportCell[] {
+  return [
+    r.name,
+    name(r.territoryId),
+    name(r.localTerritoryId),
+    text(r.gstin),
+    text(r.drugLicenseNo),
+    text(r.phone),
+    text(r.addressLine),
+    text(r.city),
+    text(r.state),
+    text(r.pincode),
   ];
 }
 
@@ -131,7 +160,9 @@ export function MasterExport({ kind }: { kind: MasterKind }) {
     for (const [k, v] of Object.entries(filters))
       if (v) meta.push(`${FILTER_LABEL[k] ?? k}: ${lk.byId.get(v) ?? v}`);
     meta.push(`Exported ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`);
-    const columns = (kind === 'doctors' ? DOCTOR_COLS : TRADE_COLS).map((header) => ({
+    const columns = (
+      kind === 'doctors' ? DOCTOR_COLS : kind === 'chemists' ? CHEMIST_COLS : TRADE_COLS
+    ).map((header) => ({
       header,
       width: header === 'Name' || header === 'Address' ? 28 : 18,
     }));
@@ -142,7 +173,9 @@ export function MasterExport({ kind }: { kind: MasterKind }) {
       rows:
         kind === 'doctors'
           ? items.map((r) => doctorRow(r as Doctor, name))
-          : items.map((r) => tradeRow(r as Chemist | Stockist, name)),
+          : kind === 'chemists'
+            ? items.map((r) => chemistRow(r as Chemist, name))
+            : items.map((r) => tradeRow(r as Stockist, name)),
       fileName: `ariforce-${kind}-${todayYmd()}`,
     };
   };

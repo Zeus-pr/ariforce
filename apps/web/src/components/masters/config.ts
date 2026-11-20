@@ -14,7 +14,17 @@ export type MasterRow = Doctor | Chemist | Stockist;
 export type FieldDef = {
   key: string;
   label: string;
-  type: 'text' | 'territory' | 'specialty' | 'category' | 'tel' | 'pincode' | 'date' | 'email';
+  type:
+    | 'text'
+    | 'territory'
+    | 'hq'
+    | 'town'
+    | 'specialty'
+    | 'category'
+    | 'tel'
+    | 'pincode'
+    | 'date'
+    | 'email';
   required?: boolean;
   /** Header names accepted when importing a sheet (lower-cased, punctuation ignored). */
   aliases: string[];
@@ -44,6 +54,22 @@ const address: FieldDef[] = [
     aliases: ['pincode', 'pin', 'postalcode', 'zip'],
   },
 ];
+
+const hq: FieldDef = {
+  key: 'territoryId',
+  label: 'HQ',
+  type: 'hq',
+  required: true,
+  aliases: ['hq', 'headquarter', 'headquarters'],
+};
+
+const town: FieldDef = {
+  key: 'localTerritoryId',
+  label: 'Territory',
+  type: 'town',
+  required: true,
+  aliases: ['territory', 'territorycode', 'area', 'town', 'patch'],
+};
 
 const trade: FieldDef[] = [
   {
@@ -99,13 +125,8 @@ export const MASTERS: Record<
         required: true,
         aliases: ['name', 'doctorname', 'drname'],
       },
-      {
-        key: 'territoryId',
-        label: 'Territory',
-        type: 'territory',
-        required: true,
-        aliases: ['territory', 'territorycode', 'area', 'hq', 'headquarter'],
-      },
+      hq,
+      town,
       {
         key: 'qualification',
         label: 'Qualification',
@@ -157,7 +178,7 @@ export const MASTERS: Record<
     singular: 'chemist',
     path: '/v1/chemists',
     create: ChemistCreate,
-    fields: trade,
+    fields: [trade[0]!, hq, town, ...trade.slice(2)],
   },
   stockists: {
     title: 'Stockists',

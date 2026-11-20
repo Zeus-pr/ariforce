@@ -99,7 +99,12 @@ function DoctorList() {
       mobile: 'secondary',
       cell: (d) => (d.categoryId ? lk.byId.get(d.categoryId) : '—'),
     },
-    { id: 'territory', header: 'Territory', cell: (d) => lk.byId.get(d.territoryId) ?? '—' },
+    { id: 'hq', header: 'HQ', cell: (d) => lk.byId.get(d.territoryId) ?? '—' },
+    {
+      id: 'territory',
+      header: 'Territory',
+      cell: (d) => (d.localTerritoryId ? (lk.byId.get(d.localTerritoryId) ?? '—') : '—'),
+    },
     { id: 'city', header: 'City', mobile: 'secondary', cell: (d) => d.city ?? '—' },
     { id: 'district', header: 'District', mobile: 'secondary', cell: (d) => d.district ?? '—' },
     {
@@ -328,7 +333,14 @@ function Doctor360({ id }: { id: string }) {
         <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
           <span className="inline-flex items-center gap-1">
             <MapPin className="size-3.5" />
-            {[doc.addressLine, doc.city, lk.byId.get(doc.territoryId)].filter(Boolean).join(', ')}
+            {[
+              doc.addressLine,
+              doc.city,
+              doc.localTerritoryId && lk.byId.get(doc.localTerritoryId),
+              lk.byId.get(doc.territoryId),
+            ]
+              .filter(Boolean)
+              .join(', ')}
           </span>
           {doc.phone && (
             <a

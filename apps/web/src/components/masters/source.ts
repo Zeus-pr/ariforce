@@ -53,7 +53,7 @@ export function masterSource(kind: MasterKind, lk: Lookups): DataSource<MasterRo
   const filters: FilterDef[] = [
     {
       id: 'territoryId',
-      label: 'Territory',
+      label: kind === 'stockists' ? 'Territory' : 'HQ',
       options: masterTerritoryFilterOptions(lk.territories),
     },
   ];
