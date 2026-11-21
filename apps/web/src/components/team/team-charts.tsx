@@ -6,14 +6,16 @@ import { useReducedMotion } from '@/lib/use-reduced-motion';
 
 export function TeamCoverageChart({
   chart,
-  listLabel,
+  label,
+  percent,
 }: {
-  chart: { name: string; coverage: number | null }[];
-  listLabel: string;
+  chart: { name: string; value: number }[];
+  label: string;
+  percent: boolean;
 }) {
   const reduced = useReducedMotion();
   return (
-    <ChartFrame height={Math.max(220, chart.length * 28 + 40)} label={`Coverage by ${listLabel}`}>
+    <ChartFrame height={Math.max(220, chart.length * 28 + 40)} label={label}>
       <BarChart
         layout="vertical"
         data={chart}
@@ -21,7 +23,12 @@ export function TeamCoverageChart({
         barSize={14}
       >
         <CartesianGrid horizontal={false} stroke={CHART.grid} />
-        <XAxis type="number" domain={[0, 100]} unit="%" {...axisProps} />
+        <XAxis
+          type="number"
+          domain={percent ? [0, 100] : [0, 'auto']}
+          unit={percent ? '%' : undefined}
+          {...axisProps}
+        />
         <YAxis
           type="category"
           dataKey="name"
@@ -30,10 +37,10 @@ export function TeamCoverageChart({
           {...axisProps}
           tickFormatter={(v: string) => (v.length > 14 ? `${v.slice(0, 13)}…` : v)}
         />
-        <ChartTooltip format={(v) => `${v}%`} />
+        <ChartTooltip format={(v) => (percent ? `${v}%` : String(v))} />
         <Bar
-          dataKey="coverage"
-          name="Coverage"
+          dataKey="value"
+          name={label}
           fill={CHART.primary}
           radius={[0, 3, 3, 0]}
           isAnimationActive={!reduced}

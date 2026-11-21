@@ -25,7 +25,7 @@ import {
   type StatementStatus,
   type StockistOption,
 } from '@/lib/stock-statements/api';
-import { PlaceCompareChart } from '@/components/performance/sales-charts';
+import { ProductColumnChart } from '@/components/performance/sales-charts';
 import { API_URL, apiReady } from '@/lib/api';
 import { useRole } from '@/components/shell/role-context';
 
@@ -1040,7 +1040,7 @@ function ProductSales({
   return (
     <section aria-label="Product sales" className="flex flex-col gap-2">
       <h2 className="text-base font-semibold">Products</h2>
-      <PlaceCompareChart places={places} label="Products, primary and secondary" />
+      <ProductColumnChart places={places} label="Products, primary and secondary" />
     </section>
   );
 }

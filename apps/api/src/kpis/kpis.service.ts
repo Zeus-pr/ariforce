@@ -171,7 +171,33 @@ export class KpisService {
                  where t.deleted_at is null
                    and (t.path = ${place.path} or starts_with(t.path, ${place.path}::text || '.'))`,
           );
-          const allowed = new Set(inside.map((r) => r.user_id));
+          let allowed = new Set(inside.map((r) => r.user_id));
+          if (allowed.size === 0) {
+            const above = await rows<{ user_id: string }>(
+              tx,
+              sql`with recursive up as (
+                    select id, parent_id, 0 as dist
+                      from territories
+                     where id = ${q.territoryId}::uuid and deleted_at is null
+                    union all
+                    select p.id, p.parent_id, up.dist + 1
+                      from territories p
+                      join up on p.id = up.parent_id
+                     where p.deleted_at is null and up.dist < 8
+                  )
+                  select ut.user_id
+                    from up
+                    join user_territories ut on ut.territory_id = up.id
+                   where up.dist > 0
+                     and up.dist = (
+                       select min(u2.dist)
+                         from up u2
+                         join user_territories ut2 on ut2.territory_id = u2.id
+                        where u2.dist > 0
+                     )`,
+            );
+            allowed = new Set(above.map((r) => r.user_id));
+          }
           people = team.filter((member) => allowed.has(member.id));
         }
         const userIds = people.map((t) => t.id);

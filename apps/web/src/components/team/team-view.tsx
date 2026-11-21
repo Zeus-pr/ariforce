@@ -146,10 +146,18 @@ export function TeamView() {
   };
 
   const metric = (r: Row, k: string) => r.metrics.find((m) => m.kpi === k);
-  const chart = (rows ?? []).map((r) => ({
-    name: r.label,
-    coverage: metric(r, 'coverage_pct')?.value ?? null,
-  }));
+  const withValue = (key: string) =>
+    (rows ?? []).flatMap((r) => {
+      const value = metric(r, key)?.value;
+      return value == null ? [] : [{ name: r.label, value }];
+    });
+  const chartKey = withValue('coverage_pct').length
+    ? 'coverage_pct'
+    : withValue('call_average').length
+      ? 'call_average'
+      : null;
+  const chart = chartKey ? withValue(chartKey) : [];
+  const chartLabel = chartKey === 'call_average' ? 'Call average' : 'Coverage';
   const title = person ? person.label : node ? `${node.name}` : 'Team';
   const listLabel = leaf ? 'People' : (LEVEL[children[0]?.level ?? 'territory'] ?? 'Places');
 
@@ -296,9 +304,7 @@ export function TeamView() {
                             key={k}
                             className={cn('text-right tabular-nums last:pr-4')}
                             title={
-                              m && m.denominator != null
-                                ? `${m.numerator} ÷ ${m.denominator}`
-                                : undefined
+                              m && m.denominator ? `${m.numerator} ÷ ${m.denominator}` : undefined
                             }
                           >
                             {m ? formatKpi(m.value, m.unit) : '—'}
@@ -325,15 +331,19 @@ export function TeamView() {
           </Card>
           <Card className="gap-0 py-0 shadow-xs">
             <CardHeader className="px-4 pt-4 pb-0">
-              <CardTitle className="text-sm">Coverage</CardTitle>
+              <CardTitle className="text-sm">{chartLabel}</CardTitle>
             </CardHeader>
             <div className="px-2 pb-2">
               {rows === null ? (
                 <div className="h-[220px] animate-pulse rounded-md bg-muted/40" aria-busy="true" />
               ) : chart.length > 0 ? (
-                <TeamCoverageChart chart={chart} listLabel={listLabel} />
+                <TeamCoverageChart
+                  chart={chart}
+                  label={chartLabel}
+                  percent={chartKey === 'coverage_pct'}
+                />
               ) : (
-                <p className="px-2 py-8 text-sm text-muted-foreground">No coverage to chart.</p>
+                <p className="px-2 py-8 text-sm text-muted-foreground">Nothing to chart.</p>
               )}
             </div>
           </Card>
