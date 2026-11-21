@@ -6,9 +6,26 @@ import type { Principal } from '../auth/principal';
 import { ZodPipe } from '../common/zod.pipe';
 import { KpisService } from './kpis.service';
 
-function canReadKpis(p: Principal) {
+const DISTRIBUTION_KPIS = new Set([
+  'primary_sales_value',
+  'primary_achievement_pct',
+  'secondary_sales_value',
+  'secondary_achievement_pct',
+  'growth_vs_ly_pct',
+  'pob_value',
+]);
+
+function canReadKpis(p: Principal, q: z.output<typeof KpiQuery>) {
   if (p.permissions.includes('reports:read')) return;
-  if (p.roles.includes('distribution_head') && p.permissions.includes('sales:read')) return;
+  const keys = q.kpis ?? [];
+  const salesDesk =
+    p.roles.includes('distribution_head') &&
+    p.permissions.includes('sales:read') &&
+    !q.userId &&
+    (q.rollup === 'company' || q.rollup === 'byTerritory') &&
+    keys.length > 0 &&
+    keys.every((key) => DISTRIBUTION_KPIS.has(key));
+  if (salesDesk) return;
   throw new ForbiddenException('Missing permission: reports:read');
 }
 
@@ -21,7 +38,7 @@ export class KpisController {
     @CurrentPrincipal() p: Principal,
     @Query(new ZodPipe(KpiQuery)) q: z.output<typeof KpiQuery>,
   ) {
-    canReadKpis(p);
+    canReadKpis(p, q);
     return this.svc.report(p, q);
   }
 
@@ -30,7 +47,7 @@ export class KpisController {
     @CurrentPrincipal() p: Principal,
     @Query(new ZodPipe(KpiQuery)) q: z.output<typeof KpiQuery>,
   ) {
-    canReadKpis(p);
+    canReadKpis(p, q);
     return this.svc.products(p, q);
   }
 }

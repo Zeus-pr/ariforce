@@ -405,10 +405,20 @@ export class ProductPricesService {
         divisionId = row?.id ?? null;
       }
       if (!divisionId) throw err(422, 'NO_DIVISION', 'Add a division before adding a product');
+      const division = await tx.execute(sql`
+        select 1 as hit from divisions
+         where id = ${divisionId}::uuid
+           and company_id = ${p.companyId}::uuid
+           and deleted_at is null
+         limit 1
+      `);
+      const divisionHit = (
+        (division as unknown as { rows?: unknown[] }).rows ?? (division as unknown as unknown[])
+      ).length;
+      if (!divisionHit) throw err(422, 'NO_DIVISION', 'That division is not in this company');
       const taken = await tx.execute(sql`
         select 1 as hit from products
          where company_id = ${p.companyId}::uuid
-           and deleted_at is null
            and upper(code) = upper(${b.code})
          limit 1
       `);
@@ -436,7 +446,13 @@ export class ProductPricesService {
       const gone = await tx
         .update(products)
         .set({ deletedAt: new Date(), updatedAt: new Date() })
-        .where(and(inArray(products.id, b.ids), isNull(products.deletedAt)))
+        .where(
+          and(
+            eq(products.companyId, p.companyId),
+            inArray(products.id, b.ids),
+            isNull(products.deletedAt),
+          ),
+        )
         .returning({ id: products.id });
       await this.audit.record(tx, p, 'product.hidden', {
         entityType: 'product',

@@ -49,6 +49,35 @@ type HistoryEntry = {
   changedBy: { name: string };
   changedAt: string;
 };
+function productPage(after: string | null) {
+  return api.GET('/v1/admin/products', {
+    params: { query: { limit: 200, ...(after ? { cursor: after } : {}) } },
+  });
+}
+
+function csvCells(line: string) {
+  const out: string[] = [];
+  let cur = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]!;
+    if (quoted) {
+      if (c === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i += 1;
+        } else quoted = false;
+      } else cur += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ',') {
+      out.push(cur.trim());
+      cur = '';
+    } else cur += c;
+  }
+  out.push(cur.trim());
+  return out;
+}
+
 const when = (iso: string) =>
   new Date(iso).toLocaleString('en-IN', {
     day: 'numeric',
@@ -244,39 +273,62 @@ export function ProductPricesView() {
     void load(null);
   }
 
-  function exportProducts() {
+  async function exportProducts() {
+    await apiReady();
+    const all: AdminProduct[] = [];
+    let after: string | null = null;
+    for (;;) {
+      const r = await productPage(after);
+      if (!r.data) return toast.error(toApiError(r).message || 'Could not export products.');
+      all.push(...r.data.items);
+      if (!r.data.nextCursor) break;
+      after = r.data.nextCursor;
+    }
     const lines = [
       'code,name,mrp,ptr,pts',
-      ...(rows ?? []).map((p) =>
+      ...all.map((p) =>
         [p.code, p.name, p.mrp ?? '', p.ptr ?? '', p.pts ?? '']
           .map((cell) => `"${String(cell).replaceAll('"', '""')}"`)
           .join(','),
       ),
     ];
+    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+    a.href = url;
     a.download = 'products.csv';
     a.click();
+    URL.revokeObjectURL(url);
   }
 
   async function importProducts(file: File) {
     const text = await file.text();
     const lines = text
+      .replace(/^\uFEFF/, '')
       .split(/\r?\n/)
       .slice(1)
       .map((line) => line.trim())
       .filter(Boolean);
+    if (lines.length > 200) {
+      toast.error('Import up to 200 products at a time.');
+      return;
+    }
     let added = 0;
+    let failed = 0;
     for (const line of lines) {
-      const cells = line.split(',').map((cell) => cell.trim().replace(/^"|"$/g, ''));
+      const cells = csvCells(line);
       const code = cells[0];
       const name = cells[1];
-      if (!code || !name) continue;
+      if (!code || !name) {
+        failed += 1;
+        continue;
+      }
       await apiReady();
       const r = await api.POST('/v1/admin/products', { body: { code, name } });
       if (r.data) added += 1;
+      else failed += 1;
     }
-    toast.success(`Added ${added} product${added === 1 ? '' : 's'}.`);
+    if (failed) toast.error(`${failed} row${failed === 1 ? '' : 's'} could not be added.`);
+    if (added) toast.success(`Added ${added} product${added === 1 ? '' : 's'}.`);
     void load(null);
   }
 
@@ -335,7 +387,7 @@ export function ProductPricesView() {
             <Button type="button" disabled={adding} onClick={() => void addProduct()}>
               Add
             </Button>
-            <Button type="button" variant="outline" onClick={exportProducts}>
+            <Button type="button" variant="outline" onClick={() => void exportProducts()}>
               Export
             </Button>
             <Button type="button" variant="outline" onClick={() => fileRef.current?.click()}>

@@ -14,7 +14,7 @@ import {
   hierarchyRank,
   isHierarchyRole,
   isRetiredRole,
-  type RoleKey,
+  RoleKey,
   type TeamNode,
   type TeamTree,
 } from '@ariforce/contracts';
@@ -42,7 +42,7 @@ import { rejectionReason } from '../common/rejection';
 import { TenantService } from '../common/tenant.service';
 import { DB } from '../db/db.module';
 import { err } from '../field/checkins.service';
-import { nextEmployeeCode } from './employee-code';
+import { isFamilyCode, nextEmployeeCode } from './employee-code';
 
 const PROFILE_KEYS = [
   'series',
@@ -1221,6 +1221,8 @@ export class TeamService {
 
   previewEmployeeCode(p: Principal, role: string) {
     if (!isAdmin(p) && !isHr(p)) throw err(403, 'FORBIDDEN', 'You cannot give out employee codes');
+    if (!RoleKey.safeParse(role).success)
+      throw err(422, 'VALIDATION', 'That role has no employee code');
     return this.tenant.run(p, async (tx) => ({
       code: await nextEmployeeCode(tx, p.companyId, role),
     }));
@@ -1231,12 +1233,12 @@ export class TeamService {
     if (!isAdmin(p) && !isHr(p)) throw err(403, 'FORBIDDEN', 'You cannot give out employee codes');
     return this.tenant.run(p, async (tx) => {
       const result = await tx.execute(sql`
-        select u.id,
+        select u.id, u.employee_code as code,
           (
             select r.key from user_roles ur
               join roles r on r.id = ur.role_id
              where ur.user_id = u.id
-             order by r.rank desc
+             order by r.rank desc, r.key
              limit 1
           ) as role
           from users u
@@ -1245,13 +1247,19 @@ export class TeamService {
            and u.deleted_at is null
          order by u.created_at, u.id
       `);
-      const people = ((result as unknown as { rows?: { id: string; role: string | null }[] })
-        .rows ?? (result as unknown as { id: string; role: string | null }[])) as {
+      const people = ((
+        result as unknown as {
+          rows?: { id: string; code: string | null; role: string | null }[];
+        }
+      ).rows ??
+        (result as unknown as { id: string; code: string | null; role: string | null }[])) as {
         id: string;
+        code: string | null;
         role: string | null;
       }[];
       let assigned = 0;
       for (const person of people) {
+        if (isFamilyCode(person.code)) continue;
         const code = await nextEmployeeCode(tx, p.companyId, person.role ?? '');
         await tx
           .update(users)

@@ -92,6 +92,8 @@ export function PeopleAdmin() {
   const terrs = useHqs();
   const hqs = useMemo(() => (terrs ?? []).filter((t) => t.level === 'headquarter'), [terrs]);
   const me = useSession()?.user;
+  const mayAssignCodes =
+    me?.role === 'director' || me?.role === 'system_admin' || me?.role === 'hr';
   const isMe = (p: Person) =>
     !!me && (p.id === me.id || p.email.toLowerCase() === me.email.toLowerCase());
   const [q, setQ] = useState('');
@@ -217,14 +219,16 @@ export function PeopleAdmin() {
           ['yes', 'Signed in'],
           ['no', 'Not signed in yet'],
         ])}
-        <Button
-          type="button"
-          variant="outline"
-          className="self-end"
-          onClick={() => setAssignOpen(true)}
-        >
-          Assign codes
-        </Button>
+        {mayAssignCodes && (
+          <Button
+            type="button"
+            variant="outline"
+            className="self-end"
+            onClick={() => setAssignOpen(true)}
+          >
+            Assign codes
+          </Button>
+        )}
       </div>
 
       {err && (
@@ -357,7 +361,7 @@ export function PeopleAdmin() {
       <TopConfirm
         open={assignOpen}
         title="Assign employee codes"
-        description="Every active person gets a new code. Suspended people keep the code they already have. This cannot be undone."
+        description="Active people who still have an old code, or no code, get a family code. People who already have one keep it. Suspended people are left as they are."
         confirmLabel={assigning ? 'Assigning…' : 'Assign codes'}
         busy={assigning}
         onCancel={() => setAssignOpen(false)}
@@ -505,7 +509,13 @@ function PersonSheet({
   if (!person || !f || !base) return null;
   const set = (patch: Partial<Form>) => setF((x) => (x ? { ...x, ...patch } : x));
   const codeRole = f.role;
+  const currentCode = f.employeeCode;
   async function generateCode() {
+    if (
+      currentCode.trim() &&
+      !window.confirm('This replaces the code already on this person. Continue?')
+    )
+      return;
     await apiReady();
     const r = await api.GET('/v1/employees/next-code', {
       params: { query: { role: codeRole } },

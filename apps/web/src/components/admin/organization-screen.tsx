@@ -124,12 +124,15 @@ export function OrganizationScreen() {
   const folded = useMemo(() => {
     if (needle || !openIds) return visible;
     const byId = new Map(live.map((t) => [t.id, t]));
-    const show = (id: string): boolean => {
+    const show = (id: string, seen: Set<string>): boolean => {
+      if (seen.has(id)) return false;
       const place = byId.get(id);
       if (!place?.parentId) return true;
-      return openIds.has(place.parentId) && show(place.parentId);
+      const next = new Set(seen);
+      next.add(id);
+      return openIds.has(place.parentId) && show(place.parentId, next);
     };
-    return new Set(live.filter((t) => show(t.id)).map((t) => t.id));
+    return new Set(live.filter((t) => show(t.id, new Set())).map((t) => t.id));
   }, [live, needle, openIds, visible]);
   const items = live
     .filter((t) => folded.has(t.id))

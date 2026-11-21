@@ -28,6 +28,7 @@ import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { companySettings, localDate } from '../field/field.util';
+import { excelContentMatches } from './excel-sniff';
 import { StorageService } from '../files/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ApprovalsService } from '../plans/approvals.service';
@@ -1136,7 +1137,9 @@ export class StockStatementsService implements OnModuleInit {
       .from(users)
       .leftJoin(userRoles, eq(userRoles.userId, users.id))
       .leftJoin(roles, eq(roles.id, userRoles.roleId))
-      .where(and(eq(users.id, id), isNull(users.deletedAt)));
+      .where(and(eq(users.id, id), isNull(users.deletedAt)))
+      .orderBy(desc(roles.rank))
+      .limit(1);
     return row ?? null;
   }
 
@@ -1297,13 +1300,10 @@ const EXCEL_TYPES = new Set([
 
 function sniff(type: string, b: Uint8Array) {
   const at = (sig: number[]) => b.length >= sig.length && sig.every((x, i) => b[i] === x);
-  const zip =
-    at([0x50, 0x4b, 0x03, 0x04]) || at([0x50, 0x4b, 0x05, 0x06]) || at([0x50, 0x4b, 0x07, 0x08]);
-  const ole = at([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
   if (type === 'image/jpeg') return at([0xff, 0xd8, 0xff]);
   if (type === 'image/png') return at([0x89, 0x50, 0x4e, 0x47]);
   if (type === 'image/webp') return b.length > 12 && b[0] === 0x52 && b[1] === 0x49;
   if (type === 'application/pdf') return at([0x25, 0x50, 0x44, 0x46]);
-  if (EXCEL_TYPES.has(type)) return zip || ole;
+  if (EXCEL_TYPES.has(type)) return excelContentMatches(type, b);
   return false;
 }

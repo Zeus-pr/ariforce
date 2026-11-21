@@ -25,6 +25,12 @@ export function formatEmployeeCode(family: string, n: number) {
   return `${family}${String(n).padStart(6, '0')}`;
 }
 
+const FAMILY_CODE = /^(ARIDIR|ARISLS|ARIADM|ARIHRM|ARIDST|ARIACC|ARIOTH)[0-9]{6}$/;
+
+export function isFamilyCode(code: string | null | undefined) {
+  return !!code && FAMILY_CODE.test(code);
+}
+
 function rowsOf(result: unknown) {
   return ((result as { rows?: Record<string, unknown>[] }).rows ??
     (result as Record<string, unknown>[])) as Record<string, unknown>[];

@@ -411,6 +411,11 @@ export function EmployeeForm({ personId }: { personId: string | null }) {
   }
 
   async function generateEmployeeCode() {
+    if (
+      draft.employeeCode.trim() &&
+      !window.confirm('This replaces the code already on this person. Continue?')
+    )
+      return;
     await apiReady();
     const r = await api.GET('/v1/employees/next-code', {
       params: { query: { role: draft.role } },
