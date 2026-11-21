@@ -4,15 +4,7 @@ import { Loader2, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@ariforce/ui/components/dialog';
+import { TopConfirm } from '@/components/top-confirm';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
 import { toast } from '@ariforce/ui/components/sonner';
@@ -332,25 +324,15 @@ export function RecordSheet({
           </div>
         )}
       </dialog>
-      <Dialog open={confirm} onOpenChange={setConfirm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remove {row?.name}?</DialogTitle>
-            <DialogDescription>
-              It disappears from lists and reps&apos; phones. History (calls, samples) keeps the
-              record.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button variant="destructive" onClick={remove} disabled={busy}>
-              Remove
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TopConfirm
+        open={confirm}
+        title={`Remove ${row?.name ?? 'this record'}?`}
+        description="It disappears from lists and reps' phones. History (calls, samples) keeps the record."
+        confirmLabel="Remove"
+        busy={busy}
+        onCancel={() => setConfirm(false)}
+        onConfirm={() => void remove()}
+      />
     </>
   );
 }

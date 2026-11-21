@@ -4,7 +4,24 @@ import dynamic from 'next/dynamic';
 
 import { PlaceholderTag } from '@/components/masters/placeholder';
 
-import { ArrowLeft, FileSpreadsheet, Mail, MapPin, Pencil, Phone, Plus } from 'lucide-react';
+import {
+  ArrowLeft,
+  Ellipsis,
+  FileSpreadsheet,
+  Mail,
+  MapPin,
+  Pencil,
+  Phone,
+  Plus,
+} from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@ariforce/ui/components/dropdown-menu';
+import { TopConfirm } from '@/components/top-confirm';
+import { toast } from '@ariforce/ui/components/sonner';
 import { RecordSheet } from '@/components/masters/record-sheet';
 import type { MasterRow } from '@/components/masters/config';
 import { Button } from '@ariforce/ui/components/button';
@@ -25,7 +42,7 @@ import { OutletLocksCard } from '@/components/field/outlet-locks-card';
 import { LookupsProvider, useLookups } from '@/components/masters/lookups';
 import { MasterExport } from '@/components/masters/master-export';
 import { masterSource } from '@/components/masters/source';
-import { api, apiReady } from '@/lib/api';
+import { api, apiReady, toApiError } from '@/lib/api';
 import { addDays, monthLabel, shortDate, thisMonth, todayYmd } from '@/lib/period';
 import {
   HISTORY_DAYS,
@@ -64,7 +81,36 @@ function DoctorList() {
   const lk = useLookups();
   const router = useRouter();
   const source = useMemo(() => masterSource('doctors', lk), [lk]);
+  const [edit, setEdit] = useState<Doctor | null>(null);
+  const [removing, setRemoving] = useState<Doctor | null>(null);
+  const [removingBusy, setRemovingBusy] = useState(false);
   const columns: Column<Doctor>[] = [
+    {
+      id: 'menu',
+      header: '',
+      className: 'w-10',
+      cell: (d) =>
+        canWriteMasters(role) ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                aria-label={`Actions for ${d.name}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Ellipsis />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem onSelect={() => setEdit(d)}>Edit</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setRemoving(d)}>Remove</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null,
+    },
     {
       id: 'code',
       header: 'ARIP code',
@@ -128,10 +174,34 @@ function DoctorList() {
     <>
       <RecordSheet
         kind="doctors"
-        open={adding}
-        row={null}
-        onOpenChange={setAdding}
+        open={adding || !!edit}
+        row={edit}
+        onOpenChange={(o) => {
+          if (!o) setEdit(null);
+          setAdding(o && !edit);
+        }}
         onSaved={() => setReload((n) => n + 1)}
+      />
+      <TopConfirm
+        open={!!removing}
+        title={`Remove ${removing?.name ?? 'this doctor'}?`}
+        description="It disappears from lists and reps' phones. History keeps the record."
+        confirmLabel="Remove"
+        busy={removingBusy}
+        onCancel={() => setRemoving(null)}
+        onConfirm={() => {
+          if (!removing) return;
+          setRemovingBusy(true);
+          void apiReady()
+            .then(() => api.DELETE('/v1/doctors/{id}', { params: { path: { id: removing.id } } }))
+            .then((res) => {
+              setRemovingBusy(false);
+              if (res.error) return toast.error(toApiError(res.error).message);
+              toast.success(`Removed ${removing.name}`);
+              setRemoving(null);
+              setReload((n) => n + 1);
+            });
+        }}
       />
       <DataTable
         reloadKey={reload}
