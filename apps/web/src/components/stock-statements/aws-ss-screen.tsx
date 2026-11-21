@@ -17,6 +17,7 @@ import {
   openStatement,
   presignFile,
   saveLines,
+  requestUnlock,
   submitStatement,
   type HistoryItem,
   type Statement,
@@ -40,6 +41,7 @@ const monthNow = () => {
 const groups = [
   { title: 'Opening', head: 'bg-emerald-100', cell: 'bg-emerald-50' },
   { title: 'Purchase', head: 'bg-teal-100', cell: 'bg-teal-50' },
+  { title: 'Free', head: 'bg-rose-100', cell: 'bg-rose-50' },
   { title: 'Secondary', head: 'bg-sky-100', cell: 'bg-sky-50' },
   { title: 'Closing', head: 'bg-violet-100', cell: 'bg-violet-50' },
   { title: 'FRS', head: 'bg-amber-100', cell: 'bg-amber-50' },
@@ -48,6 +50,7 @@ const groups = [
 type Draft = {
   openingQty: number | null;
   purchaseQty: number;
+  freeQty: number;
   secondaryQty: number;
   frsQty: number;
 };
@@ -122,6 +125,7 @@ export function AwsSsScreen() {
       drafts[line.productId] ?? {
         openingQty: line.openingQty,
         purchaseQty: line.purchaseQty,
+        freeQty: line.freeQty ?? 0,
         secondaryQty: line.secondaryQty,
         frsQty: line.frsQty,
       }
@@ -144,12 +148,15 @@ export function AwsSsScreen() {
       const value = (qty: number | null) =>
         qty == null ? null : line.pts == null ? 0 : Math.round(qty * line.pts * 100) / 100;
       const closingQty =
-        d.openingQty == null ? null : d.openingQty + d.purchaseQty - d.secondaryQty - d.frsQty;
+        d.openingQty == null
+          ? null
+          : d.openingQty + d.purchaseQty + d.freeQty - d.secondaryQty - d.frsQty;
       return {
         ...line,
         ...d,
         openingValue: value(d.openingQty),
         purchaseValue: value(d.purchaseQty),
+        freeValue: value(d.freeQty),
         secondaryValue: value(d.secondaryQty),
         frsValue: value(d.frsQty),
         closingQty,
@@ -159,6 +166,7 @@ export function AwsSsScreen() {
   }, [sheet, drafts]);
 
   const actual = view.reduce((s, l) => s + (l.secondaryValue ?? 0) - (l.frsValue ?? 0), 0);
+  const actualPrimary = view.reduce((s, l) => s + (l.purchaseValue ?? 0), 0);
   const totals = useMemo(() => {
     const sum = (pick: (line: (typeof view)[number]) => number | null) =>
       view.reduce((s, line) => s + (pick(line) ?? 0), 0);
@@ -167,6 +175,8 @@ export function AwsSsScreen() {
       openingValue: sum((l) => l.openingValue),
       purchaseQty: sum((l) => l.purchaseQty),
       purchaseValue: sum((l) => l.purchaseValue),
+      freeQty: sum((l) => l.freeQty),
+      freeValue: sum((l) => l.freeValue),
       secondaryQty: sum((l) => l.secondaryQty),
       secondaryValue: sum((l) => l.secondaryValue),
       closingQty: sum((l) => l.closingQty),
@@ -239,12 +249,30 @@ export function AwsSsScreen() {
     }
   }
 
+  async function askUnlock() {
+    if (!sheet) return;
+    setBusy('unlock');
+    setError(null);
+    try {
+      setSheet(await requestUnlock(sheet.id));
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function upload(kind: 'aws' | 'ss', file: File) {
     if (!sheet) return;
     setBusy(kind);
     setError(null);
     try {
-      const up = await presignFile(sheet.id, kind, file);
+      const contentType = sheetFileType(file);
+      if (!contentType) {
+        setError('Use a PDF, a photo, or an Excel file.');
+        return;
+      }
+      const up = await presignFile(sheet.id, kind, file, contentType);
       const put = await fetch(up.uploadUrl, { method: 'PUT', headers: up.headers, body: file });
       if (!put.ok) throw new Error('The file did not upload. Try again.');
       setSheet(await confirmFile(sheet.id, kind));
@@ -399,14 +427,10 @@ export function AwsSsScreen() {
               <p className="text-sm text-destructive">Rejected: {sheet.rejectionReason}</p>
             )}
           </div>
-          <div className="sticky top-0 z-40 -mx-4 flex flex-col gap-3 border-b bg-background/95 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
-            <div className="min-w-0">
-              <p className="truncate font-medium" title={sheet.stockistName}>
-                {sheet.stockistName}
-              </p>
-              <p className="text-lg font-medium tabular-nums">
-                Actual secondary {inr.format(Math.round(actual * 100) / 100)}
-              </p>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-lg font-medium tabular-nums">
+              <p>Actual primary {inr.format(Math.round(actualPrimary * 100) / 100)}</p>
+              <p>Actual secondary {inr.format(Math.round(actual * 100) / 100)}</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -528,6 +552,28 @@ export function AwsSsScreen() {
               </div>
             )}
           </div>
+          <div className="sticky top-0 z-40 -mx-4 flex items-center justify-between gap-3 border-b bg-background/95 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
+            <p className="truncate font-medium" title={sheet.stockistName}>
+              {sheet.stockistName}
+            </p>
+            {sheet.locked && !sheet.editOpen && (
+              <div className="flex shrink-0 items-center gap-2">
+                <p className="text-sm text-muted-foreground">
+                  {sheet.unlockPending ? 'Waiting for the director' : 'Locked on the 6th'}
+                </p>
+                {sheet.canRequestUnlock && (
+                  <Button
+                    type="button"
+                    className="h-9"
+                    disabled={busy != null}
+                    onClick={() => void askUnlock()}
+                  >
+                    {busy === 'unlock' ? 'Sending…' : 'Request unlock'}
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
           {sheet.canDecide && (
             <div className="flex flex-wrap items-end gap-2">
               <Button type="button" disabled={busy != null} onClick={() => void decide('approve')}>
@@ -559,9 +605,9 @@ export function AwsSsScreen() {
             tabIndex={0}
             role="region"
             aria-label="Stock and sales lines"
-            className="max-h-[calc(100dvh-20rem)] overflow-auto rounded-md border"
+            className="overflow-x-auto rounded-md border"
           >
-            <table className="w-full min-w-[62rem] table-fixed border-separate border-spacing-0 border-border text-sm tabular-nums [&_tbody_td]:border-b [&_tbody_th]:border-b [&_td]:border-border [&_th]:border-border">
+            <table className="w-full min-w-[74rem] table-fixed border-separate border-spacing-0 border-border text-sm tabular-nums [&_tbody_td]:border-b [&_tbody_th]:border-b [&_td]:border-border [&_th]:border-border">
               <colgroup>
                 <col className="w-[10rem]" />
                 <col className="w-[3.5rem]" />
@@ -572,7 +618,7 @@ export function AwsSsScreen() {
                   </Fragment>
                 ))}
               </colgroup>
-              <thead className="sticky top-0 z-20 text-left">
+              <thead className="sticky top-10 z-20 text-left">
                 <tr>
                   <th
                     rowSpan={3}
@@ -624,28 +670,30 @@ export function AwsSsScreen() {
                     tone={groups[1].head}
                     edge
                   />
-                  <Total label="Qty" value={totals.secondaryQty} tone={groups[2].head} />
+                  <Total label="Qty" value={totals.freeQty} tone={groups[2].head} />
+                  <Total label="Value" value={totals.freeValue} money tone={groups[2].head} edge />
+                  <Total label="Qty" value={totals.secondaryQty} tone={groups[3].head} />
                   <Total
                     label="Value"
                     value={totals.secondaryValue}
                     money
-                    tone={groups[2].head}
+                    tone={groups[3].head}
                     edge
                   />
-                  <Total label="Qty" value={totals.closingQty} tone={groups[3].head} />
+                  <Total label="Qty" value={totals.closingQty} tone={groups[4].head} />
                   <Total
                     label="Value"
                     value={totals.closingValue}
                     money
-                    tone={groups[3].head}
+                    tone={groups[4].head}
                     edge
                   />
-                  <Total label="Qty" value={totals.frsQty} tone={groups[4].head} />
-                  <Total label="Value" value={totals.frsValue} money tone={groups[4].head} edge />
+                  <Total label="Qty" value={totals.frsQty} tone={groups[5].head} />
+                  <Total label="Value" value={totals.frsValue} money tone={groups[5].head} edge />
                 </tr>
               </thead>
               <tbody>
-                {view.map((line) => (
+                {view.map((line, row) => (
                   <tr key={line.productId} className="border-t">
                     <th
                       className="sticky left-0 z-10 border-r-2 bg-background px-2 py-1 text-left font-normal"
@@ -655,6 +703,8 @@ export function AwsSsScreen() {
                     </th>
                     <td className="border-r-2 px-1 text-muted-foreground">{line.packSize}</td>
                     <Qty
+                      row={row}
+                      col={0}
                       tone={groups[0].cell}
                       value={line.openingQty}
                       locked={!fieldsOpen || line.openingLocked}
@@ -662,6 +712,8 @@ export function AwsSsScreen() {
                     />
                     <Money tone={groups[0].cell} value={line.openingValue} edge />
                     <Qty
+                      row={row}
+                      col={1}
                       tone={groups[1].cell}
                       value={line.purchaseQty}
                       locked={!fieldsOpen}
@@ -669,13 +721,24 @@ export function AwsSsScreen() {
                     />
                     <Money tone={groups[1].cell} value={line.purchaseValue} edge />
                     <Qty
+                      row={row}
+                      col={2}
                       tone={groups[2].cell}
+                      value={line.freeQty}
+                      locked={!fieldsOpen}
+                      onChange={(v) => setQty(line, 'freeQty', v)}
+                    />
+                    <Money tone={groups[2].cell} value={line.freeValue} edge />
+                    <Qty
+                      row={row}
+                      col={3}
+                      tone={groups[3].cell}
                       value={line.secondaryQty}
                       locked={!fieldsOpen}
                       onChange={(v) => setQty(line, 'secondaryQty', v)}
                     />
-                    <Money tone={groups[2].cell} value={line.secondaryValue} edge />
-                    <td className={cn('border-r px-1', groups[3].cell)}>
+                    <Money tone={groups[3].cell} value={line.secondaryValue} edge />
+                    <td className={cn('border-r px-1', groups[4].cell)}>
                       <div
                         className={cn(
                           'flex h-8 items-center justify-end rounded-md border bg-background px-1',
@@ -685,14 +748,16 @@ export function AwsSsScreen() {
                         {line.closingQty ?? ''}
                       </div>
                     </td>
-                    <Money tone={groups[3].cell} value={line.closingValue} edge />
+                    <Money tone={groups[4].cell} value={line.closingValue} edge />
                     <Qty
-                      tone={groups[4].cell}
+                      row={row}
+                      col={4}
+                      tone={groups[5].cell}
                       value={line.frsQty}
                       locked={!fieldsOpen}
                       onChange={(v) => setQty(line, 'frsQty', v)}
                     />
-                    <Money tone={groups[4].cell} value={line.frsValue} edge />
+                    <Money tone={groups[5].cell} value={line.frsValue} edge />
                   </tr>
                 ))}
               </tbody>
@@ -930,11 +995,15 @@ function Pair({ title, head }: { title: string; head: string }) {
 }
 
 function Qty({
+  row,
+  col,
   value,
   locked,
   tone,
   onChange,
 }: {
+  row: number;
+  col: number;
   value: number | null;
   locked: boolean;
   tone: string;
@@ -943,10 +1012,27 @@ function Qty({
   return (
     <td className={cn('border-r px-1', tone)}>
       <Input
+        data-qty={`${row}-${col}`}
         inputMode="numeric"
         disabled={locked}
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+          const [row, col] = (e.currentTarget.dataset.qty ?? '0-0').split('-').map(Number) as [
+            number,
+            number,
+          ];
+          const dRow = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+          const dCol = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+          const next = e.currentTarget.ownerDocument.querySelector<HTMLInputElement>(
+            `input[data-qty="${row + dRow}-${col + dCol}"]`,
+          );
+          if (!next || next.disabled) return;
+          e.preventDefault();
+          next.focus();
+          next.select();
+        }}
         className="h-8 w-full bg-background px-1 text-right tabular-nums"
         aria-label="Quantity"
       />
@@ -968,6 +1054,22 @@ function Money({ value, tone, edge }: { value: number | null; tone: string; edge
   );
 }
 
+const SHEET_FILE_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xlsm: 'application/vnd.ms-excel.sheet.macroEnabled.12',
+};
+
+function sheetFileType(file: File) {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  return SHEET_FILE_TYPES[ext] || file.type;
+}
+
 function FileButton({
   label,
   disabled,
@@ -987,7 +1089,7 @@ function FileButton({
       {label}
       <input
         type="file"
-        accept="application/pdf,image/jpeg,image/png,image/webp"
+        accept="application/pdf,image/jpeg,image/png,image/webp,.xls,.xlsx,.xlsm,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12"
         className="sr-only"
         disabled={disabled}
         onChange={(e) => {

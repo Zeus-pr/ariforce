@@ -34,6 +34,7 @@ const TYPE_LABEL: Record<string, string> = {
   leave: 'Leave',
   expense: 'Expenses',
   dcr_unlock: 'DCR unlock',
+  stock_statement_unlock: 'Stock sheet unlock',
 };
 const PERIODS = [
   { key: 'all', label: 'All' },
