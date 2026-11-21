@@ -21,7 +21,7 @@ import {
   users,
   type Tx,
 } from '@ariforce/db';
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
@@ -292,6 +292,120 @@ export class StockStatementsService implements OnModuleInit {
   get(p: Principal, id: string) {
     this.blockAdmin(p);
     return this.tenant.run(p, async (tx) => this.sheet(tx, p, await this.owned(tx, p, id)));
+  }
+
+  /** Approved sheets only. Primary is purchase value. Secondary is secondary minus FRS. */
+  salesReport(p: Principal, q: { from: string; to: string; territoryId?: string }) {
+    if (q.from > q.to)
+      throw err(422, 'VALIDATION', 'from must be on or before to', { field: 'from' });
+    return this.tenant.run(p, async (tx) => {
+      const scope = this.tenant.scope(p, territories.path);
+      let under: ReturnType<typeof sql> | undefined;
+      if (q.territoryId) {
+        const [place] = await tx
+          .select({ path: territories.path })
+          .from(territories)
+          .where(and(eq(territories.id, q.territoryId), isNull(territories.deletedAt)));
+        if (!place) throw new NotFoundException('Territory not found');
+        under = sql`(${territories.path} = ${place.path} or starts_with(${territories.path}, ${place.path + '.'}))`;
+      }
+      const found = await tx
+        .select({
+          month: stockStatements.month,
+          hq: territories.name,
+          stockist: stockists.name,
+          productId: stockStatementLines.productId,
+          lineName: stockStatementLines.productName,
+          catalogName: products.name,
+          purchaseQty: stockStatementLines.purchaseQty,
+          secondaryQty: stockStatementLines.secondaryQty,
+          frsQty: stockStatementLines.frsQty,
+          freeQty: stockStatementLines.freeQty,
+          openingQty: stockStatementLines.openingQty,
+          pts: stockStatementLines.pts,
+        })
+        .from(stockStatements)
+        .innerJoin(stockists, eq(stockists.id, stockStatements.stockistId))
+        .innerJoin(territories, eq(territories.id, stockists.territoryId))
+        .innerJoin(
+          stockStatementLines,
+          and(
+            eq(stockStatementLines.statementId, stockStatements.id),
+            isNull(stockStatementLines.deletedAt),
+          ),
+        )
+        .leftJoin(products, eq(products.id, stockStatementLines.productId))
+        .where(
+          and(
+            isNull(stockStatements.deletedAt),
+            eq(stockStatements.status, 'approved'),
+            gte(stockStatements.month, `${q.from}-01`),
+            lte(stockStatements.month, `${q.to}-01`),
+            scope,
+            under,
+          ),
+        );
+      const productsOut = new Map<
+        string,
+        {
+          productId: string;
+          name: string;
+          primaryQty: number;
+          primaryValue: number;
+          secondaryQty: number;
+          secondaryValue: number;
+          closingQty: number;
+        }
+      >();
+      const lines = [];
+      for (const row of found) {
+        const pts = row.pts == null ? null : Number(row.pts);
+        const figured = figureLine({
+          openingQty: row.openingQty,
+          purchaseQty: row.purchaseQty,
+          freeQty: row.freeQty,
+          secondaryQty: row.secondaryQty,
+          frsQty: row.frsQty,
+          pts,
+        });
+        const primaryValue = figured.purchaseValue ?? 0;
+        const secondaryValue = (figured.secondaryValue ?? 0) - (figured.frsValue ?? 0);
+        const closingQty = figured.closingQty ?? 0;
+        if (row.purchaseQty === 0 && row.secondaryQty === 0 && row.frsQty === 0) continue;
+        const name = row.lineName || row.catalogName || 'Product';
+        const month = String(row.month).slice(0, 7);
+        lines.push({
+          month,
+          headquarters: row.hq,
+          stockist: row.stockist,
+          product: name,
+          primaryQty: row.purchaseQty,
+          primaryValue,
+          secondaryQty: row.secondaryQty,
+          secondaryValue,
+          closingQty,
+        });
+        const cur = productsOut.get(row.productId) ?? {
+          productId: row.productId,
+          name,
+          primaryQty: 0,
+          primaryValue: 0,
+          secondaryQty: 0,
+          secondaryValue: 0,
+          closingQty: 0,
+        };
+        cur.primaryQty += row.purchaseQty;
+        cur.primaryValue = Math.round((cur.primaryValue + primaryValue) * 100) / 100;
+        cur.secondaryQty += row.secondaryQty;
+        cur.secondaryValue = Math.round((cur.secondaryValue + secondaryValue) * 100) / 100;
+        cur.closingQty += closingQty;
+        productsOut.set(row.productId, cur);
+      }
+      const productsList = [...productsOut.values()].sort(
+        (a, b) => b.primaryValue + b.secondaryValue - (a.primaryValue + a.secondaryValue),
+      );
+      return { products: productsList, lines };
+    });
   }
 
   save(p: Principal, id: string, version: number, inputs: StockStatementLineInput[]) {

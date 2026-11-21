@@ -1,6 +1,8 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import Link from 'next/link';
+import { Button } from '@ariforce/ui/components/button';
 import type { Approval } from '@ariforce/contracts';
 import { ReviewBar } from '@/components/dcr/team-dcr-detail';
 import { SignupInline } from '@/components/signups/signup-requests-view';
@@ -27,6 +29,16 @@ export function ApprovalLine({
   onDone?: () => void;
 }) {
   const signup = a.subjectType === 'signup';
+  const sheet =
+    a.subjectType === 'stock_statement' || a.subjectType === 'stock_statement_unlock'
+      ? `/aws-ss?statement=${a.subjectId}`
+      : null;
+  const decide =
+    !decidable || signup ? undefined : a.subjectType === 'dcr' ? (
+      <ReviewBar id={a.subjectId} onDone={() => onDone?.()} />
+    ) : (
+      <DecisionBar approval={a} onDone={onDone} />
+    );
   return (
     <InboxRow
       name={a.requestedByName}
@@ -36,14 +48,19 @@ export function ApprovalLine({
       meta={meta}
       body={decidable && signup ? <SignupInline id={a.subjectId} onDecided={onDone} /> : undefined}
       actions={
-        !decidable || signup ? undefined : a.subjectType === 'dcr' ? (
-          <ReviewBar id={a.subjectId} onDone={() => onDone?.()} />
+        sheet ? (
+          <>
+            {decide}
+            <Button asChild size="sm" variant="ghost">
+              <Link href={sheet}>View details</Link>
+            </Button>
+          </>
         ) : (
-          <DecisionBar approval={a} onDone={onDone} />
+          decide
         )
       }
       details={
-        signup && decidable ? undefined : (
+        sheet || (signup && decidable) ? undefined : (
           <div className="flex flex-col gap-3">
             {lead}
             <ApprovalReview approval={a} readOnly />

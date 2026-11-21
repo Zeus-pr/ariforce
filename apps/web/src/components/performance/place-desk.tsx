@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KpiReport, Territory, TerritoryLevel } from '@ariforce/contracts';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@ariforce/ui/components/button';
+import { Input } from '@ariforce/ui/components/input';
+import { exportXlsx } from '@/components/export/export';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { addMonths, monthLabel } from '@/lib/period';
 import { getTerritories } from '@/lib/query';
@@ -43,6 +45,47 @@ function fig(rows: Row[]): Fig {
 function grain(level: TerritoryLevel): TerritoryLevel {
   return level === 'headquarter' || level === 'territory' ? 'territory' : 'headquarter';
 }
+
+type Span = 'month' | 'quarter' | 'fy' | 'last12' | 'custom';
+
+function spanOf(mode: Span, month: string, customFrom: string, customTo: string) {
+  const [y, m] = month.split('-').map(Number) as [number, number];
+  if (mode === 'month') return { from: month, to: month };
+  if (mode === 'quarter') {
+    const startM = Math.floor((m - 1) / 3) * 3 + 1;
+    const start = `${y}-${String(startM).padStart(2, '0')}`;
+    const end = `${y}-${String(startM + 2).padStart(2, '0')}`;
+    return { from: start, to: month < end ? month : end };
+  }
+  if (mode === 'fy') {
+    const startYear = m >= 4 ? y : y - 1;
+    const start = `${startYear}-04`;
+    const end = `${startYear + 1}-03`;
+    return { from: start, to: month < end ? month : end };
+  }
+  if (mode === 'last12') return { from: addMonths(month, -11), to: month };
+  const a = customFrom || month;
+  const b = customTo || month;
+  return a <= b ? { from: a, to: b } : { from: b, to: a };
+}
+
+type SalesLine = {
+  month: string;
+  headquarters: string;
+  stockist: string;
+  product: string;
+  primaryQty: number;
+  primaryValue: number;
+  secondaryQty: number;
+  secondaryValue: number;
+  closingQty: number;
+};
+type SalesProduct = {
+  productId: string;
+  name: string;
+  primaryValue: number;
+  secondaryValue: number;
+};
 
 async function placesOf(month: string, territoryId: string, territoryLevel?: TerritoryLevel) {
   await apiReady();
@@ -89,6 +132,11 @@ export function PlaceDesk({ title }: { title: string }) {
     { name: string; month: string; primary: number; secondary: number; target: number }[]
   >([]);
   const [error, setError] = useState<string | null>(null);
+  const [span, setSpan] = useState<Span>('month');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [salesProducts, setSalesProducts] = useState<SalesProduct[]>([]);
+  const [salesLines, setSalesLines] = useState<SalesLine[]>([]);
   const [busy, setBusy] = useState(true);
   const jumped = useRef(false);
 
@@ -215,6 +263,37 @@ export function PlaceDesk({ title }: { title: string }) {
     pickMonth(hit.month);
   }, [trend, month, params]);
 
+  const period = month ? spanOf(span, month, customFrom, customTo) : null;
+
+  useEffect(() => {
+    if (!period || !focus) return;
+    let live = true;
+    void (async () => {
+      await apiReady();
+      const r = await api.GET('/v1/stock-statements/sales', {
+        params: {
+          query: {
+            from: period.from,
+            to: period.to,
+            ...(focus.level === 'national' ? {} : { territoryId: focus.id }),
+          },
+        },
+      });
+      if (!live) return;
+      if (r.error) {
+        setError(toApiError(r).message);
+        return;
+      }
+      setSalesProducts(r.data?.products ?? []);
+      setSalesLines(r.data?.lines ?? []);
+    })().catch((e) => {
+      if (live) setError(e instanceof Error ? e.message : 'Could not load product sales.');
+    });
+    return () => {
+      live = false;
+    };
+  }, [period?.from, period?.to, focus]);
+
   function open(id: string, direction: 'forward' | 'back') {
     turn(direction, () => setFocusId(id));
   }
@@ -248,6 +327,84 @@ export function PlaceDesk({ title }: { title: string }) {
           </p>
         </div>
         <MonthSwitch month={month} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Period">
+        {(
+          [
+            ['month', 'Month'],
+            ['quarter', 'Quarter'],
+            ['fy', 'Financial year'],
+            ['last12', 'Last 12 months'],
+            ['custom', 'Custom'],
+          ] as const
+        ).map(([id, label]) => (
+          <Button
+            key={id}
+            type="button"
+            size="sm"
+            variant={span === id ? 'secondary' : 'outline'}
+            aria-pressed={span === id}
+            onClick={() => setSpan(id)}
+          >
+            {label}
+          </Button>
+        ))}
+        {span === 'custom' && (
+          <>
+            <Input
+              type="month"
+              aria-label="From"
+              value={customFrom}
+              onChange={(e) => setCustomFrom(e.target.value)}
+            />
+            <Input
+              type="month"
+              aria-label="To"
+              value={customTo}
+              onChange={(e) => setCustomTo(e.target.value)}
+            />
+          </>
+        )}
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={!salesLines.length}
+          onClick={() =>
+            void exportXlsx({
+              title: `Sales ${focus?.name ?? title}`,
+              meta: [
+                `${period?.from ?? ''} to ${period?.to ?? ''}`,
+                'Primary is the purchase value on approved stock sheets. Secondary is secondary minus FRS.',
+              ],
+              fileName: `sales-${period?.from ?? 'from'}-${period?.to ?? 'to'}`,
+              columns: [
+                { header: 'Month', width: 12 },
+                { header: 'Headquarters', width: 22 },
+                { header: 'Stockist', width: 28 },
+                { header: 'Product', width: 28 },
+                { header: 'Primary qty', width: 14, align: 'right' },
+                { header: 'Primary value', width: 16, align: 'right' },
+                { header: 'Secondary qty', width: 14, align: 'right' },
+                { header: 'Secondary value', width: 16, align: 'right' },
+                { header: 'Closing qty', width: 14, align: 'right' },
+              ],
+              rows: salesLines.map((line) => [
+                line.month,
+                line.headquarters,
+                line.stockist,
+                line.product,
+                line.primaryQty,
+                line.primaryValue,
+                line.secondaryQty,
+                line.secondaryValue,
+                line.closingQty,
+              ]),
+            })
+          }
+        >
+          Download
+        </Button>
       </div>
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -283,6 +440,23 @@ export function PlaceDesk({ title }: { title: string }) {
           )
         )}
       </div>
+      <section aria-label="Product sales">
+        <h2 className="text-sm font-medium">Products</h2>
+        {salesProducts.length > 0 ? (
+          <PlaceCompareChart
+            places={salesProducts.map((product) => ({
+              id: product.productId,
+              name: product.name,
+              primary: product.primaryValue,
+              secondary: product.secondaryValue,
+            }))}
+          />
+        ) : (
+          <p className="py-6 text-sm text-muted-foreground">
+            No approved stock-sheet sales in this period.
+          </p>
+        )}
+      </section>
     </div>
   );
 }

@@ -3050,6 +3050,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/stock-statements/sales': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Approved stock-sheet sales for a period: primary is purchase value, secondary is secondary minus FRS */
+    get: operations['stockStatementSales'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/stock-statements': {
     parameters: {
       query?: never;
@@ -9558,6 +9575,39 @@ export interface components {
       id: string;
       name: string;
       city: string | null;
+    };
+    StockStatementSalesReport: {
+      products: components['schemas']['StockStatementSalesProduct'][];
+      lines: components['schemas']['StockStatementSalesLine'][];
+    };
+    StockStatementSalesProduct: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      productId: string;
+      name: string;
+      primaryQty: number;
+      primaryValue: number;
+      secondaryQty: number;
+      secondaryValue: number;
+      closingQty: number;
+    };
+    StockStatementSalesLine: {
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      headquarters: string;
+      stockist: string;
+      product: string;
+      primaryQty: number;
+      primaryValue: number;
+      secondaryQty: number;
+      secondaryValue: number;
+      closingQty: number;
     };
     StockStatementList: {
       items: components['schemas']['StockStatementHistoryItem'][];
@@ -21949,6 +21999,59 @@ export interface operations {
       };
       /** @description Signed in but not allowed (role, hierarchy or tenant) */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  stockStatementSales: {
+    parameters: {
+      query: {
+        /** @description Month (YYYY-MM) */
+        from: string;
+        /** @description Month (YYYY-MM) */
+        to: string;
+        territoryId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Products and the rows behind them */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StockStatementSalesReport'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Signed in but not allowed (role, hierarchy or tenant) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description from must be on or before to */
+      422: {
         headers: {
           [name: string]: unknown;
         };

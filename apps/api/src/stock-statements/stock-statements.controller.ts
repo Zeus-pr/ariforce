@@ -4,6 +4,7 @@ import {
   StockStatementFileRequest,
   StockStatementListQuery,
   StockStatementOpen,
+  StockStatementSalesQuery,
   StockStatementSave,
   StockStatementSubmit,
 } from '@ariforce/contracts';
@@ -39,6 +40,15 @@ export class StockStatementsController {
     @Body(new ZodPipe(StockStatementOpen)) b: z.infer<typeof StockStatementOpen>,
   ) {
     return this.svc.open(p, b.stockistId, b.month);
+  }
+
+  @Get('sales')
+  @RequirePermissions('stock_statements:read')
+  sales(
+    @CurrentPrincipal() p: Principal,
+    @Query(new ZodPipe(StockStatementSalesQuery)) q: z.infer<typeof StockStatementSalesQuery>,
+  ) {
+    return this.svc.salesReport(p, q);
   }
 
   @Get(':id')

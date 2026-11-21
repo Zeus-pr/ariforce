@@ -138,6 +138,47 @@ export const StockStatementList = z
   .object({ items: z.array(StockStatementHistoryItem) })
   .meta({ id: 'StockStatementList' });
 
+export const StockStatementSalesQuery = z
+  .object({
+    from: Month,
+    to: Month,
+    territoryId: Id.optional(),
+  })
+  .meta({ id: 'StockStatementSalesQuery' });
+
+export const StockStatementSalesProduct = z
+  .object({
+    productId: Id,
+    name: z.string(),
+    primaryQty: z.number(),
+    primaryValue: z.number(),
+    secondaryQty: z.number(),
+    secondaryValue: z.number(),
+    closingQty: z.number(),
+  })
+  .meta({ id: 'StockStatementSalesProduct' });
+
+export const StockStatementSalesLine = z
+  .object({
+    month: Month,
+    headquarters: z.string(),
+    stockist: z.string(),
+    product: z.string(),
+    primaryQty: z.number(),
+    primaryValue: z.number(),
+    secondaryQty: z.number(),
+    secondaryValue: z.number(),
+    closingQty: z.number(),
+  })
+  .meta({ id: 'StockStatementSalesLine' });
+
+export const StockStatementSalesReport = z
+  .object({
+    products: z.array(StockStatementSalesProduct),
+    lines: z.array(StockStatementSalesLine),
+  })
+  .meta({ id: 'StockStatementSalesReport' });
+
 export const StockStatementStockist = z
   .object({
     id: Id,

@@ -104,13 +104,13 @@ export const listStatements = (query: { waiting?: boolean; status?: StatementSta
   return call<{ items: HistoryItem[] }>(`/v1/stock-statements${s ? `?${s}` : ''}`);
 };
 
+export const getStatement = (id: string) => call<Statement>(`/v1/stock-statements/${id}`);
+
 export const openStatement = (stockistId: string, month: string) =>
   call<Statement>('/v1/stock-statements', {
     method: 'POST',
     body: JSON.stringify({ stockistId, month }),
   });
-
-export const getStatement = (id: string) => call<Statement>(`/v1/stock-statements/${id}`);
 
 export const saveLines = (
   id: string,
