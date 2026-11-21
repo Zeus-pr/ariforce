@@ -36,6 +36,10 @@ export type Statement = {
   approvalRequestId: string | null;
   rejectionReason: string | null;
   currentApproverName: string | null;
+  locked?: boolean;
+  editOpen?: boolean;
+  unlockPending?: boolean;
+  canRequestUnlock?: boolean;
   totals: {
     openingQty: number;
     openingValue: number;
@@ -124,6 +128,9 @@ export const saveLines = (
     method: 'POST',
     body: JSON.stringify({ version, lines }),
   });
+
+export const requestUnlock = (id: string) =>
+  call<Statement>(`/v1/stock-statements/${id}/unlock`, { method: 'POST' });
 
 export const submitStatement = (id: string, version: number) =>
   call<Statement>(`/v1/stock-statements/${id}/submit`, {

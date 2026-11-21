@@ -17,6 +17,7 @@ import {
   openStatement,
   presignFile,
   saveLines,
+  requestUnlock,
   submitStatement,
   type HistoryItem,
   type Statement,
@@ -241,6 +242,19 @@ export function AwsSsScreen() {
       }
       const next = await submitStatement(current.id, versionRef.current);
       setSheet(next);
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function askUnlock() {
+    if (!sheet) return;
+    setBusy('unlock');
+    setError(null);
+    try {
+      setSheet(await requestUnlock(sheet.id));
     } catch (e) {
       setError(messageOf(e));
     } finally {
@@ -538,10 +552,27 @@ export function AwsSsScreen() {
               </div>
             )}
           </div>
-          <div className="sticky top-0 z-40 -mx-4 border-b bg-background/95 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
+          <div className="sticky top-0 z-40 -mx-4 flex items-center justify-between gap-3 border-b bg-background/95 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
             <p className="truncate font-medium" title={sheet.stockistName}>
               {sheet.stockistName}
             </p>
+            {sheet.locked && !sheet.editOpen && (
+              <div className="flex shrink-0 items-center gap-2">
+                <p className="text-sm text-muted-foreground">
+                  {sheet.unlockPending ? 'Waiting for the director' : 'Locked on the 6th'}
+                </p>
+                {sheet.canRequestUnlock && (
+                  <Button
+                    type="button"
+                    className="h-9"
+                    disabled={busy != null}
+                    onClick={() => void askUnlock()}
+                  >
+                    {busy === 'unlock' ? 'Sending…' : 'Request unlock'}
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
           {sheet.canDecide && (
             <div className="flex flex-wrap items-end gap-2">
@@ -662,7 +693,7 @@ export function AwsSsScreen() {
                 </tr>
               </thead>
               <tbody>
-                {view.map((line) => (
+                {view.map((line, row) => (
                   <tr key={line.productId} className="border-t">
                     <th
                       className="sticky left-0 z-10 border-r-2 bg-background px-2 py-1 text-left font-normal"
@@ -672,6 +703,8 @@ export function AwsSsScreen() {
                     </th>
                     <td className="border-r-2 px-1 text-muted-foreground">{line.packSize}</td>
                     <Qty
+                      row={row}
+                      col={0}
                       tone={groups[0].cell}
                       value={line.openingQty}
                       locked={!fieldsOpen || line.openingLocked}
@@ -679,6 +712,8 @@ export function AwsSsScreen() {
                     />
                     <Money tone={groups[0].cell} value={line.openingValue} edge />
                     <Qty
+                      row={row}
+                      col={1}
                       tone={groups[1].cell}
                       value={line.purchaseQty}
                       locked={!fieldsOpen}
@@ -686,6 +721,8 @@ export function AwsSsScreen() {
                     />
                     <Money tone={groups[1].cell} value={line.purchaseValue} edge />
                     <Qty
+                      row={row}
+                      col={2}
                       tone={groups[2].cell}
                       value={line.freeQty}
                       locked={!fieldsOpen}
@@ -693,6 +730,8 @@ export function AwsSsScreen() {
                     />
                     <Money tone={groups[2].cell} value={line.freeValue} edge />
                     <Qty
+                      row={row}
+                      col={3}
                       tone={groups[3].cell}
                       value={line.secondaryQty}
                       locked={!fieldsOpen}
@@ -711,6 +750,8 @@ export function AwsSsScreen() {
                     </td>
                     <Money tone={groups[4].cell} value={line.closingValue} edge />
                     <Qty
+                      row={row}
+                      col={4}
                       tone={groups[5].cell}
                       value={line.frsQty}
                       locked={!fieldsOpen}
@@ -954,11 +995,15 @@ function Pair({ title, head }: { title: string; head: string }) {
 }
 
 function Qty({
+  row,
+  col,
   value,
   locked,
   tone,
   onChange,
 }: {
+  row: number;
+  col: number;
   value: number | null;
   locked: boolean;
   tone: string;
@@ -967,10 +1012,27 @@ function Qty({
   return (
     <td className={cn('border-r px-1', tone)}>
       <Input
+        data-qty={`${row}-${col}`}
         inputMode="numeric"
         disabled={locked}
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+          const [row, col] = (e.currentTarget.dataset.qty ?? '0-0').split('-').map(Number) as [
+            number,
+            number,
+          ];
+          const dRow = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+          const dCol = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+          const next = e.currentTarget.ownerDocument.querySelector<HTMLInputElement>(
+            `input[data-qty="${row + dRow}-${col + dCol}"]`,
+          );
+          if (!next || next.disabled) return;
+          e.preventDefault();
+          next.focus();
+          next.select();
+        }}
         className="h-8 w-full bg-background px-1 text-right tabular-nums"
         aria-label="Quantity"
       />
