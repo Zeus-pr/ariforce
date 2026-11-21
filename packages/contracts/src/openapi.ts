@@ -2984,7 +2984,10 @@ function buildDocument(): OpenApiDocument {
             'Approved stock-sheet sales for a period: primary is purchase value, secondary is secondary minus FRS',
           requestParams: { query: StockStatementSalesQuery },
           responses: {
-            '200': { description: 'Products and the rows behind them', ...json(StockStatementSalesReport) },
+            '200': {
+              description: 'Products and the rows behind them',
+              ...json(StockStatementSalesReport),
+            },
             '422': err('from must be on or before to'),
           },
         }),
