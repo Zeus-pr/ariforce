@@ -3,14 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@ariforce/ui/components/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@ariforce/ui/components/dialog';
+import { TopConfirm } from '@/components/top-confirm';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
 import {
@@ -880,42 +873,18 @@ function PersonSheet({
           </div>
         </form>
       </dialog>
-      <Dialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
-        <DialogContent data-testid="edit-confirm">
-          <DialogHeader>
-            <DialogTitle>Confirm these changes</DialogTitle>
-            <DialogDescription>These change what {base.name} can do or see.</DialogDescription>
-          </DialogHeader>
-          <ul
-            className="flex list-disc flex-col gap-1.5 pl-5 text-sm"
-            data-testid="edit-confirm-list"
-          >
-            {confirm?.map((c) => (
-              <li key={c}>{c}</li>
-            ))}
-          </ul>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirm(null)}
-              data-testid="edit-confirm-cancel"
-            >
-              Go back
-            </Button>
-            <Button
-              variant={confirm?.some((c) => c.startsWith('Suspend')) ? 'destructive' : 'default'}
-              disabled={saving}
-              onClick={() => {
-                const p = buildPatch();
-                if (p) void save(p);
-              }}
-              data-testid="edit-confirm-ok"
-            >
-              {saving ? 'Saving…' : 'Yes, save'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TopConfirm
+        open={!!confirm}
+        title="Confirm these changes"
+        description={`These change what ${base.name} can do or see. ${confirm?.join(' ') ?? ''}`}
+        confirmLabel="Yes, save"
+        busy={saving}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          const p = buildPatch();
+          if (p) void save(p);
+        }}
+      />
     </>
   );
 }
