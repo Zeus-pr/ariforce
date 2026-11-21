@@ -4,6 +4,7 @@ import { Pencil, Trash2, Upload } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
+import { productBrand } from '@ariforce/contracts';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { allPages } from '@/lib/paging';
 import { monthLabel } from '@/lib/period';
@@ -12,7 +13,7 @@ import { inr } from './perf-ui';
 
 type Kind = 'primary' | 'secondary';
 type Hq = { id: string; name: string; code: string | null };
-type Product = { id: string; name: string; code: string };
+type Product = { id: string; name: string; code: string; brand: string | null };
 type Target = {
   id: string;
   territoryId: string;
@@ -20,6 +21,7 @@ type Target = {
   territoryCode: string;
   month: string;
   kind: Kind;
+  brand: string | null;
   value: number;
 };
 type Actual = {
@@ -34,6 +36,7 @@ type Actual = {
 type ImportRow = {
   territoryCode: string;
   productCode: string | null;
+  brand: string | null;
   month: string;
   kind: Kind;
   value: number;
@@ -54,6 +57,7 @@ const ERRORS: Record<string, string> = {
   not_headquarter: 'Not an HQ',
   unknown_product: 'Unknown product code',
   product_required: 'Product code needed',
+  unknown_brand: 'Unknown brand',
 };
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 
@@ -77,7 +81,7 @@ function useHqs() {
       setProducts(
         (p.data?.items ?? [])
           .filter((x) => !x.deletedAt)
-          .map((x) => ({ id: x.id, name: x.name, code: x.code })),
+          .map((x) => ({ id: x.id, name: x.name, code: x.code, brand: x.brand })),
       );
     })();
   }, []);
@@ -88,15 +92,27 @@ export function SalesManage({ onChanged }: { onChanged: () => void }) {
   const { hqs, products } = useHqs();
   return (
     <div className="flex flex-col gap-5" data-testid="sales-manage">
-      <TargetsPanel hqs={hqs} onChanged={onChanged} />
+      <TargetsPanel scope="hq" hqs={hqs} products={products} onChanged={onChanged} />
+      <TargetsPanel scope="brand" hqs={hqs} products={products} onChanged={onChanged} />
       <ActualsPanel hqs={hqs} products={products} onChanged={onChanged} />
       <UploadPanel onChanged={onChanged} />
     </div>
   );
 }
 
-function TargetsPanel({ hqs, onChanged }: { hqs: Hq[]; onChanged: () => void }) {
+function TargetsPanel({
+  scope,
+  hqs,
+  products,
+  onChanged,
+}: {
+  scope: 'hq' | 'brand';
+  hqs: Hq[];
+  products: Product[];
+  onChanged: () => void;
+}) {
   const [hq, setHq] = useState('');
+  const [brand, setBrand] = useState('');
   const [kind, setKind] = useState<Kind>('primary');
   const [from, setFrom] = useState(thisMonth());
   const [to, setTo] = useState(thisMonth());
@@ -105,6 +121,14 @@ function TargetsPanel({ hqs, onChanged }: { hqs: Hq[]; onChanged: () => void }) 
   const [rows, setRows] = useState<Target[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const brands = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const product of products) {
+      const name = productBrand(product);
+      if (!names.has(name.toLowerCase())) names.set(name.toLowerCase(), name);
+    }
+    return [...names.values()].sort((a, b) => a.localeCompare(b));
+  }, [products]);
 
   const load = useCallback(async () => {
     await apiReady();
@@ -114,6 +138,7 @@ function TargetsPanel({ hqs, onChanged }: { hqs: Hq[]; onChanged: () => void }) 
       }),
     ).catch(() => null);
     setRows((d?.data as Target[] | undefined) ?? []);
+    if (!d) setMsg('Could not load targets.');
   }, [from, to, hq]);
   useEffect(() => {
     void load();
@@ -133,6 +158,7 @@ function TargetsPanel({ hqs, onChanged }: { hqs: Hq[]; onChanged: () => void }) 
           value: Number(value),
           spread,
           quantity: null,
+          brand: scope === 'brand' ? brand : null,
           overwrite,
         },
       });
@@ -154,10 +180,32 @@ function TargetsPanel({ hqs, onChanged }: { hqs: Hq[]; onChanged: () => void }) 
     }
   }
 
-  const ready = !!hq && Number(value) >= 0 && value !== '' && from <= to;
+  async function remove(row: Target) {
+    const who = row.brand ?? row.territoryName;
+    if (!window.confirm(`Delete the ${row.kind} target for ${who}, ${monthLabel(row.month)}?`))
+      return;
+    setMsg(null);
+    try {
+      await apiReady();
+      const { error } = await api.DELETE('/v1/sales/targets/{id}', {
+        params: { path: { id: row.id } },
+      });
+      if (error) throw new Error(toApiError(error).message);
+      await load();
+      onChanged();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Could not delete.');
+    }
+  }
+
+  const shown = rows.filter((row) => (scope === 'brand' ? row.brand : !row.brand));
+  const ready =
+    !!hq && Number(value) >= 0 && value !== '' && from <= to && (scope === 'hq' || !!brand);
   return (
-    <section className={box} data-testid="targets-panel">
-      <h2 className="text-sm font-semibold">Set a target</h2>
+    <section className={box} data-testid={scope === 'brand' ? 'brand-targets' : 'targets-panel'}>
+      <h2 className="text-sm font-semibold">
+        {scope === 'brand' ? 'Brand target' : 'Headquarters target'}
+      </h2>
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs">
           HQ
@@ -175,6 +223,24 @@ function TargetsPanel({ hqs, onChanged }: { hqs: Hq[]; onChanged: () => void }) 
             ))}
           </select>
         </label>
+        {scope === 'brand' && (
+          <label className="flex flex-col gap-1 text-xs">
+            Brand
+            <select
+              className={field}
+              value={brand}
+              onChange={(e) => setBrand(e.target.value)}
+              aria-label="Brand"
+            >
+              <option value="">Select brand</option>
+              {brands.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex flex-col gap-1 text-xs">
           Type
           <select className={field} value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
@@ -226,16 +292,20 @@ function TargetsPanel({ hqs, onChanged }: { hqs: Hq[]; onChanged: () => void }) 
         </Button>
       </div>
       {msg && (
-        <p className="text-sm text-muted-foreground" role="status">
+        <p
+          className={`text-sm ${msg.startsWith('Saved') ? 'text-muted-foreground' : 'text-destructive'}`}
+          role={msg.startsWith('Saved') ? 'status' : 'alert'}
+        >
           {msg}
         </p>
       )}
-      {rows.length > 0 && (
+      {shown.length > 0 && (
         <div className="max-h-64 overflow-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
                 <th className="py-1">HQ</th>
+                {scope === 'brand' && <th>Brand</th>}
                 <th>Month</th>
                 <th>Type</th>
                 <th className="text-right">Target</th>
@@ -243,28 +313,40 @@ function TargetsPanel({ hqs, onChanged }: { hqs: Hq[]; onChanged: () => void }) 
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {shown.map((r) => (
                 <tr key={r.id} className="border-t">
                   <td className="py-1">{r.territoryName}</td>
+                  {scope === 'brand' && <td>{r.brand}</td>}
                   <td>{monthLabel(r.month)}</td>
                   <td className="capitalize">{r.kind}</td>
                   <td className="text-right tabular-nums">{inr(r.value)}</td>
                   <td className="text-right">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setHq(r.territoryId);
-                        setKind(r.kind);
-                        setFrom(r.month);
-                        setTo(r.month);
-                        setValue(String(r.value));
-                        setSpread('each');
-                      }}
-                    >
-                      <Pencil /> Edit
-                    </Button>
+                    <span className="inline-flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setHq(r.territoryId);
+                          setBrand(r.brand ?? '');
+                          setKind(r.kind);
+                          setFrom(r.month);
+                          setTo(r.month);
+                          setValue(String(r.value));
+                          setSpread('each');
+                        }}
+                      >
+                        <Pencil /> Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void remove(r)}
+                      >
+                        <Trash2 /> Delete
+                      </Button>
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -342,15 +424,18 @@ function ActualsPanel({
 
   return (
     <section className={box} data-testid="actuals-panel">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Actual secondary</h2>
-        <p className="text-sm text-muted-foreground">
-          Primary is the purchase total on the stock sheet. This form records secondary only.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold">Actual secondary</h2>
+          <p className="text-sm text-muted-foreground">
+            Primary is the purchase total on the stock sheet.
+          </p>
+        </div>
         <input
           type="month"
           className={field}
           value={month}
+          aria-label="Month"
           onChange={(e) => setMonth(e.target.value)}
         />
       </div>
@@ -503,6 +588,7 @@ function UploadPanel({ onChanged }: { onChanged: () => void }) {
     const c = {
       terr: idx('territorycode', 'hqcode', 'hq', 'territory'),
       prod: idx('productcode', 'product', 'sku'),
+      brand: idx('brand'),
       month: idx('month', 'period'),
       kind: idx('kind', 'type'),
       value: idx('value', 'amount', 'target'),
@@ -533,6 +619,7 @@ function UploadPanel({ onChanged }: { onChanged: () => void }) {
       out.push({
         territoryCode: (r[c.terr] ?? '').trim(),
         productCode: c.prod >= 0 && r[c.prod]?.trim() ? r[c.prod]!.trim() : null,
+        brand: c.brand >= 0 && r[c.brand]?.trim() ? r[c.brand]!.trim() : null,
         month,
         kind,
         value,
@@ -554,9 +641,8 @@ function UploadPanel({ onChanged }: { onChanged: () => void }) {
     <section className={box} data-testid="sales-upload">
       <h2 className="text-sm font-semibold">Upload from Excel or CSV</h2>
       <p className="text-xs text-muted-foreground">
-        Columns: territory_code (the HQ), month (YYYY-MM), value, type (primary or secondary),
-        product_code, quantity. Product code is required for actual sales and ignored for targets.
-        Re-uploading targets replaces the month.
+        Columns: territory_code, month (YYYY-MM), value, type (primary or secondary), brand,
+        product_code, quantity. A brand names a brand target. Product code is for actual sales.
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <select

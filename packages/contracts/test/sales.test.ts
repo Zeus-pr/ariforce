@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_ROLE_PERMISSIONS,
   monthsBetween,
+  productBrand,
   SalesActualCreate,
   SalesImportRequest,
   SalesTargetSet,
@@ -37,6 +38,11 @@ describe('sales contracts', () => {
       value: 100,
     });
     expect(r.success).toBe(false);
+  });
+  it('groups strengths of one brand and keeps a real brand name', () => {
+    expect(productBrand({ name: 'AMISALRA OD 100', brand: 'AMISALRA OD 100' })).toBe('AMISALRA OD');
+    expect(productBrand({ name: 'AMISALRA OD 50', brand: null })).toBe('AMISALRA OD');
+    expect(productBrand({ name: 'AMISALRA OD 100', brand: 'Amisalra' })).toBe('Amisalra');
   });
   it('defaults a target to per-month and no overwrite', () => {
     const r = SalesTargetSet.parse({

@@ -156,7 +156,25 @@ export class KpisService {
           },
         ];
       case 'byUser': {
-        const userIds = team.map((t) => t.id);
+        let people = team;
+        if (q.territoryId) {
+          const [place] = await rows<{ path: string }>(
+            tx,
+            sql`select path from territories where id = ${q.territoryId}::uuid and deleted_at is null`,
+          );
+          if (!place) throw new NotFoundException('Territory not found');
+          const inside = await rows<{ user_id: string }>(
+            tx,
+            sql`select distinct ut.user_id
+                  from user_territories ut
+                  join territories t on t.id = ut.territory_id
+                 where t.deleted_at is null
+                   and (t.path = ${place.path} or starts_with(t.path, ${place.path}::text || '.'))`,
+          );
+          const allowed = new Set(inside.map((r) => r.user_id));
+          people = team.filter((member) => allowed.has(member.id));
+        }
+        const userIds = people.map((t) => t.id);
         const paths = userIds.length
           ? await rows<{ user_id: string; path: string }>(
               tx,
@@ -168,7 +186,7 @@ export class KpisService {
         const byUser = new Map<string, string[]>();
         for (const row of paths)
           byUser.set(row.user_id, [...(byUser.get(row.user_id) ?? []), row.path]);
-        return team.map((t) => ({
+        return people.map((t) => ({
           userId: t.id,
           territoryId: null,
           label: t.name,
@@ -210,8 +228,11 @@ export class KpisService {
             );
         if (q.territoryId && !q.territoryLevel && !ts.some((t) => t.id === q.territoryId))
           throw new NotFoundException('Territory not found');
-        // With children present, report the children (the parent row would double-count).
-        const list = ts.length > 1 ? ts.filter((t) => t.id !== q.territoryId) : ts;
+        // A level listing drops the place itself when it has children, so a sum of the rows
+        // does not count the place twice. The next-level listing keeps the place, so a
+        // headline can show its own total beside its children.
+        const list =
+          q.territoryLevel && ts.length > 1 ? ts.filter((t) => t.id !== q.territoryId) : ts;
         const ids = team.map((t) => t.id);
         const members =
           list.length && ids.length

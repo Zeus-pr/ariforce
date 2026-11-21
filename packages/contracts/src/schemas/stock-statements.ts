@@ -150,6 +150,7 @@ export const StockStatementSalesProduct = z
   .object({
     productId: Id,
     name: z.string(),
+    brand: z.string(),
     primaryQty: z.number(),
     primaryValue: z.number(),
     secondaryQty: z.number(),
@@ -164,6 +165,7 @@ export const StockStatementSalesLine = z
     headquarters: z.string(),
     stockist: z.string(),
     product: z.string(),
+    brand: z.string(),
     primaryQty: z.number(),
     primaryValue: z.number(),
     secondaryQty: z.number(),

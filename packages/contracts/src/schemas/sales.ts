@@ -15,6 +15,10 @@ export const SalesTarget = z
     territoryCode: z.string(),
     month: Month,
     kind: SalesKind,
+    brand: z
+      .string()
+      .nullable()
+      .meta({ description: 'Null is the headquarters total. A name is that brand only.' }),
     value: z.number().meta({ description: 'Target value, rupees' }),
     quantity: z.number().int().nullable(),
     updatedAt: Timestamp,
@@ -48,6 +52,14 @@ export const SalesTargetSet = z
     }),
     spread: z.enum(['each', 'total']).default('each'),
     quantity: z.number().int().min(0).max(1_000_000_000).nullable().default(null),
+    brand: z
+      .string()
+      .trim()
+      .min(1)
+      .max(120)
+      .nullable()
+      .default(null)
+      .meta({ description: 'Null sets the headquarters total. A name sets that brand only.' }),
     overwrite: z
       .boolean()
       .default(false)
@@ -111,6 +123,7 @@ export const SalesImportRow = z
   .object({
     territoryCode: z.string().min(1),
     productCode: z.string().nullable().default(null),
+    brand: z.string().trim().min(1).max(120).nullable().default(null),
     month: Month,
     kind: SalesKind,
     value: z.number().min(0),
@@ -136,6 +149,7 @@ export const SALES_IMPORT_ERRORS = [
   'unknown_product',
   'product_required',
   'primary_from_sheet',
+  'unknown_brand',
 ] as const;
 export const SalesImportRowResult = z
   .object({

@@ -21,7 +21,7 @@ import { cn } from '@ariforce/ui/lib/utils';
 import { KpiCards } from '@/components/dashboard/kpi-cards';
 import { formatKpi, HEADLINE, KPI_META, TEAM_COLUMNS } from '@/components/dashboard/kpi-meta';
 import { ExportMenu } from '@/components/export/export-menu';
-import { api, apiReady } from '@/lib/api';
+import { api, apiReady, toApiError } from '@/lib/api';
 import { monthLabel, thisMonth } from '@/lib/period';
 import { getMe, getTerritories } from '@/lib/query';
 
@@ -48,7 +48,8 @@ type Row = KpiReport['rows'][number];
 async function kpis(query: Record<string, string>) {
   await apiReady();
   const r = await api.GET('/v1/kpis', { params: { query: query as never } });
-  return r.data ?? null;
+  if (r.error || !r.data) throw new Error(toApiError(r).message || 'Could not load this team.');
+  return r.data;
 }
 
 export function TeamView() {
@@ -57,8 +58,10 @@ export function TeamView() {
   const router = useRouter();
   const pathname = usePathname();
   const [tree, setTree] = useState<Territory[] | null>(null);
+  const [treeError, setTreeError] = useState<string | null>(null);
   const [home, setHome] = useState<string | null>(null);
   // Results are keyed by the view they belong to, so a drill never shows the previous level's rows.
+  const [failed, setFailed] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<{
     key: string;
     scope: KpiReport | null;
@@ -78,7 +81,10 @@ export function TeamView() {
       const own = me?.territoryIds.find((id) => list.some((x) => x.id === id));
       const root = list.find((x) => x.parentId === null);
       setHome(me?.roles.includes('director') || !own ? (root?.id ?? null) : own);
-    })().catch(() => {});
+    })().catch((e) => {
+      setTreeError(e instanceof Error ? e.message : 'Could not load the hierarchy.');
+      setTree([]);
+    });
   }, []);
 
   const byId = useMemo(() => new Map((tree ?? []).map((x) => [x.id, x])), [tree]);
@@ -101,6 +107,7 @@ export function TeamView() {
   useEffect(() => {
     if (!month || !t) return;
     let live = true;
+    setFailed(null);
     void (async () => {
       const head = await kpis(
         userId
@@ -114,14 +121,17 @@ export function TeamView() {
       if (!live) return;
       setLoaded({
         key: `${month}|${t}|${userId}|${leaf}`,
-        scope:
-          head && !userId ? { ...head, rows: head.rows.filter((r) => r.territoryId === t) } : head,
+        scope: userId ? head : { ...head, rows: head.rows.filter((r) => r.territoryId === t) },
         rows:
           leaf || userId
-            ? (list?.rows ?? [])
-            : (list?.rows ?? []).filter((r) => r.territoryId !== t),
+            ? list.rows.filter((r) => r.userId)
+            : list.rows.filter((r) => r.territoryId && r.territoryId !== t),
       });
-    })().catch(() => {});
+    })().catch((e) => {
+      if (!live) return;
+      setFailed(e instanceof Error ? e.message : 'Could not load this team.');
+      setLoaded({ key: `${month}|${t}|${userId}|${leaf}`, scope: null, rows: [] });
+    });
     return () => {
       live = false;
     };
@@ -138,10 +148,10 @@ export function TeamView() {
   const metric = (r: Row, k: string) => r.metrics.find((m) => m.kpi === k);
   const chart = (rows ?? []).map((r) => ({
     name: r.label,
-    coverage: metric(r, 'coverage_pct')?.value ?? 0,
+    coverage: metric(r, 'coverage_pct')?.value ?? null,
   }));
   const title = person ? person.label : node ? `${node.name}` : 'Team';
-  const listLabel = leaf ? 'People' : LEVEL[children[0]?.level ?? 'area'] + 's';
+  const listLabel = leaf ? 'People' : (LEVEL[children[0]?.level ?? 'territory'] ?? 'Places');
 
   const spec = () => ({
     title: `Team performance: ${[...trail.map((x) => x.name), person?.label].filter(Boolean).join(' › ')}`,
@@ -150,14 +160,15 @@ export function TeamView() {
       'KPI formulas are drafts, to confirm with Arighna (docs/kpi-definitions.md).',
     ],
     columns: [
-      { header: listLabel.replace(/s$/, ''), width: 28 },
+      { header: listLabel, width: 28 },
       ...COLS.map((k) => ({ header: KPI_META[k].label, align: 'right' as const })),
     ],
     rows: (rows ?? []).map((r) => [r.label, ...COLS.map((k) => metric(r, k)?.value ?? null)]),
     fileName: `ariforce-team-${(node?.code ?? 'all').toLowerCase()}-${month}`,
   });
 
-  if (!month || !tree) return <div className="h-96" aria-busy="true" />;
+  if (!month || !tree)
+    return <div className="h-96 animate-pulse rounded-lg bg-muted/40" aria-busy="true" />;
 
   return (
     <div className="flex flex-col gap-5">
@@ -207,14 +218,26 @@ export function TeamView() {
 
       <div>
         <p className="text-xs text-muted-foreground" data-testid="team-scope">
-          {person ? 'Business Manager' : node ? LEVEL[node.level] : ''} · {monthLabel(month)}
+          {node ? LEVEL[node.level] : 'Team'} · {monthLabel(month)}
         </p>
         <h2 className="mt-1 text-xl font-semibold tracking-tight">{title}</h2>
       </div>
 
-      <KpiCards metrics={scope?.rows[0]?.metrics ?? []} error={null} loading={!scope} />
+      {treeError && (
+        <p role="alert" className="text-sm text-destructive">
+          {treeError}
+        </p>
+      )}
+      {failed && (
+        <p role="alert" className="text-sm text-destructive">
+          {failed}
+        </p>
+      )}
+      {(rows === null || (scope?.rows[0]?.metrics.length ?? 0) > 0) && !failed && (
+        <KpiCards metrics={scope?.rows[0]?.metrics ?? []} error={null} loading={rows === null} />
+      )}
 
-      {!person && (
+      {!person && !failed && (
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           <Card className="gap-0 py-0 shadow-xs">
             <CardHeader className="border-b px-4 py-4">
@@ -229,7 +252,7 @@ export function TeamView() {
               <Table data-testid="team-table">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="pl-4">{listLabel.replace(/s$/, '')}</TableHead>
+                    <TableHead className="pl-4">{listLabel}</TableHead>
                     {COLS.map((k) => (
                       <TableHead key={k} className="text-right last:pr-4">
                         {KPI_META[k].label}
@@ -238,6 +261,13 @@ export function TeamView() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {rows === null && (
+                    <TableRow>
+                      <TableCell colSpan={COLS.length + 1} className="py-8" aria-busy="true">
+                        <div className="mx-auto h-4 w-40 animate-pulse rounded bg-muted" />
+                      </TableCell>
+                    </TableRow>
+                  )}
                   {(rows ?? []).map((r, i) => (
                     <TableRow
                       key={r.userId ?? r.territoryId ?? r.label}
@@ -283,7 +313,9 @@ export function TeamView() {
                         colSpan={COLS.length + 1}
                         className="py-8 text-center text-muted-foreground"
                       >
-                        No one reports into this territory yet.
+                        {leaf
+                          ? 'No one is assigned to this place.'
+                          : 'Nothing under this place yet.'}
                       </TableCell>
                     </TableRow>
                   )}
@@ -293,12 +325,16 @@ export function TeamView() {
           </Card>
           <Card className="gap-0 py-0 shadow-xs">
             <CardHeader className="px-4 pt-4 pb-0">
-              <CardTitle className="text-sm">
-                Coverage by {listLabel.replace(/s$/, '').toLowerCase()}
-              </CardTitle>
+              <CardTitle className="text-sm">Coverage</CardTitle>
             </CardHeader>
             <div className="px-2 pb-2">
-              <TeamCoverageChart chart={chart} listLabel={listLabel} />
+              {rows === null ? (
+                <div className="h-[220px] animate-pulse rounded-md bg-muted/40" aria-busy="true" />
+              ) : chart.length > 0 ? (
+                <TeamCoverageChart chart={chart} listLabel={listLabel} />
+              ) : (
+                <p className="px-2 py-8 text-sm text-muted-foreground">No coverage to chart.</p>
+              )}
             </div>
           </Card>
         </div>

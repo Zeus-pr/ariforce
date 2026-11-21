@@ -4,7 +4,11 @@ import {
   NotFoundException,
   type OnModuleInit,
 } from '@nestjs/common';
-import type { StockStatementFileBody, StockStatementLineInput } from '@ariforce/contracts';
+import {
+  productBrand,
+  type StockStatementFileBody,
+  type StockStatementLineInput,
+} from '@ariforce/contracts';
 import {
   approvalRequests,
   approvalSteps,
@@ -317,6 +321,7 @@ export class StockStatementsService implements OnModuleInit {
           productId: stockStatementLines.productId,
           lineName: stockStatementLines.productName,
           catalogName: products.name,
+          catalogBrand: products.brand,
           purchaseQty: stockStatementLines.purchaseQty,
           secondaryQty: stockStatementLines.secondaryQty,
           frsQty: stockStatementLines.frsQty,
@@ -350,6 +355,7 @@ export class StockStatementsService implements OnModuleInit {
         {
           productId: string;
           name: string;
+          brand: string;
           primaryQty: number;
           primaryValue: number;
           secondaryQty: number;
@@ -373,12 +379,14 @@ export class StockStatementsService implements OnModuleInit {
         const closingQty = figured.closingQty ?? 0;
         if (row.purchaseQty === 0 && row.secondaryQty === 0 && row.frsQty === 0) continue;
         const name = row.lineName || row.catalogName || 'Product';
+        const brand = productBrand({ name, brand: row.catalogBrand });
         const month = String(row.month).slice(0, 7);
         lines.push({
           month,
           headquarters: row.hq,
           stockist: row.stockist,
           product: name,
+          brand,
           primaryQty: row.purchaseQty,
           primaryValue,
           secondaryQty: row.secondaryQty,
@@ -388,6 +396,7 @@ export class StockStatementsService implements OnModuleInit {
         const cur = productsOut.get(row.productId) ?? {
           productId: row.productId,
           name,
+          brand,
           primaryQty: 0,
           primaryValue: 0,
           secondaryQty: 0,

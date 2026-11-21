@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   monthsBetween,
   monthStartOf,
+  productBrand,
   type SalesActual,
   type SalesActualCreate,
   type SalesImportRequest,
@@ -17,7 +18,7 @@ import {
   territories,
   type Tx,
 } from '@ariforce/db';
-import { and, asc, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
@@ -73,6 +74,7 @@ export class SalesService {
         territoryCode: code,
         month: ym(t.month),
         kind: t.kind,
+        brand: t.brand,
         value: Number(t.value),
         quantity: t.quantity,
         updatedAt: t.updatedAt.toISOString(),
@@ -81,7 +83,22 @@ export class SalesService {
     });
   }
 
-  /** Inserts or updates the all-products target of one HQ and kind for a month (revives a soft-deleted row). */
+  /** Brand names as stored, keyed by a lower-case spelling. A brand that only copies the SKU uses the strength-free name. */
+  private async brandNames(tx: Tx) {
+    const rows = await tx
+      .select({ brand: products.brand, name: products.name })
+      .from(products)
+      .where(isNull(products.deletedAt));
+    const names = new Map<string, string>();
+    for (const row of rows) {
+      const brand = productBrand(row);
+      const key = brand.toLowerCase();
+      if (!names.has(key)) names.set(key, brand);
+    }
+    return names;
+  }
+
+  /** Inserts or updates one HQ total or one brand target for a month (revives a soft-deleted row). */
   private async upsertTarget(
     tx: Tx,
     p: Principal,
@@ -91,7 +108,11 @@ export class SalesService {
     value: number,
     quantity: number | null,
     overwrite: boolean,
+    brand: string | null,
   ): Promise<'created' | 'updated' | 'exists'> {
+    const sameBrand = brand
+      ? sql`lower(${salesTargets.brand}) = ${brand.toLowerCase()}`
+      : isNull(salesTargets.brand);
     const [cur] = await tx
       .select()
       .from(salesTargets)
@@ -101,6 +122,7 @@ export class SalesService {
           eq(salesTargets.kind, kind),
           eq(salesTargets.month, monthStartOf(month)),
           isNull(salesTargets.productId),
+          sameBrand,
         ),
       );
     if (!cur) {
@@ -109,6 +131,7 @@ export class SalesService {
         companyId: p.companyId,
         territoryId,
         kind,
+        brand,
         month: monthStartOf(month),
         value: String(value),
         quantity,
@@ -121,6 +144,7 @@ export class SalesService {
       .set({
         value: String(value),
         quantity,
+        brand,
         deletedAt: null,
         updatedAt: new Date(),
         version: cur.version + 1,
@@ -132,6 +156,12 @@ export class SalesService {
   setTargets(p: Principal, b: SalesTargetSet) {
     return this.tenant.run(p, async (tx) => {
       const t = await this.hq(tx, b.territoryId);
+      let brand: string | null = null;
+      if (b.brand) {
+        const known = await this.brandNames(tx);
+        brand = known.get(b.brand.toLowerCase()) ?? null;
+        if (!brand) throw err(422, 'VALIDATION', 'Unknown brand', { field: 'brand' });
+      }
       const months = monthsBetween(b.fromMonth, b.toMonth);
       if (months.length > 36)
         throw err(422, 'VALIDATION', 'A period may cover at most 36 months', { field: 'toMonth' });
@@ -151,6 +181,9 @@ export class SalesService {
               eq(salesTargets.territoryId, b.territoryId),
               eq(salesTargets.kind, b.kind),
               isNull(salesTargets.productId),
+              brand
+                ? sql`lower(${salesTargets.brand}) = ${brand.toLowerCase()}`
+                : isNull(salesTargets.brand),
               isNull(salesTargets.deletedAt),
               inArray(salesTargets.month, months.map(monthStartOf)),
             ),
@@ -163,7 +196,17 @@ export class SalesService {
       let created = 0;
       let updated = 0;
       for (const m of months) {
-        const r = await this.upsertTarget(tx, p, b.territoryId, b.kind, m, each, quantity, true);
+        const r = await this.upsertTarget(
+          tx,
+          p,
+          b.territoryId,
+          b.kind,
+          m,
+          each,
+          quantity,
+          true,
+          brand,
+        );
         if (r === 'created') created++;
         else updated++;
       }
@@ -173,6 +216,7 @@ export class SalesService {
         after: {
           territory: t.name,
           kind: b.kind,
+          brand,
           fromMonth: b.fromMonth,
           toMonth: b.toMonth,
           value: each,
@@ -290,6 +334,28 @@ export class SalesService {
     });
   }
 
+  deleteTarget(p: Principal, id: string) {
+    return this.tenant.run(p, async (tx) => {
+      const [row] = await tx
+        .update(salesTargets)
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(salesTargets.id, id), isNull(salesTargets.deletedAt)))
+        .returning();
+      if (!row) throw err(404, 'SALES_TARGET_NOT_FOUND', 'Target not found');
+      await this.audit.record(tx, p, 'sales.target_deleted', {
+        entityType: 'sales_target',
+        entityId: id,
+        before: {
+          month: ym(row.month),
+          kind: row.kind,
+          brand: row.brand,
+          value: Number(row.value),
+        },
+      });
+      return { id };
+    });
+  }
+
   /** Dry run validates every row; apply saves the valid ones (the rest stay reported as errors). */
   import(p: Principal, req: SalesImportRequest): Promise<SalesImportResult> {
     return this.tenant.run(p, async (tx) => {
@@ -303,6 +369,7 @@ export class SalesService {
         .from(products)
         .where(isNull(products.deletedAt));
       const pm = new Map(prod.map((x) => [up(x.code), x.id]));
+      const brands = await this.brandNames(tx);
       const results: SalesImportResult['results'] = [];
       const totals = { rows: req.rows.length, valid: 0, created: 0, updated: 0, errors: 0 };
       let n = 0;
@@ -310,12 +377,14 @@ export class SalesService {
         n++;
         const t = tm.get(up(r.territoryCode));
         const productId = r.productCode ? pm.get(up(r.productCode)) : undefined;
+        const brand = r.brand ? (brands.get(r.brand.toLowerCase()) ?? null) : null;
         let error: SalesImportResult['results'][number]['error'] = null;
         if (!t) error = 'unknown_territory';
         else if (t.level !== 'headquarter') error = 'not_headquarter';
         else if (req.entity === 'actuals' && r.kind === 'primary') error = 'primary_from_sheet';
         else if (req.entity === 'actuals' && !r.productCode) error = 'product_required';
         else if (r.productCode && !productId) error = 'unknown_product';
+        else if (req.entity === 'targets' && r.brand && !brand) error = 'unknown_brand';
         if (error) {
           totals.errors++;
           results.push({ row: n, status: 'error', error });
@@ -327,7 +396,6 @@ export class SalesService {
           continue;
         }
         if (req.entity === 'targets') {
-          // A product-level target is not read by the KPI views, so only the all-products row is stored.
           const s = await this.upsertTarget(
             tx,
             p,
@@ -337,6 +405,7 @@ export class SalesService {
             r.value,
             r.quantity,
             true,
+            brand,
           );
           const status = s === 'created' ? 'created' : 'updated';
           totals[status]++;

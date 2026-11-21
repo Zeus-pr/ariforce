@@ -55,6 +55,17 @@ export function productDisplayName(name: string): string {
   return out.join(' ');
 }
 
+/**
+ * The commercial brand a target is set against. A brand that is not just a copy of the SKU name
+ * wins; otherwise the strength is stripped so 'AMISALRA OD 50' and 'AMISALRA OD 100' share one.
+ */
+export function productBrand(product: { name: string; brand?: string | null }): string {
+  const brand = product.brand?.trim();
+  const name = product.name.trim();
+  if (brand && brand.toLowerCase() !== name.toLowerCase()) return brand;
+  return productDisplayName(name);
+}
+
 export const Product = Syncable.extend({
   divisionId: Id,
   code: z.string().max(40).meta({ description: 'Company SKU code, unique per company' }),

@@ -34,6 +34,11 @@ export class SalesController {
     return this.svc.setTargets(p, b);
   }
 
+  @Delete('targets/:id')
+  deleteTarget(@CurrentPrincipal() p: Principal, @Param('id') id: string) {
+    return this.svc.deleteTarget(p, id);
+  }
+
   @Get('actuals')
   actuals(
     @CurrentPrincipal() p: Principal,
