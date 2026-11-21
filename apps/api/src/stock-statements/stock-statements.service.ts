@@ -317,6 +317,7 @@ export class StockStatementsService implements OnModuleInit {
         .select({
           month: stockStatements.month,
           hq: territories.name,
+          hqPath: territories.path,
           stockist: stockists.name,
           productId: stockStatementLines.productId,
           lineName: stockStatementLines.productName,
@@ -350,6 +351,32 @@ export class StockStatementsService implements OnModuleInit {
             under,
           ),
         );
+      const holders = await tx
+        .select({
+          userId: users.id,
+          name: users.name,
+          path: territories.path,
+          territory: territories.name,
+        })
+        .from(userTerritories)
+        .innerJoin(users, eq(users.id, userTerritories.userId))
+        .innerJoin(territories, eq(territories.id, userTerritories.territoryId))
+        .where(and(isNull(users.deletedAt), isNull(territories.deletedAt), scope, under));
+      const depth = (path: string) => path.split('.').length;
+      const nearest = (path: string) => {
+        let best = 0;
+        const hits: typeof holders = [];
+        for (const holder of holders) {
+          if (path !== holder.path && !path.startsWith(`${holder.path}.`)) continue;
+          const d = depth(holder.path);
+          if (d > best) {
+            best = d;
+            hits.length = 0;
+            hits.push(holder);
+          } else if (d === best) hits.push(holder);
+        }
+        return hits;
+      };
       const productsOut = new Map<
         string,
         {
@@ -363,7 +390,26 @@ export class StockStatementsService implements OnModuleInit {
           closingQty: number;
         }
       >();
+      type SalesProduct = {
+        productId: string;
+        name: string;
+        brand: string;
+        primaryQty: number;
+        primaryValue: number;
+        secondaryQty: number;
+        secondaryValue: number;
+        closingQty: number;
+      };
       const lines = [];
+      const peopleOut = new Map<
+        string,
+        {
+          userId: string;
+          name: string;
+          headquarters: Set<string>;
+          products: Map<string, SalesProduct>;
+        }
+      >();
       for (const row of found) {
         const pts = row.pts == null ? null : Number(row.pts);
         const figured = figureLine({
@@ -381,10 +427,12 @@ export class StockStatementsService implements OnModuleInit {
         const name = row.lineName || row.catalogName || 'Product';
         const brand = productBrand({ name, brand: row.catalogBrand });
         const month = String(row.month).slice(0, 7);
+        const owners = nearest(row.hqPath);
         lines.push({
           month,
           headquarters: row.hq,
           stockist: row.stockist,
+          person: owners.map((owner) => owner.name).join(', ') || null,
           product: name,
           brand,
           primaryQty: row.purchaseQty,
@@ -393,6 +441,32 @@ export class StockStatementsService implements OnModuleInit {
           secondaryValue,
           closingQty,
         });
+        for (const owner of owners) {
+          const person = peopleOut.get(owner.userId) ?? {
+            userId: owner.userId,
+            name: owner.name,
+            headquarters: new Set<string>(),
+            products: new Map<string, SalesProduct>(),
+          };
+          person.headquarters.add(row.hq);
+          const theirs = person.products.get(row.productId) ?? {
+            productId: row.productId,
+            name,
+            brand,
+            primaryQty: 0,
+            primaryValue: 0,
+            secondaryQty: 0,
+            secondaryValue: 0,
+            closingQty: 0,
+          };
+          theirs.primaryQty += row.purchaseQty;
+          theirs.primaryValue = Math.round((theirs.primaryValue + primaryValue) * 100) / 100;
+          theirs.secondaryQty += row.secondaryQty;
+          theirs.secondaryValue = Math.round((theirs.secondaryValue + secondaryValue) * 100) / 100;
+          theirs.closingQty += closingQty;
+          person.products.set(row.productId, theirs);
+          peopleOut.set(owner.userId, person);
+        }
         const cur = productsOut.get(row.productId) ?? {
           productId: row.productId,
           name,
@@ -410,10 +484,18 @@ export class StockStatementsService implements OnModuleInit {
         cur.closingQty += closingQty;
         productsOut.set(row.productId, cur);
       }
-      const productsList = [...productsOut.values()].sort(
-        (a, b) => b.primaryValue + b.secondaryValue - (a.primaryValue + a.secondaryValue),
-      );
-      return { products: productsList, lines };
+      const byValue = (a: SalesProduct, b: SalesProduct) =>
+        b.primaryValue + b.secondaryValue - (a.primaryValue + a.secondaryValue);
+      const productsList = [...productsOut.values()].sort(byValue);
+      const people = [...peopleOut.values()]
+        .map((person) => ({
+          userId: person.userId,
+          name: person.name,
+          headquarters: [...person.headquarters].sort((a, b) => a.localeCompare(b)),
+          products: [...person.products.values()].sort(byValue),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return { products: productsList, people, lines };
     });
   }
 

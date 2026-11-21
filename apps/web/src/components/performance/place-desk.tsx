@@ -78,6 +78,7 @@ type SalesLine = {
   month: string;
   headquarters: string;
   stockist: string;
+  person: string | null;
   product: string;
   brand: string;
   primaryQty: number;
@@ -92,6 +93,12 @@ type SalesProduct = {
   brand: string;
   primaryValue: number;
   secondaryValue: number;
+};
+type SalesPerson = {
+  userId: string;
+  name: string;
+  headquarters: string[];
+  products: SalesProduct[];
 };
 
 async function placesOf(month: string, territoryId: string, territoryLevel?: TerritoryLevel) {
@@ -143,6 +150,7 @@ export function PlaceDesk({ title }: { title: string }) {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [salesProducts, setSalesProducts] = useState<SalesProduct[] | null>(null);
+  const [salesPeople, setSalesPeople] = useState<SalesPerson[]>([]);
   const [salesLines, setSalesLines] = useState<SalesLine[]>([]);
   const [productError, setProductError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
@@ -293,6 +301,7 @@ export function PlaceDesk({ title }: { title: string }) {
     if (!period || !focus) return;
     let live = true;
     setSalesProducts(null);
+    setSalesPeople([]);
     setProductError(null);
     void (async () => {
       await apiReady();
@@ -309,15 +318,18 @@ export function PlaceDesk({ title }: { title: string }) {
       if (r.error) {
         setProductError(toApiError(r).message);
         setSalesProducts([]);
+        setSalesPeople([]);
         setSalesLines([]);
         return;
       }
       setSalesProducts(r.data?.products ?? []);
+      setSalesPeople(r.data?.people ?? []);
       setSalesLines(r.data?.lines ?? []);
     })().catch((e) => {
       if (!live) return;
       setProductError(e instanceof Error ? e.message : 'Could not load product sales.');
       setSalesProducts([]);
+      setSalesPeople([]);
       setSalesLines([]);
     });
     return () => {
@@ -416,6 +428,7 @@ export function PlaceDesk({ title }: { title: string }) {
                 { header: 'Month', width: 12 },
                 { header: 'Headquarters', width: 22 },
                 { header: 'Stockist', width: 28 },
+                { header: 'Person', width: 22 },
                 { header: 'Product', width: 28 },
                 { header: 'Brand', width: 22 },
                 { header: 'Primary qty', width: 14, align: 'right' },
@@ -428,6 +441,7 @@ export function PlaceDesk({ title }: { title: string }) {
                 line.month,
                 line.headquarters,
                 line.stockist,
+                line.person,
                 line.product,
                 line.brand,
                 line.primaryQty,
@@ -533,6 +547,49 @@ export function PlaceDesk({ title }: { title: string }) {
                 label="Products, primary and secondary"
               />
             </div>
+            {salesPeople.length > 1 && (
+              <div className="flex flex-col gap-8">
+                <h2 className="text-base font-semibold">People</h2>
+                {salesPeople.map((person) => (
+                  <section key={person.userId} className="flex flex-col gap-3">
+                    <div>
+                      <h3 className="text-base font-semibold">{person.name}</h3>
+                      {person.headquarters.length > 0 && (
+                        <p className="text-sm text-muted-foreground">
+                          {person.headquarters.join(' · ')}
+                        </p>
+                      )}
+                    </div>
+                    <YearCompareChart
+                      height={200}
+                      label={`${person.name}, primary and secondary`}
+                      years={[
+                        {
+                          year: person.name,
+                          primary: person.products.reduce(
+                            (sum, product) => sum + product.primaryValue,
+                            0,
+                          ),
+                          secondary: person.products.reduce(
+                            (sum, product) => sum + product.secondaryValue,
+                            0,
+                          ),
+                        },
+                      ]}
+                    />
+                    <ProductColumnChart
+                      places={person.products.map((product) => ({
+                        id: product.productId,
+                        name: product.name,
+                        primary: product.primaryValue,
+                        secondary: product.secondaryValue,
+                      }))}
+                      label={`${person.name}, products`}
+                    />
+                  </section>
+                ))}
+              </div>
+            )}
           </>
         )}
       </section>

@@ -42511,6 +42511,12 @@
               "$ref": "#/components/schemas/StockStatementSalesProduct"
             }
           },
+          "people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockStatementSalesPerson"
+            }
+          },
           "lines": {
             "type": "array",
             "items": {
@@ -42520,6 +42526,7 @@
         },
         "required": [
           "products",
+          "people",
           "lines"
         ],
         "additionalProperties": false
@@ -42568,6 +42575,40 @@
         ],
         "additionalProperties": false
       },
+      "StockStatementSalesPerson": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "name": {
+            "type": "string"
+          },
+          "headquarters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockStatementSalesProduct"
+            }
+          }
+        },
+        "required": [
+          "userId",
+          "name",
+          "headquarters",
+          "products"
+        ],
+        "additionalProperties": false
+      },
       "StockStatementSalesLine": {
         "type": "object",
         "properties": {
@@ -42582,6 +42623,12 @@
           },
           "stockist": {
             "type": "string"
+          },
+          "person": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "product": {
             "type": "string"
@@ -42609,6 +42656,7 @@
           "month",
           "headquarters",
           "stockist",
+          "person",
           "product",
           "brand",
           "primaryQty",

@@ -164,6 +164,7 @@ export const StockStatementSalesLine = z
     month: Month,
     headquarters: z.string(),
     stockist: z.string(),
+    person: z.string().nullable(),
     product: z.string(),
     brand: z.string(),
     primaryQty: z.number(),
@@ -174,9 +175,19 @@ export const StockStatementSalesLine = z
   })
   .meta({ id: 'StockStatementSalesLine' });
 
+export const StockStatementSalesPerson = z
+  .object({
+    userId: Id,
+    name: z.string(),
+    headquarters: z.array(z.string()),
+    products: z.array(StockStatementSalesProduct),
+  })
+  .meta({ id: 'StockStatementSalesPerson' });
+
 export const StockStatementSalesReport = z
   .object({
     products: z.array(StockStatementSalesProduct),
+    people: z.array(StockStatementSalesPerson),
     lines: z.array(StockStatementSalesLine),
   })
   .meta({ id: 'StockStatementSalesReport' });
