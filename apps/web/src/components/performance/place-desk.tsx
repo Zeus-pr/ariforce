@@ -9,7 +9,12 @@ import { exportXlsx } from '@/components/export/export';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { addMonths, monthLabel } from '@/lib/period';
 import { getTerritories } from '@/lib/query';
-import { PlaceCompareChart, SalesTrendChart, YearCompareChart } from './sales-charts';
+import {
+  PlaceCompareChart,
+  ProductColumnChart,
+  SalesTrendChart,
+  YearCompareChart,
+} from './sales-charts';
 import { MonthSwitch, inr, useMonth } from './perf-ui';
 
 const KPIS =
@@ -73,6 +78,7 @@ type SalesLine = {
   month: string;
   headquarters: string;
   stockist: string;
+  person: string | null;
   product: string;
   brand: string;
   primaryQty: number;
@@ -87,6 +93,12 @@ type SalesProduct = {
   brand: string;
   primaryValue: number;
   secondaryValue: number;
+};
+type SalesPerson = {
+  userId: string;
+  name: string;
+  headquarters: string[];
+  products: SalesProduct[];
 };
 
 async function placesOf(month: string, territoryId: string, territoryLevel?: TerritoryLevel) {
@@ -138,6 +150,7 @@ export function PlaceDesk({ title }: { title: string }) {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [salesProducts, setSalesProducts] = useState<SalesProduct[] | null>(null);
+  const [salesPeople, setSalesPeople] = useState<SalesPerson[]>([]);
   const [salesLines, setSalesLines] = useState<SalesLine[]>([]);
   const [productError, setProductError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
@@ -150,9 +163,12 @@ export function PlaceDesk({ title }: { title: string }) {
         if (!live) return;
         const livePlaces = list.filter((p) => !p.deletedAt);
         setPlaces(livePlaces);
-        const root = livePlaces.find((p) => !p.parentId);
-        const zones = livePlaces.filter((p) => p.parentId === root?.id);
-        setFocusId((cur) => cur ?? (zones.length === 1 ? zones[0]!.id : (root?.id ?? null)));
+        const ids = new Set(livePlaces.map((p) => p.id));
+        const tops = livePlaces.filter((p) => !p.parentId || !ids.has(p.parentId));
+        const root = tops.length === 1 ? tops[0] : livePlaces.find((p) => !p.parentId);
+        const children = root ? livePlaces.filter((p) => p.parentId === root.id) : [];
+        const start = children.length === 1 ? children[0] : root;
+        setFocusId((cur) => cur ?? start?.id ?? null);
       })
       .catch((e) => {
         if (live) setError(e instanceof Error ? e.message : 'Could not load places.');
@@ -285,6 +301,7 @@ export function PlaceDesk({ title }: { title: string }) {
     if (!period || !focus) return;
     let live = true;
     setSalesProducts(null);
+    setSalesPeople([]);
     setProductError(null);
     void (async () => {
       await apiReady();
@@ -301,15 +318,18 @@ export function PlaceDesk({ title }: { title: string }) {
       if (r.error) {
         setProductError(toApiError(r).message);
         setSalesProducts([]);
+        setSalesPeople([]);
         setSalesLines([]);
         return;
       }
       setSalesProducts(r.data?.products ?? []);
+      setSalesPeople(r.data?.people ?? []);
       setSalesLines(r.data?.lines ?? []);
     })().catch((e) => {
       if (!live) return;
       setProductError(e instanceof Error ? e.message : 'Could not load product sales.');
       setSalesProducts([]);
+      setSalesPeople([]);
       setSalesLines([]);
     });
     return () => {
@@ -321,7 +341,8 @@ export function PlaceDesk({ title }: { title: string }) {
     turn(direction, () => setFocusId(id));
   }
 
-  if (!month) return <div className="h-96" aria-busy="true" />;
+  if (!month || !places)
+    return <div className="h-96 animate-pulse rounded-lg bg-muted/40" aria-busy="true" />;
 
   return (
     <div className="flex flex-col gap-6">
@@ -345,9 +366,11 @@ export function PlaceDesk({ title }: { title: string }) {
           <h1 className="mt-3 text-2xl font-semibold tracking-tight text-balance">
             {focus?.name ?? title}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {LEVEL[focus?.level ?? 'national']} · primary in, secondary out
-          </p>
+          {focus && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {LEVEL[focus.level]} · primary in, secondary out
+            </p>
+          )}
         </div>
         <MonthSwitch month={month} />
       </div>
@@ -405,6 +428,7 @@ export function PlaceDesk({ title }: { title: string }) {
                 { header: 'Month', width: 12 },
                 { header: 'Headquarters', width: 22 },
                 { header: 'Stockist', width: 28 },
+                { header: 'Person', width: 22 },
                 { header: 'Product', width: 28 },
                 { header: 'Brand', width: 22 },
                 { header: 'Primary qty', width: 14, align: 'right' },
@@ -417,6 +441,7 @@ export function PlaceDesk({ title }: { title: string }) {
                 line.month,
                 line.headquarters,
                 line.stockist,
+                line.person,
                 line.product,
                 line.brand,
                 line.primaryQty,
@@ -436,35 +461,42 @@ export function PlaceDesk({ title }: { title: string }) {
           {error}
         </p>
       )}
-      <section
-        aria-label="Twelve months"
-        className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.8fr)]"
-        style={{ viewTransitionName: 'place-chart' }}
-      >
-        <SalesTrendChart trend={trend} onMonth={pickMonth} />
-        <YearCompareChart years={years} />
-      </section>
-      <p className="sr-only">
-        {monthLabel(month)} primary {inr(now.primary)}, secondary {inr(now.secondary)}
-        {now.target > 0 ? `, target ${inr(now.target)}` : ''}.
-      </p>
-      <div aria-busy={busy} style={{ viewTransitionName: 'place-list' }}>
-        {placeBars.length > 0 ? (
-          <PlaceCompareChart
-            places={placeBars}
-            onOpen={(id) => {
-              const place = placeBars.find((p) => p.id === id);
-              if (place?.opens) open(id, 'forward');
-            }}
-          />
-        ) : (
-          !busy && (
-            <p className="py-8 text-sm text-muted-foreground">
-              Nothing filed under {focus?.name ?? 'this place'} in {monthLabel(month)}.
-            </p>
-          )
-        )}
-      </div>
+      {busy ? (
+        <div className="h-60 animate-pulse rounded-md bg-muted/40" aria-busy="true" />
+      ) : trend.some((point) => point.primary || point.secondary || point.target) ||
+        placeBars.length > 0 ? (
+        <>
+          <section
+            aria-label="Twelve months"
+            className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.8fr)]"
+            style={{ viewTransitionName: 'place-chart' }}
+          >
+            <SalesTrendChart trend={trend} onMonth={pickMonth} />
+            <YearCompareChart years={years} />
+          </section>
+          <p className="sr-only">
+            {monthLabel(month)} primary {inr(now.primary)}, secondary {inr(now.secondary)}
+            {now.target > 0 ? `, target ${inr(now.target)}` : ''}.
+          </p>
+          <div style={{ viewTransitionName: 'place-list' }}>
+            {placeBars.length > 0 && (
+              <PlaceCompareChart
+                places={placeBars}
+                onOpen={(id) => {
+                  const place = placeBars.find((p) => p.id === id);
+                  if (place?.opens) open(id, 'forward');
+                }}
+              />
+            )}
+          </div>
+        </>
+      ) : (
+        !error && (
+          <p className="py-8 text-sm text-muted-foreground">
+            Nothing filed under {focus?.name ?? 'this place'} in {monthLabel(month)}.
+          </p>
+        )
+      )}
       <section aria-label="Product sales" className="flex flex-col gap-4">
         {productError && (
           <p role="alert" className="text-sm text-destructive">
@@ -481,15 +513,31 @@ export function PlaceDesk({ title }: { title: string }) {
           )
         ) : (
           <>
+            <div className="flex flex-col gap-2">
+              <h2 className="text-base font-semibold">All products</h2>
+              <YearCompareChart
+                label={`${focus?.name ?? 'This place'}, product primary and secondary`}
+                years={[
+                  {
+                    year: focus?.name ?? 'All',
+                    primary: salesProducts.reduce((sum, product) => sum + product.primaryValue, 0),
+                    secondary: salesProducts.reduce(
+                      (sum, product) => sum + product.secondaryValue,
+                      0,
+                    ),
+                  },
+                ]}
+              />
+            </div>
             {brandBars.length < salesProducts.length && (
               <div className="flex flex-col gap-2">
                 <h2 className="text-base font-semibold">Brands</h2>
-                <PlaceCompareChart places={brandBars} label="Brands, primary and secondary" />
+                <ProductColumnChart places={brandBars} label="Brands, primary and secondary" />
               </div>
             )}
             <div className="flex flex-col gap-2">
               <h2 className="text-base font-semibold">Products</h2>
-              <PlaceCompareChart
+              <ProductColumnChart
                 places={salesProducts.map((product) => ({
                   id: product.productId,
                   name: product.name,
@@ -499,6 +547,49 @@ export function PlaceDesk({ title }: { title: string }) {
                 label="Products, primary and secondary"
               />
             </div>
+            {salesPeople.length > 1 && (
+              <div className="flex flex-col gap-8">
+                <h2 className="text-base font-semibold">People</h2>
+                {salesPeople.map((person) => (
+                  <section key={person.userId} className="flex flex-col gap-3">
+                    <div>
+                      <h3 className="text-base font-semibold">{person.name}</h3>
+                      {person.headquarters.length > 0 && (
+                        <p className="text-sm text-muted-foreground">
+                          {person.headquarters.join(' · ')}
+                        </p>
+                      )}
+                    </div>
+                    <YearCompareChart
+                      height={200}
+                      label={`${person.name}, primary and secondary`}
+                      years={[
+                        {
+                          year: person.name,
+                          primary: person.products.reduce(
+                            (sum, product) => sum + product.primaryValue,
+                            0,
+                          ),
+                          secondary: person.products.reduce(
+                            (sum, product) => sum + product.secondaryValue,
+                            0,
+                          ),
+                        },
+                      ]}
+                    />
+                    <ProductColumnChart
+                      places={person.products.map((product) => ({
+                        id: product.productId,
+                        name: product.name,
+                        primary: product.primaryValue,
+                        secondary: product.secondaryValue,
+                      }))}
+                      label={`${person.name}, products`}
+                    />
+                  </section>
+                ))}
+              </div>
+            )}
           </>
         )}
       </section>

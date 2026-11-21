@@ -75,12 +75,16 @@ const rupeeLabel = (value: unknown) => (Number(value) ? inr(Number(value)) : '')
 
 export function YearCompareChart({
   years,
+  label = 'This year and last year',
+  height = 240,
 }: {
   years: { year: string; primary: number; secondary: number }[];
+  label?: string;
+  height?: number;
 }) {
   const reduced = useReducedMotion();
   return (
-    <ChartFrame height={240} label="This year and last year">
+    <ChartFrame height={height} label={label}>
       <BarChart data={years} margin={{ top: 28, right: 8, left: 0, bottom: 0 }} barGap={4}>
         <CartesianGrid vertical={false} stroke={CHART.grid} />
         <XAxis dataKey="year" {...axisProps} />
@@ -190,5 +194,67 @@ export function PlaceCompareChart({
         </Bar>
       </BarChart>
     </ChartFrame>
+  );
+}
+
+export function ProductColumnChart({
+  places,
+  label,
+}: {
+  places: { id: string; name: string; primary: number; secondary: number }[];
+  label: string;
+}) {
+  const reduced = useReducedMotion();
+  const wide = Math.max(places.length * 56, 320);
+  return (
+    <div className="overflow-x-auto">
+      <div style={{ width: places.length > 10 ? wide : '100%', minWidth: '100%' }}>
+        <ChartFrame height={300} label={label}>
+          <BarChart data={places} margin={{ top: 20, right: 8, left: 0, bottom: 4 }} barGap={2}>
+            <CartesianGrid vertical={false} stroke={CHART.grid} />
+            <XAxis
+              dataKey="name"
+              interval={0}
+              angle={-40}
+              textAnchor="end"
+              height={88}
+              tick={{ fontSize: 11 }}
+              {...axisProps}
+            />
+            <YAxis tickFormatter={lakh} width={52} {...axisProps} />
+            <ChartTooltip format={inr} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Bar
+              dataKey="primary"
+              name="Primary"
+              fill={CHART.series[0]}
+              radius={[3, 3, 0, 0]}
+              isAnimationActive={!reduced}
+            >
+              <LabelList
+                dataKey="primary"
+                position="top"
+                formatter={rupeeLabel}
+                className="fill-foreground text-[10px]"
+              />
+            </Bar>
+            <Bar
+              dataKey="secondary"
+              name="Secondary"
+              fill={CHART.series[1]}
+              radius={[3, 3, 0, 0]}
+              isAnimationActive={!reduced}
+            >
+              <LabelList
+                dataKey="secondary"
+                position="top"
+                formatter={rupeeLabel}
+                className="fill-foreground text-[10px]"
+              />
+            </Bar>
+          </BarChart>
+        </ChartFrame>
+      </div>
+    </div>
   );
 }

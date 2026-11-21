@@ -9605,6 +9605,7 @@ export interface components {
     };
     StockStatementSalesReport: {
       products: components['schemas']['StockStatementSalesProduct'][];
+      people: components['schemas']['StockStatementSalesPerson'][];
       lines: components['schemas']['StockStatementSalesLine'][];
     };
     StockStatementSalesProduct: {
@@ -9622,6 +9623,17 @@ export interface components {
       secondaryValue: number;
       closingQty: number;
     };
+    StockStatementSalesPerson: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      userId: string;
+      name: string;
+      headquarters: string[];
+      products: components['schemas']['StockStatementSalesProduct'][];
+    };
     StockStatementSalesLine: {
       /**
        * @description Month (YYYY-MM)
@@ -9630,6 +9642,7 @@ export interface components {
       month: string;
       headquarters: string;
       stockist: string;
+      person: string | null;
       product: string;
       brand: string;
       primaryQty: number;
