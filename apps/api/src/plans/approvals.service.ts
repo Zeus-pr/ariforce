@@ -833,7 +833,9 @@ export class ApprovalsService {
             ? `Tour plan ${r.payload.month}`
             : r.entityType === 'dcr_correction' && typeof r.payload?.date === 'string'
               ? `DCR correction ${r.payload.date}`
-              : r.entityType === 'stock_statement_unlock' && typeof r.payload?.month === 'string'
+              : r.entityType === 'stock_statement' && typeof r.payload?.month === 'string'
+                ? `Stock sheet ${r.payload.month}${typeof r.payload.stockistName === 'string' ? `, ${r.payload.stockistName}` : ''}`
+                : r.entityType === 'stock_statement_unlock' && typeof r.payload?.month === 'string'
                 ? `Unlock stock sheet ${r.payload.month}${typeof r.payload.stockistName === 'string' ? `, ${r.payload.stockistName}` : ''}`
                 : r.entityType === 'expense' && typeof r.payload?.month === 'string'
                   ? `Expense claim ${r.payload.month}`

@@ -58,6 +58,8 @@ import {
   StockStatementFileRequest,
   StockStatementList,
   StockStatementListQuery,
+  StockStatementSalesQuery,
+  StockStatementSalesReport,
   StockStatementOpen,
   StockStatementSave,
   StockStatementStockists,
@@ -2972,6 +2974,19 @@ function buildDocument(): OpenApiDocument {
           operationId: 'listStockStatementStockists',
           summary: 'Stockists the caller can file or read a statement for',
           responses: { '200': { description: 'OK', ...json(StockStatementStockists) } },
+        }),
+      },
+      '/v1/stock-statements/sales': {
+        get: op({
+          tags: ['Stock statements'],
+          operationId: 'stockStatementSales',
+          summary:
+            'Approved stock-sheet sales for a period: primary is purchase value, secondary is secondary minus FRS',
+          requestParams: { query: StockStatementSalesQuery },
+          responses: {
+            '200': { description: 'Products and the rows behind them', ...json(StockStatementSalesReport) },
+            '422': err('from must be on or before to'),
+          },
         }),
       },
       '/v1/stock-statements': {

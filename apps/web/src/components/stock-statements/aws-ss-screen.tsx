@@ -25,6 +25,7 @@ import {
   type StatementStatus,
   type StockistOption,
 } from '@/lib/stock-statements/api';
+import { PlaceCompareChart } from '@/components/performance/sales-charts';
 import { API_URL, apiReady } from '@/lib/api';
 import { useRole } from '@/components/shell/role-context';
 
@@ -98,6 +99,17 @@ export function AwsSsScreen() {
     const s = q.get('stockist');
     const m = q.get('month');
     if (m) setMonth(m);
+    const statement = q.get('statement');
+    if (statement) {
+      void getStatement(statement)
+        .then((next) => {
+          setStockistId(next.stockistId);
+          setMonth(next.month.slice(0, 7));
+          setSheet(next);
+        })
+        .catch((e) => setError(messageOf(e)));
+      return;
+    }
     if (s) {
       setStockistId(s);
       void load(s, m || monthNow());
@@ -441,6 +453,7 @@ export function AwsSsScreen() {
               <p>Actual primary {inr.format(Math.round(actualPrimary * 100) / 100)}</p>
               <p>Actual secondary {inr.format(Math.round(actual * 100) / 100)}</p>
             </div>
+            <ProductSales lines={view} />
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -1000,6 +1013,35 @@ function Pair({ title, head }: { title: string; head: string }) {
         <span className="sr-only">{title} </span>Value
       </th>
     </>
+  );
+}
+
+function ProductSales({
+  lines,
+}: {
+  lines: {
+    productId: string;
+    name: string;
+    purchaseValue: number | null;
+    secondaryValue: number | null;
+    frsValue: number | null;
+  }[];
+}) {
+  const places = lines
+    .map((line) => ({
+      id: line.productId,
+      name: line.name,
+      primary: line.purchaseValue ?? 0,
+      secondary: (line.secondaryValue ?? 0) - (line.frsValue ?? 0),
+    }))
+    .filter((line) => line.primary !== 0 || line.secondary !== 0)
+    .sort((a, b) => b.primary + b.secondary - (a.primary + a.secondary));
+  if (!places.length) return null;
+  return (
+    <section aria-label="Product sales" className="flex flex-col gap-2">
+      <h2 className="text-sm font-medium">Products</h2>
+      <PlaceCompareChart places={places} />
+    </section>
   );
 }
 

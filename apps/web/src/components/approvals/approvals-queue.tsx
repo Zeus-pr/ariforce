@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import type { Approval } from '@ariforce/contracts';
 import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
@@ -31,7 +32,15 @@ export const SUBJECT_LABEL: Partial<Record<Approval['subjectType'], string>> = {
   expense: 'Expense',
   dcr: 'DCR',
   signup: 'Sign-up',
+  stock_statement: 'Stock sheet',
+  stock_statement_unlock: 'Stock sheet unlock',
 };
+
+function sheetHref(a: Approval) {
+  if (a.subjectType !== 'stock_statement' && a.subjectType !== 'stock_statement_unlock')
+    return null;
+  return `/aws-ss?statement=${a.subjectId}`;
+}
 
 export function ApprovalsQueue({ className, bare }: { className?: string; bare?: boolean }) {
   const [items, setItems] = useState<Approval[] | null>(null);
@@ -128,17 +137,25 @@ export function ApprovalsQueue({ className, bare }: { className?: string; bare?:
                         >
                           Reject
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          aria-expanded={openId === a.id}
-                          onClick={() => setOpenId(openId === a.id ? null : a.id)}
-                          data-testid="approval-view"
-                        >
-                          {openId === a.id ? 'Hide details' : 'View details'}
-                        </Button>
+                        {sheetHref(a) ? (
+                          <Button asChild size="sm" variant="ghost">
+                            <Link href={sheetHref(a)!} data-testid="approval-view">
+                              View details
+                            </Link>
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            aria-expanded={openId === a.id}
+                            onClick={() => setOpenId(openId === a.id ? null : a.id)}
+                            data-testid="approval-view"
+                          >
+                            {openId === a.id ? 'Hide details' : 'View details'}
+                          </Button>
+                        )}
                       </div>
-                      {openId === a.id && <ApprovalReview approval={a} />}
+                      {openId === a.id && !sheetHref(a) && <ApprovalReview approval={a} />}
                     </li>
                   ))}
                 </ul>
