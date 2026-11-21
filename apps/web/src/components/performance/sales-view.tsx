@@ -36,6 +36,7 @@ export function SalesView() {
       <div className="flex flex-col gap-6">
         <PlaceDesk
           title="Sales"
+          reload={rev}
           headerExtra={
             mayWrite ? (
               <Button type="button" onClick={() => setTargets((v) => !v)}>

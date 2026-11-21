@@ -184,6 +184,42 @@ type SalesPerson = {
   products: SalesProduct[];
 };
 
+function idsUnder(places: Place[], rootId: string) {
+  const children = new Map<string, string[]>();
+  for (const place of places) {
+    if (!place.parentId) continue;
+    const list = children.get(place.parentId) ?? [];
+    list.push(place.id);
+    children.set(place.parentId, list);
+  }
+  const ids = new Set<string>();
+  const pending = [rootId];
+  while (pending.length) {
+    const id = pending.pop();
+    if (!id || ids.has(id)) continue;
+    ids.add(id);
+    pending.push(...(children.get(id) ?? []));
+  }
+  return ids;
+}
+
+async function brandTargetsOf(from: string, to: string, ids: Set<string>) {
+  await apiReady();
+  const r = await api.GET('/v1/sales/targets', { params: { query: { from, to } } });
+  if (r.error || !r.data) return [];
+  const totals = new Map<string, { name: string; primary: number; secondary: number }>();
+  for (const row of r.data.data) {
+    const name = row.brand?.trim();
+    if (!name || !ids.has(row.territoryId)) continue;
+    const key = name.toLowerCase();
+    const cur = totals.get(key) ?? { name, primary: 0, secondary: 0 };
+    if (row.kind === 'primary') cur.primary += row.value;
+    else cur.secondary += row.value;
+    totals.set(key, cur);
+  }
+  return [...totals.values()];
+}
+
 async function placesOf(month: string, territoryId: string, territoryLevel?: TerritoryLevel) {
   await apiReady();
   const r = await api.GET('/v1/kpis', {
@@ -212,7 +248,15 @@ function turn(direction: 'forward' | 'back', update: () => void) {
   start({ update, types: [direction] });
 }
 
-export function PlaceDesk({ title, headerExtra }: { title: string; headerExtra?: ReactNode }) {
+export function PlaceDesk({
+  title,
+  headerExtra,
+  reload = 0,
+}: {
+  title: string;
+  headerExtra?: ReactNode;
+  reload?: number;
+}) {
   const month = useMonth();
   const router = useRouter();
   const pathname = usePathname();
@@ -441,7 +485,9 @@ export function PlaceDesk({ title, headerExtra }: { title: string; headerExtra?:
       }
       setSalesProducts(r.data?.products ?? []);
       setSalesPeople(r.data?.people ?? []);
-      setBrandTargets(r.data?.brandTargets ?? []);
+      const listed = await brandTargetsOf(period.from, period.to, idsUnder(places ?? [], focus.id));
+      if (!live) return;
+      setBrandTargets(listed.length ? listed : (r.data?.brandTargets ?? []));
       setPersonId('');
     })().catch((e) => {
       if (!live) return;
@@ -453,7 +499,7 @@ export function PlaceDesk({ title, headerExtra }: { title: string; headerExtra?:
     return () => {
       live = false;
     };
-  }, [period?.from, period?.to, focus]);
+  }, [period?.from, period?.to, focus, places, reload]);
 
   function open(id: string, direction: 'forward' | 'back') {
     turn(direction, () => setFocusId(id));

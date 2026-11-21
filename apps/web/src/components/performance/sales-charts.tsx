@@ -291,7 +291,7 @@ function surfacePolygon(
   let points = '';
   for (let i = 0; i < COLUMNS; i++) {
     const x = (i / (COLUMNS - 1)) * width;
-    const y = clamp((levelY + (heights[i] ?? 0) - lift), -40, height + 40);
+    const y = clamp(levelY + (heights[i] ?? 0) - lift, -40, height + 40);
     points += `${x.toFixed(1)}px ${y.toFixed(1)}px,`;
   }
   return `polygon(${points}${width}px ${height + 40}px,0px ${height + 40}px)`;
@@ -356,6 +356,7 @@ function useLiquidClip(root: React.RefObject<HTMLElement | null>) {
 }
 
 const PLOT = 220;
+const HEAD = 72;
 
 function LiquidBar({
   actual,
@@ -375,7 +376,10 @@ function LiquidBar({
   if (actual <= 0 && target <= 0) return <div className="w-8" style={{ height: PLOT }} />;
   return (
     <div className="flex w-8 flex-col justify-end" style={{ height: PLOT }}>
-      <div className="relative w-full overflow-hidden rounded-t-md bg-muted/40" style={{ height: track }}>
+      <div
+        className="relative w-full overflow-hidden rounded-t-md bg-muted/40"
+        style={{ height: track }}
+      >
         <div
           data-liquid
           data-fill={fill}
@@ -393,7 +397,64 @@ function LiquidBar({
   );
 }
 
-/** Rupee axis on the left, names along the bottom, liquid on each bar. */
+function Column({
+  item,
+  max,
+  onOpen,
+}: {
+  item: LiquidItem;
+  max: number;
+  onOpen?: (id: string) => void;
+}) {
+  const name = (
+    <span className="absolute top-1 left-1/2 origin-top-left rotate-[40deg] whitespace-nowrap text-[11px] font-medium">
+      {item.name}
+    </span>
+  );
+  return (
+    <div className="flex w-36 shrink-0 flex-col items-center">
+      <div className="flex w-full items-end justify-center gap-1.5" style={{ height: HEAD }}>
+        <span className="relative h-full w-8">
+          <span className="absolute bottom-0 left-1/2 origin-bottom-left -rotate-[40deg] whitespace-nowrap text-[11px] font-semibold tabular-nums text-[var(--color-chart-1)]">
+            {item.primaryTarget > 0 ? lakh(item.primaryTarget) : ''}
+          </span>
+        </span>
+        <span className="relative h-full w-8">
+          <span className="absolute bottom-0 left-1/2 origin-bottom-left -rotate-[40deg] whitespace-nowrap text-[11px] font-semibold tabular-nums text-[var(--color-chart-2)]">
+            {item.secondaryTarget > 0 ? lakh(item.secondaryTarget) : ''}
+          </span>
+        </span>
+      </div>
+      <div className="flex items-end justify-center gap-1.5" style={{ height: PLOT }}>
+        <LiquidBar
+          actual={item.primary}
+          target={item.primaryTarget}
+          max={max}
+          color={CHART.series[0]!}
+        />
+        <LiquidBar
+          actual={item.secondary}
+          target={item.secondaryTarget}
+          max={max}
+          color={CHART.series[1]!}
+        />
+      </div>
+      {onOpen ? (
+        <button
+          type="button"
+          className="relative h-24 w-full overflow-hidden"
+          onClick={() => onOpen(item.id)}
+        >
+          {name}
+        </button>
+      ) : (
+        <div className="relative h-24 w-full overflow-hidden">{name}</div>
+      )}
+    </div>
+  );
+}
+
+/** Rupee axis on the left. Each place is one column, so its name and targets share the bars' center. */
 export function LiquidColumns({
   items,
   onOpen,
@@ -405,41 +466,36 @@ export function LiquidColumns({
   useLiquidClip(root);
   const max = Math.max(
     1,
-    ...items.flatMap((item) => [item.primary, item.secondary, item.primaryTarget, item.secondaryTarget]),
+    ...items.flatMap((item) => [
+      item.primary,
+      item.secondary,
+      item.primaryTarget,
+      item.secondaryTarget,
+    ]),
   );
   const ticks = [1, 0.75, 0.5, 0.25, 0].map((step) => max * step);
-  const width = Math.max(items.length * 144, 480);
   return (
-    <figure ref={root} className="flex gap-2">
-      <div className="flex w-16 shrink-0 flex-col">
-        <div className="h-24" />
-        <div className="relative text-[11px] tabular-nums text-muted-foreground" style={{ height: PLOT }}>
-          {ticks.map((tick) => (
-            <span
-              key={tick}
-              className="absolute right-1 -translate-y-1/2"
-              style={{ top: `${(1 - tick / max) * 100}%` }}
-            >
-              {inr(tick)}
-            </span>
-          ))}
-        </div>
+    <figure ref={root} className="flex">
+      <div
+        className="relative w-16 shrink-0 text-[11px] tabular-nums text-muted-foreground"
+        style={{ height: PLOT, marginTop: HEAD }}
+      >
+        {ticks.map((tick) => (
+          <span
+            key={tick}
+            className="absolute right-2 -translate-y-1/2"
+            style={{ top: `${(1 - tick / max) * 100}%` }}
+          >
+            {inr(tick)}
+          </span>
+        ))}
       </div>
-      <div className="min-w-0 flex-1 overflow-x-auto pb-1">
-        <div style={{ width }}>
-          <div className="flex h-24">
-            {items.map((item) => (
-              <div key={item.id} className="relative h-full min-w-[9rem] flex-1 overflow-hidden">
-                <span className="absolute bottom-3 left-1 origin-bottom-left -rotate-[40deg] whitespace-nowrap text-[11px] font-semibold tabular-nums text-[var(--color-chart-1)]">
-                  {item.primaryTarget > 0 ? lakh(item.primaryTarget) : ''}
-                </span>
-                <span className="absolute bottom-3 left-16 origin-bottom-left -rotate-[40deg] whitespace-nowrap text-[11px] font-semibold tabular-nums text-[var(--color-chart-2)]">
-                  {item.secondaryTarget > 0 ? lakh(item.secondaryTarget) : ''}
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="relative border-b border-l border-border" style={{ height: PLOT }}>
+      <div className="min-w-0 flex-1 overflow-x-auto">
+        <div className="relative flex w-max border-l border-border">
+          <div
+            className="pointer-events-none absolute right-0 left-0 border-b border-border"
+            style={{ top: HEAD, height: PLOT }}
+          >
             {ticks.slice(0, -1).map((tick) => (
               <div
                 key={tick}
@@ -447,33 +503,10 @@ export function LiquidColumns({
                 style={{ bottom: `${(tick / max) * 100}%` }}
               />
             ))}
-            <div className="absolute inset-0 flex items-end">
-              {items.map((item) => (
-                <div key={item.id} className="flex h-full min-w-[9rem] flex-1 items-end justify-center gap-1.5">
-                  <LiquidBar actual={item.primary} target={item.primaryTarget} max={max} color={CHART.series[0]!} />
-                  <LiquidBar actual={item.secondary} target={item.secondaryTarget} max={max} color={CHART.series[1]!} />
-                </div>
-              ))}
-            </div>
           </div>
-          <div className="flex h-28 border-l border-border">
-            {items.map((item) => {
-              const name = (
-                <span className="absolute top-1 left-2 origin-top-left rotate-45 whitespace-nowrap text-[11px] font-medium">
-                  {item.name}
-                </span>
-              );
-              return onOpen ? (
-                <button key={item.id} type="button" className="relative h-full min-w-[9rem] flex-1 overflow-hidden text-left" onClick={() => onOpen(item.id)}>
-                  {name}
-                </button>
-              ) : (
-                <div key={item.id} className="relative h-full min-w-[9rem] flex-1 overflow-hidden">
-                  {name}
-                </div>
-              );
-            })}
-          </div>
+          {items.map((item) => (
+            <Column key={item.id} item={item} max={max} onOpen={onOpen} />
+          ))}
         </div>
       </div>
     </figure>
