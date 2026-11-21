@@ -33,6 +33,20 @@ describe('stock statement maths', () => {
     expect(line.closingValue).toBe(0);
   });
 
+  it('counts closing from purchase when the opening is still blank', () => {
+    const line = figureLine({
+      openingQty: null,
+      purchaseQty: 1260,
+      freeQty: 0,
+      secondaryQty: 2,
+      frsQty: 0,
+      pts: 110.36,
+    });
+    expect(line.openingValue).toBeNull();
+    expect(line.closingQty).toBe(1258);
+    expect(line.closingValue).toBe(138832.88);
+  });
+
   it('keeps a blank opening blank and a typed zero as zero', () => {
     expect(
       figureLine({

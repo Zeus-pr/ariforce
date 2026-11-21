@@ -147,10 +147,19 @@ export function AwsSsScreen() {
       const d = lineOf(line);
       const value = (qty: number | null) =>
         qty == null ? null : line.pts == null ? 0 : Math.round(qty * line.pts * 100) / 100;
-      const closingQty =
-        d.openingQty == null
-          ? null
-          : d.openingQty + d.purchaseQty + d.freeQty - d.secondaryQty - d.frsQty;
+      const purchaseQty = d.purchaseQty ?? 0;
+      const freeQty = d.freeQty ?? 0;
+      const secondaryQty = d.secondaryQty ?? 0;
+      const frsQty = d.frsQty ?? 0;
+      const started =
+        d.openingQty != null ||
+        purchaseQty !== 0 ||
+        freeQty !== 0 ||
+        secondaryQty !== 0 ||
+        frsQty !== 0;
+      const closingQty = started
+        ? (d.openingQty ?? 0) + purchaseQty + freeQty - secondaryQty - frsQty
+        : null;
       return {
         ...line,
         ...d,

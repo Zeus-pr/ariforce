@@ -29,10 +29,15 @@ export type FiguredLine = QtyLine & {
 export function figureLine(line: QtyLine): FiguredLine {
   const value = (qty: number | null) =>
     qty == null ? null : line.pts == null ? 0 : lineValue(qty, line.pts);
-  const closingQty =
-    line.openingQty == null
-      ? null
-      : line.openingQty + line.purchaseQty + line.freeQty - line.secondaryQty - line.frsQty;
+  const started =
+    line.openingQty != null ||
+    line.purchaseQty !== 0 ||
+    line.freeQty !== 0 ||
+    line.secondaryQty !== 0 ||
+    line.frsQty !== 0;
+  const closingQty = started
+    ? (line.openingQty ?? 0) + line.purchaseQty + line.freeQty - line.secondaryQty - line.frsQty
+    : null;
   return {
     ...line,
     openingValue: value(line.openingQty),
