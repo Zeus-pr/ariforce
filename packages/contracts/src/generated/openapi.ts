@@ -1493,6 +1493,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/employees/next-code': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Next employee code for a role family. Does not reserve the number. */
+    get: operations['nextEmployeeCode'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/employees/assign-codes': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Give every active person a new family code. Suspended people keep the code they have. */
+    post: operations['assignEmployeeCodes'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/employees': {
     parameters: {
       query?: never;
@@ -2914,7 +2948,8 @@ export interface paths {
     /** Products with current MRP/PTR/PTS for the prices admin (system_admin only) */
     get: operations['listAdminProducts'];
     put?: never;
-    post?: never;
+    /** Add a product. Old sheets keep a product that is later hidden. */
+    post: operations['createAdminProduct'];
     delete?: never;
     options?: never;
     head?: never;
@@ -2936,6 +2971,23 @@ export interface paths {
     head?: never;
     /** Set MRP/PTR/PTS of one product (system_admin only). Saved POB values are never re-priced. */
     patch: operations['updateProductPrices'];
+    trace?: never;
+  };
+  '/v1/admin/products/hide': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Hide products. Past DCRs, stock sheets, and prices keep them. */
+    post: operations['hideAdminProducts'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   '/v1/admin/products/prices/bulk': {
@@ -4764,6 +4816,16 @@ export interface components {
     };
     /** @enum {string} */
     ExceptionSeverity: 'low' | 'medium' | 'high';
+    AdminProductCreate: {
+      code: string;
+      name: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      divisionId?: string;
+    };
     ProductPricesUpdate: {
       /** @description MRP; null clears it */
       mrp?: number | null;
@@ -4773,6 +4835,9 @@ export interface components {
       pts?: number | null;
       /** @description Send to get 409 VERSION_CONFLICT on a stale row */
       version?: number;
+    };
+    ProductHide: {
+      ids: string[];
     };
     ProductPricesBulkRequest: {
       /** @description ProductPricesBulkRow[]; each row is validated on its own */
@@ -4831,7 +4896,12 @@ export interface components {
         | 'application/pdf'
         | 'application/vnd.ms-excel'
         | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        | 'application/vnd.ms-excel.sheet.macroEnabled.12';
+        | 'application/vnd.ms-excel.sheet.macroEnabled.12'
+        | 'application/vnd.ms-excel.sheet.binary.macroEnabled.12'
+        | 'application/excel'
+        | 'application/x-excel'
+        | 'application/x-msexcel'
+        | 'application/vnd.ms-office';
       sizeBytes: number;
     };
     StockStatementFileConfirm: {
@@ -7405,6 +7475,12 @@ export interface components {
       lat: number | null;
       lng: number | null;
     };
+    EmployeeCodeNext: {
+      code: string;
+    };
+    EmployeeCodeFill: {
+      assigned: number;
+    };
     EmployeeCreated: {
       employee: components['schemas']['TeamNode'];
       /** @description Null when createUser is false and no sign-in invite is issued */
@@ -9375,10 +9451,6 @@ export interface components {
       /** @description Override row version; null when default */
       version: number | null;
     };
-    AdminProductList: {
-      items: components['schemas']['AdminProduct'][];
-      nextCursor: string | null;
-    };
     AdminProduct: {
       /**
        * Format: uuid
@@ -9431,6 +9503,13 @@ export interface components {
        */
       imageUrl: string | null;
       version: number;
+    };
+    AdminProductList: {
+      items: components['schemas']['AdminProduct'][];
+      nextCursor: string | null;
+    };
+    ProductHideResult: {
+      hidden: number;
     };
     ProductPricesBulkResponse: {
       /**
@@ -16165,6 +16244,84 @@ export interface operations {
       };
     };
   };
+  nextEmployeeCode: {
+    parameters: {
+      query: {
+        role: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Next code */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EmployeeCodeNext'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Only HR, a director, or a system admin */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  assignEmployeeCodes: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Assigned */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EmployeeCodeFill'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Only HR, a director, or a system admin */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   createEmployee: {
     parameters: {
       query?: never;
@@ -21396,6 +21553,66 @@ export interface operations {
       };
     };
   };
+  createAdminProduct: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['AdminProductCreate'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminProduct'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs products:prices) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description That product code is already used */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description No division to put the product in */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
   updateProductPrices: {
     parameters: {
       query?: never;
@@ -21459,6 +21676,48 @@ export interface operations {
       };
       /** @description VALIDATION or PTR_ABOVE_MRP */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  hideAdminProducts: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ProductHide'];
+      };
+    };
+    responses: {
+      /** @description Hidden */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProductHideResult'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN (needs products:prices) */
+      403: {
         headers: {
           [name: string]: unknown;
         };

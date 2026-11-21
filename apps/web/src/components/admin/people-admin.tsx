@@ -3,14 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@ariforce/ui/components/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@ariforce/ui/components/dialog';
+import { TopConfirm } from '@/components/top-confirm';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
 import {
@@ -30,6 +23,7 @@ import {
   type Terr,
 } from '@/components/admin/invite-people';
 import { useSession } from '@/lib/auth';
+import { api, apiReady, toApiError } from '@/lib/api';
 import {
   failure,
   getPerson,
@@ -98,6 +92,8 @@ export function PeopleAdmin() {
   const terrs = useHqs();
   const hqs = useMemo(() => (terrs ?? []).filter((t) => t.level === 'headquarter'), [terrs]);
   const me = useSession()?.user;
+  const mayAssignCodes =
+    me?.role === 'director' || me?.role === 'system_admin' || me?.role === 'hr';
   const isMe = (p: Person) =>
     !!me && (p.id === me.id || p.email.toLowerCase() === me.email.toLowerCase());
   const [q, setQ] = useState('');
@@ -111,6 +107,8 @@ export function PeopleAdmin() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [open, setOpen] = useState<Person | null>(null);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assigning, setAssigning] = useState(false);
   const seq = useRef(0);
 
   useEffect(() => {
@@ -177,6 +175,17 @@ export function PeopleAdmin() {
     </div>
   );
 
+  async function assignCodes() {
+    setAssigning(true);
+    await apiReady();
+    const r = await api.POST('/v1/employees/assign-codes');
+    setAssigning(false);
+    if (!r.data) return toast.error(toApiError(r).message || 'Could not assign codes.');
+    setAssignOpen(false);
+    toast.success(`Assigned ${r.data.assigned} codes.`);
+    void load(false);
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -210,6 +219,16 @@ export function PeopleAdmin() {
           ['yes', 'Signed in'],
           ['no', 'Not signed in yet'],
         ])}
+        {mayAssignCodes && (
+          <Button
+            type="button"
+            variant="outline"
+            className="self-end"
+            onClick={() => setAssignOpen(true)}
+          >
+            Assign codes
+          </Button>
+        )}
       </div>
 
       {err && (
@@ -338,6 +357,15 @@ export function PeopleAdmin() {
           setOpen(null);
           void load(false);
         }}
+      />
+      <TopConfirm
+        open={assignOpen}
+        title="Assign employee codes"
+        description="Active people who still have an old code, or no code, get a family code. People who already have one keep it. Suspended people are left as they are."
+        confirmLabel={assigning ? 'Assigning…' : 'Assign codes'}
+        busy={assigning}
+        onCancel={() => setAssignOpen(false)}
+        onConfirm={() => void assignCodes()}
       />
     </div>
   );
@@ -480,6 +508,21 @@ function PersonSheet({
 
   if (!person || !f || !base) return null;
   const set = (patch: Partial<Form>) => setF((x) => (x ? { ...x, ...patch } : x));
+  const codeRole = f.role;
+  const currentCode = f.employeeCode;
+  async function generateCode() {
+    if (
+      currentCode.trim() &&
+      !window.confirm('This replaces the code already on this person. Continue?')
+    )
+      return;
+    await apiReady();
+    const r = await api.GET('/v1/employees/next-code', {
+      params: { query: { role: codeRole } },
+    });
+    if (!r.data) return toast.error(toApiError(r).message || 'Could not make a code.');
+    set({ employeeCode: r.data.code });
+  }
   const orig = toForm(base);
   const isFunctional = functional(f.role);
   const needsManager = !isFunctional && f.role !== 'director';
@@ -712,12 +755,22 @@ function PersonSheet({
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="edit-code">Employee code</Label>
-              <Input
-                id="edit-code"
-                data-testid="edit-code"
-                value={f.employeeCode}
-                onChange={(e) => set({ employeeCode: e.target.value })}
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="edit-code"
+                  data-testid="edit-code"
+                  value={f.employeeCode}
+                  onChange={(e) => set({ employeeCode: e.target.value })}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => void generateCode()}
+                >
+                  Generate
+                </Button>
+              </div>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="edit-designation">Designation</Label>
@@ -880,42 +933,18 @@ function PersonSheet({
           </div>
         </form>
       </dialog>
-      <Dialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
-        <DialogContent data-testid="edit-confirm">
-          <DialogHeader>
-            <DialogTitle>Confirm these changes</DialogTitle>
-            <DialogDescription>These change what {base.name} can do or see.</DialogDescription>
-          </DialogHeader>
-          <ul
-            className="flex list-disc flex-col gap-1.5 pl-5 text-sm"
-            data-testid="edit-confirm-list"
-          >
-            {confirm?.map((c) => (
-              <li key={c}>{c}</li>
-            ))}
-          </ul>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirm(null)}
-              data-testid="edit-confirm-cancel"
-            >
-              Go back
-            </Button>
-            <Button
-              variant={confirm?.some((c) => c.startsWith('Suspend')) ? 'destructive' : 'default'}
-              disabled={saving}
-              onClick={() => {
-                const p = buildPatch();
-                if (p) void save(p);
-              }}
-              data-testid="edit-confirm-ok"
-            >
-              {saving ? 'Saving…' : 'Yes, save'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <TopConfirm
+        open={!!confirm}
+        title="Confirm these changes"
+        description={`These change what ${base.name} can do or see. ${confirm?.join(' ') ?? ''}`}
+        confirmLabel="Yes, save"
+        busy={saving}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          const p = buildPatch();
+          if (p) void save(p);
+        }}
+      />
     </>
   );
 }

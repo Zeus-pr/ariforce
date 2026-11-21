@@ -103,15 +103,15 @@ function TabBar({
       role="tab"
       aria-selected={tab === id}
       onClick={() => setTab(id)}
-      className={`rounded-md px-3 py-1.5 text-sm ${tab === id ? 'bg-muted font-medium' : 'text-muted-foreground'}`}
+      className={`rounded-md border px-3 py-1.5 text-sm ${tab === id ? 'border-foreground bg-foreground text-background' : 'bg-card'}`}
     >
       {label}
     </button>
   );
   return (
     <div role="tablist" className="flex gap-1">
-      {item('overview', 'Overview')}
-      {item('manage', 'Targets and actuals')}
+      {item('overview', 'This month')}
+      {item('manage', 'Set targets')}
     </div>
   );
 }

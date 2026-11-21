@@ -14,6 +14,8 @@ import {
 import {
   AdminProductQuery,
   Id,
+  AdminProductCreate,
+  ProductHide,
   ProductImageSet,
   ProductPricesBulkRequest,
   ProductPricesUpdate,
@@ -33,6 +35,26 @@ const id = (v: string, what: string) => {
 @Controller({ path: 'admin/products', version: '1' })
 export class ProductPricesController {
   constructor(private readonly svc: ProductPricesService) {}
+
+  @Post()
+  @HttpCode(201)
+  @RequirePermissions('products:prices')
+  create(
+    @CurrentPrincipal() p: Principal,
+    @Body(new ZodPipe(AdminProductCreate)) b: z.infer<typeof AdminProductCreate>,
+  ) {
+    return this.svc.create(p, b);
+  }
+
+  @Post('hide')
+  @HttpCode(200)
+  @RequirePermissions('products:prices')
+  hide(
+    @CurrentPrincipal() p: Principal,
+    @Body(new ZodPipe(ProductHide)) b: z.infer<typeof ProductHide>,
+  ) {
+    return this.svc.hide(p, b);
+  }
 
   @Get()
   @RequirePermissions('products:prices')

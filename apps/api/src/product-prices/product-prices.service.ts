@@ -8,10 +8,12 @@ import {
   type ProductPricesBulkResponse,
   type ProductPricesBulkResult,
   type ProductPricesUpdate,
+  type AdminProductCreate,
+  type ProductHide,
   productDisplayName,
 } from '@ariforce/contracts';
 import { productPriceHistory, products, type Tx } from '@ariforce/db';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
@@ -385,5 +387,79 @@ export class ProductPricesService {
       }),
     );
     return { bulkId, summary, results };
+  }
+
+  create(p: Principal, b: AdminProductCreate) {
+    return this.tenant.run(p, async (tx) => {
+      let divisionId = b.divisionId ?? null;
+      if (!divisionId) {
+        const found = await tx.execute(sql`
+          select id from divisions
+           where company_id = ${p.companyId}::uuid and deleted_at is null
+           order by name
+           limit 1
+        `);
+        const foundRows = ((found as unknown as { rows?: { id: string }[] }).rows ??
+          (found as unknown as { id: string }[])) as { id: string }[];
+        const row = foundRows[0];
+        divisionId = row?.id ?? null;
+      }
+      if (!divisionId) throw err(422, 'NO_DIVISION', 'Add a division before adding a product');
+      const division = await tx.execute(sql`
+        select 1 as hit from divisions
+         where id = ${divisionId}::uuid
+           and company_id = ${p.companyId}::uuid
+           and deleted_at is null
+         limit 1
+      `);
+      const divisionHit = (
+        (division as unknown as { rows?: unknown[] }).rows ?? (division as unknown as unknown[])
+      ).length;
+      if (!divisionHit) throw err(422, 'NO_DIVISION', 'That division is not in this company');
+      const taken = await tx.execute(sql`
+        select 1 as hit from products
+         where company_id = ${p.companyId}::uuid
+           and upper(code) = upper(${b.code})
+         limit 1
+      `);
+      const hit = (
+        (taken as unknown as { rows?: unknown[] }).rows ?? (taken as unknown as unknown[])
+      ).length;
+      if (hit) throw err(409, 'CODE_TAKEN', 'That product code is already used');
+      const id = uuidv7();
+      await tx.insert(products).values({
+        id,
+        companyId: p.companyId,
+        divisionId,
+        code: b.code,
+        name: b.name,
+      });
+      const [row] = await this.listRows(tx, sql`p.id = ${id}`, 1, 0);
+      if (!row) throw err(404, 'PRODUCT_NOT_FOUND', 'Product not found');
+      const [signed] = await this.withImageUrls(p, [row]);
+      return signed!;
+    });
+  }
+
+  hide(p: Principal, b: ProductHide) {
+    return this.tenant.run(p, async (tx) => {
+      const gone = await tx
+        .update(products)
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
+        .where(
+          and(
+            eq(products.companyId, p.companyId),
+            inArray(products.id, b.ids),
+            isNull(products.deletedAt),
+          ),
+        )
+        .returning({ id: products.id });
+      await this.audit.record(tx, p, 'product.hidden', {
+        entityType: 'product',
+        entityId: p.companyId,
+        after: { ids: gone.map((g) => g.id) },
+      });
+      return { hidden: gone.length };
+    });
   }
 }

@@ -209,6 +209,14 @@ export const Invite = z
   })
   .meta({ id: 'Invite' });
 
+export const EmployeeCodeQuery = z
+  .object({ role: z.string().trim().min(1).max(64) })
+  .meta({ id: 'EmployeeCodeQuery' });
+export const EmployeeCodeNext = z.object({ code: z.string() }).meta({ id: 'EmployeeCodeNext' });
+export const EmployeeCodeFill = z
+  .object({ assigned: z.number().int() })
+  .meta({ id: 'EmployeeCodeFill' });
+
 export const EmployeeCreated = z
   .object({
     employee: TeamNode,

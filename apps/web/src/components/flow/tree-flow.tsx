@@ -28,9 +28,19 @@ export type FlowItem = {
   title: string;
   subtitle: string;
   color: string;
+  hasChildren?: boolean;
+  open?: boolean;
+  onToggle?: () => void;
 };
 
-type CardData = { title: string; subtitle: string; color: string };
+type CardData = {
+  title: string;
+  subtitle: string;
+  color: string;
+  hasChildren?: boolean;
+  open?: boolean;
+  onToggle?: () => void;
+};
 type CardNode = Node<CardData, 'card'>;
 type Point = { x: number; y: number };
 
@@ -70,7 +80,7 @@ function writeLayout(label: string, positions: Record<string, Point>) {
 
 function Card({ data }: NodeProps<CardNode>) {
   return (
-    <div className="w-[13.75rem] overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-sm">
+    <div className="relative w-[13.75rem] overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-sm">
       <Handle
         type="target"
         position={Position.Left}
@@ -81,8 +91,21 @@ function Card({ data }: NodeProps<CardNode>) {
         <div className="truncate text-[11px] font-medium" style={{ color: data.color }}>
           {data.subtitle}
         </div>
-        <div className="truncate text-sm font-semibold text-slate-900">{data.title}</div>
+        <div className="truncate pr-6 text-sm font-semibold text-slate-900">{data.title}</div>
       </div>
+      {data.hasChildren && (
+        <button
+          type="button"
+          aria-label={data.open ? 'Fold' : 'Open'}
+          className="nodrag nopan absolute top-3 right-2 grid size-6 place-items-center rounded-md text-slate-700 hover:bg-slate-100"
+          onClick={(event) => {
+            event.stopPropagation();
+            data.onToggle?.();
+          }}
+        >
+          {data.open ? '▾' : '▸'}
+        </button>
+      )}
       <Handle
         type="source"
         position={Position.Bottom}
@@ -157,7 +180,14 @@ function arrange(items: FlowItem[], width: number, height: number) {
     id: n.id,
     type: 'card',
     position: pos.get(n.id) ?? { x: 20, y: 16 },
-    data: { title: n.title, subtitle: n.subtitle, color: n.color },
+    data: {
+      title: n.title,
+      subtitle: n.subtitle,
+      color: n.color,
+      hasChildren: n.hasChildren,
+      open: n.open,
+      onToggle: n.onToggle,
+    },
     style: { padding: 0, border: 'none', background: 'transparent', width: NW },
   }));
   const edges: Edge[] = [];
@@ -199,7 +229,10 @@ function Canvas({
   const flowRef = useRef(flow);
   flowRef.current = flow;
   const signature = useMemo(
-    () => items.map((n) => `${n.id}:${n.parentId ?? ''}:${n.title}:${n.color}`).join('|'),
+    () =>
+      items
+        .map((n) => `${n.id}:${n.parentId ?? ''}:${n.title}:${n.color}:${n.open ? 1 : 0}`)
+        .join('|'),
     [items],
   );
 

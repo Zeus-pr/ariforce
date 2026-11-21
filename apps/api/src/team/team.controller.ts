@@ -1,6 +1,7 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import {
+  EmployeeCodeQuery,
   EmployeeCreate,
   EmployeeUpdate,
   INVITE_BULK_MAX,
@@ -38,6 +39,20 @@ export class TeamController {
     @Body(new ZodPipe(ManagerAssign)) b: z.infer<typeof ManagerAssign>,
   ) {
     return this.svc.assignManager(p, id, b.managerId);
+  }
+
+  @Get('employees/next-code')
+  nextCode(
+    @CurrentPrincipal() p: Principal,
+    @Query(new ZodPipe(EmployeeCodeQuery)) q: z.infer<typeof EmployeeCodeQuery>,
+  ) {
+    return this.svc.previewEmployeeCode(p, q.role);
+  }
+
+  @Post('employees/assign-codes')
+  @HttpCode(200)
+  assignCodes(@CurrentPrincipal() p: Principal) {
+    return this.svc.assignEmployeeCodes(p);
   }
 
   @Post('employees')

@@ -1,6 +1,6 @@
 'use client';
 
-import { Trash2, Upload } from 'lucide-react';
+import { Pencil, Trash2, Upload } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
@@ -239,6 +239,7 @@ function TargetsPanel({ hqs, onChanged }: { hqs: Hq[]; onChanged: () => void }) 
                 <th>Month</th>
                 <th>Type</th>
                 <th className="text-right">Target</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -248,6 +249,23 @@ function TargetsPanel({ hqs, onChanged }: { hqs: Hq[]; onChanged: () => void }) 
                   <td>{monthLabel(r.month)}</td>
                   <td className="capitalize">{r.kind}</td>
                   <td className="text-right tabular-nums">{inr(r.value)}</td>
+                  <td className="text-right">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setHq(r.territoryId);
+                        setKind(r.kind);
+                        setFrom(r.month);
+                        setTo(r.month);
+                        setValue(String(r.value));
+                        setSpread('each');
+                      }}
+                    >
+                      <Pencil /> Edit
+                    </Button>
+                  </td>
                 </tr>
               ))}
             </tbody>
