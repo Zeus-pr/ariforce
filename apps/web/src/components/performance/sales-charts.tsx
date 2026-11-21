@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import {
   Bar,
   BarChart,
@@ -268,39 +269,131 @@ export type LiquidItem = {
   secondaryTarget: number;
 };
 
-function fillOf(actual: number, target: number) {
-  if (target <= 0) return actual > 0 ? 100 : 0;
-  return Math.max(0, Math.min(100, (actual / target) * 100));
+const COLUMNS = 28;
+const STEP = 1 / 120;
+const SPREAD = 2600;
+const RESTORE = 18;
+const SURFACE_DAMPING = 2.2;
+const MAX_WAVE = 8;
+const RIM = 3;
+
+function clamp(v: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, v));
 }
 
-function Tank({ actual, target, color }: { actual: number; target: number; color: string }) {
-  const pct = fillOf(actual, target);
+function surfacePolygon(
+  heights: Float64Array,
+  levelY: number,
+  width: number,
+  height: number,
+  lift: number,
+) {
+  let points = '';
+  for (let i = 0; i < COLUMNS; i++) {
+    const x = (i / (COLUMNS - 1)) * width;
+    const y = clamp((levelY + (heights[i] ?? 0) - lift), -40, height + 40);
+    points += `${x.toFixed(1)}px ${y.toFixed(1)}px,`;
+  }
+  return `polygon(${points}${width}px ${height + 40}px,0px ${height + 40}px)`;
+}
+
+function useLiquidClip(root: React.RefObject<HTMLElement | null>) {
+  const reduced = useReducedMotion();
+  useEffect(() => {
+    const node = root.current;
+    if (!node) return;
+    if (reduced) {
+      node.querySelectorAll<HTMLElement>('[data-liquid]').forEach((el) => {
+        const fill = Number(el.dataset.fill ?? 100);
+        const top = 100 - fill;
+        el.style.clipPath = `polygon(0% ${top}%,100% ${top}%,100% 100%,0% 100%)`;
+      });
+      return;
+    }
+    const heights = new Float64Array(COLUMNS);
+    const speeds = new Float64Array(COLUMNS);
+    let raf = 0;
+    let last = 0;
+    let carry = 0;
+    let time = 0;
+    const tick = (now: number) => {
+      const elapsed = last ? Math.min((now - last) / 1000, 0.05) : STEP;
+      last = now;
+      carry += elapsed;
+      while (carry >= STEP) {
+        for (let i = 0; i < COLUMNS; i++) {
+          const left = heights[i > 0 ? i - 1 : i] ?? 0;
+          const right = heights[i < COLUMNS - 1 ? i + 1 : i] ?? 0;
+          const accel =
+            (left + right - 2 * (heights[i] ?? 0)) * SPREAD -
+            (heights[i] ?? 0) * RESTORE -
+            (speeds[i] ?? 0) * SURFACE_DAMPING;
+          speeds[i] = (speeds[i] ?? 0) + accel * STEP + Math.sin(time * 0.7 + i * 0.45) * 3.2;
+        }
+        for (let i = 0; i < COLUMNS; i++) {
+          heights[i] = clamp((heights[i] ?? 0) + (speeds[i] ?? 0) * STEP, -MAX_WAVE, MAX_WAVE);
+        }
+        time += STEP;
+        carry -= STEP;
+      }
+      node.querySelectorAll<HTMLElement>('[data-liquid]').forEach((el) => {
+        const fill = Number(el.dataset.fill ?? 100);
+        const width = el.clientWidth;
+        const height = el.clientHeight;
+        if (!width || !height) return;
+        const levelY = height * (1 - fill / 100);
+        el.style.clipPath = surfacePolygon(heights, levelY, width, height, 0);
+        const rim = el.nextElementSibling as HTMLElement | null;
+        if (rim?.dataset.rim != null) {
+          rim.style.clipPath = surfacePolygon(heights, levelY, width, height, RIM);
+        }
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [reduced, root]);
+}
+
+const PLOT = 220;
+
+function LiquidBar({
+  actual,
+  target,
+  max,
+  color,
+}: {
+  actual: number;
+  target: number;
+  max: number;
+  color: string;
+}) {
+  const cap = Math.max(actual, target);
+  const track = max > 0 ? (cap / max) * PLOT : 0;
+  const fill = cap > 0 ? (actual / cap) * 100 : 0;
+  const pct = target > 0 ? Math.round((actual / target) * 100) : null;
+  if (actual <= 0 && target <= 0) return <div className="w-8" style={{ height: PLOT }} />;
   return (
-    <div className="flex w-9 flex-col items-center gap-1">
-      <span className="text-[10px] font-medium tabular-nums">{actual ? inr(actual) : ''}</span>
-      <div className="relative h-36 w-full overflow-hidden rounded-md border bg-muted/40">
+    <div className="flex w-8 flex-col justify-end" style={{ height: PLOT }}>
+      <div className="relative w-full overflow-hidden rounded-t-md bg-muted/40" style={{ height: track }}>
         <div
-          className="absolute inset-x-0 bottom-0"
-          style={{ height: `${pct}%`, background: color }}
-        >
-          <svg
-            className="af-liquid absolute -top-2 left-0 h-3 w-[200%] text-background/40"
-            viewBox="0 0 120 12"
-            preserveAspectRatio="none"
-            aria-hidden
-          >
-            <path fill="currentColor" d="M0 7 Q15 0 30 7 T60 7 T90 7 T120 7 V12 H0 Z" />
-          </svg>
-        </div>
+          data-liquid
+          data-fill={fill}
+          className="absolute inset-0"
+          style={{ background: color }}
+        />
+        <div data-rim className="pointer-events-none absolute inset-0 bg-white/35" />
+        {pct != null && track > 36 && (
+          <span className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 text-[11px] font-semibold whitespace-nowrap text-white">
+            {pct}%
+          </span>
+        )}
       </div>
-      <span className="text-[10px] tabular-nums text-muted-foreground">
-        {target > 0 ? `${Math.round((actual / target) * 100)}%` : ''}
-      </span>
     </div>
   );
 }
 
-/** Columns across the page. Each pair is a target tank filled to the actual. */
+/** Rupee axis on the left, names along the bottom, liquid on each bar. */
 export function LiquidColumns({
   items,
   onOpen,
@@ -308,35 +401,81 @@ export function LiquidColumns({
   items: LiquidItem[];
   onOpen?: (id: string) => void;
 }) {
+  const root = useRef<HTMLElement>(null);
+  useLiquidClip(root);
+  const max = Math.max(
+    1,
+    ...items.flatMap((item) => [item.primary, item.secondary, item.primaryTarget, item.secondaryTarget]),
+  );
+  const ticks = [1, 0.75, 0.5, 0.25, 0].map((step) => max * step);
+  const width = Math.max(items.length * 144, 480);
   return (
-    <div className="overflow-x-auto">
-      <div className="flex w-max min-w-full gap-4 px-1 pb-1">
-        {items.map((item) => (
-          <div key={item.id} className="flex w-24 flex-col items-center gap-2">
-            <div className="flex gap-2">
-              <Tank actual={item.primary} target={item.primaryTarget} color={CHART.series[0]!} />
-              <Tank
-                actual={item.secondary}
-                target={item.secondaryTarget}
-                color={CHART.series[1]!}
-              />
-            </div>
-            {onOpen ? (
-              <button
-                type="button"
-                className="h-16 text-left text-[11px] leading-tight font-medium underline-offset-2 hover:underline"
-                onClick={() => onOpen(item.id)}
-              >
-                <span className="inline-block origin-top-left -rotate-45">{item.name}</span>
-              </button>
-            ) : (
-              <span className="inline-block h-16 origin-top-left -rotate-45 text-[11px] leading-tight font-medium">
-                {item.name}
-              </span>
-            )}
-          </div>
-        ))}
+    <figure ref={root} className="flex gap-2">
+      <div className="flex w-16 shrink-0 flex-col">
+        <div className="h-24" />
+        <div className="relative text-[11px] tabular-nums text-muted-foreground" style={{ height: PLOT }}>
+          {ticks.map((tick) => (
+            <span
+              key={tick}
+              className="absolute right-1 -translate-y-1/2"
+              style={{ top: `${(1 - tick / max) * 100}%` }}
+            >
+              {inr(tick)}
+            </span>
+          ))}
+        </div>
       </div>
-    </div>
+      <div className="min-w-0 flex-1 overflow-x-auto pb-1">
+        <div style={{ width }}>
+          <div className="flex h-24">
+            {items.map((item) => (
+              <div key={item.id} className="relative h-full min-w-[9rem] flex-1 overflow-hidden">
+                <span className="absolute bottom-3 left-1 origin-bottom-left -rotate-[40deg] whitespace-nowrap text-[11px] font-semibold tabular-nums text-[var(--color-chart-1)]">
+                  {item.primaryTarget > 0 ? lakh(item.primaryTarget) : ''}
+                </span>
+                <span className="absolute bottom-3 left-16 origin-bottom-left -rotate-[40deg] whitespace-nowrap text-[11px] font-semibold tabular-nums text-[var(--color-chart-2)]">
+                  {item.secondaryTarget > 0 ? lakh(item.secondaryTarget) : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="relative border-b border-l border-border" style={{ height: PLOT }}>
+            {ticks.slice(0, -1).map((tick) => (
+              <div
+                key={tick}
+                className="absolute right-0 left-0 border-t border-border/70"
+                style={{ bottom: `${(tick / max) * 100}%` }}
+              />
+            ))}
+            <div className="absolute inset-0 flex items-end">
+              {items.map((item) => (
+                <div key={item.id} className="flex h-full min-w-[9rem] flex-1 items-end justify-center gap-1.5">
+                  <LiquidBar actual={item.primary} target={item.primaryTarget} max={max} color={CHART.series[0]!} />
+                  <LiquidBar actual={item.secondary} target={item.secondaryTarget} max={max} color={CHART.series[1]!} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex h-28 border-l border-border">
+            {items.map((item) => {
+              const name = (
+                <span className="absolute top-1 left-2 origin-top-left rotate-45 whitespace-nowrap text-[11px] font-medium">
+                  {item.name}
+                </span>
+              );
+              return onOpen ? (
+                <button key={item.id} type="button" className="relative h-full min-w-[9rem] flex-1 overflow-hidden text-left" onClick={() => onOpen(item.id)}>
+                  {name}
+                </button>
+              ) : (
+                <div key={item.id} className="relative h-full min-w-[9rem] flex-1 overflow-hidden">
+                  {name}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </figure>
   );
 }

@@ -506,15 +506,6 @@ export function PlaceDesk({ title, headerExtra }: { title: string; headerExtra?:
         },
       ]
     : [];
-  const skuItems: LiquidItem[] = (salesProducts ?? []).map((product) => ({
-    id: product.productId,
-    name: product.name,
-    primary: product.primaryValue,
-    secondary: product.secondaryValue,
-    primaryTarget: 0,
-    secondaryTarget: 0,
-  }));
-
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -697,13 +688,6 @@ export function PlaceDesk({ title, headerExtra }: { title: string; headerExtra?:
                 <LiquidColumns items={brandBars} />
               </ChartBox>
             )}
-            <ChartBox
-              title="SKU target vs primary and secondary"
-              fileName={`sales-sku-${period?.from ?? month}`}
-              items={skuItems}
-            >
-              <LiquidColumns items={skuItems} />
-            </ChartBox>
           </>
         )
       )}
