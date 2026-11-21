@@ -39,6 +39,8 @@ export const stockStatements = pgTable(
     openingValue: numeric('opening_value', { precision: 14, scale: 2 }).notNull().default('0'),
     purchaseQty: integer('purchase_qty').notNull().default(0),
     purchaseValue: numeric('purchase_value', { precision: 14, scale: 2 }).notNull().default('0'),
+    freeQty: integer('free_qty').notNull().default(0),
+    freeValue: numeric('free_value', { precision: 14, scale: 2 }).notNull().default('0'),
     secondaryQty: integer('secondary_qty').notNull().default(0),
     secondaryValue: numeric('secondary_value', { precision: 14, scale: 2 }).notNull().default('0'),
     closingQty: integer('closing_qty').notNull().default(0),
@@ -89,6 +91,7 @@ export const stockStatementLines = pgTable(
       .notNull()
       .default('typed'),
     purchaseQty: integer('purchase_qty').notNull().default(0),
+    freeQty: integer('free_qty').notNull().default(0),
     secondaryQty: integer('secondary_qty').notNull().default(0),
     frsQty: integer('frs_qty').notNull().default(0),
     pts: numeric('pts', { precision: 12, scale: 2 }),
@@ -102,7 +105,7 @@ export const stockStatementLines = pgTable(
       .where(sql`${t.deletedAt} is null`),
     check(
       'stock_statement_lines_qty_ck',
-      sql`(${t.openingQty} is null or ${t.openingQty} >= 0) and ${t.purchaseQty} >= 0 and ${t.secondaryQty} >= 0 and ${t.frsQty} >= 0`,
+      sql`(${t.openingQty} is null or ${t.openingQty} >= 0) and ${t.purchaseQty} >= 0 and ${t.freeQty} >= 0 and ${t.secondaryQty} >= 0 and ${t.frsQty} >= 0`,
     ),
     check('stock_statement_lines_source_ck', sql`${t.openingSource} in ('typed', 'carried')`),
   ],

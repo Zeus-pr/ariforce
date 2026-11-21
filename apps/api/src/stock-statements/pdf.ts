@@ -7,6 +7,8 @@ type Row = {
   openingValue: number | null;
   purchaseQty: number;
   purchaseValue: number | null;
+  freeQty: number;
+  freeValue: number | null;
   secondaryQty: number;
   secondaryValue: number | null;
   closingQty: number | null;
@@ -18,13 +20,13 @@ type Row = {
 type Box = { x: number; w: number };
 
 const left = 16;
-const item: Box = { x: left, w: 170 };
-const pack: Box = { x: 186, w: 34 };
-const qtyW = 36;
-const valW = 85;
+const item: Box = { x: left, w: 150 };
+const pack: Box = { x: 166, w: 28 };
+const qtyW = 30;
+const valW = 68;
 const pair = qtyW + valW;
-const groupX = 220;
-const groups = ['OPENING', 'RECEIPT', 'ISSUE', 'CLOSING', 'FRS'].map((name, i) => {
+const groupX = 194;
+const groups = ['OPENING', 'RECEIPT', 'FREE', 'ISSUE', 'CLOSING', 'FRS'].map((name, i) => {
   const x = groupX + i * pair;
   return { name, qty: { x, w: qtyW }, value: { x: x + qtyW, w: valW } };
 });
@@ -71,6 +73,8 @@ export function statementPdf(input: {
       n(row.openingValue),
       q(row.purchaseQty),
       n(row.purchaseValue),
+      q(row.freeQty),
+      n(row.freeValue),
       q(row.secondaryQty),
       n(row.secondaryValue),
       q(row.closingQty),
@@ -83,6 +87,8 @@ export function statementPdf(input: {
     run.ov += row.openingValue ?? 0;
     run.pq += row.purchaseQty;
     run.pv += row.purchaseValue ?? 0;
+    run.kq += row.freeQty;
+    run.kv += row.freeValue ?? 0;
     run.sq += row.secondaryQty;
     run.sv += row.secondaryValue ?? 0;
     run.cq += row.closingQty ?? 0;
@@ -149,6 +155,8 @@ function total(
     run.ov.toFixed(2),
     String(run.pq),
     run.pv.toFixed(2),
+    String(run.kq),
+    run.kv.toFixed(2),
     String(run.sq),
     run.sv.toFixed(2),
     String(run.cq),
@@ -181,7 +189,7 @@ function at(
 }
 
 function emptyRun() {
-  return { oq: 0, ov: 0, pq: 0, pv: 0, sq: 0, sv: 0, cq: 0, cv: 0, fq: 0, fv: 0 };
+  return { oq: 0, ov: 0, pq: 0, pv: 0, kq: 0, kv: 0, sq: 0, sv: 0, cq: 0, cv: 0, fq: 0, fv: 0 };
 }
 
 function pad(n: number) {

@@ -25838,6 +25838,12 @@
             "minimum": 0,
             "maximum": 1000000
           },
+          "freeQty": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
           "secondaryQty": {
             "type": "integer",
             "minimum": 0,
@@ -25886,7 +25892,10 @@
               "image/jpeg",
               "image/png",
               "image/webp",
-              "application/pdf"
+              "application/pdf",
+              "application/vnd.ms-excel",
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              "application/vnd.ms-excel.sheet.macroEnabled.12"
             ]
           },
           "sizeBytes": {
@@ -42137,6 +42146,14 @@
           "purchaseValue": {
             "type": "number"
           },
+          "freeQty": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "freeValue": {
+            "type": "number"
+          },
           "secondaryQty": {
             "type": "integer",
             "minimum": -9007199254740991,
@@ -42170,6 +42187,8 @@
           "openingValue",
           "purchaseQty",
           "purchaseValue",
+          "freeQty",
+          "freeValue",
           "secondaryQty",
           "secondaryValue",
           "closingQty",
@@ -42225,6 +42244,11 @@
             "minimum": 0,
             "maximum": 1000000
           },
+          "freeQty": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
           "secondaryQty": {
             "type": "integer",
             "minimum": 0,
@@ -42242,6 +42266,12 @@
             ]
           },
           "purchaseValue": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "freeValue": {
             "type": [
               "number",
               "null"
@@ -42286,10 +42316,12 @@
           "openingQty",
           "openingLocked",
           "purchaseQty",
+          "freeQty",
           "secondaryQty",
           "frsQty",
           "openingValue",
           "purchaseValue",
+          "freeValue",
           "secondaryValue",
           "frsValue",
           "closingQty",

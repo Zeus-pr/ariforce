@@ -4812,6 +4812,8 @@ export interface components {
       productId: string;
       openingQty: number | null;
       purchaseQty: number;
+      /** @default 0 */
+      freeQty: number;
       secondaryQty: number;
       frsQty: number;
     };
@@ -4822,7 +4824,14 @@ export interface components {
       /** @enum {string} */
       kind: 'aws' | 'ss';
       /** @enum {string} */
-      contentType: 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf';
+      contentType:
+        | 'image/jpeg'
+        | 'image/png'
+        | 'image/webp'
+        | 'application/pdf'
+        | 'application/vnd.ms-excel'
+        | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        | 'application/vnd.ms-excel.sheet.macroEnabled.12';
       sizeBytes: number;
     };
     StockStatementFileConfirm: {
@@ -9526,6 +9535,8 @@ export interface components {
       openingValue: number;
       purchaseQty: number;
       purchaseValue: number;
+      freeQty: number;
+      freeValue: number;
       secondaryQty: number;
       secondaryValue: number;
       closingQty: number;
@@ -9547,10 +9558,12 @@ export interface components {
       openingQty: number | null;
       openingLocked: boolean;
       purchaseQty: number;
+      freeQty: number;
       secondaryQty: number;
       frsQty: number;
       openingValue: number | null;
       purchaseValue: number | null;
+      freeValue: number | null;
       secondaryValue: number | null;
       frsValue: number | null;
       closingQty: number | null;

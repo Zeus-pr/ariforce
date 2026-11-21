@@ -38,6 +38,17 @@ type StatementRow = typeof stockStatements.$inferSelect;
 
 const money = (n: number) => n.toFixed(2);
 const num = (v: string | null) => (v == null ? null : Number(v));
+const FILE_EXT: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/vnd.ms-excel.sheet.macroEnabled.12': 'xlsm',
+};
+const fileExtension = (contentType: string) =>
+  FILE_EXT[contentType.split(';')[0]!.trim().toLowerCase()] ?? 'bin';
 
 @Injectable()
 export class StockStatementsService implements OnModuleInit {
@@ -262,6 +273,7 @@ export class StockStatementsService implements OnModuleInit {
             openingQty,
             openingSource: known.openingLocked ? 'carried' : 'typed',
             purchaseQty: input.purchaseQty,
+            freeQty: input.freeQty,
             secondaryQty: input.secondaryQty,
             frsQty: input.frsQty,
             pts: pts == null ? null : money(pts),
@@ -274,6 +286,7 @@ export class StockStatementsService implements OnModuleInit {
             set: {
               openingQty,
               purchaseQty: input.purchaseQty,
+              freeQty: input.freeQty,
               secondaryQty: input.secondaryQty,
               frsQty: input.frsQty,
               pts: pts == null ? null : money(pts),
@@ -377,13 +390,14 @@ export class StockStatementsService implements OnModuleInit {
       const row = await this.owned(tx, p, id);
       const key = kind === 'aws' ? row.awsFileKey : row.ssFileKey;
       const status = kind === 'aws' ? row.awsStatus : row.ssStatus;
+      const contentType = kind === 'aws' ? row.awsContentType : row.ssContentType;
       if (!key || status !== 'confirmed')
         throw err(409, 'UPLOAD_NOT_CONFIRMED', 'That file is not ready');
       return this.storage.downloadUrl(
         p.companyId,
         key,
         new Date(),
-        `${kind}-${row.month.slice(0, 7)}.pdf`,
+        `${kind}-${row.month.slice(0, 7)}.${contentType ? fileExtension(contentType) : 'bin'}`,
       );
     });
   }
@@ -399,7 +413,7 @@ export class StockStatementsService implements OnModuleInit {
         body.kind === 'aws' ? 'stock_statement_aws' : 'stock_statement_ss',
         body.contentType,
         body.sizeBytes,
-        body.contentType === 'application/pdf' ? 'pdf' : body.contentType.split('/')[1]!,
+        fileExtension(body.contentType),
         new Date(),
       );
       const patch =
@@ -491,6 +505,8 @@ export class StockStatementsService implements OnModuleInit {
           openingValue: l.openingValue,
           purchaseQty: l.purchaseQty,
           purchaseValue: l.purchaseValue,
+          freeQty: l.freeQty,
+          freeValue: l.freeValue,
           secondaryQty: l.secondaryQty,
           secondaryValue: l.secondaryValue,
           closingQty: l.closingQty,
@@ -560,6 +576,7 @@ export class StockStatementsService implements OnModuleInit {
           openingQty: fromClosing ?? 0,
           openingSource: fromClosing == null ? 'typed' : 'carried',
           purchaseQty: line.purchaseQty,
+          freeQty: line.freeQty,
           secondaryQty: line.secondaryQty,
           frsQty: line.frsQty,
           pts: line.pts == null ? null : money(line.pts),
@@ -607,6 +624,7 @@ export class StockStatementsService implements OnModuleInit {
           openingQty: line.closingQty,
           openingSource: 'carried',
           purchaseQty: 0,
+          freeQty: 0,
           secondaryQty: 0,
           frsQty: 0,
           pts: line.pts == null ? null : money(line.pts),
@@ -718,6 +736,7 @@ export class StockStatementsService implements OnModuleInit {
           openingQty: figured.closingQty,
           openingSource: 'carried' as const,
           purchaseQty: 0,
+          freeQty: 0,
           secondaryQty: 0,
           frsQty: 0,
           pts: product.pts,
@@ -740,6 +759,8 @@ export class StockStatementsService implements OnModuleInit {
         openingValue: money(t.openingValue),
         purchaseQty: t.purchaseQty,
         purchaseValue: money(t.purchaseValue),
+        freeQty: t.freeQty,
+        freeValue: money(t.freeValue),
         secondaryQty: t.secondaryQty,
         secondaryValue: money(t.secondaryValue),
         closingQty: t.closingQty,
@@ -797,6 +818,7 @@ export class StockStatementsService implements OnModuleInit {
     const figured = figureLine({
       openingQty: line?.openingQty ?? null,
       purchaseQty: line?.purchaseQty ?? 0,
+      freeQty: line?.freeQty ?? 0,
       secondaryQty: line?.secondaryQty ?? 0,
       frsQty: line?.frsQty ?? 0,
       pts,
@@ -815,6 +837,7 @@ export class StockStatementsService implements OnModuleInit {
     return {
       openingQty: line.openingQty,
       purchaseQty: line.purchaseQty,
+      freeQty: line.freeQty,
       secondaryQty: line.secondaryQty,
       frsQty: line.frsQty,
       pts: num(line.pts),
@@ -882,6 +905,8 @@ export class StockStatementsService implements OnModuleInit {
         openingValue: Number(row.openingValue),
         purchaseQty: row.purchaseQty,
         purchaseValue: Number(row.purchaseValue),
+        freeQty: row.freeQty,
+        freeValue: Number(row.freeValue),
         secondaryQty: row.secondaryQty,
         secondaryValue: Number(row.secondaryValue),
         closingQty: row.closingQty,
@@ -898,10 +923,12 @@ export class StockStatementsService implements OnModuleInit {
         openingQty: l.openingQty,
         openingLocked: l.openingLocked,
         purchaseQty: l.purchaseQty,
+        freeQty: l.freeQty,
         secondaryQty: l.secondaryQty,
         frsQty: l.frsQty,
         openingValue: l.openingValue,
         purchaseValue: l.purchaseValue,
+        freeValue: l.freeValue,
         secondaryValue: l.secondaryValue,
         frsValue: l.frsValue,
         closingQty: l.closingQty,

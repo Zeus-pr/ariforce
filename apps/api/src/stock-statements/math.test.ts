@@ -6,6 +6,7 @@ describe('stock statement maths', () => {
     const line = figureLine({
       openingQty: 100,
       purchaseQty: 0,
+      freeQty: 0,
       secondaryQty: 3,
       frsQty: 0,
       pts: 124.11,
@@ -20,6 +21,7 @@ describe('stock statement maths', () => {
     const line = figureLine({
       openingQty: 0,
       purchaseQty: 4,
+      freeQty: 0,
       secondaryQty: 1,
       frsQty: 0,
       pts: null,
@@ -33,22 +35,37 @@ describe('stock statement maths', () => {
 
   it('keeps a blank opening blank and a typed zero as zero', () => {
     expect(
-      figureLine({ openingQty: null, purchaseQty: 0, secondaryQty: 0, frsQty: 0, pts: 10 })
-        .closingQty,
+      figureLine({
+        openingQty: null,
+        purchaseQty: 0,
+        freeQty: 0,
+        secondaryQty: 0,
+        frsQty: 0,
+        pts: 10,
+      }).closingQty,
     ).toBeNull();
     expect(
-      figureLine({ openingQty: 0, purchaseQty: 0, secondaryQty: 0, frsQty: 0, pts: 10 }).closingQty,
+      figureLine({ openingQty: 0, purchaseQty: 0, freeQty: 0, secondaryQty: 0, frsQty: 0, pts: 10 })
+        .closingQty,
     ).toBe(0);
   });
 
   it('actual secondary is secondary value minus FRS value', () => {
     const totals = totalsOf([
-      figureLine({ openingQty: 50, purchaseQty: 0, secondaryQty: 10, frsQty: 2, pts: 100 }),
+      figureLine({
+        openingQty: 50,
+        purchaseQty: 0,
+        freeQty: 5,
+        secondaryQty: 10,
+        frsQty: 2,
+        pts: 100,
+      }),
     ]);
     expect(totals.secondaryValue).toBe(1000);
     expect(totals.frsValue).toBe(200);
     expect(totals.actualSecondary).toBe(800);
-    expect(totals.closingQty).toBe(38);
+    expect(totals.freeValue).toBe(500);
+    expect(totals.closingQty).toBe(43);
   });
 
   it('steps a month forward', () => {

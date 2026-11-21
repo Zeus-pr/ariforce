@@ -10,6 +10,7 @@ export function addMoney(a: number, b: number): number {
 export type QtyLine = {
   openingQty: number | null;
   purchaseQty: number;
+  freeQty: number;
   secondaryQty: number;
   frsQty: number;
   pts: number | null;
@@ -18,6 +19,7 @@ export type QtyLine = {
 export type FiguredLine = QtyLine & {
   openingValue: number | null;
   purchaseValue: number | null;
+  freeValue: number | null;
   secondaryValue: number | null;
   frsValue: number | null;
   closingQty: number | null;
@@ -30,11 +32,12 @@ export function figureLine(line: QtyLine): FiguredLine {
   const closingQty =
     line.openingQty == null
       ? null
-      : line.openingQty + line.purchaseQty - line.secondaryQty - line.frsQty;
+      : line.openingQty + line.purchaseQty + line.freeQty - line.secondaryQty - line.frsQty;
   return {
     ...line,
     openingValue: value(line.openingQty),
     purchaseValue: value(line.purchaseQty),
+    freeValue: value(line.freeQty),
     secondaryValue: value(line.secondaryQty),
     frsValue: value(line.frsQty),
     closingQty,
@@ -47,6 +50,8 @@ export type StatementTotals = {
   openingValue: number;
   purchaseQty: number;
   purchaseValue: number;
+  freeQty: number;
+  freeValue: number;
   secondaryQty: number;
   secondaryValue: number;
   closingQty: number;
@@ -62,6 +67,8 @@ export function totalsOf(lines: FiguredLine[]): StatementTotals {
     openingValue: 0,
     purchaseQty: 0,
     purchaseValue: 0,
+    freeQty: 0,
+    freeValue: 0,
     secondaryQty: 0,
     secondaryValue: 0,
     closingQty: 0,
@@ -75,6 +82,8 @@ export function totalsOf(lines: FiguredLine[]): StatementTotals {
     if (line.openingValue != null) t.openingValue = addMoney(t.openingValue, line.openingValue);
     t.purchaseQty += line.purchaseQty;
     if (line.purchaseValue != null) t.purchaseValue = addMoney(t.purchaseValue, line.purchaseValue);
+    t.freeQty += line.freeQty;
+    if (line.freeValue != null) t.freeValue = addMoney(t.freeValue, line.freeValue);
     t.secondaryQty += line.secondaryQty;
     if (line.secondaryValue != null)
       t.secondaryValue = addMoney(t.secondaryValue, line.secondaryValue);
