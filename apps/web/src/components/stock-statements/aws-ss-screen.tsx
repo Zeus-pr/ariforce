@@ -614,7 +614,7 @@ export function AwsSsScreen() {
             tabIndex={0}
             role="region"
             aria-label="Stock and sales lines"
-            className="overflow-x-auto rounded-md border"
+            className="overflow-x-auto overflow-y-clip rounded-md border"
           >
             <table className="w-full min-w-[74rem] table-fixed border-separate border-spacing-0 border-border text-sm tabular-nums [&_tbody_td]:border-b [&_tbody_th]:border-b [&_td]:border-border [&_th]:border-border">
               <colgroup>
