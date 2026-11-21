@@ -16,6 +16,7 @@ import {
   products,
   roles,
   salesActuals,
+  salesTargets,
   stockStatementLines,
   stockStatements,
   stockists,
@@ -25,7 +26,7 @@ import {
   users,
   type Tx,
 } from '@ariforce/db';
-import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
@@ -484,6 +485,31 @@ export class StockStatementsService implements OnModuleInit {
         cur.closingQty += closingQty;
         productsOut.set(row.productId, cur);
       }
+      const targetRows = await tx
+        .select({ brand: salesTargets.brand, kind: salesTargets.kind, value: salesTargets.value })
+        .from(salesTargets)
+        .innerJoin(territories, eq(territories.id, salesTargets.territoryId))
+        .where(
+          and(
+            isNull(salesTargets.deletedAt),
+            isNull(salesTargets.productId),
+            isNotNull(salesTargets.brand),
+            gte(salesTargets.month, `${q.from}-01`),
+            lte(salesTargets.month, `${q.to}-01`),
+            scope,
+            under,
+          ),
+        );
+      const brandTargets = new Map<string, { name: string; primary: number; secondary: number }>();
+      for (const row of targetRows) {
+        const name = row.brand?.trim();
+        if (!name) continue;
+        const cur = brandTargets.get(name.toLowerCase()) ?? { name, primary: 0, secondary: 0 };
+        const amount = Number(row.value);
+        if (row.kind === 'primary') cur.primary = Math.round((cur.primary + amount) * 100) / 100;
+        else cur.secondary = Math.round((cur.secondary + amount) * 100) / 100;
+        brandTargets.set(name.toLowerCase(), cur);
+      }
       const byValue = (a: SalesProduct, b: SalesProduct) =>
         b.primaryValue + b.secondaryValue - (a.primaryValue + a.secondaryValue);
       const productsList = [...productsOut.values()].sort(byValue);
@@ -495,7 +521,7 @@ export class StockStatementsService implements OnModuleInit {
           products: [...person.products.values()].sort(byValue),
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
-      return { products: productsList, people, lines };
+      return { products: productsList, people, brandTargets: [...brandTargets.values()], lines };
     });
   }
 

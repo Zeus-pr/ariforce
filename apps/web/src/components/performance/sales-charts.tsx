@@ -258,3 +258,85 @@ export function ProductColumnChart({
     </div>
   );
 }
+
+export type LiquidItem = {
+  id: string;
+  name: string;
+  primary: number;
+  secondary: number;
+  primaryTarget: number;
+  secondaryTarget: number;
+};
+
+function fillOf(actual: number, target: number) {
+  if (target <= 0) return actual > 0 ? 100 : 0;
+  return Math.max(0, Math.min(100, (actual / target) * 100));
+}
+
+function Tank({ actual, target, color }: { actual: number; target: number; color: string }) {
+  const pct = fillOf(actual, target);
+  return (
+    <div className="flex w-9 flex-col items-center gap-1">
+      <span className="text-[10px] font-medium tabular-nums">{actual ? inr(actual) : ''}</span>
+      <div className="relative h-36 w-full overflow-hidden rounded-md border bg-muted/40">
+        <div
+          className="absolute inset-x-0 bottom-0"
+          style={{ height: `${pct}%`, background: color }}
+        >
+          <svg
+            className="af-liquid absolute -top-2 left-0 h-3 w-[200%] text-background/40"
+            viewBox="0 0 120 12"
+            preserveAspectRatio="none"
+            aria-hidden
+          >
+            <path fill="currentColor" d="M0 7 Q15 0 30 7 T60 7 T90 7 T120 7 V12 H0 Z" />
+          </svg>
+        </div>
+      </div>
+      <span className="text-[10px] tabular-nums text-muted-foreground">
+        {target > 0 ? `${Math.round((actual / target) * 100)}%` : ''}
+      </span>
+    </div>
+  );
+}
+
+/** Columns across the page. Each pair is a target tank filled to the actual. */
+export function LiquidColumns({
+  items,
+  onOpen,
+}: {
+  items: LiquidItem[];
+  onOpen?: (id: string) => void;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <div className="flex w-max min-w-full gap-4 px-1 pb-1">
+        {items.map((item) => (
+          <div key={item.id} className="flex w-24 flex-col items-center gap-2">
+            <div className="flex gap-2">
+              <Tank actual={item.primary} target={item.primaryTarget} color={CHART.series[0]!} />
+              <Tank
+                actual={item.secondary}
+                target={item.secondaryTarget}
+                color={CHART.series[1]!}
+              />
+            </div>
+            {onOpen ? (
+              <button
+                type="button"
+                className="h-16 text-left text-[11px] leading-tight font-medium underline-offset-2 hover:underline"
+                onClick={() => onOpen(item.id)}
+              >
+                <span className="inline-block origin-top-left -rotate-45">{item.name}</span>
+              </button>
+            ) : (
+              <span className="inline-block h-16 origin-top-left -rotate-45 text-[11px] leading-tight font-medium">
+                {item.name}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

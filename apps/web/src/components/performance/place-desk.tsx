@@ -1,20 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { KpiReport, Territory, TerritoryLevel } from '@ariforce/contracts';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@ariforce/ui/components/button';
+import { Combobox } from '@ariforce/ui/components/combobox';
 import { Input } from '@ariforce/ui/components/input';
-import { exportXlsx } from '@/components/export/export';
+import { cn } from '@ariforce/ui/lib/utils';
+import { exportXlsx, type ExportCell, type ExportCol } from '@/components/export/export';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { addMonths, monthLabel } from '@/lib/period';
 import { getTerritories } from '@/lib/query';
-import {
-  PlaceCompareChart,
-  ProductColumnChart,
-  SalesTrendChart,
-  YearCompareChart,
-} from './sales-charts';
+import { LiquidColumns, SalesTrendChart, YearCompareChart, type LiquidItem } from './sales-charts';
 import { MonthSwitch, inr, useMonth } from './perf-ui';
 
 const KPIS =
@@ -51,7 +48,7 @@ function grain(level: TerritoryLevel): TerritoryLevel {
   return level === 'headquarter' || level === 'territory' ? 'territory' : 'headquarter';
 }
 
-type Span = 'month' | 'quarter' | 'fy' | 'last12' | 'custom';
+type Span = 'month' | 'quarter' | 'fy' | 'custom';
 
 function spanOf(mode: Span, month: string, customFrom: string, customTo: string) {
   const [y, m] = month.split('-').map(Number) as [number, number];
@@ -68,25 +65,111 @@ function spanOf(mode: Span, month: string, customFrom: string, customTo: string)
     const end = `${startYear + 1}-03`;
     return { from: start, to: month < end ? month : end };
   }
-  if (mode === 'last12') return { from: addMonths(month, -11), to: month };
   const a = customFrom || month;
   const b = customTo || month;
   return a <= b ? { from: a, to: b } : { from: b, to: a };
 }
 
-type SalesLine = {
-  month: string;
-  headquarters: string;
-  stockist: string;
-  person: string | null;
-  product: string;
-  brand: string;
-  primaryQty: number;
-  primaryValue: number;
-  secondaryQty: number;
-  secondaryValue: number;
-  closingQty: number;
-};
+function monthsOf(from: string, to: string) {
+  const out: string[] = [];
+  let cur = from;
+  while (cur <= to && out.length < 24) {
+    out.push(cur);
+    cur = addMonths(cur, 1);
+  }
+  return out;
+}
+
+function periodTitle(span: Span, month: string) {
+  if (span === 'month') return monthLabel(month);
+  const m = Number(month.slice(5, 7));
+  const y = Number(month.slice(0, 4));
+  if (span === 'quarter') return `Q${Math.floor((m - 1) / 3) + 1} ${y}`;
+  if (span === 'fy') return `FY ${m >= 4 ? y : y - 1}`;
+  return monthLabel(month);
+}
+
+function ChartBox({
+  title,
+  fileName,
+  items,
+  children,
+}: {
+  title: string;
+  fileName: string;
+  items: LiquidItem[];
+  children: ReactNode;
+}) {
+  const columns: ExportCol[] = [
+    { header: 'Name', width: 28 },
+    { header: 'Primary', width: 16, align: 'right' },
+    { header: 'Primary target', width: 16, align: 'right' },
+    { header: 'Secondary', width: 16, align: 'right' },
+    { header: 'Secondary target', width: 18, align: 'right' },
+  ];
+  const rows: ExportCell[][] = items.map((item) => [
+    item.name,
+    item.primary,
+    item.primaryTarget,
+    item.secondary,
+    item.secondaryTarget,
+  ]);
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold">{title}</h2>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={!rows.length}
+          onClick={() =>
+            void exportXlsx({
+              title,
+              meta: [
+                'Primary is purchase value. Secondary is secondary minus FRS. The tank fills to the target.',
+              ],
+              fileName,
+              columns,
+              rows,
+            })
+          }
+        >
+          Download
+        </Button>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+type HqBar = LiquidItem & { opens: boolean };
+
+function sumHq(lists: Row[][], byId: Map<string, Place>): HqBar[] {
+  const map = new Map<string, HqBar>();
+  for (const list of lists) {
+    for (const row of list) {
+      if (!row.territoryId) continue;
+      const place = byId.get(row.territoryId);
+      const cur = map.get(row.territoryId) ?? {
+        id: row.territoryId,
+        name: place?.name ?? row.label,
+        primary: 0,
+        secondary: 0,
+        primaryTarget: 0,
+        secondaryTarget: 0,
+        opens: place ? place.level !== 'territory' : false,
+      };
+      cur.primary += money(row, 'primary_sales_value');
+      cur.secondary += money(row, 'secondary_sales_value');
+      cur.primaryTarget += targetOf(row, 'primary_sales_value') ?? 0;
+      cur.secondaryTarget += targetOf(row, 'secondary_sales_value') ?? 0;
+      map.set(row.territoryId, cur);
+    }
+  }
+  return [...map.values()].sort((a, b) => b.primary + b.secondary - (a.primary + a.secondary));
+}
+
 type SalesProduct = {
   productId: string;
   name: string;
@@ -129,7 +212,7 @@ function turn(direction: 'forward' | 'back', update: () => void) {
   start({ update, types: [direction] });
 }
 
-export function PlaceDesk({ title }: { title: string }) {
+export function PlaceDesk({ title, headerExtra }: { title: string; headerExtra?: ReactNode }) {
   const month = useMonth();
   const router = useRouter();
   const pathname = usePathname();
@@ -145,13 +228,20 @@ export function PlaceDesk({ title }: { title: string }) {
   const [trend, setTrend] = useState<
     { name: string; month: string; primary: number; secondary: number; target: number }[]
   >([]);
+  const [priorTrend, setPriorTrend] = useState<
+    { name: string; month: string; primary: number; secondary: number; target: number }[]
+  >([]);
   const [error, setError] = useState<string | null>(null);
   const [span, setSpan] = useState<Span>('month');
+  const [personId, setPersonId] = useState('');
+  const [brandTargets, setBrandTargets] = useState<
+    { name: string; primary: number; secondary: number }[]
+  >([]);
+  const [hqBars, setHqBars] = useState<HqBar[]>([]);
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [salesProducts, setSalesProducts] = useState<SalesProduct[] | null>(null);
   const [salesPeople, setSalesPeople] = useState<SalesPerson[]>([]);
-  const [salesLines, setSalesLines] = useState<SalesLine[]>([]);
   const [productError, setProductError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const jumped = useRef(false);
@@ -180,25 +270,46 @@ export function PlaceDesk({ title }: { title: string }) {
 
   const byId = useMemo(() => new Map((places ?? []).map((p) => [p.id, p])), [places]);
   const focus = focusId ? byId.get(focusId) : undefined;
+  const period = month ? spanOf(span, month, customFrom, customTo) : null;
 
   useEffect(() => {
-    if (!month || !focus) return;
+    if (!month || !focus || !period) return;
     let live = true;
     setBusy(true);
     setError(null);
     const level = grain(focus.level);
-    const months = Array.from({ length: 12 }, (_, i) => addMonths(month, i - 11));
+    const months = monthsOf(period.from, period.to);
+    const prior = months.map((item) => addMonths(item, -12));
+    const all = [...new Set([...months, ...prior])];
     void (async () => {
-      const packs = await Promise.all(months.map((m) => placesOf(m, focus.id, level)));
+      const packs = await Promise.all(all.map((item) => placesOf(item, focus.id, level)));
       if (!live) return;
-      const current = packs[packs.length - 1] ?? [];
-      setRows(current);
+      const byMonth = new Map(all.map((item, i) => [item, packs[i] ?? []]));
+      setRows(byMonth.get(months.at(-1) ?? month) ?? []);
+      setHqBars(
+        sumHq(
+          months.map((item) => byMonth.get(item) ?? []),
+          byId,
+        ),
+      );
       setTrend(
-        months.map((m, i) => {
-          const total = fig(packs[i] ?? []);
+        months.map((item) => {
+          const total = fig(byMonth.get(item) ?? []);
           return {
-            month: m,
-            name: monthLabel(m).slice(0, 3),
+            month: item,
+            name: monthLabel(item).slice(0, 3),
+            primary: total.primary,
+            secondary: total.secondary,
+            target: total.target,
+          };
+        }),
+      );
+      setPriorTrend(
+        prior.map((item) => {
+          const total = fig(byMonth.get(item) ?? []);
+          return {
+            month: item,
+            name: monthLabel(item).slice(0, 3),
             primary: total.primary,
             secondary: total.secondary,
             target: total.target,
@@ -214,7 +325,7 @@ export function PlaceDesk({ title }: { title: string }) {
     return () => {
       live = false;
     };
-  }, [month, focus]);
+  }, [month, focus, period?.from, period?.to, byId]);
 
   const path = useMemo(() => {
     const chain: Place[] = [];
@@ -228,74 +339,80 @@ export function PlaceDesk({ title }: { title: string }) {
     return chain;
   }, [focus, byId]);
 
-  const grouped = useMemo(() => {
-    const groups = new Map<string, { place: Place; row: Row; trail: string }[]>();
-    for (const row of rows ?? []) {
-      const place = row.territoryId ? byId.get(row.territoryId) : undefined;
-      if (!place || !focus) continue;
-      const names: string[] = [];
-      let cur = place.parentId ? byId.get(place.parentId) : undefined;
-      const seen = new Set<string>();
-      while (cur && cur.id !== focus.id && !seen.has(cur.id)) {
-        seen.add(cur.id);
-        names.unshift(cur.name);
-        cur = cur.parentId ? byId.get(cur.parentId) : undefined;
-      }
-      const trail = [...new Set(names)].join(' · ');
-      groups.set(trail, [...(groups.get(trail) ?? []), { place, row, trail }]);
-    }
-    return [...groups.entries()];
-  }, [rows, byId, focus]);
-
   const now = fig(rows ?? []);
-  const years = useMemo(() => {
-    const byYear = new Map<string, { primary: number; secondary: number }>();
-    for (const point of trend) {
-      const year = point.month.slice(0, 4);
-      const cur = byYear.get(year) ?? { primary: 0, secondary: 0 };
-      byYear.set(year, {
-        primary: cur.primary + point.primary,
-        secondary: cur.secondary + point.secondary,
-      });
-    }
-    return [...byYear.entries()].map(([year, value]) => ({ year, ...value }));
-  }, [trend]);
+  const sumTrend = (points: { primary: number; secondary: number }[]) =>
+    points.reduce(
+      (sum, point) => ({
+        primary: sum.primary + point.primary,
+        secondary: sum.secondary + point.secondary,
+      }),
+      { primary: 0, secondary: 0 },
+    );
+  const years = month
+    ? [
+        { year: periodTitle(span, addMonths(month, -12)), ...sumTrend(priorTrend) },
+        { year: periodTitle(span, month), ...sumTrend(trend) },
+      ]
+    : [];
   const brandBars = useMemo(() => {
-    const totals = new Map<string, { primary: number; secondary: number }>();
+    const totals = new Map<string, LiquidItem>();
     for (const product of salesProducts ?? []) {
-      const cur = totals.get(product.brand) ?? { primary: 0, secondary: 0 };
-      totals.set(product.brand, {
-        primary: cur.primary + product.primaryValue,
-        secondary: cur.secondary + product.secondaryValue,
-      });
+      const key = product.brand.toLowerCase();
+      const cur = totals.get(key) ?? {
+        id: key,
+        name: product.brand,
+        primary: 0,
+        secondary: 0,
+        primaryTarget: 0,
+        secondaryTarget: 0,
+      };
+      cur.primary += product.primaryValue;
+      cur.secondary += product.secondaryValue;
+      totals.set(key, cur);
     }
-    return [...totals.entries()]
-      .map(([name, value]) => ({ id: name, name, ...value }))
+    for (const target of brandTargets) {
+      const key = target.name.toLowerCase();
+      const cur = totals.get(key) ?? {
+        id: key,
+        name: target.name,
+        primary: 0,
+        secondary: 0,
+        primaryTarget: 0,
+        secondaryTarget: 0,
+      };
+      cur.primaryTarget += target.primary;
+      cur.secondaryTarget += target.secondary;
+      totals.set(key, cur);
+    }
+    return [...totals.values()]
+      .filter(
+        (item) => item.primary || item.secondary || item.primaryTarget || item.secondaryTarget,
+      )
       .sort((a, b) => b.primary + b.secondary - (a.primary + a.secondary));
-  }, [salesProducts]);
-  const placeBars = useMemo(
-    () =>
-      grouped.flatMap(([, items]) =>
-        items.map(({ place, row }) => ({
-          id: place.id,
-          name: place.name,
-          primary: money(row, 'primary_sales_value'),
-          secondary: money(row, 'secondary_sales_value'),
-          opens: place.level !== 'territory',
-        })),
-      ),
-    [grouped],
-  );
-
+  }, [salesProducts, brandTargets]);
   useEffect(() => {
-    if (jumped.current || params.get('m') || !trend.length || !month) return;
-    const hit = [...trend].reverse().find((point) => point.primary || point.secondary);
-    if (!hit || hit.month === month) return;
-    jumped.current = true;
-    pickMonth(hit.month);
-  }, [trend, month, params]);
-
-  const period = month ? spanOf(span, month, customFrom, customTo) : null;
+    if (jumped.current || params.get('m') || !focus || !month) return;
+    let live = true;
+    const look = Array.from({ length: 12 }, (_, i) => addMonths(month, i - 11));
+    void Promise.all(look.map((item) => placesOf(item, focus.id, grain(focus.level))))
+      .then((packs) => {
+        if (!live || jumped.current) return;
+        jumped.current = true;
+        for (let i = look.length - 1; i >= 0; i--) {
+          const total = fig(packs[i] ?? []);
+          if ((total.primary || total.secondary) && look[i] !== month) {
+            pickMonth(look[i]!);
+            return;
+          }
+        }
+      })
+      .catch(() => {
+        jumped.current = true;
+      });
+    return () => {
+      live = false;
+    };
+  }, [focus, month, params]);
 
   useEffect(() => {
     if (!period || !focus) return;
@@ -319,18 +436,19 @@ export function PlaceDesk({ title }: { title: string }) {
         setProductError(toApiError(r).message);
         setSalesProducts([]);
         setSalesPeople([]);
-        setSalesLines([]);
+        setBrandTargets([]);
         return;
       }
       setSalesProducts(r.data?.products ?? []);
       setSalesPeople(r.data?.people ?? []);
-      setSalesLines(r.data?.lines ?? []);
+      setBrandTargets(r.data?.brandTargets ?? []);
+      setPersonId('');
     })().catch((e) => {
       if (!live) return;
       setProductError(e instanceof Error ? e.message : 'Could not load product sales.');
       setSalesProducts([]);
       setSalesPeople([]);
-      setSalesLines([]);
+      setBrandTargets([]);
     });
     return () => {
       live = false;
@@ -343,6 +461,59 @@ export function PlaceDesk({ title }: { title: string }) {
 
   if (!month || !places)
     return <div className="h-96 animate-pulse rounded-lg bg-muted/40" aria-busy="true" />;
+
+  const placeChoices = places
+    .filter(
+      (place) =>
+        place.level === 'region' ||
+        place.level === 'area' ||
+        place.level === 'headquarter' ||
+        place.id === focus?.id,
+    )
+    .map((place) => ({
+      value: place.id,
+      label: place.name,
+      group:
+        place.level === 'region'
+          ? 'RBM'
+          : place.level === 'area'
+            ? 'ABM'
+            : place.level === 'headquarter'
+              ? 'BM'
+              : LEVEL[place.level],
+      hint: place.parentId ? byId.get(place.parentId)?.name : null,
+    }));
+  const chosen = salesPeople.find((person) => person.userId === personId);
+  const productPrimary = (salesProducts ?? []).reduce(
+    (sum, product) => sum + product.primaryValue,
+    0,
+  );
+  const productSecondary = (salesProducts ?? []).reduce(
+    (sum, product) => sum + product.secondaryValue,
+    0,
+  );
+  const hqPrimaryTarget = hqBars.reduce((sum, place) => sum + place.primaryTarget, 0);
+  const hqSecondaryTarget = hqBars.reduce((sum, place) => sum + place.secondaryTarget, 0);
+  const allProducts: LiquidItem[] = salesProducts?.length
+    ? [
+        {
+          id: 'all',
+          name: focus?.name ?? 'All',
+          primary: productPrimary,
+          secondary: productSecondary,
+          primaryTarget: hqPrimaryTarget,
+          secondaryTarget: hqSecondaryTarget,
+        },
+      ]
+    : [];
+  const skuItems: LiquidItem[] = (salesProducts ?? []).map((product) => ({
+    id: product.productId,
+    name: product.name,
+    primary: product.primaryValue,
+    secondary: product.secondaryValue,
+    primaryTarget: 0,
+    secondaryTarget: 0,
+  }));
 
   return (
     <div className="flex flex-col gap-6">
@@ -372,29 +543,53 @@ export function PlaceDesk({ title }: { title: string }) {
             </p>
           )}
         </div>
-        <MonthSwitch month={month} />
+        <div className="flex flex-wrap items-center gap-2">
+          {headerExtra}
+          <MonthSwitch month={month} />
+        </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Period">
-        {(
-          [
-            ['month', 'Month'],
-            ['quarter', 'Quarter'],
-            ['fy', 'Financial year'],
-            ['last12', 'Last 12 months'],
-            ['custom', 'Custom'],
-          ] as const
-        ).map(([id, label]) => (
-          <Button
-            key={id}
-            type="button"
-            size="sm"
-            variant={span === id ? 'secondary' : 'outline'}
-            aria-pressed={span === id}
-            onClick={() => setSpan(id)}
-          >
-            {label}
-          </Button>
-        ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <Combobox
+          aria-label="Place"
+          className="w-72"
+          placeholder="Search RBM, ABM or BM"
+          searchPlaceholder="Search a place"
+          options={placeChoices}
+          value={focus ? [focus.id] : []}
+          onValueChange={(ids) => {
+            const next = ids.at(-1);
+            if (next) open(next, 'forward');
+          }}
+        />
+        <div
+          className="inline-flex rounded-full bg-foreground p-1"
+          role="group"
+          aria-label="Period"
+        >
+          {(
+            [
+              ['month', 'Month'],
+              ['quarter', 'Quarter'],
+              ['fy', 'Financial year'],
+              ['custom', 'Custom'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={span === id}
+              className={cn(
+                'rounded-full px-3 py-1.5 text-sm font-medium',
+                span === id
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-background hover:bg-background/15',
+              )}
+              onClick={() => setSpan(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         {span === 'custom' && (
           <>
             <Input
@@ -411,50 +606,6 @@ export function PlaceDesk({ title }: { title: string }) {
             />
           </>
         )}
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={!salesLines.length}
-          onClick={() =>
-            void exportXlsx({
-              title: `Sales ${focus?.name ?? title}`,
-              meta: [
-                `${period?.from ?? ''} to ${period?.to ?? ''}`,
-                'Primary is the purchase value on approved stock sheets. Secondary is secondary minus FRS.',
-              ],
-              fileName: `sales-${period?.from ?? 'from'}-${period?.to ?? 'to'}`,
-              columns: [
-                { header: 'Month', width: 12 },
-                { header: 'Headquarters', width: 22 },
-                { header: 'Stockist', width: 28 },
-                { header: 'Person', width: 22 },
-                { header: 'Product', width: 28 },
-                { header: 'Brand', width: 22 },
-                { header: 'Primary qty', width: 14, align: 'right' },
-                { header: 'Primary value', width: 16, align: 'right' },
-                { header: 'Secondary qty', width: 14, align: 'right' },
-                { header: 'Secondary value', width: 16, align: 'right' },
-                { header: 'Closing qty', width: 14, align: 'right' },
-              ],
-              rows: salesLines.map((line) => [
-                line.month,
-                line.headquarters,
-                line.stockist,
-                line.person,
-                line.product,
-                line.brand,
-                line.primaryQty,
-                line.primaryValue,
-                line.secondaryQty,
-                line.secondaryValue,
-                line.closingQty,
-              ]),
-            })
-          }
-        >
-          Download
-        </Button>
       </div>
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -464,135 +615,142 @@ export function PlaceDesk({ title }: { title: string }) {
       {busy ? (
         <div className="h-60 animate-pulse rounded-md bg-muted/40" aria-busy="true" />
       ) : trend.some((point) => point.primary || point.secondary || point.target) ||
-        placeBars.length > 0 ? (
-        <>
-          <section
-            aria-label="Twelve months"
-            className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.8fr)]"
-            style={{ viewTransitionName: 'place-chart' }}
+        hqBars.length > 0 ? (
+        <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.8fr)]">
+          <ChartBox
+            title={periodTitle(span, month)}
+            fileName={`sales-period-${period?.from ?? month}`}
+            items={trend.map((point) => ({
+              id: point.month,
+              name: point.name,
+              primary: point.primary,
+              secondary: point.secondary,
+              primaryTarget: point.target,
+              secondaryTarget: 0,
+            }))}
           >
             <SalesTrendChart trend={trend} onMonth={pickMonth} />
-            <YearCompareChart years={years} />
-          </section>
-          <p className="sr-only">
-            {monthLabel(month)} primary {inr(now.primary)}, secondary {inr(now.secondary)}
-            {now.target > 0 ? `, target ${inr(now.target)}` : ''}.
-          </p>
-          <div style={{ viewTransitionName: 'place-list' }}>
-            {placeBars.length > 0 && (
-              <PlaceCompareChart
-                places={placeBars}
-                onOpen={(id) => {
-                  const place = placeBars.find((p) => p.id === id);
-                  if (place?.opens) open(id, 'forward');
-                }}
-              />
-            )}
-          </div>
-        </>
+          </ChartBox>
+          <ChartBox
+            title={`${periodTitle(span, addMonths(month, -12))} and ${periodTitle(span, month)}`}
+            fileName={`sales-compare-${month}`}
+            items={years.map((year) => ({
+              id: year.year,
+              name: year.year,
+              primary: year.primary,
+              secondary: year.secondary,
+              primaryTarget: 0,
+              secondaryTarget: 0,
+            }))}
+          >
+            <YearCompareChart years={years} label="This period and last year" />
+          </ChartBox>
+        </div>
       ) : (
         !error && (
           <p className="py-8 text-sm text-muted-foreground">
-            Nothing filed under {focus?.name ?? 'this place'} in {monthLabel(month)}.
+            Nothing filed under {focus?.name ?? 'this place'} in {periodTitle(span, month)}.
           </p>
         )
       )}
-      <section aria-label="Product sales" className="flex flex-col gap-4">
-        {productError && (
-          <p role="alert" className="text-sm text-destructive">
-            {productError}
-          </p>
-        )}
-        {salesProducts === null ? (
-          <div className="h-48 animate-pulse rounded-md bg-muted/40" aria-busy="true" />
-        ) : salesProducts.length === 0 ? (
-          !productError && (
-            <p className="py-6 text-sm text-muted-foreground">
-              No approved stock-sheet sales in this period.
-            </p>
-          )
-        ) : (
+      <p className="sr-only">
+        {monthLabel(month)} primary {inr(now.primary)}, secondary {inr(now.secondary)}.
+      </p>
+      {hqBars.length > 0 && (
+        <ChartBox
+          title="HQ wise target vs primary and secondary"
+          fileName={`sales-hq-${period?.from ?? month}`}
+          items={hqBars}
+        >
+          <LiquidColumns
+            items={hqBars}
+            onOpen={(id) => {
+              const place = hqBars.find((item) => item.id === id);
+              if (place?.opens) open(id, 'forward');
+            }}
+          />
+        </ChartBox>
+      )}
+      {productError && (
+        <p role="alert" className="text-sm text-destructive">
+          {productError}
+        </p>
+      )}
+      {salesProducts === null ? (
+        <div className="h-48 animate-pulse rounded-md bg-muted/40" aria-busy="true" />
+      ) : (
+        salesProducts.length > 0 && (
           <>
-            <div className="flex flex-col gap-2">
-              <h2 className="text-base font-semibold">All products</h2>
-              <YearCompareChart
-                label={`${focus?.name ?? 'This place'}, product primary and secondary`}
-                years={[
-                  {
-                    year: focus?.name ?? 'All',
-                    primary: salesProducts.reduce((sum, product) => sum + product.primaryValue, 0),
-                    secondary: salesProducts.reduce(
-                      (sum, product) => sum + product.secondaryValue,
-                      0,
-                    ),
-                  },
-                ]}
-              />
-            </div>
-            {brandBars.length < salesProducts.length && (
-              <div className="flex flex-col gap-2">
-                <h2 className="text-base font-semibold">Brands</h2>
-                <ProductColumnChart places={brandBars} label="Brands, primary and secondary" />
-              </div>
+            <ChartBox
+              title="All product target vs primary and secondary"
+              fileName={`sales-all-${period?.from ?? month}`}
+              items={allProducts}
+            >
+              <LiquidColumns items={allProducts} />
+            </ChartBox>
+            {brandBars.length > 0 && (
+              <ChartBox
+                title="Brandwise target vs primary and secondary"
+                fileName={`sales-brand-${period?.from ?? month}`}
+                items={brandBars}
+              >
+                <LiquidColumns items={brandBars} />
+              </ChartBox>
             )}
-            <div className="flex flex-col gap-2">
-              <h2 className="text-base font-semibold">Products</h2>
-              <ProductColumnChart
-                places={salesProducts.map((product) => ({
+            <ChartBox
+              title="SKU target vs primary and secondary"
+              fileName={`sales-sku-${period?.from ?? month}`}
+              items={skuItems}
+            >
+              <LiquidColumns items={skuItems} />
+            </ChartBox>
+          </>
+        )
+      )}
+      {salesPeople.length > 0 && (
+        <section className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-xs">
+          <h2 className="text-base font-semibold">People</h2>
+          <Combobox
+            aria-label="Person"
+            className="w-72"
+            placeholder="Search a person"
+            searchPlaceholder="Search a name"
+            options={salesPeople.map((person) => ({
+              value: person.userId,
+              label: person.name,
+              hint: person.headquarters.join(', '),
+            }))}
+            value={personId ? [personId] : []}
+            onValueChange={(ids) => setPersonId(ids.at(-1) ?? '')}
+          />
+          {chosen && (
+            <ChartBox
+              title={`${chosen.name} target vs primary and secondary`}
+              fileName={`sales-${chosen.name.toLowerCase().replace(/\s+/g, '-')}`}
+              items={chosen.products.map((product) => ({
+                id: product.productId,
+                name: product.name,
+                primary: product.primaryValue,
+                secondary: product.secondaryValue,
+                primaryTarget: 0,
+                secondaryTarget: 0,
+              }))}
+            >
+              <p className="text-sm text-muted-foreground">{chosen.headquarters.join(' · ')}</p>
+              <LiquidColumns
+                items={chosen.products.map((product) => ({
                   id: product.productId,
                   name: product.name,
                   primary: product.primaryValue,
                   secondary: product.secondaryValue,
+                  primaryTarget: 0,
+                  secondaryTarget: 0,
                 }))}
-                label="Products, primary and secondary"
               />
-            </div>
-            {salesPeople.length > 1 && (
-              <div className="flex flex-col gap-8">
-                <h2 className="text-base font-semibold">People</h2>
-                {salesPeople.map((person) => (
-                  <section key={person.userId} className="flex flex-col gap-3">
-                    <div>
-                      <h3 className="text-base font-semibold">{person.name}</h3>
-                      {person.headquarters.length > 0 && (
-                        <p className="text-sm text-muted-foreground">
-                          {person.headquarters.join(' · ')}
-                        </p>
-                      )}
-                    </div>
-                    <YearCompareChart
-                      height={200}
-                      label={`${person.name}, primary and secondary`}
-                      years={[
-                        {
-                          year: person.name,
-                          primary: person.products.reduce(
-                            (sum, product) => sum + product.primaryValue,
-                            0,
-                          ),
-                          secondary: person.products.reduce(
-                            (sum, product) => sum + product.secondaryValue,
-                            0,
-                          ),
-                        },
-                      ]}
-                    />
-                    <ProductColumnChart
-                      places={person.products.map((product) => ({
-                        id: product.productId,
-                        name: product.name,
-                        primary: product.primaryValue,
-                        secondary: product.secondaryValue,
-                      }))}
-                      label={`${person.name}, products`}
-                    />
-                  </section>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </section>
+            </ChartBox>
+          )}
+        </section>
+      )}
     </div>
   );
 }

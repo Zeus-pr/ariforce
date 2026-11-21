@@ -9,7 +9,7 @@ import { useRole } from '@/components/shell/role-context';
 import { monthLabel } from '@/lib/period';
 import { ChartCard, exportedAt, MonthSwitch, PerfTable, useMonth } from './perf-ui';
 import { can } from '@/components/exceptions/model';
-import { isApprover } from '@/lib/roles';
+import { isApprover, isFieldRole } from '@/lib/roles';
 import { PlaceDesk } from './place-desk';
 import { SalesManage } from './sales-manage';
 import { breakdownFor, pick, usePerf, val } from './use-perf';
@@ -31,18 +31,20 @@ export function SalesView() {
   const [targets, setTargets] = useState(false);
   const mayWrite = can(role, 'sales:write');
   if (!month) return <div className="h-96" aria-busy="true" />;
-  if (role === 'distribution_head' || isApprover(role)) {
+  if (role === 'distribution_head' || isApprover(role) || isFieldRole(role)) {
     return (
       <div className="flex flex-col gap-6">
-        <PlaceDesk title="Sales" />
-        {mayWrite && (
-          <div className="flex flex-col gap-4">
-            <Button type="button" variant="outline" onClick={() => setTargets((v) => !v)}>
-              {targets ? 'Hide targets' : 'Set targets'}
-            </Button>
-            {targets && <SalesManage onChanged={() => setRev((n) => n + 1)} />}
-          </div>
-        )}
+        <PlaceDesk
+          title="Sales"
+          headerExtra={
+            mayWrite ? (
+              <Button type="button" onClick={() => setTargets((v) => !v)}>
+                {targets ? 'Hide targets' : 'Set targets'}
+              </Button>
+            ) : undefined
+          }
+        />
+        {mayWrite && targets && <SalesManage onChanged={() => setRev((n) => n + 1)} />}
       </div>
     );
   }

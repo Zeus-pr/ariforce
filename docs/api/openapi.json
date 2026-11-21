@@ -42517,6 +42517,12 @@
               "$ref": "#/components/schemas/StockStatementSalesPerson"
             }
           },
+          "brandTargets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockStatementSalesBrandTarget"
+            }
+          },
           "lines": {
             "type": "array",
             "items": {
@@ -42527,6 +42533,7 @@
         "required": [
           "products",
           "people",
+          "brandTargets",
           "lines"
         ],
         "additionalProperties": false
@@ -42606,6 +42613,26 @@
           "name",
           "headquarters",
           "products"
+        ],
+        "additionalProperties": false
+      },
+      "StockStatementSalesBrandTarget": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "primary": {
+            "type": "number"
+          },
+          "secondary": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "primary",
+          "secondary"
         ],
         "additionalProperties": false
       },
