@@ -55,6 +55,11 @@ const FILE_EXT: Record<string, string> = {
   'application/vnd.ms-excel': 'xls',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
   'application/vnd.ms-excel.sheet.macroEnabled.12': 'xlsm',
+  'application/vnd.ms-excel.sheet.binary.macroEnabled.12': 'xlsb',
+  'application/excel': 'xls',
+  'application/x-excel': 'xls',
+  'application/x-msexcel': 'xls',
+  'application/vnd.ms-office': 'xls',
 };
 const fileExtension = (contentType: string) =>
   FILE_EXT[contentType.split(';')[0]!.trim().toLowerCase()] ?? 'bin';
@@ -921,9 +926,7 @@ export class StockStatementsService implements OnModuleInit {
         pts: products.pts,
       })
       .from(products)
-      .where(
-        and(isNull(products.deletedAt), eq(products.active, true), eq(products.isSample, false)),
-      )
+      .where(and(isNull(products.deletedAt), eq(products.isSample, false)))
       .orderBy(asc(products.name));
   }
 
@@ -1281,11 +1284,26 @@ type Merged = FiguredLine & {
   onSheet: boolean;
 };
 
+const EXCEL_TYPES = new Set([
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel.sheet.macroEnabled.12',
+  'application/vnd.ms-excel.sheet.binary.macroEnabled.12',
+  'application/excel',
+  'application/x-excel',
+  'application/x-msexcel',
+  'application/vnd.ms-office',
+]);
+
 function sniff(type: string, b: Uint8Array) {
   const at = (sig: number[]) => b.length >= sig.length && sig.every((x, i) => b[i] === x);
+  const zip =
+    at([0x50, 0x4b, 0x03, 0x04]) || at([0x50, 0x4b, 0x05, 0x06]) || at([0x50, 0x4b, 0x07, 0x08]);
+  const ole = at([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
   if (type === 'image/jpeg') return at([0xff, 0xd8, 0xff]);
   if (type === 'image/png') return at([0x89, 0x50, 0x4e, 0x47]);
   if (type === 'image/webp') return b.length > 12 && b[0] === 0x52 && b[1] === 0x49;
   if (type === 'application/pdf') return at([0x25, 0x50, 0x44, 0x46]);
+  if (EXCEL_TYPES.has(type)) return zip || ole;
   return false;
 }
