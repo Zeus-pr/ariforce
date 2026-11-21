@@ -512,7 +512,7 @@ export class StockStatementsService implements OnModuleInit {
       if (!head) throw err(409, 'UPLOAD_MISSING', 'Upload the file first');
       if (head.sizeBytes !== size || head.sizeBytes > 10 * 1024 * 1024)
         throw err(422, 'UPLOAD_SIZE_MISMATCH', 'Uploaded size differs from the declared size');
-      const bytes = await this.storage.firstBytes(key, 16);
+      const bytes = await this.storage.firstBytes(key, 65536);
       if (!sniff(type, bytes))
         throw err(422, 'UPLOAD_FORMAT_INVALID', 'File content does not match its type');
       await tx
