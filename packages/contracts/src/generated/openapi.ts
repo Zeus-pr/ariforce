@@ -2357,12 +2357,29 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** sales:write. All-products monthly targets per HQ for a month range */
+    /** sales:write. Headquarters totals and brand targets per HQ for a month range */
     get: operations['listSalesTargets'];
-    /** sales:write. Set one HQ target for a month range (spread each|total); audited (sales.targets_set) */
+    /** sales:write. Set one HQ or brand target for a month range (spread each|total); audited (sales.targets_set) */
     put: operations['setSalesTargets'];
     post?: never;
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/sales/targets/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** sales:write. Remove one headquarters or brand target; audited (sales.target_deleted) */
+    delete: operations['deleteSalesTarget'];
     options?: never;
     head?: never;
     patch?: never;
@@ -4644,6 +4661,11 @@ export interface components {
       /** @default null */
       quantity: number | null;
       /**
+       * @description Null sets the headquarters total. A name sets that brand only.
+       * @default null
+       */
+      brand: string | null;
+      /**
        * @description false: 409 TARGETS_EXIST when a month already has a target
        * @default false
        */
@@ -4689,6 +4711,8 @@ export interface components {
       territoryCode: string;
       /** @default null */
       productCode: string | null;
+      /** @default null */
+      brand: string | null;
       /**
        * @description Month (YYYY-MM)
        * @example 2026-11
@@ -8709,6 +8733,8 @@ export interface components {
        */
       month: string;
       kind: components['schemas']['SalesKind'];
+      /** @description Null is the headquarters total. A name is that brand only. */
+      brand: string | null;
       /** @description Target value, rupees */
       value: number;
       quantity: number | null;
@@ -8788,6 +8814,7 @@ export interface components {
             | 'unknown_product'
             | 'product_required'
             | 'primary_from_sheet'
+            | 'unknown_brand'
           )
         | null;
     };
@@ -9588,6 +9615,7 @@ export interface components {
        */
       productId: string;
       name: string;
+      brand: string;
       primaryQty: number;
       primaryValue: number;
       secondaryQty: number;
@@ -9603,6 +9631,7 @@ export interface components {
       headquarters: string;
       stockist: string;
       product: string;
+      brand: string;
       primaryQty: number;
       primaryValue: number;
       secondaryQty: number;
@@ -19636,8 +19665,65 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description VALIDATION (not an HQ, or more than 36 months) */
+      /** @description VALIDATION (not an HQ, unknown brand, or more than 36 months) */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  deleteSalesTarget: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description UUIDv7 identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Removed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier
+             * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+             */
+            id: string;
+          };
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description SALES_TARGET_NOT_FOUND */
+      404: {
         headers: {
           [name: string]: unknown;
         };

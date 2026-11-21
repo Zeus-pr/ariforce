@@ -74,6 +74,7 @@ type SalesLine = {
   headquarters: string;
   stockist: string;
   product: string;
+  brand: string;
   primaryQty: number;
   primaryValue: number;
   secondaryQty: number;
@@ -83,6 +84,7 @@ type SalesLine = {
 type SalesProduct = {
   productId: string;
   name: string;
+  brand: string;
   primaryValue: number;
   secondaryValue: number;
 };
@@ -135,8 +137,9 @@ export function PlaceDesk({ title }: { title: string }) {
   const [span, setSpan] = useState<Span>('month');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [salesProducts, setSalesProducts] = useState<SalesProduct[]>([]);
+  const [salesProducts, setSalesProducts] = useState<SalesProduct[] | null>(null);
   const [salesLines, setSalesLines] = useState<SalesLine[]>([]);
+  const [productError, setProductError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const jumped = useRef(false);
 
@@ -241,6 +244,19 @@ export function PlaceDesk({ title }: { title: string }) {
     }
     return [...byYear.entries()].map(([year, value]) => ({ year, ...value }));
   }, [trend]);
+  const brandBars = useMemo(() => {
+    const totals = new Map<string, { primary: number; secondary: number }>();
+    for (const product of salesProducts ?? []) {
+      const cur = totals.get(product.brand) ?? { primary: 0, secondary: 0 };
+      totals.set(product.brand, {
+        primary: cur.primary + product.primaryValue,
+        secondary: cur.secondary + product.secondaryValue,
+      });
+    }
+    return [...totals.entries()]
+      .map(([name, value]) => ({ id: name, name, ...value }))
+      .sort((a, b) => b.primary + b.secondary - (a.primary + a.secondary));
+  }, [salesProducts]);
   const placeBars = useMemo(
     () =>
       grouped.flatMap(([, items]) =>
@@ -268,6 +284,8 @@ export function PlaceDesk({ title }: { title: string }) {
   useEffect(() => {
     if (!period || !focus) return;
     let live = true;
+    setSalesProducts(null);
+    setProductError(null);
     void (async () => {
       await apiReady();
       const r = await api.GET('/v1/stock-statements/sales', {
@@ -281,13 +299,18 @@ export function PlaceDesk({ title }: { title: string }) {
       });
       if (!live) return;
       if (r.error) {
-        setError(toApiError(r).message);
+        setProductError(toApiError(r).message);
+        setSalesProducts([]);
+        setSalesLines([]);
         return;
       }
       setSalesProducts(r.data?.products ?? []);
       setSalesLines(r.data?.lines ?? []);
     })().catch((e) => {
-      if (live) setError(e instanceof Error ? e.message : 'Could not load product sales.');
+      if (!live) return;
+      setProductError(e instanceof Error ? e.message : 'Could not load product sales.');
+      setSalesProducts([]);
+      setSalesLines([]);
     });
     return () => {
       live = false;
@@ -383,6 +406,7 @@ export function PlaceDesk({ title }: { title: string }) {
                 { header: 'Headquarters', width: 22 },
                 { header: 'Stockist', width: 28 },
                 { header: 'Product', width: 28 },
+                { header: 'Brand', width: 22 },
                 { header: 'Primary qty', width: 14, align: 'right' },
                 { header: 'Primary value', width: 16, align: 'right' },
                 { header: 'Secondary qty', width: 14, align: 'right' },
@@ -394,6 +418,7 @@ export function PlaceDesk({ title }: { title: string }) {
                 line.headquarters,
                 line.stockist,
                 line.product,
+                line.brand,
                 line.primaryQty,
                 line.primaryValue,
                 line.secondaryQty,
@@ -440,21 +465,41 @@ export function PlaceDesk({ title }: { title: string }) {
           )
         )}
       </div>
-      <section aria-label="Product sales">
-        <h2 className="text-sm font-medium">Products</h2>
-        {salesProducts.length > 0 ? (
-          <PlaceCompareChart
-            places={salesProducts.map((product) => ({
-              id: product.productId,
-              name: product.name,
-              primary: product.primaryValue,
-              secondary: product.secondaryValue,
-            }))}
-          />
-        ) : (
-          <p className="py-6 text-sm text-muted-foreground">
-            No approved stock-sheet sales in this period.
+      <section aria-label="Product sales" className="flex flex-col gap-4">
+        {productError && (
+          <p role="alert" className="text-sm text-destructive">
+            {productError}
           </p>
+        )}
+        {salesProducts === null ? (
+          <div className="h-48 animate-pulse rounded-md bg-muted/40" aria-busy="true" />
+        ) : salesProducts.length === 0 ? (
+          !productError && (
+            <p className="py-6 text-sm text-muted-foreground">
+              No approved stock-sheet sales in this period.
+            </p>
+          )
+        ) : (
+          <>
+            {brandBars.length < salesProducts.length && (
+              <div className="flex flex-col gap-2">
+                <h2 className="text-base font-semibold">Brands</h2>
+                <PlaceCompareChart places={brandBars} label="Brands, primary and secondary" />
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              <h2 className="text-base font-semibold">Products</h2>
+              <PlaceCompareChart
+                places={salesProducts.map((product) => ({
+                  id: product.productId,
+                  name: product.name,
+                  primary: product.primaryValue,
+                  secondary: product.secondaryValue,
+                }))}
+                label="Products, primary and secondary"
+              />
+            </div>
+          </>
         )}
       </section>
     </div>

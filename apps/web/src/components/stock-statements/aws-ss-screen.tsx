@@ -1039,8 +1039,8 @@ function ProductSales({
   if (!places.length) return null;
   return (
     <section aria-label="Product sales" className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium">Products</h2>
-      <PlaceCompareChart places={places} />
+      <h2 className="text-base font-semibold">Products</h2>
+      <PlaceCompareChart places={places} label="Products, primary and secondary" />
     </section>
   );
 }

@@ -365,7 +365,7 @@ export const dcrCallRcpa = pgTable(
 
 export const salesKind = pgEnum('sales_kind', ['primary', 'secondary']);
 
-/** Monthly target per territory (HQ) and optional product. productId null = all products. */
+/** Monthly target for one HQ. productId and brand null = the headquarters total. brand set = that brand only. */
 export const salesTargets = pgTable(
   'sales_targets',
   {
@@ -375,6 +375,7 @@ export const salesTargets = pgTable(
       .notNull()
       .references(() => territories.id),
     productId: uuid('product_id').references(() => products.id),
+    brand: text('brand'),
     month: date('month').notNull(),
     kind: salesKind('kind').notNull(),
     quantity: integer('quantity'),
@@ -388,6 +389,11 @@ export const salesTargets = pgTable(
       t.month,
       t.kind,
       sql`coalesce(${t.productId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      sql`coalesce(lower(${t.brand}), '')`,
+    ),
+    check(
+      'sales_targets_brand_ck',
+      sql`${t.brand} is null or length(btrim(${t.brand})) between 1 and 120`,
     ),
   ],
 );

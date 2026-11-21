@@ -123,14 +123,16 @@ export function YearCompareChart({
 export function PlaceCompareChart({
   places,
   onOpen,
+  label = 'Places, primary and secondary',
 }: {
   places: { id: string; name: string; primary: number; secondary: number }[];
   onOpen?: (id: string) => void;
+  label?: string;
 }) {
   const reduced = useReducedMotion();
   const height = Math.max(180, places.length * 64 + 36);
   return (
-    <ChartFrame height={height} label="Places, primary and secondary">
+    <ChartFrame height={height} label={label}>
       <BarChart
         layout="vertical"
         data={places}
@@ -139,7 +141,13 @@ export function PlaceCompareChart({
       >
         <CartesianGrid horizontal={false} stroke={CHART.grid} />
         <XAxis type="number" hide />
-        <YAxis type="category" dataKey="name" width={112} {...axisProps} />
+        <YAxis
+          type="category"
+          dataKey="name"
+          width={128}
+          tickFormatter={(v: string) => (v.length > 18 ? `${v.slice(0, 17)}…` : v)}
+          {...axisProps}
+        />
         <ChartTooltip format={inr} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         <Bar

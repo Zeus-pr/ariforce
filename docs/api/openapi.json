@@ -15008,7 +15008,7 @@
           "Sales"
         ],
         "operationId": "listSalesTargets",
-        "summary": "sales:write. All-products monthly targets per HQ for a month range",
+        "summary": "sales:write. Headquarters totals and brand targets per HQ for a month range",
         "parameters": [
           {
             "in": "query",
@@ -15096,7 +15096,7 @@
           "Sales"
         ],
         "operationId": "setSalesTargets",
-        "summary": "sales:write. Set one HQ target for a month range (spread each|total); audited (sales.targets_set)",
+        "summary": "sales:write. Set one HQ or brand target for a month range (spread each|total); audited (sales.targets_set)",
         "requestBody": {
           "content": {
             "application/json": {
@@ -15158,7 +15158,91 @@
             }
           },
           "422": {
-            "description": "VALIDATION (not an HQ, or more than 36 months)",
+            "description": "VALIDATION (not an HQ, unknown brand, or more than 36 months)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sales/targets/{id}": {
+      "delete": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "Sales"
+        ],
+        "operationId": "deleteSalesTarget",
+        "summary": "sales:write. Remove one headquarters or brand target; audited (sales.target_deleted)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "description": "UUIDv7 identifier",
+                      "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SALES_TARGET_NOT_FOUND",
             "content": {
               "application/json": {
                 "schema": {
@@ -25438,6 +25522,20 @@
               }
             ]
           },
+          "brand": {
+            "default": null,
+            "description": "Null sets the headquarters total. A name sets that brand only.",
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "overwrite": {
             "default": false,
             "description": "false: 409 TARGETS_EXIST when a month already has a target",
@@ -25564,6 +25662,19 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "brand": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "month": {
@@ -39295,6 +39406,13 @@
           "kind": {
             "$ref": "#/components/schemas/SalesKind"
           },
+          "brand": {
+            "description": "Null is the headquarters total. A name is that brand only.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "value": {
             "type": "number",
             "description": "Target value, rupees"
@@ -39325,6 +39443,7 @@
           "territoryCode",
           "month",
           "kind",
+          "brand",
           "value",
           "quantity",
           "updatedAt"
@@ -39554,7 +39673,8 @@
                   "not_headquarter",
                   "unknown_product",
                   "product_required",
-                  "primary_from_sheet"
+                  "primary_from_sheet",
+                  "unknown_brand"
                 ]
               },
               {
@@ -42417,6 +42537,9 @@
           "name": {
             "type": "string"
           },
+          "brand": {
+            "type": "string"
+          },
           "primaryQty": {
             "type": "number"
           },
@@ -42436,6 +42559,7 @@
         "required": [
           "productId",
           "name",
+          "brand",
           "primaryQty",
           "primaryValue",
           "secondaryQty",
@@ -42462,6 +42586,9 @@
           "product": {
             "type": "string"
           },
+          "brand": {
+            "type": "string"
+          },
           "primaryQty": {
             "type": "number"
           },
@@ -42483,6 +42610,7 @@
           "headquarters",
           "stockist",
           "product",
+          "brand",
           "primaryQty",
           "primaryValue",
           "secondaryQty",

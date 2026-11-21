@@ -2336,7 +2336,7 @@ function buildDocument(): OpenApiDocument {
         get: op({
           tags: ['Sales'],
           operationId: 'listSalesTargets',
-          summary: 'sales:write. All-products monthly targets per HQ for a month range',
+          summary: 'sales:write. Headquarters totals and brand targets per HQ for a month range',
           requestParams: { query: SalesTargetQuery },
           responses: {
             '200': { description: 'OK', ...json(SalesTargetList) },
@@ -2347,14 +2347,28 @@ function buildDocument(): OpenApiDocument {
           tags: ['Sales'],
           operationId: 'setSalesTargets',
           summary:
-            'sales:write. Set one HQ target for a month range (spread each|total); audited (sales.targets_set)',
+            'sales:write. Set one HQ or brand target for a month range (spread each|total); audited (sales.targets_set)',
           requestBody: json(SalesTargetSet),
           responses: {
             '200': { description: 'Saved', ...json(SalesTargetSetResult) },
             '403': err('FORBIDDEN'),
             '404': err('TERRITORY_NOT_FOUND'),
             '409': err('TARGETS_EXIST (details.months; send overwrite to replace)'),
-            '422': err('VALIDATION (not an HQ, or more than 36 months)'),
+            '422': err('VALIDATION (not an HQ, unknown brand, or more than 36 months)'),
+          },
+        }),
+      },
+      '/v1/sales/targets/{id}': {
+        delete: op({
+          tags: ['Sales'],
+          operationId: 'deleteSalesTarget',
+          summary:
+            'sales:write. Remove one headquarters or brand target; audited (sales.target_deleted)',
+          requestParams: { path: IdParam },
+          responses: {
+            '200': { description: 'Removed', ...json(z.object({ id: Id })) },
+            '403': err('FORBIDDEN'),
+            '404': err('SALES_TARGET_NOT_FOUND'),
           },
         }),
       },
