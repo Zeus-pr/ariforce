@@ -139,6 +139,21 @@ describe.skipIf(!OWNER || !APP)('KPIs (real API, 0009 views)', () => {
     const terr = await http().get(`/v1/kpis?rollup=byTerritory&territoryId=${T.hq}`).set(as('abm'));
     expect(terr.status, JSON.stringify(terr.body)).toBe(200);
     expect(terr.body.rows.length).toBeGreaterThan(0);
+    const area = await http()
+      .get(`/v1/kpis?rollup=byTerritory&territoryId=${T.area}&kpis=call_average`)
+      .set(as('abm'));
+    expect(area.body.rows.map((r: { territoryId: string }) => r.territoryId)).toEqual(
+      expect.arrayContaining([T.area, T.hq]),
+    );
+    const here = await http()
+      .get(`/v1/kpis?rollup=byUser&territoryId=${T.hq}&kpis=call_average`)
+      .set(as('abm'));
+    expect(here.status, JSON.stringify(here.body)).toBe(200);
+    expect(here.body.rows.map((r: { userId: string }) => r.userId)).toContain(bmId);
+    const elsewhere = await http()
+      .get(`/v1/kpis?rollup=byUser&territoryId=${T.otherArea}&kpis=call_average`)
+      .set(as('abm'));
+    expect(elsewhere.body.rows.map((r: { userId: string }) => r.userId)).not.toContain(bmId);
     expect((await http().get('/v1/kpis?month=2026-01&month=x').set(as('bm'))).status).toBe(422);
   });
 

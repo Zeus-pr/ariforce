@@ -124,22 +124,24 @@ export function KpiCards({
           );
         })}
       </ul>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="self-start"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        data-testid="kpi-expand"
-      >
-        <ChevronDown
-          className={cn(
-            'transition-transform duration-200 motion-reduce:transition-none',
-            open && 'rotate-180',
-          )}
-        />
-        {open ? 'Hide how each number is worked out' : 'Show how each number is worked out'}
-      </Button>
+      {metrics.length > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="self-start"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          data-testid="kpi-expand"
+        >
+          <ChevronDown
+            className={cn(
+              'transition-transform duration-200 motion-reduce:transition-none',
+              open && 'rotate-180',
+            )}
+          />
+          {open ? 'Hide how each number is worked out' : 'Show how each number is worked out'}
+        </Button>
+      )}
     </section>
   );
 }
