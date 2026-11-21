@@ -4831,7 +4831,12 @@ export interface components {
         | 'application/pdf'
         | 'application/vnd.ms-excel'
         | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        | 'application/vnd.ms-excel.sheet.macroEnabled.12';
+        | 'application/vnd.ms-excel.sheet.macroEnabled.12'
+        | 'application/vnd.ms-excel.sheet.binary.macroEnabled.12'
+        | 'application/excel'
+        | 'application/x-excel'
+        | 'application/x-msexcel'
+        | 'application/vnd.ms-office';
       sizeBytes: number;
     };
     StockStatementFileConfirm: {
