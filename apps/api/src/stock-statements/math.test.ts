@@ -68,6 +68,11 @@ describe('stock statement maths', () => {
     expect(totals.closingQty).toBe(43);
   });
 
+  it('leaves October 2026 open because the site was not live yet', () => {
+    expect(isPastLock('2026-10', new Date('2026-11-21T12:00:00Z'), 'Asia/Kolkata')).toBe(false);
+    expect(isPastLock('2026-09-01', new Date('2026-12-20T12:00:00Z'), 'Asia/Kolkata')).toBe(false);
+  });
+
   it('locks a month at 11:59 pm on the 6th of the next month', () => {
     const lock = lockInstant('2026-11-01', 'Asia/Kolkata');
     expect(lock.toISOString()).toBe('2026-12-06T18:29:59.999Z');

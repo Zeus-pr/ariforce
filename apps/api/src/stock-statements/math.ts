@@ -124,7 +124,11 @@ export function lockInstant(month: string, timeZone: string): Date {
   return new Date(t);
 }
 
+/** Months before the site opened are catch-up. The 6th lock starts with November 2026. */
+const FIRST_LOCKED_MONTH = '2026-11';
+
 export function isPastLock(month: string, now: Date, timeZone: string) {
+  if (month.slice(0, 7) < FIRST_LOCKED_MONTH) return false;
   return now.getTime() > lockInstant(month, timeZone).getTime();
 }
 
