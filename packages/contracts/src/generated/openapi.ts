@@ -8765,7 +8765,14 @@ export interface components {
       /** @enum {string} */
       status: 'valid' | 'created' | 'updated' | 'error';
       error:
-        ('unknown_territory' | 'not_headquarter' | 'unknown_product' | 'product_required') | null;
+        | (
+            | 'unknown_territory'
+            | 'not_headquarter'
+            | 'unknown_product'
+            | 'product_required'
+            | 'primary_from_sheet'
+          )
+        | null;
     };
     AllowanceDraftResult: {
       dryRun: boolean;

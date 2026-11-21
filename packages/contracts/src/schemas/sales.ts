@@ -135,6 +135,7 @@ export const SALES_IMPORT_ERRORS = [
   'not_headquarter',
   'unknown_product',
   'product_required',
+  'primary_from_sheet',
 ] as const;
 export const SalesImportRowResult = z
   .object({
