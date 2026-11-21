@@ -6444,6 +6444,15 @@
           },
           {
             "in": "query",
+            "name": "territoryLevel",
+            "schema": {
+              "description": "With byTerritory, list places of this level under territoryId instead of only the next level",
+              "$ref": "#/components/schemas/TerritoryLevel"
+            },
+            "description": "With byTerritory, list places of this level under territoryId instead of only the next level"
+          },
+          {
+            "in": "query",
             "name": "divisionId",
             "schema": {
               "type": "string",
@@ -6594,6 +6603,15 @@
               "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
             },
             "description": "Includes descendant territories"
+          },
+          {
+            "in": "query",
+            "name": "territoryLevel",
+            "schema": {
+              "description": "With byTerritory, list places of this level under territoryId instead of only the next level",
+              "$ref": "#/components/schemas/TerritoryLevel"
+            },
+            "description": "With byTerritory, list places of this level under territoryId instead of only the next level"
           },
           {
             "in": "query",

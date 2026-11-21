@@ -96,10 +96,57 @@ dialog::backdrop {
   background: rgb(0 0 0 / 0.4);
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .place-bar {
+    transition: width 280ms cubic-bezier(0.2, 0, 0, 1);
+  }
+  html:active-view-transition-type(forward)::view-transition-old(place-list) {
+    animation: 280ms cubic-bezier(0.2, 0, 0, 1) both place-leave-back;
+  }
+  html:active-view-transition-type(forward)::view-transition-new(place-list) {
+    animation: 280ms cubic-bezier(0.2, 0, 0, 1) both place-enter-forward;
+  }
+  html:active-view-transition-type(back)::view-transition-old(place-list) {
+    animation: 280ms cubic-bezier(0.2, 0, 0, 1) both place-leave-forward;
+  }
+  html:active-view-transition-type(back)::view-transition-new(place-list) {
+    animation: 280ms cubic-bezier(0.2, 0, 0, 1) both place-enter-back;
+  }
+}
+@keyframes place-leave-back {
+  to {
+    opacity: 0;
+    transform: translateX(-1.5rem);
+  }
+}
+@keyframes place-enter-forward {
+  from {
+    opacity: 0;
+    transform: translateX(1.5rem);
+  }
+}
+@keyframes place-leave-forward {
+  to {
+    opacity: 0;
+    transform: translateX(1.5rem);
+  }
+}
+@keyframes place-enter-back {
+  from {
+    opacity: 0;
+    transform: translateX(-1.5rem);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .af-enter,
   .af-route,
   .af-fade {
+    animation: none;
+  }
+  ::view-transition-group(place-list),
+  ::view-transition-old(place-list),
+  ::view-transition-new(place-list) {
     animation: none;
   }
 }

@@ -9,13 +9,16 @@ const lakh = (v: number) => `₹${(v / 1e5).toFixed(1)}L`;
 
 export function SalesTrendChart({
   trend,
+  onMonth,
 }: {
   trend: {
     name: string;
+    month?: string;
     primary: number | null;
     secondary: number | null;
     target: number | null;
   }[];
+  onMonth?: (month: string) => void;
 }) {
   const reduced = useReducedMotion();
   return (
@@ -32,6 +35,11 @@ export function SalesTrendChart({
           fill={CHART.series[0]}
           radius={[3, 3, 0, 0]}
           isAnimationActive={!reduced}
+          cursor={onMonth ? 'pointer' : undefined}
+          onClick={(point) => {
+            const month = (point as { month?: string }).month;
+            if (month) onMonth?.(month);
+          }}
         />
         <Bar
           dataKey="secondary"

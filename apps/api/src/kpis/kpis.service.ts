@@ -186,19 +186,29 @@ export class KpisService {
             )})`
           : sql``;
         const ts = q.territoryId
-          ? await rows<{ id: string; name: string; path: string }>(
-              tx,
-              sql`select t.id, t.name, t.path from territories t
-                  where t.deleted_at is null ${scope}
-                    and (t.id = ${q.territoryId} or t.parent_id = ${q.territoryId})
-                  order by (t.id = ${q.territoryId}) desc, t.name`,
-            )
+          ? q.territoryLevel
+            ? await rows<{ id: string; name: string; path: string }>(
+                tx,
+                sql`select t.id, t.name, t.path from territories t
+                    join territories p on p.id = ${q.territoryId}::uuid
+                    where t.deleted_at is null and p.deleted_at is null ${scope}
+                      and t.level = ${q.territoryLevel}
+                      and (t.id = p.id or starts_with(t.path, p.path || '.'))
+                    order by t.name`,
+              )
+            : await rows<{ id: string; name: string; path: string }>(
+                tx,
+                sql`select t.id, t.name, t.path from territories t
+                    where t.deleted_at is null ${scope}
+                      and (t.id = ${q.territoryId} or t.parent_id = ${q.territoryId})
+                    order by (t.id = ${q.territoryId}) desc, t.name`,
+              )
           : await rows<{ id: string; name: string; path: string }>(
               tx,
               sql`select t.id, t.name, t.path from territories t
                   where t.deleted_at is null and t.id = any(${arr(p.territoryIds.length ? p.territoryIds : [p.userId])}) order by t.name`,
             );
-        if (q.territoryId && !ts.some((t) => t.id === q.territoryId))
+        if (q.territoryId && !q.territoryLevel && !ts.some((t) => t.id === q.territoryId))
           throw new NotFoundException('Territory not found');
         // With children present, report the children (the parent row would double-count).
         const list = ts.length > 1 ? ts.filter((t) => t.id !== q.territoryId) : ts;

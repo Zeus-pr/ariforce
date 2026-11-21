@@ -3,11 +3,14 @@
 import dynamic from 'next/dynamic';
 import { useState } from 'react';
 
+import { Button } from '@ariforce/ui/components/button';
 import { KpiCards } from '@/components/dashboard/kpi-cards';
 import { useRole } from '@/components/shell/role-context';
 import { monthLabel } from '@/lib/period';
 import { ChartCard, exportedAt, MonthSwitch, PerfTable, useMonth } from './perf-ui';
 import { can } from '@/components/exceptions/model';
+import { isApprover } from '@/lib/roles';
+import { PlaceDesk } from './place-desk';
 import { SalesManage } from './sales-manage';
 import { breakdownFor, pick, usePerf, val } from './use-perf';
 import { salesTarget, salesCols, SALES_KPIS } from './sales-kpis';
@@ -25,9 +28,24 @@ export function SalesView() {
   const [rev, setRev] = useState(0);
   const perf = usePerf(role, month, SALES_KPIS, rev);
   const by = breakdownFor(role);
-  const [tab, setTab] = useState<'overview' | 'manage'>('overview');
+  const [targets, setTargets] = useState(false);
   const mayWrite = can(role, 'sales:write');
   if (!month) return <div className="h-96" aria-busy="true" />;
+  if (role === 'distribution_head' || isApprover(role)) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PlaceDesk title="Sales" />
+        {mayWrite && (
+          <div className="flex flex-col gap-4">
+            <Button type="button" variant="outline" onClick={() => setTargets((v) => !v)}>
+              {targets ? 'Hide targets' : 'Set targets'}
+            </Button>
+            {targets && <SalesManage onChanged={() => setRev((n) => n + 1)} />}
+          </div>
+        )}
+      </div>
+    );
+  }
   const first = by === 'byTerritory' ? 'Zone' : by === 'byUser' ? 'Team member' : 'You';
   const trend = (perf?.trend ?? []).map((t) => ({
     name: monthLabel(t.month).slice(0, 3),
@@ -35,23 +53,11 @@ export function SalesView() {
     secondary: val(t.row, 'secondary_sales_value'),
     target: salesTarget(t.row, 'primary'),
   }));
-  if (mayWrite && tab === 'manage')
-    return (
-      <div className="flex flex-col gap-4">
-        <TabBar tab={tab} setTab={setTab} />
-        <SalesManage onChanged={() => setRev((n) => n + 1)} />
-      </div>
-    );
   return (
     <div className="flex flex-col gap-5">
-      {mayWrite && <TabBar tab={tab} setTab={setTab} />}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground" data-testid="perf-scope">
-          {role === 'director' || role === 'distribution_head'
-            ? 'Whole company · primary in, secondary out'
-            : by
-              ? 'Your team'
-              : 'Your own numbers'}
+          {by ? 'Your team' : 'Your own numbers'}
         </p>
         <MonthSwitch month={month} />
       </div>
@@ -82,36 +88,14 @@ export function SalesView() {
           }}
         />
       )}
-      <p className="text-xs text-muted-foreground">
-        Sales and targets are entered or uploaded by the Director (primary from the company,
-        secondary from stockist statements). KPI formulas are drafts, to confirm with Arighna.
-      </p>
-    </div>
-  );
-}
-
-function TabBar({
-  tab,
-  setTab,
-}: {
-  tab: 'overview' | 'manage';
-  setTab: (t: 'overview' | 'manage') => void;
-}) {
-  const item = (id: 'overview' | 'manage', label: string) => (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={tab === id}
-      onClick={() => setTab(id)}
-      className={`rounded-md border px-3 py-1.5 text-sm ${tab === id ? 'border-foreground bg-foreground text-background' : 'bg-card'}`}
-    >
-      {label}
-    </button>
-  );
-  return (
-    <div role="tablist" className="flex gap-1">
-      {item('overview', 'This month')}
-      {item('manage', 'Set targets')}
+      {mayWrite && (
+        <div className="flex flex-col gap-4">
+          <Button type="button" variant="outline" onClick={() => setTargets((v) => !v)}>
+            {targets ? 'Hide targets' : 'Set targets'}
+          </Button>
+          {targets && <SalesManage onChanged={() => setRev((n) => n + 1)} />}
+        </div>
+      )}
     </div>
   );
 }
