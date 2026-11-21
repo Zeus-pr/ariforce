@@ -10,10 +10,12 @@ export type StatementLine = {
   openingQty: number | null;
   openingLocked: boolean;
   purchaseQty: number;
+  freeQty: number;
   secondaryQty: number;
   frsQty: number;
   openingValue: number | null;
   purchaseValue: number | null;
+  freeValue: number | null;
   secondaryValue: number | null;
   frsValue: number | null;
   closingQty: number | null;
@@ -39,6 +41,8 @@ export type Statement = {
     openingValue: number;
     purchaseQty: number;
     purchaseValue: number;
+    freeQty: number;
+    freeValue: number;
     secondaryQty: number;
     secondaryValue: number;
     closingQty: number;
@@ -111,6 +115,7 @@ export const saveLines = (
     productId: string;
     openingQty: number | null;
     purchaseQty: number;
+    freeQty: number;
     secondaryQty: number;
     frsQty: number;
   }[],
@@ -126,12 +131,12 @@ export const submitStatement = (id: string, version: number) =>
     body: JSON.stringify({ version }),
   });
 
-export const presignFile = (id: string, kind: 'aws' | 'ss', file: File) =>
+export const presignFile = (id: string, kind: 'aws' | 'ss', file: File, contentType: string) =>
   call<{ uploadUrl: string; headers: Record<string, string>; method: 'PUT' }>(
     `/v1/stock-statements/${id}/files`,
     {
       method: 'POST',
-      body: JSON.stringify({ kind, contentType: file.type, sizeBytes: file.size }),
+      body: JSON.stringify({ kind, contentType, sizeBytes: file.size }),
     },
   );
 
