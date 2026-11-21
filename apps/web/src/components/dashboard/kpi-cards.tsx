@@ -65,6 +65,28 @@ export function KpiCards({
                   />
                 )}
               </div>
+              {ready && m.value != null && (
+                <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-muted">
+                  <span
+                    className="place-bar block h-full rounded-full bg-primary"
+                    style={{
+                      width: `${Math.max(
+                        0,
+                        Math.min(
+                          100,
+                          m.target != null && m.target > 0
+                            ? (m.value / m.target) * 100
+                            : m.unit === 'percent'
+                              ? m.value
+                              : m.value > 0
+                                ? 100
+                                : 0,
+                        ),
+                      )}%`,
+                    }}
+                  />
+                </span>
+              )}
               {ready && (
                 <p className="mt-1 text-xs">
                   {m.target == null ? (

@@ -13889,6 +13889,8 @@ export interface operations {
         userId?: string;
         /** @description Includes descendant territories */
         territoryId?: string;
+        /** @description With byTerritory, list places of this level under territoryId instead of only the next level */
+        territoryLevel?: components['schemas']['TerritoryLevel'];
         divisionId?: string;
         productId?: string;
         /** @description Comma-separated KPI keys; default all */
@@ -13948,6 +13950,8 @@ export interface operations {
         userId?: string;
         /** @description Includes descendant territories */
         territoryId?: string;
+        /** @description With byTerritory, list places of this level under territoryId instead of only the next level */
+        territoryLevel?: components['schemas']['TerritoryLevel'];
         divisionId?: string;
         productId?: string;
         /** @description Comma-separated KPI keys; default all */

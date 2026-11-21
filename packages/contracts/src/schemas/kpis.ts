@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { DateOnly, Id, Month, Timestamp } from './common';
+import { TerritoryLevel } from './territories';
 
 /** KPI keys; definitions in docs/kpi-definitions.md, SQL in packages/db/drizzle/0009_kpi_views.sql. */
 export const KPI_KEYS = [
@@ -41,6 +42,10 @@ export const KpiQuery = z
     rollup: KpiRollup.default('self'),
     userId: Id.optional(),
     territoryId: Id.optional().meta({ description: 'Includes descendant territories' }),
+    territoryLevel: TerritoryLevel.optional().meta({
+      description:
+        'With byTerritory, list places of this level under territoryId instead of only the next level',
+    }),
     divisionId: Id.optional(),
     productId: Id.optional(),
     kpis: csv(KpiKey).optional().meta({ description: 'Comma-separated KPI keys; default all' }),
