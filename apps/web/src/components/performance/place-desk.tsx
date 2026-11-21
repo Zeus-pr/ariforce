@@ -7,7 +7,7 @@ import { Button } from '@ariforce/ui/components/button';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { addMonths, monthLabel } from '@/lib/period';
 import { getTerritories } from '@/lib/query';
-import { SalesTrendChart } from './sales-charts';
+import { PlaceCompareChart, SalesTrendChart, YearCompareChart } from './sales-charts';
 import { MonthSwitch, inr, useMonth } from './perf-ui';
 
 const KPIS =
@@ -180,13 +180,32 @@ export function PlaceDesk({ title }: { title: string }) {
     return [...groups.entries()];
   }, [rows, byId, focus]);
 
-  const max = Math.max(
-    1,
-    ...(rows ?? []).map((r) =>
-      Math.max(money(r, 'primary_sales_value'), money(r, 'secondary_sales_value')),
-    ),
-  );
   const now = fig(rows ?? []);
+  const years = useMemo(() => {
+    const byYear = new Map<string, { primary: number; secondary: number }>();
+    for (const point of trend) {
+      const year = point.month.slice(0, 4);
+      const cur = byYear.get(year) ?? { primary: 0, secondary: 0 };
+      byYear.set(year, {
+        primary: cur.primary + point.primary,
+        secondary: cur.secondary + point.secondary,
+      });
+    }
+    return [...byYear.entries()].map(([year, value]) => ({ year, ...value }));
+  }, [trend]);
+  const placeBars = useMemo(
+    () =>
+      grouped.flatMap(([, items]) =>
+        items.map(({ place, row }) => ({
+          id: place.id,
+          name: place.name,
+          primary: money(row, 'primary_sales_value'),
+          secondary: money(row, 'secondary_sales_value'),
+          opens: place.level !== 'territory',
+        })),
+      ),
+    [grouped],
+  );
 
   useEffect(() => {
     if (jumped.current || params.get('m') || !trend.length || !month) return;
@@ -235,103 +254,35 @@ export function PlaceDesk({ title }: { title: string }) {
           {error}
         </p>
       )}
-      <section aria-label="Twelve months" style={{ viewTransitionName: 'place-chart' }}>
-        <SalesTrendChart trend={trend} onMonth={pickMonth} />
-        <p className="mt-2 text-sm text-muted-foreground tabular-nums">
-          {monthLabel(month)} · primary {inr(now.primary)} · secondary {inr(now.secondary)}
-          {now.target > 0 ? ` · target ${inr(now.target)}` : ''}
-        </p>
-      </section>
-      <div
-        tabIndex={0}
-        role="region"
-        aria-label="Places under this one"
-        aria-busy={busy}
-        className="overflow-x-auto overflow-y-clip"
-        style={{ viewTransitionName: 'place-list' }}
+      <section
+        aria-label="Twelve months"
+        className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.8fr)]"
+        style={{ viewTransitionName: 'place-chart' }}
       >
-        <table className="w-full min-w-[36rem] text-sm">
-          <caption className="sr-only" id="place-list-caption">
-            Places under {focus?.name ?? title}
-          </caption>
-          <thead className="text-left text-xs text-muted-foreground">
-            <tr>
-              <th className="py-2 font-medium">Place</th>
-              <th className="font-medium">Primary</th>
-              <th className="font-medium">Secondary</th>
-            </tr>
-          </thead>
-          <tbody>
-            {grouped.length === 0 && !busy && (
-              <tr>
-                <td colSpan={3} className="py-8 text-muted-foreground">
-                  Nothing filed under {focus?.name ?? 'this place'} in {monthLabel(month)}.
-                </td>
-              </tr>
-            )}
-            {grouped.flatMap(([trail, items]) => [
-              trail ? (
-                <tr key={`trail-${trail}`}>
-                  <th
-                    colSpan={3}
-                    className="pt-4 pb-1 text-left text-xs font-medium text-muted-foreground"
-                  >
-                    {trail}
-                  </th>
-                </tr>
-              ) : null,
-              ...items.map(({ place, row }) => {
-                const primary = money(row, 'primary_sales_value');
-                const secondary = money(row, 'secondary_sales_value');
-                const opens = place.level !== 'territory';
-                return (
-                  <tr key={place.id} className="border-t">
-                    <th className="py-3 pr-3 text-left font-medium">
-                      <span>{place.name}</span>
-                      <span className="ml-2 font-normal text-muted-foreground">
-                        {LEVEL[place.level]}
-                      </span>
-                      {opens && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="ml-3"
-                          onClick={() => open(place.id, 'forward')}
-                        >
-                          Open
-                        </Button>
-                      )}
-                    </th>
-                    <td className="py-3 tabular-nums">
-                      <Bar amount={primary} max={max} color="var(--color-chart-1)" />
-                      {inr(primary)}
-                    </td>
-                    <td className="py-3 tabular-nums">
-                      <Bar amount={secondary} max={max} color="var(--color-chart-2)" />
-                      {inr(secondary)}
-                    </td>
-                  </tr>
-                );
-              }),
-            ])}
-          </tbody>
-        </table>
+        <SalesTrendChart trend={trend} onMonth={pickMonth} />
+        <YearCompareChart years={years} />
+      </section>
+      <p className="sr-only">
+        {monthLabel(month)} primary {inr(now.primary)}, secondary {inr(now.secondary)}
+        {now.target > 0 ? `, target ${inr(now.target)}` : ''}.
+      </p>
+      <div aria-busy={busy} style={{ viewTransitionName: 'place-list' }}>
+        {placeBars.length > 0 ? (
+          <PlaceCompareChart
+            places={placeBars}
+            onOpen={(id) => {
+              const place = placeBars.find((p) => p.id === id);
+              if (place?.opens) open(id, 'forward');
+            }}
+          />
+        ) : (
+          !busy && (
+            <p className="py-8 text-sm text-muted-foreground">
+              Nothing filed under {focus?.name ?? 'this place'} in {monthLabel(month)}.
+            </p>
+          )
+        )}
       </div>
     </div>
-  );
-}
-
-function Bar({ amount, max, color }: { amount: number; max: number; color: string }) {
-  return (
-    <span className="mb-1 block h-1.5 w-full max-w-40 rounded-full bg-muted">
-      <span
-        className="place-bar block h-full rounded-full"
-        style={{
-          width: `${Math.max(0, Math.min(100, (amount / max) * 100))}%`,
-          background: color,
-        }}
-      />
-    </span>
   );
 }
