@@ -289,7 +289,6 @@ function ActualsPanel({
   const [rows, setRows] = useState<Actual[]>([]);
   const [hq, setHq] = useState('');
   const [product, setProduct] = useState('');
-  const [kind, setKind] = useState<Kind>('primary');
   const [value, setValue] = useState('');
   const [qty, setQty] = useState('');
   const [isReturn, setIsReturn] = useState(false);
@@ -317,7 +316,7 @@ function ActualsPanel({
             productId: product,
             stockistId: null,
             month,
-            kind,
+            kind: 'secondary',
             quantity: qty === '' ? 0 : Number(qty),
             freeQuantity: 0,
             value: Number(value),
@@ -344,7 +343,10 @@ function ActualsPanel({
   return (
     <section className={box} data-testid="actuals-panel">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Actual sales</h2>
+        <h2 className="text-sm font-semibold">Actual secondary</h2>
+        <p className="text-sm text-muted-foreground">
+          Primary is the purchase total on the stock sheet. This form records secondary only.
+        </p>
         <input
           type="month"
           className={field}
@@ -378,10 +380,6 @@ function ActualsPanel({
               {p.name}
             </option>
           ))}
-        </select>
-        <select className={field} value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
-          <option value="primary">Primary</option>
-          <option value="secondary">Secondary</option>
         </select>
         <Input
           type="number"

@@ -1253,27 +1253,42 @@ export class StockStatementsService implements OnModuleInit {
         and(
           eq(salesActuals.stockistId, row.stockistId),
           eq(salesActuals.month, row.month),
-          eq(salesActuals.kind, 'secondary'),
+          inArray(salesActuals.kind, ['primary', 'secondary']),
           isNull(salesActuals.deletedAt),
         ),
       );
     const lines = await this.merged(tx, row.id);
+    const base = {
+      companyId: row.companyId,
+      territoryId: stockist.territoryId,
+      stockistId: row.stockistId,
+      month: row.month,
+    };
     const values = lines.flatMap((l) => {
-      if (l.secondaryQty === 0 && l.frsQty === 0) return [];
-      return [
-        {
+      const rows = [];
+      if (l.purchaseQty !== 0) {
+        rows.push({
+          ...base,
           id: uuidv7(),
-          companyId: row.companyId,
-          territoryId: stockist.territoryId,
-          stockistId: row.stockistId,
           productId: l.productId,
-          month: row.month,
+          kind: 'primary' as const,
+          quantity: l.purchaseQty,
+          freeQuantity: 0,
+          value: money(l.purchaseValue ?? 0),
+        });
+      }
+      if (l.secondaryQty !== 0 || l.frsQty !== 0) {
+        rows.push({
+          ...base,
+          id: uuidv7(),
+          productId: l.productId,
           kind: 'secondary' as const,
           quantity: l.secondaryQty,
           freeQuantity: l.frsQty,
           value: money((l.secondaryValue ?? 0) - (l.frsValue ?? 0)),
-        },
-      ];
+        });
+      }
+      return rows;
     });
     if (values.length) await tx.insert(salesActuals).values(values);
   }
