@@ -134,6 +134,11 @@ export function render(type: NotificationType, d: NotifyData): { title: string; 
         title: s(d.title).slice(0, 120) || 'Company message',
         body: s(d.body).slice(0, 500) || 'You have a company message.',
       };
+    case 'stock_statement.unlock':
+      return {
+        title: 'Stock sheet unlock',
+        body: `${who} asked to unlock the ${s(d.month)} stock sheet for ${s(d.stockistName) || 'a stockist'}.`,
+      };
     case 'stock_statement.submitted':
       return {
         title: 'Stock statement to review',

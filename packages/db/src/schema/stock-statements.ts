@@ -4,6 +4,7 @@ import {
   check,
   date,
   index,
+  boolean,
   integer,
   numeric,
   pgTable,
@@ -50,6 +51,8 @@ export const stockStatements = pgTable(
     actualSecondary: numeric('actual_secondary', { precision: 14, scale: 2 })
       .notNull()
       .default('0'),
+    /** Director granted an edit after the 6th. Cleared when the sheet is submitted again. */
+    editOpen: boolean('edit_open').notNull().default(false),
     awsFileKey: text('aws_file_key'),
     awsContentType: text('aws_content_type'),
     awsSizeBytes: bigint('aws_size_bytes', { mode: 'number' }),

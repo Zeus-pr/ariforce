@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { figureLine, nextMonth, totalsOf } from './math';
+import { figureLine, isPastLock, lockInstant, nextMonth, totalsOf } from './math';
 
 describe('stock statement maths', () => {
   it('prices a line in paise and derives closing', () => {
@@ -66,6 +66,13 @@ describe('stock statement maths', () => {
     expect(totals.actualSecondary).toBe(800);
     expect(totals.freeValue).toBe(500);
     expect(totals.closingQty).toBe(43);
+  });
+
+  it('locks a month at 11:59 pm on the 6th of the next month', () => {
+    const lock = lockInstant('2026-11-01', 'Asia/Kolkata');
+    expect(lock.toISOString()).toBe('2026-12-06T18:29:59.999Z');
+    expect(isPastLock('2026-11', new Date('2026-12-06T18:29:59.999Z'), 'Asia/Kolkata')).toBe(false);
+    expect(isPastLock('2026-11', new Date('2026-12-06T18:30:00.000Z'), 'Asia/Kolkata')).toBe(true);
   });
 
   it('steps a month forward', () => {

@@ -97,6 +97,37 @@ export function totalsOf(lines: FiguredLine[]): StatementTotals {
   return t;
 }
 
+/** 23:59:59.999 on the 6th of the next month, in the company timezone. */
+export function lockInstant(month: string, timeZone: string): Date {
+  const [y, m] = month.slice(0, 7).split('-').map(Number) as [number, number];
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  const day = `${ny}-${String(nm).padStart(2, '0')}-06`;
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+  let t = Date.parse(`${day}T23:59:59.999Z`);
+  for (let i = 0; i < 4; i++) {
+    const parts = Object.fromEntries(fmt.formatToParts(new Date(t)).map((p) => [p.type, p.value]));
+    const got = Date.parse(
+      `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.999Z`,
+    );
+    t += Date.parse(`${day}T23:59:59.999Z`) - got;
+  }
+  return new Date(t);
+}
+
+export function isPastLock(month: string, now: Date, timeZone: string) {
+  return now.getTime() > lockInstant(month, timeZone).getTime();
+}
+
 /** First day of the calendar month after YYYY-MM-01. */
 export function nextMonth(month: string): string {
   const [y, m] = month.slice(0, 7).split('-').map(Number) as [number, number];

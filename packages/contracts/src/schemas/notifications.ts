@@ -27,6 +27,7 @@ export const NOTIFICATION_TYPES = [
   'company.message',
   'doctor.occasion',
   'employee.birthday',
+  'stock_statement.unlock',
   'stock_statement.submitted',
   'stock_statement.approved',
   'stock_statement.rejected',

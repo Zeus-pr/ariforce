@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { Id, Month } from './common';
+import { Id, Month, Timestamp } from './common';
 
 export const StockStatementStatus = z
   .enum(['draft', 'pending', 'approved', 'rejected'])
@@ -94,6 +94,11 @@ export const StockStatement = z
     approvalRequestId: Id.nullable(),
     rejectionReason: z.string().nullable(),
     currentApproverName: z.string().nullable(),
+    locked: z.boolean(),
+    lockAt: Timestamp,
+    editOpen: z.boolean(),
+    unlockPending: z.boolean(),
+    canRequestUnlock: z.boolean(),
     totals: StockStatementTotals,
     lines: z.array(StockStatementLine),
     aws: StockStatementFile,

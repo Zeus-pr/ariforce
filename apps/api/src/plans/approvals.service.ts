@@ -68,6 +68,7 @@ const SUBJECT: Partial<Record<EntityType, Approval['subjectType']>> = {
   leave: 'leave',
   expense: 'expense',
   stock_statement: 'stock_statement',
+  stock_statement_unlock: 'stock_statement_unlock',
 };
 const ENTITY = Object.fromEntries(Object.entries(SUBJECT).map(([k, v]) => [v, k])) as Record<
   Approval['subjectType'],
@@ -832,11 +833,13 @@ export class ApprovalsService {
             ? `Tour plan ${r.payload.month}`
             : r.entityType === 'dcr_correction' && typeof r.payload?.date === 'string'
               ? `DCR correction ${r.payload.date}`
-              : r.entityType === 'expense' && typeof r.payload?.month === 'string'
-                ? `Expense claim ${r.payload.month}`
-                : r.entityType === 'leave' && typeof r.payload?.typeCode === 'string'
-                  ? `Leave ${r.payload.typeCode} ${String(r.payload.fromDate)}..${String(r.payload.toDate)} (${String(r.payload.days)} d)`
-                  : (r.reason ?? r.entityType),
+              : r.entityType === 'stock_statement_unlock' && typeof r.payload?.month === 'string'
+                ? `Unlock stock sheet ${r.payload.month}${typeof r.payload.stockistName === 'string' ? `, ${r.payload.stockistName}` : ''}`
+                : r.entityType === 'expense' && typeof r.payload?.month === 'string'
+                  ? `Expense claim ${r.payload.month}`
+                  : r.entityType === 'leave' && typeof r.payload?.typeCode === 'string'
+                    ? `Leave ${r.payload.typeCode} ${String(r.payload.fromDate)}..${String(r.payload.toDate)} (${String(r.payload.days)} d)`
+                    : (r.reason ?? r.entityType),
         comment: st?.comment ?? null,
         createdAt: r.createdAt.toISOString(),
         decidedAt: st?.decidedAt?.toISOString() ?? null,

@@ -9995,7 +9995,8 @@
                 "expense",
                 "dcr",
                 "signup",
-                "stock_statement"
+                "stock_statement",
+                "stock_statement_unlock"
               ],
               "description": "Engine types; 'dcr' (DCR review, subjectId = DCR id) and 'signup' (signup request) are only returned when asked for with include=dcr / include=signup"
             }
@@ -32621,7 +32622,8 @@
               "expense",
               "dcr",
               "signup",
-              "stock_statement"
+              "stock_statement",
+              "stock_statement_unlock"
             ],
             "description": "Engine types; 'dcr' (DCR review, subjectId = DCR id) and 'signup' (signup request) are only returned when asked for with include=dcr / include=signup"
           },
@@ -36875,6 +36877,7 @@
           "company.message",
           "doctor.occasion",
           "employee.birthday",
+          "stock_statement.unlock",
           "stock_statement.submitted",
           "stock_statement.approved",
           "stock_statement.rejected"
@@ -39831,7 +39834,8 @@
               "expense",
               "dcr",
               "signup",
-              "stock_statement"
+              "stock_statement",
+              "stock_statement_unlock"
             ],
             "description": "Engine types; 'dcr' (DCR review, subjectId = DCR id) and 'signup' (signup request) are only returned when asked for with include=dcr / include=signup"
           },
@@ -42083,6 +42087,24 @@
               "null"
             ]
           },
+          "locked": {
+            "type": "boolean"
+          },
+          "lockAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "ISO-8601 timestamp (UTC)"
+          },
+          "editOpen": {
+            "type": "boolean"
+          },
+          "unlockPending": {
+            "type": "boolean"
+          },
+          "canRequestUnlock": {
+            "type": "boolean"
+          },
           "totals": {
             "$ref": "#/components/schemas/StockStatementTotals"
           },
@@ -42119,6 +42141,11 @@
           "approvalRequestId",
           "rejectionReason",
           "currentApproverName",
+          "locked",
+          "lockAt",
+          "editOpen",
+          "unlockPending",
+          "canRequestUnlock",
           "totals",
           "lines",
           "aws",
