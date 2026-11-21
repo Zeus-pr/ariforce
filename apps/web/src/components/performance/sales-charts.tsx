@@ -358,42 +358,62 @@ function useLiquidClip(root: React.RefObject<HTMLElement | null>) {
 const PLOT = 220;
 const HEAD = 72;
 
+const TANKS = {
+  primary: { fill: '#4f46e5', track: '#c4b5fd', ink: '#312e81' },
+  secondary: { fill: '#0f9f8a', track: '#5eead4', ink: '#115e59' },
+} as const;
+
 function LiquidBar({
   actual,
   target,
   max,
-  color,
+  tank,
+  label,
 }: {
   actual: number;
   target: number;
   max: number;
-  color: string;
+  tank: (typeof TANKS)[keyof typeof TANKS];
+  label: string;
 }) {
-  const cap = Math.max(actual, target);
-  const track = max > 0 ? (cap / max) * PLOT : 0;
-  const fill = cap > 0 ? (actual / cap) * 100 : 0;
+  const topped = target > 0 ? target : actual;
+  const track = max > 0 ? (topped / max) * PLOT : 0;
+  const fill = target > 0 ? Math.min(100, (actual / target) * 100) : actual > 0 ? 100 : 0;
   const pct = target > 0 ? Math.round((actual / target) * 100) : null;
   if (actual <= 0 && target <= 0) return <div className="w-8" style={{ height: PLOT }} />;
   return (
-    <div className="flex w-8 flex-col justify-end" style={{ height: PLOT }}>
+    <button
+      type="button"
+      className="group relative flex w-8 flex-col justify-end"
+      style={{ height: PLOT }}
+      aria-label={`${label} ${inr(actual)}${pct != null ? `, ${pct}% of target` : ''}`}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') event.currentTarget.blur();
+      }}
+    >
       <div
-        className="relative w-full overflow-hidden rounded-t-md bg-muted/40"
-        style={{ height: track }}
+        className="relative w-full rounded-t-md border-2"
+        style={{ height: track, background: tank.track, borderColor: tank.fill }}
       >
-        <div
-          data-liquid
-          data-fill={fill}
-          className="absolute inset-0"
-          style={{ background: color }}
-        />
-        <div data-rim className="pointer-events-none absolute inset-0 bg-white/35" />
-        {pct != null && track > 36 && (
-          <span className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 text-[11px] font-semibold whitespace-nowrap text-white">
+        <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 hidden -translate-x-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[11px] font-medium whitespace-nowrap text-white group-hover:block group-focus-visible:block">
+          {inr(actual)}
+        </span>
+        <div className="absolute inset-0 overflow-hidden rounded-t-[4px]">
+          <div
+            data-liquid
+            data-fill={fill}
+            className="absolute inset-0"
+            style={{ background: tank.fill }}
+          />
+          <div data-rim className="pointer-events-none absolute inset-0 bg-white/15" />
+        </div>
+        {pct != null && (
+          <span className="pointer-events-none absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-1/2 -rotate-90 rounded bg-white/90 px-1 text-[10px] font-bold whitespace-nowrap text-neutral-900">
             {pct}%
           </span>
         )}
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -415,12 +435,18 @@ function Column({
     <div className="flex w-36 shrink-0 flex-col items-center">
       <div className="flex w-full items-end justify-center gap-1.5" style={{ height: HEAD }}>
         <span className="relative h-full w-8">
-          <span className="absolute bottom-0 left-1/2 origin-bottom-left -rotate-[40deg] whitespace-nowrap text-[11px] font-semibold tabular-nums text-[var(--color-chart-1)]">
+          <span
+            className="absolute bottom-0 left-1/2 origin-bottom-left -rotate-[40deg] text-[11px] font-semibold whitespace-nowrap tabular-nums"
+            style={{ color: TANKS.primary.ink }}
+          >
             {item.primaryTarget > 0 ? lakh(item.primaryTarget) : ''}
           </span>
         </span>
         <span className="relative h-full w-8">
-          <span className="absolute bottom-0 left-1/2 origin-bottom-left -rotate-[40deg] whitespace-nowrap text-[11px] font-semibold tabular-nums text-[var(--color-chart-2)]">
+          <span
+            className="absolute bottom-0 left-1/2 origin-bottom-left -rotate-[40deg] text-[11px] font-semibold whitespace-nowrap tabular-nums"
+            style={{ color: TANKS.secondary.ink }}
+          >
             {item.secondaryTarget > 0 ? lakh(item.secondaryTarget) : ''}
           </span>
         </span>
@@ -430,13 +456,15 @@ function Column({
           actual={item.primary}
           target={item.primaryTarget}
           max={max}
-          color={CHART.series[0]!}
+          tank={TANKS.primary}
+          label="Primary"
         />
         <LiquidBar
           actual={item.secondary}
           target={item.secondaryTarget}
           max={max}
-          color={CHART.series[1]!}
+          tank={TANKS.secondary}
+          label="Secondary"
         />
       </div>
       {onOpen ? (
@@ -467,10 +495,8 @@ export function LiquidColumns({
   const max = Math.max(
     1,
     ...items.flatMap((item) => [
-      item.primary,
-      item.secondary,
-      item.primaryTarget,
-      item.secondaryTarget,
+      item.primaryTarget > 0 ? item.primaryTarget : item.primary,
+      item.secondaryTarget > 0 ? item.secondaryTarget : item.secondary,
     ]),
   );
   const ticks = [1, 0.75, 0.5, 0.25, 0].map((step) => max * step);
