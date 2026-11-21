@@ -84,6 +84,7 @@ export function OrganizationScreen() {
   } | null>(null);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [openIds, setOpenIds] = useState<Set<string> | null>(null);
   const node = live.find((t) => t.id === (form?.id ?? menu?.id)) ?? null;
 
   const needle = query.trim().toLowerCase();
@@ -108,14 +109,45 @@ export function OrganizationScreen() {
     for (const t of live) if (hit(t.id)) keep.add(t.id);
     return keep;
   }, [live, needle]);
+  const kidsOf = useMemo(() => {
+    const map = new Map<string, Territory[]>();
+    for (const t of live) {
+      if (!t.parentId) continue;
+      map.set(t.parentId, [...(map.get(t.parentId) ?? []), t]);
+    }
+    return map;
+  }, [live]);
+  useEffect(() => {
+    if (openIds || !live.length) return;
+    setOpenIds(new Set(live.filter((t) => t.level === 'national').map((t) => t.id)));
+  }, [live, openIds]);
+  const folded = useMemo(() => {
+    if (needle || !openIds) return visible;
+    const byId = new Map(live.map((t) => [t.id, t]));
+    const show = (id: string): boolean => {
+      const place = byId.get(id);
+      if (!place?.parentId) return true;
+      return openIds.has(place.parentId) && show(place.parentId);
+    };
+    return new Set(live.filter((t) => show(t.id)).map((t) => t.id));
+  }, [live, needle, openIds, visible]);
   const items = live
-    .filter((t) => visible.has(t.id))
+    .filter((t) => folded.has(t.id))
     .map((t) => ({
       id: t.id,
-      parentId: t.parentId && visible.has(t.parentId) ? t.parentId : null,
+      parentId: t.parentId && folded.has(t.parentId) ? t.parentId : null,
       title: t.name,
       subtitle: LABEL[t.level],
       color: PLACE_COLOR[t.level],
+      hasChildren: (kidsOf.get(t.id) ?? []).some((child) => !needle || visible.has(child.id)),
+      open: openIds?.has(t.id) ?? false,
+      onToggle: () =>
+        setOpenIds((cur) => {
+          const next = new Set(cur ?? []);
+          if (next.has(t.id)) next.delete(t.id);
+          else next.add(t.id);
+          return next;
+        }),
     }));
 
   function fail(e: unknown) {

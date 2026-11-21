@@ -108,6 +108,39 @@ export function DistributionDashboard({ role, month }: { role: Role; month: stri
           />
         </div>
       </section>
+      {current && current.rows.length > 0 && (
+        <section className="rounded-xl border bg-card p-4">
+          <h2 className="text-sm font-medium">Places</h2>
+          <div className="mt-3 overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs text-muted-foreground">
+                <tr>
+                  <th className="py-1">Place</th>
+                  <th className="text-right">Primary</th>
+                  <th className="text-right">Secondary</th>
+                </tr>
+              </thead>
+              <tbody>
+                {current.rows.map((row) => (
+                  <tr key={row.territoryId ?? row.label} className="border-t">
+                    <td className="py-2">{row.label}</td>
+                    <td className="text-right tabular-nums">
+                      {val(row, 'primary_sales_value') == null
+                        ? '—'
+                        : inr.format(val(row, 'primary_sales_value')!)}
+                    </td>
+                    <td className="text-right tabular-nums">
+                      {val(row, 'secondary_sales_value') == null
+                        ? '—'
+                        : inr.format(val(row, 'secondary_sales_value')!)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

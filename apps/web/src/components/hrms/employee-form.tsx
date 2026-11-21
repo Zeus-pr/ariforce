@@ -8,7 +8,7 @@ import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
 import { toast } from '@ariforce/ui/components/sonner';
 import { cn } from '@ariforce/ui/lib/utils';
-import { api, toApiError } from '@/lib/api';
+import { api, apiReady, toApiError } from '@/lib/api';
 import { assignMessage } from '@/lib/assign-errors';
 import {
   failure,
@@ -410,6 +410,15 @@ export function EmployeeForm({ personId }: { personId: string | null }) {
     setDraft((d) => ({ ...d, [key]: value }));
   }
 
+  async function generateEmployeeCode() {
+    await apiReady();
+    const r = await api.GET('/v1/employees/next-code', {
+      params: { query: { role: draft.role } },
+    });
+    if (!r.data) return toast.error(toApiError(r).message || 'Could not make a code.');
+    setText('employeeCode', r.data.code);
+  }
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     const name = displayName(draft);
@@ -639,6 +648,24 @@ export function EmployeeForm({ personId }: { personId: string | null }) {
                       </option>
                     ))}
                   </select>
+                ) : field.key === 'employeeCode' ? (
+                  <div className="flex gap-2">
+                    <Input
+                      id={id}
+                      name={field.key}
+                      value={draft.employeeCode}
+                      onChange={(e) => setText('employeeCode', e.target.value)}
+                      className="h-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 shrink-0"
+                      onClick={() => void generateEmployeeCode()}
+                    >
+                      Generate
+                    </Button>
+                  </div>
                 ) : field.kind === 'area' ? (
                   <textarea
                     id={id}

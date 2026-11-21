@@ -86,8 +86,11 @@ import {
 } from './schemas/imports';
 import {
   AdminProduct,
+  AdminProductCreate,
   AdminProductList,
   AdminProductQuery,
+  ProductHide,
+  ProductHideResult,
   ProductPriceHistory,
   ProductPricesBulkRequest,
   ProductPricesBulkResponse,
@@ -233,6 +236,9 @@ import {
   UploadUrlResponse,
 } from './schemas/files';
 import {
+  EmployeeCodeFill,
+  EmployeeCodeNext,
+  EmployeeCodeQuery,
   EmployeeCreate,
   EmployeeCreated,
   EmployeeInviteBulk,
@@ -1537,6 +1543,30 @@ function buildDocument(): OpenApiDocument {
           },
         }),
       },
+      '/v1/employees/next-code': {
+        get: op({
+          tags: ['Team'],
+          operationId: 'nextEmployeeCode',
+          summary: 'Next employee code for a role family. Does not reserve the number.',
+          requestParams: { query: EmployeeCodeQuery },
+          responses: {
+            '200': { description: 'Next code', ...json(EmployeeCodeNext) },
+            '403': err('Only HR, a director, or a system admin'),
+          },
+        }),
+      },
+      '/v1/employees/assign-codes': {
+        post: op({
+          tags: ['Team'],
+          operationId: 'assignEmployeeCodes',
+          summary:
+            'Give every active person a new family code. Suspended people keep the code they have.',
+          responses: {
+            '200': { description: 'Assigned', ...json(EmployeeCodeFill) },
+            '403': err('Only HR, a director, or a system admin'),
+          },
+        }),
+      },
       '/v1/employees': {
         post: op({
           tags: ['Team'],
@@ -2828,6 +2858,18 @@ function buildDocument(): OpenApiDocument {
         }),
       },
       '/v1/admin/products': {
+        post: op({
+          tags: ['Product prices'],
+          operationId: 'createAdminProduct',
+          summary: 'Add a product. Old sheets keep a product that is later hidden.',
+          requestBody: json(AdminProductCreate),
+          responses: {
+            '201': { description: 'Created', ...json(AdminProduct) },
+            '403': err('FORBIDDEN (needs products:prices)'),
+            '409': err('That product code is already used'),
+            '422': err('No division to put the product in'),
+          },
+        }),
         get: op({
           tags: ['Product prices'],
           operationId: 'listAdminProducts',
@@ -2853,6 +2895,18 @@ function buildDocument(): OpenApiDocument {
             '404': err('PRODUCT_NOT_FOUND'),
             '409': err('VERSION_CONFLICT'),
             '422': err('VALIDATION or PTR_ABOVE_MRP'),
+          },
+        }),
+      },
+      '/v1/admin/products/hide': {
+        post: op({
+          tags: ['Product prices'],
+          operationId: 'hideAdminProducts',
+          summary: 'Hide products. Past DCRs, stock sheets, and prices keep them.',
+          requestBody: json(ProductHide),
+          responses: {
+            '200': { description: 'Hidden', ...json(ProductHideResult) },
+            '403': err('FORBIDDEN (needs products:prices)'),
           },
         }),
       },

@@ -42,6 +42,7 @@ import { rejectionReason } from '../common/rejection';
 import { TenantService } from '../common/tenant.service';
 import { DB } from '../db/db.module';
 import { err } from '../field/checkins.service';
+import { nextEmployeeCode } from './employee-code';
 
 const PROFILE_KEYS = [
   'series',
@@ -1216,5 +1217,54 @@ export class TeamService {
         return this.signupView(done!, u);
       }),
     );
+  }
+
+  previewEmployeeCode(p: Principal, role: string) {
+    if (!isAdmin(p) && !isHr(p)) throw err(403, 'FORBIDDEN', 'You cannot give out employee codes');
+    return this.tenant.run(p, async (tx) => ({
+      code: await nextEmployeeCode(tx, p.companyId, role),
+    }));
+  }
+
+  /** Replaces the code of every active person. Suspended people keep theirs, and those numbers are not reused. */
+  assignEmployeeCodes(p: Principal) {
+    if (!isAdmin(p) && !isHr(p)) throw err(403, 'FORBIDDEN', 'You cannot give out employee codes');
+    return this.tenant.run(p, async (tx) => {
+      const result = await tx.execute(sql`
+        select u.id,
+          (
+            select r.key from user_roles ur
+              join roles r on r.id = ur.role_id
+             where ur.user_id = u.id
+             order by r.rank desc
+             limit 1
+          ) as role
+          from users u
+         where u.company_id = ${p.companyId}::uuid
+           and u.status = 'active'
+           and u.deleted_at is null
+         order by u.created_at, u.id
+      `);
+      const people = ((result as unknown as { rows?: { id: string; role: string | null }[] })
+        .rows ?? (result as unknown as { id: string; role: string | null }[])) as {
+        id: string;
+        role: string | null;
+      }[];
+      let assigned = 0;
+      for (const person of people) {
+        const code = await nextEmployeeCode(tx, p.companyId, person.role ?? '');
+        await tx
+          .update(users)
+          .set({ employeeCode: code, updatedAt: new Date() })
+          .where(eq(users.id, person.id));
+        assigned += 1;
+      }
+      await this.audit.record(tx, p, 'employee.codes_assigned', {
+        entityType: 'company',
+        entityId: p.companyId,
+        after: { assigned },
+      });
+      return { assigned };
+    });
   }
 }

@@ -20,6 +20,24 @@ const priceFields = {
   pts: Price.nullable().optional().meta({ description: 'Price to stockist; null clears it' }),
 };
 
+export const AdminProductCreate = z
+  .object({
+    code: z.string().trim().min(1).max(40),
+    name: z.string().trim().min(1).max(200),
+    divisionId: Id.optional(),
+  })
+  .meta({ id: 'AdminProductCreate' });
+export type AdminProductCreate = z.output<typeof AdminProductCreate>;
+
+export const ProductHide = z
+  .object({ ids: z.array(Id).min(1).max(200) })
+  .meta({ id: 'ProductHide' });
+export type ProductHide = z.output<typeof ProductHide>;
+
+export const ProductHideResult = z
+  .object({ hidden: z.number().int() })
+  .meta({ id: 'ProductHideResult' });
+
 export const AdminProductQuery = z
   .object({
     q: z.string().trim().max(120).optional().meta({ description: 'Search code or name' }),

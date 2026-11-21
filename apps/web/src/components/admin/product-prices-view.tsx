@@ -1,7 +1,7 @@
 'use client';
 
 import { History, Save } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@ariforce/ui/components/badge';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
@@ -22,6 +22,7 @@ import {
   TableRow,
 } from '@ariforce/ui/components/table';
 import { toast } from '@ariforce/ui/components/sonner';
+import { TopConfirm } from '@/components/top-confirm';
 import { useRole } from '@/components/shell/role-context';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { canEditProductPrices } from '@/lib/permissions';
@@ -82,6 +83,13 @@ export function ProductPricesView() {
   const { role } = useRole();
   // Same permission as price edits (`products:prices`); the API enforces it too.
   const canEdit = canEditProductPrices(role);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [hideOpen, setHideOpen] = useState(false);
+  const [hiding, setHiding] = useState(false);
+  const [addCode, setAddCode] = useState('');
+  const [addName, setAddName] = useState('');
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(q.trim()), 250);
@@ -221,6 +229,69 @@ export function ProductPricesView() {
   const nameOf = (id: string | null | undefined) =>
     rows?.find((p) => p.id === id)?.name ?? id ?? '';
 
+  async function addProduct() {
+    if (!addCode.trim() || !addName.trim()) return;
+    setAdding(true);
+    await apiReady();
+    const r = await api.POST('/v1/admin/products', {
+      body: { code: addCode.trim(), name: addName.trim() },
+    });
+    setAdding(false);
+    if (!r.data) return toast.error(toApiError(r).message || 'Could not add the product.');
+    setAddCode('');
+    setAddName('');
+    toast.success(`Added ${r.data.name}`);
+    void load(null);
+  }
+
+  function exportProducts() {
+    const lines = [
+      'code,name,mrp,ptr,pts',
+      ...(rows ?? []).map((p) =>
+        [p.code, p.name, p.mrp ?? '', p.ptr ?? '', p.pts ?? '']
+          .map((cell) => `"${String(cell).replaceAll('"', '""')}"`)
+          .join(','),
+      ),
+    ];
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+    a.download = 'products.csv';
+    a.click();
+  }
+
+  async function importProducts(file: File) {
+    const text = await file.text();
+    const lines = text
+      .split(/\r?\n/)
+      .slice(1)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    let added = 0;
+    for (const line of lines) {
+      const cells = line.split(',').map((cell) => cell.trim().replace(/^"|"$/g, ''));
+      const code = cells[0];
+      const name = cells[1];
+      if (!code || !name) continue;
+      await apiReady();
+      const r = await api.POST('/v1/admin/products', { body: { code, name } });
+      if (r.data) added += 1;
+    }
+    toast.success(`Added ${added} product${added === 1 ? '' : 's'}.`);
+    void load(null);
+  }
+
+  async function hidePicked() {
+    setHiding(true);
+    await apiReady();
+    const r = await api.POST('/v1/admin/products/hide', { body: { ids: [...picked] } });
+    setHiding(false);
+    if (!r.data) return toast.error(toApiError(r).message || 'Could not hide those products.');
+    setHideOpen(false);
+    setPicked(new Set());
+    toast.success(`Hid ${r.data.hidden} product${r.data.hidden === 1 ? '' : 's'}.`);
+    void load(null);
+  }
+
   return (
     <div className="flex w-full min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3">
@@ -245,6 +316,52 @@ export function ProductPricesView() {
           />
           Only products with no PTR
         </label>
+        {canEdit && (
+          <>
+            <Input
+              aria-label="New product code"
+              value={addCode}
+              onChange={(e) => setAddCode(e.target.value)}
+              placeholder="Code"
+              className="w-28"
+            />
+            <Input
+              aria-label="New product name"
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
+              placeholder="Name"
+              className="w-48"
+            />
+            <Button type="button" disabled={adding} onClick={() => void addProduct()}>
+              Add
+            </Button>
+            <Button type="button" variant="outline" onClick={exportProducts}>
+              Export
+            </Button>
+            <Button type="button" variant="outline" onClick={() => fileRef.current?.click()}>
+              Import
+            </Button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) void importProducts(file);
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={picked.size === 0}
+              onClick={() => setHideOpen(true)}
+            >
+              Hide{picked.size ? ` (${picked.size})` : ''}
+            </Button>
+          </>
+        )}
         <Button
           className="ml-auto"
           disabled={bulkBusy || dirtyIds.length === 0}
@@ -276,6 +393,16 @@ export function ProductPricesView() {
           )}
         </div>
       )}
+
+      <TopConfirm
+        open={hideOpen}
+        title="Hide products"
+        description="Hidden products leave this list. Old DCRs, stock sheets, and prices still keep them."
+        confirmLabel={hiding ? 'Hiding…' : 'Hide'}
+        busy={hiding}
+        onCancel={() => setHideOpen(false)}
+        onConfirm={() => void hidePicked()}
+      />
 
       {error && (
         <p role="alert" className="text-sm text-destructive" data-testid="pp-error">
@@ -322,6 +449,22 @@ export function ProductPricesView() {
                   >
                     <TableCell className="align-top whitespace-normal">
                       <div className="flex items-start gap-3">
+                        {canEdit && (
+                          <input
+                            type="checkbox"
+                            className="mt-1 size-4"
+                            aria-label={`Select ${p.name}`}
+                            checked={picked.has(p.id)}
+                            onChange={(e) =>
+                              setPicked((cur) => {
+                                const next = new Set(cur);
+                                if (e.target.checked) next.add(p.id);
+                                else next.delete(p.id);
+                                return next;
+                              })
+                            }
+                          />
+                        )}
                         <ProductImageCell
                           product={p}
                           canEdit={canEdit}
