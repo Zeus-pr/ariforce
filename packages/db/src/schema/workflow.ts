@@ -32,6 +32,7 @@ export const approvalRequests = pgTable(
         'tp_deviation',
         'tour_plan_item',
         'stock_statement',
+        'stock_statement_unlock',
       ],
     }).notNull(),
     entityId: uuid('entity_id').notNull(),

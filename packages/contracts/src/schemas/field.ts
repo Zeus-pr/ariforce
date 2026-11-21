@@ -721,6 +721,7 @@ export const Approval = z
         'dcr',
         'signup',
         'stock_statement',
+        'stock_statement_unlock',
       ])
       .meta({
         description:

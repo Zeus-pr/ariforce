@@ -4812,6 +4812,8 @@ export interface components {
       productId: string;
       openingQty: number | null;
       purchaseQty: number;
+      /** @default 0 */
+      freeQty: number;
       secondaryQty: number;
       frsQty: number;
     };
@@ -4822,7 +4824,14 @@ export interface components {
       /** @enum {string} */
       kind: 'aws' | 'ss';
       /** @enum {string} */
-      contentType: 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf';
+      contentType:
+        | 'image/jpeg'
+        | 'image/png'
+        | 'image/webp'
+        | 'application/pdf'
+        | 'application/vnd.ms-excel'
+        | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        | 'application/vnd.ms-excel.sheet.macroEnabled.12';
       sizeBytes: number;
     };
     StockStatementFileConfirm: {
@@ -6777,7 +6786,8 @@ export interface components {
         | 'expense'
         | 'dcr'
         | 'signup'
-        | 'stock_statement';
+        | 'stock_statement'
+        | 'stock_statement_unlock';
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -8019,6 +8029,7 @@ export interface components {
       | 'company.message'
       | 'doctor.occasion'
       | 'employee.birthday'
+      | 'stock_statement.unlock'
       | 'stock_statement.submitted'
       | 'stock_statement.approved'
       | 'stock_statement.rejected';
@@ -8881,7 +8892,8 @@ export interface components {
         | 'expense'
         | 'dcr'
         | 'signup'
-        | 'stock_statement';
+        | 'stock_statement'
+        | 'stock_statement_unlock';
       /**
        * Format: uuid
        * @description UUIDv7 identifier
@@ -9515,6 +9527,15 @@ export interface components {
       approvalRequestId: string | null;
       rejectionReason: string | null;
       currentApproverName: string | null;
+      locked: boolean;
+      /**
+       * Format: date-time
+       * @description ISO-8601 timestamp (UTC)
+       */
+      lockAt: string;
+      editOpen: boolean;
+      unlockPending: boolean;
+      canRequestUnlock: boolean;
       totals: components['schemas']['StockStatementTotals'];
       lines: components['schemas']['StockStatementLine'][];
       aws: components['schemas']['StockStatementFile'];
@@ -9526,6 +9547,8 @@ export interface components {
       openingValue: number;
       purchaseQty: number;
       purchaseValue: number;
+      freeQty: number;
+      freeValue: number;
       secondaryQty: number;
       secondaryValue: number;
       closingQty: number;
@@ -9547,10 +9570,12 @@ export interface components {
       openingQty: number | null;
       openingLocked: boolean;
       purchaseQty: number;
+      freeQty: number;
       secondaryQty: number;
       frsQty: number;
       openingValue: number | null;
       purchaseValue: number | null;
+      freeValue: number | null;
       secondaryValue: number | null;
       frsValue: number | null;
       closingQty: number | null;
@@ -15980,7 +16005,8 @@ export interface operations {
           | 'expense'
           | 'dcr'
           | 'signup'
-          | 'stock_statement';
+          | 'stock_statement'
+          | 'stock_statement_unlock';
         /** @description to_decide = pending requests from your reporting line that you may decide (never your own); requested = yours */
         mine?: 'to_decide' | 'requested';
         /** @description org: every request of your reporting subtree in any state (Director: the whole company), with trail/level fields. Needs approvals:decide (else 403). Ignored with mine */

@@ -57,6 +57,12 @@ export class StockStatementsController {
     return this.svc.save(p, id, b.version, b.lines);
   }
 
+  @Post(':id/unlock')
+  @RequirePermissions('stock_statements:read')
+  unlock(@CurrentPrincipal() p: Principal, @Param('id') id: string) {
+    return this.svc.requestUnlock(p, id);
+  }
+
   @Post(':id/submit')
   @RequirePermissions('stock_statements:read')
   submit(

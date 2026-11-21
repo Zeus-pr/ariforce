@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { Id, Month } from './common';
+import { Id, Month, Timestamp } from './common';
 
 export const StockStatementStatus = z
   .enum(['draft', 'pending', 'approved', 'rejected'])
@@ -14,6 +14,7 @@ export const StockStatementLineInput = z
     /** Null keeps the opening blank. Ignored when the opening was carried forward. */
     openingQty: qty.nullable(),
     purchaseQty: qty,
+    freeQty: qty.default(0),
     secondaryQty: qty,
     frsQty: qty,
   })
@@ -28,10 +29,12 @@ export const StockStatementLine = z
     openingQty: qty.nullable(),
     openingLocked: z.boolean(),
     purchaseQty: qty,
+    freeQty: qty,
     secondaryQty: qty,
     frsQty: qty,
     openingValue: money,
     purchaseValue: money,
+    freeValue: money,
     secondaryValue: money,
     frsValue: money,
     closingQty: z.number().int().nullable(),
@@ -45,6 +48,8 @@ export const StockStatementTotals = z
     openingValue: z.number(),
     purchaseQty: z.number().int(),
     purchaseValue: z.number(),
+    freeQty: z.number().int(),
+    freeValue: z.number(),
     secondaryQty: z.number().int(),
     secondaryValue: z.number(),
     closingQty: z.number().int(),
@@ -89,6 +94,11 @@ export const StockStatement = z
     approvalRequestId: Id.nullable(),
     rejectionReason: z.string().nullable(),
     currentApproverName: z.string().nullable(),
+    locked: z.boolean(),
+    lockAt: Timestamp,
+    editOpen: z.boolean(),
+    unlockPending: z.boolean(),
+    canRequestUnlock: z.boolean(),
     totals: StockStatementTotals,
     lines: z.array(StockStatementLine),
     aws: StockStatementFile,
@@ -143,7 +153,15 @@ export const StockStatementStockists = z
 export const StockStatementFileRequest = z
   .object({
     kind: z.enum(['aws', 'ss']),
-    contentType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']),
+    contentType: z.enum([
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'application/pdf',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel.sheet.macroEnabled.12',
+    ]),
     sizeBytes: z
       .number()
       .int()

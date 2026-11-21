@@ -4,6 +4,7 @@ import {
   check,
   date,
   index,
+  boolean,
   integer,
   numeric,
   pgTable,
@@ -39,6 +40,8 @@ export const stockStatements = pgTable(
     openingValue: numeric('opening_value', { precision: 14, scale: 2 }).notNull().default('0'),
     purchaseQty: integer('purchase_qty').notNull().default(0),
     purchaseValue: numeric('purchase_value', { precision: 14, scale: 2 }).notNull().default('0'),
+    freeQty: integer('free_qty').notNull().default(0),
+    freeValue: numeric('free_value', { precision: 14, scale: 2 }).notNull().default('0'),
     secondaryQty: integer('secondary_qty').notNull().default(0),
     secondaryValue: numeric('secondary_value', { precision: 14, scale: 2 }).notNull().default('0'),
     closingQty: integer('closing_qty').notNull().default(0),
@@ -48,6 +51,8 @@ export const stockStatements = pgTable(
     actualSecondary: numeric('actual_secondary', { precision: 14, scale: 2 })
       .notNull()
       .default('0'),
+    /** Director granted an edit after the 6th. Cleared when the sheet is submitted again. */
+    editOpen: boolean('edit_open').notNull().default(false),
     awsFileKey: text('aws_file_key'),
     awsContentType: text('aws_content_type'),
     awsSizeBytes: bigint('aws_size_bytes', { mode: 'number' }),
@@ -89,6 +94,7 @@ export const stockStatementLines = pgTable(
       .notNull()
       .default('typed'),
     purchaseQty: integer('purchase_qty').notNull().default(0),
+    freeQty: integer('free_qty').notNull().default(0),
     secondaryQty: integer('secondary_qty').notNull().default(0),
     frsQty: integer('frs_qty').notNull().default(0),
     pts: numeric('pts', { precision: 12, scale: 2 }),
@@ -102,7 +108,7 @@ export const stockStatementLines = pgTable(
       .where(sql`${t.deletedAt} is null`),
     check(
       'stock_statement_lines_qty_ck',
-      sql`(${t.openingQty} is null or ${t.openingQty} >= 0) and ${t.purchaseQty} >= 0 and ${t.secondaryQty} >= 0 and ${t.frsQty} >= 0`,
+      sql`(${t.openingQty} is null or ${t.openingQty} >= 0) and ${t.purchaseQty} >= 0 and ${t.freeQty} >= 0 and ${t.secondaryQty} >= 0 and ${t.frsQty} >= 0`,
     ),
     check('stock_statement_lines_source_ck', sql`${t.openingSource} in ('typed', 'carried')`),
   ],

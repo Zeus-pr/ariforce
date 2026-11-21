@@ -16,11 +16,12 @@ import {
   stockStatements,
   stockists,
   territories,
+  userTerritories,
   userRoles,
   users,
   type Tx,
 } from '@ariforce/db';
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
@@ -30,7 +31,15 @@ import { companySettings, localDate } from '../field/field.util';
 import { StorageService } from '../files/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ApprovalsService } from '../plans/approvals.service';
-import { figureLine, monthStart, nextMonth, totalsOf, type FiguredLine } from './math';
+import {
+  figureLine,
+  isPastLock,
+  lockInstant,
+  monthStart,
+  nextMonth,
+  totalsOf,
+  type FiguredLine,
+} from './math';
 import { statementPdf } from './pdf';
 
 type LineRow = typeof stockStatementLines.$inferSelect;
@@ -38,6 +47,17 @@ type StatementRow = typeof stockStatements.$inferSelect;
 
 const money = (n: number) => n.toFixed(2);
 const num = (v: string | null) => (v == null ? null : Number(v));
+const FILE_EXT: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/vnd.ms-excel.sheet.macroEnabled.12': 'xlsm',
+};
+const fileExtension = (contentType: string) =>
+  FILE_EXT[contentType.split(';')[0]!.trim().toLowerCase()] ?? 'bin';
 
 @Injectable()
 export class StockStatementsService implements OnModuleInit {
@@ -116,6 +136,33 @@ export class StockStatementsService implements OnModuleInit {
         },
       },
     );
+    this.approvals.register(
+      'stock_statement_unlock',
+      async (tx, _p, req, approved) => {
+        if (!approved) return;
+        const [row] = await tx
+          .select()
+          .from(stockStatements)
+          .where(eq(stockStatements.id, req.entityId))
+          .for('update');
+        if (!row) return;
+        await tx
+          .update(approvalRequests)
+          .set({ state: 'cancelled' })
+          .where(
+            and(
+              eq(approvalRequests.entityType, 'stock_statement'),
+              eq(approvalRequests.entityId, row.id),
+              eq(approvalRequests.state, 'pending'),
+            ),
+          );
+        await tx
+          .update(stockStatements)
+          .set({ status: 'draft', editOpen: true, approvalRequestId: null, decisionComment: null })
+          .where(eq(stockStatements.id, row.id));
+      },
+      { permission: 'dcr_unlock:decide', route: 'permission_holders' },
+    );
   }
 
   stockists(p: Principal) {
@@ -159,8 +206,8 @@ export class StockStatementsService implements OnModuleInit {
           ),
         );
       if (existing) return this.sheet(tx, p, existing);
-      if (!p.roles.includes('business_manager'))
-        throw err(422, 'NOT_STARTED', 'The business manager has not opened this month');
+      if (!(await this.isFiller(tx, p, stockistId)))
+        throw err(422, 'NOT_STARTED', await this.fillerMessage(tx, stockistId));
       const priorMonth = this.previous(start);
       const [prior] = await tx
         .select()
@@ -262,6 +309,7 @@ export class StockStatementsService implements OnModuleInit {
             openingQty,
             openingSource: known.openingLocked ? 'carried' : 'typed',
             purchaseQty: input.purchaseQty,
+            freeQty: input.freeQty,
             secondaryQty: input.secondaryQty,
             frsQty: input.frsQty,
             pts: pts == null ? null : money(pts),
@@ -274,6 +322,7 @@ export class StockStatementsService implements OnModuleInit {
             set: {
               openingQty,
               purchaseQty: input.purchaseQty,
+              freeQty: input.freeQty,
               secondaryQty: input.secondaryQty,
               frsQty: input.frsQty,
               pts: pts == null ? null : money(pts),
@@ -298,7 +347,7 @@ export class StockStatementsService implements OnModuleInit {
     this.blockAdmin(p);
     return this.tenant.run(p, async (tx) => {
       const row = await this.owned(tx, p, id);
-      if (!this.bmDraft(p, row))
+      if (!(await this.canSubmitRow(tx, p, row)))
         throw err(409, 'STATEMENT_LOCKED', 'This statement cannot be edited');
       if (row.version !== version)
         throw err(409, 'VERSION_CONFLICT', 'This statement was saved somewhere else. Reload it.', {
@@ -314,6 +363,26 @@ export class StockStatementsService implements OnModuleInit {
       await this.fillBlankOpenings(tx, row);
       await this.assertReady(tx, row, 'catalog');
       const chain = await this.approvers(tx, p.userId);
+      if (!chain.length) {
+        await tx
+          .update(stockStatements)
+          .set({
+            status: 'approved',
+            submittedBy: p.userId,
+            submittedAt: new Date(),
+            approvalRequestId: null,
+            decisionComment: null,
+            editOpen: false,
+          })
+          .where(eq(stockStatements.id, row.id));
+        const [done] = await tx
+          .select()
+          .from(stockStatements)
+          .where(eq(stockStatements.id, row.id));
+        await this.writeSales(tx, done!);
+        await this.applyClosingToNext(tx, done!);
+        return this.sheet(tx, p, done!);
+      }
       await tx
         .update(approvalRequests)
         .set({ state: 'cancelled' })
@@ -351,6 +420,7 @@ export class StockStatementsService implements OnModuleInit {
           submittedAt: new Date(),
           approvalRequestId: requestId,
           decisionComment: null,
+          editOpen: false,
         })
         .where(eq(stockStatements.id, row.id));
       await this.notifications.notify(tx, p, {
@@ -377,13 +447,14 @@ export class StockStatementsService implements OnModuleInit {
       const row = await this.owned(tx, p, id);
       const key = kind === 'aws' ? row.awsFileKey : row.ssFileKey;
       const status = kind === 'aws' ? row.awsStatus : row.ssStatus;
+      const contentType = kind === 'aws' ? row.awsContentType : row.ssContentType;
       if (!key || status !== 'confirmed')
         throw err(409, 'UPLOAD_NOT_CONFIRMED', 'That file is not ready');
       return this.storage.downloadUrl(
         p.companyId,
         key,
         new Date(),
-        `${kind}-${row.month.slice(0, 7)}.pdf`,
+        `${kind}-${row.month.slice(0, 7)}.${contentType ? fileExtension(contentType) : 'bin'}`,
       );
     });
   }
@@ -399,7 +470,7 @@ export class StockStatementsService implements OnModuleInit {
         body.kind === 'aws' ? 'stock_statement_aws' : 'stock_statement_ss',
         body.contentType,
         body.sizeBytes,
-        body.contentType === 'application/pdf' ? 'pdf' : body.contentType.split('/')[1]!,
+        fileExtension(body.contentType),
         new Date(),
       );
       const patch =
@@ -491,6 +562,8 @@ export class StockStatementsService implements OnModuleInit {
           openingValue: l.openingValue,
           purchaseQty: l.purchaseQty,
           purchaseValue: l.purchaseValue,
+          freeQty: l.freeQty,
+          freeValue: l.freeValue,
           secondaryQty: l.secondaryQty,
           secondaryValue: l.secondaryValue,
           closingQty: l.closingQty,
@@ -507,15 +580,26 @@ export class StockStatementsService implements OnModuleInit {
       throw new ForbiddenException('System admin cannot open stock statements');
   }
 
-  private bmDraft(p: Principal, row: StatementRow) {
-    return (
-      p.roles.includes('business_manager') && (row.status === 'draft' || row.status === 'rejected')
-    );
+  private async dateLocked(tx: Tx, p: Principal, row: StatementRow) {
+    const tz = (await companySettings(tx, p)).timezone;
+    return isPastLock(String(row.month), new Date(), tz);
+  }
+
+  private async canSubmitRow(tx: Tx, p: Principal, row: StatementRow) {
+    if (!(await this.isFiller(tx, p, row.stockistId))) return false;
+    if (row.status !== 'draft' && row.status !== 'rejected') return false;
+    if ((await this.dateLocked(tx, p, row)) && !row.editOpen) return false;
+    return true;
   }
 
   private async mayEdit(tx: Tx, p: Principal, row: StatementRow) {
     if (p.roles.includes('system_admin')) return false;
-    if (this.bmDraft(p, row)) return true;
+    if ((await this.dateLocked(tx, p, row)) && !row.editOpen) return false;
+    if (
+      (await this.isFiller(tx, p, row.stockistId)) &&
+      (row.status === 'draft' || row.status === 'rejected')
+    )
+      return true;
     if (row.status !== 'pending' || !row.approvalRequestId) return false;
     const [req] = await tx
       .select({ step: approvalRequests.currentStep, state: approvalRequests.state })
@@ -560,6 +644,7 @@ export class StockStatementsService implements OnModuleInit {
           openingQty: fromClosing ?? 0,
           openingSource: fromClosing == null ? 'typed' : 'carried',
           purchaseQty: line.purchaseQty,
+          freeQty: line.freeQty,
           secondaryQty: line.secondaryQty,
           frsQty: line.frsQty,
           pts: line.pts == null ? null : money(line.pts),
@@ -607,6 +692,7 @@ export class StockStatementsService implements OnModuleInit {
           openingQty: line.closingQty,
           openingSource: 'carried',
           purchaseQty: 0,
+          freeQty: 0,
           secondaryQty: 0,
           frsQty: 0,
           pts: line.pts == null ? null : money(line.pts),
@@ -718,6 +804,7 @@ export class StockStatementsService implements OnModuleInit {
           openingQty: figured.closingQty,
           openingSource: 'carried' as const,
           purchaseQty: 0,
+          freeQty: 0,
           secondaryQty: 0,
           frsQty: 0,
           pts: product.pts,
@@ -740,6 +827,8 @@ export class StockStatementsService implements OnModuleInit {
         openingValue: money(t.openingValue),
         purchaseQty: t.purchaseQty,
         purchaseValue: money(t.purchaseValue),
+        freeQty: t.freeQty,
+        freeValue: money(t.freeValue),
         secondaryQty: t.secondaryQty,
         secondaryValue: money(t.secondaryValue),
         closingQty: t.closingQty,
@@ -797,6 +886,7 @@ export class StockStatementsService implements OnModuleInit {
     const figured = figureLine({
       openingQty: line?.openingQty ?? null,
       purchaseQty: line?.purchaseQty ?? 0,
+      freeQty: line?.freeQty ?? 0,
       secondaryQty: line?.secondaryQty ?? 0,
       frsQty: line?.frsQty ?? 0,
       pts,
@@ -815,6 +905,7 @@ export class StockStatementsService implements OnModuleInit {
     return {
       openingQty: line.openingQty,
       purchaseQty: line.purchaseQty,
+      freeQty: line.freeQty,
       secondaryQty: line.secondaryQty,
       frsQty: line.frsQty,
       pts: num(line.pts),
@@ -862,6 +953,22 @@ export class StockStatementsService implements OnModuleInit {
       !!approver &&
       approver.state === 'pending' &&
       (await this.stepUser(tx, row.approvalRequestId!, approver.step)) === p.userId;
+    const locked = await this.dateLocked(tx, p, row);
+    const filler = await this.isFiller(tx, p, row.stockistId);
+    const submitter =
+      filler && (row.status === 'draft' || row.status === 'rejected') && (!locked || row.editOpen);
+    const [unlock] = await tx
+      .select({ id: approvalRequests.id })
+      .from(approvalRequests)
+      .where(
+        and(
+          eq(approvalRequests.entityType, 'stock_statement_unlock'),
+          eq(approvalRequests.entityId, row.id),
+          eq(approvalRequests.state, 'pending'),
+        ),
+      )
+      .limit(1);
+    const tz = (await companySettings(tx, p)).timezone;
     return {
       id: row.id,
       stockistId: row.stockistId,
@@ -871,17 +978,24 @@ export class StockStatementsService implements OnModuleInit {
       month: row.month.slice(0, 7),
       status: row.status,
       version: row.version,
-      editable: this.bmDraft(p, row) || canDecide,
-      canSubmit: this.bmDraft(p, row),
+      editable: submitter || (canDecide && !locked),
+      canSubmit: submitter,
       canDecide,
       approvalRequestId: row.status === 'pending' ? row.approvalRequestId : null,
       rejectionReason: row.status === 'rejected' ? row.decisionComment : null,
       currentApproverName: row.status === 'pending' ? (approver?.name ?? null) : null,
+      locked,
+      lockAt: lockInstant(String(row.month), tz).toISOString(),
+      editOpen: row.editOpen,
+      unlockPending: !!unlock,
+      canRequestUnlock: locked && filler && !row.editOpen && !unlock,
       totals: {
         openingQty: row.openingQty,
         openingValue: Number(row.openingValue),
         purchaseQty: row.purchaseQty,
         purchaseValue: Number(row.purchaseValue),
+        freeQty: row.freeQty,
+        freeValue: Number(row.freeValue),
         secondaryQty: row.secondaryQty,
         secondaryValue: Number(row.secondaryValue),
         closingQty: row.closingQty,
@@ -898,10 +1012,12 @@ export class StockStatementsService implements OnModuleInit {
         openingQty: l.openingQty,
         openingLocked: l.openingLocked,
         purchaseQty: l.purchaseQty,
+        freeQty: l.freeQty,
         secondaryQty: l.secondaryQty,
         frsQty: l.frsQty,
         openingValue: l.openingValue,
         purchaseValue: l.purchaseValue,
+        freeValue: l.freeValue,
         secondaryValue: l.secondaryValue,
         frsValue: l.frsValue,
         closingQty: l.closingQty,
@@ -973,6 +1089,7 @@ export class StockStatementsService implements OnModuleInit {
 
   private async approvers(tx: Tx, userId: string) {
     const me = await this.person(tx, userId);
+    if (me?.role === 'regional_business_manager') return [];
     if (me?.role === 'area_business_manager') {
       if (!me.managerId)
         throw err(422, 'APPROVER_MISSING', 'You have no regional manager to send this to');
@@ -987,9 +1104,9 @@ export class StockStatementsService implements OnModuleInit {
         });
       return [regional];
     }
-    if (!me?.managerId)
-      throw err(422, 'APPROVER_MISSING', 'You have no area manager to send this to');
+    if (!me?.managerId) throw err(422, 'APPROVER_MISSING', 'You have no manager to send this to');
     const area = await this.person(tx, me.managerId);
+    if (area?.status === 'active' && area.role === 'regional_business_manager') return [area];
     if (!area || area.status !== 'active' || area.role !== 'area_business_manager')
       throw err(422, 'APPROVER_MISSING', 'Your area manager is not active', {
         name: area?.name ?? null,
@@ -1018,6 +1135,95 @@ export class StockStatementsService implements OnModuleInit {
       .leftJoin(roles, eq(roles.id, userRoles.roleId))
       .where(and(eq(users.id, id), isNull(users.deletedAt)));
     return row ?? null;
+  }
+
+  async requestUnlock(p: Principal, id: string) {
+    this.blockAdmin(p);
+    return this.tenant.run(p, async (tx) => {
+      const row = await this.owned(tx, p, id);
+      const view = await this.sheet(tx, p, row);
+      if (!view.canRequestUnlock)
+        throw err(409, 'STATEMENT_LOCKED', 'This statement cannot be unlocked');
+      await this.approvals.request(tx, p, 'stock_statement_unlock', row.id, null, {
+        month: row.month.slice(0, 7),
+        stockistName: view.stockistName,
+      });
+      const directors = await tx
+        .select({ id: users.id })
+        .from(users)
+        .innerJoin(userRoles, eq(userRoles.userId, users.id))
+        .innerJoin(roles, eq(roles.id, userRoles.roleId))
+        .where(and(eq(roles.key, 'director'), eq(users.status, 'active'), isNull(users.deletedAt)));
+      for (const director of directors)
+        await this.notifications.notify(tx, p, {
+          type: 'stock_statement.unlock',
+          recipientId: director.id,
+          entityType: 'stock_statement',
+          entityId: row.id,
+          dedupeKey: `stock_statement.unlock:${row.id}:${director.id}`,
+          data: { month: row.month.slice(0, 7), stockistName: view.stockistName },
+        });
+      const [fresh] = await tx.select().from(stockStatements).where(eq(stockStatements.id, row.id));
+      return this.sheet(tx, p, fresh!);
+    });
+  }
+
+  private async isFiller(tx: Tx, p: Principal, stockistId: string) {
+    const seat = await this.fillerSeat(tx, stockistId);
+    return seat?.userIds.has(p.userId) ?? false;
+  }
+
+  private async fillerMessage(tx: Tx, stockistId: string) {
+    const seat = await this.fillerSeat(tx, stockistId);
+    if (!seat) return 'No business manager, area manager, or regional manager is assigned here';
+    if (seat.rank === 0) return 'The business manager opens this month';
+    if (seat.rank === 1) return 'The area manager opens this month';
+    return 'The regional manager opens this month';
+  }
+
+  private async fillerSeat(tx: Tx, stockistId: string) {
+    const [stock] = await tx
+      .select({ path: territories.path })
+      .from(stockists)
+      .innerJoin(territories, eq(territories.id, stockists.territoryId))
+      .where(eq(stockists.id, stockistId));
+    if (!stock) return null;
+    const holders = await tx
+      .select({ userId: users.id, role: roles.key })
+      .from(userTerritories)
+      .innerJoin(territories, eq(territories.id, userTerritories.territoryId))
+      .innerJoin(users, eq(users.id, userTerritories.userId))
+      .innerJoin(userRoles, eq(userRoles.userId, users.id))
+      .innerJoin(roles, eq(roles.id, userRoles.roleId))
+      .where(
+        and(
+          eq(users.status, 'active'),
+          isNull(users.deletedAt),
+          inArray(roles.key, [
+            'business_manager',
+            'area_business_manager',
+            'regional_business_manager',
+          ]),
+          sql`(${stock.path} = ${territories.path} or starts_with(${stock.path}, ${territories.path} || '.'))`,
+        ),
+      );
+    const rankOf = {
+      business_manager: 0,
+      area_business_manager: 1,
+      regional_business_manager: 2,
+    } as const;
+    let rank = 99;
+    const userIds = new Set<string>();
+    for (const holder of holders) {
+      const next = rankOf[holder.role as keyof typeof rankOf];
+      if (next == null) continue;
+      if (next < rank) {
+        rank = next;
+        userIds.clear();
+      }
+      if (next === rank) userIds.add(holder.userId);
+    }
+    return userIds.size ? { rank, userIds } : null;
   }
 
   private async stockistName(tx: Tx, id: string) {
