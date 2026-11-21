@@ -227,6 +227,8 @@ export class SalesService {
   }
 
   createActual(p: Principal, b: SalesActualCreate) {
+    if (b.kind === 'primary')
+      throw err(422, 'PRIMARY_FROM_SHEET', 'Primary is the purchase total on the stock sheet');
     return this.tenant.run(p, async (tx) => {
       await this.hq(tx, b.territoryId);
       const [prod] = await tx
@@ -311,6 +313,7 @@ export class SalesService {
         let error: SalesImportResult['results'][number]['error'] = null;
         if (!t) error = 'unknown_territory';
         else if (t.level !== 'headquarter') error = 'not_headquarter';
+        else if (req.entity === 'actuals' && r.kind === 'primary') error = 'primary_from_sheet';
         else if (req.entity === 'actuals' && !r.productCode) error = 'product_required';
         else if (r.productCode && !productId) error = 'unknown_product';
         if (error) {

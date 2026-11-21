@@ -39460,7 +39460,8 @@
                   "unknown_territory",
                   "not_headquarter",
                   "unknown_product",
-                  "product_required"
+                  "product_required",
+                  "primary_from_sheet"
                 ]
               },
               {
