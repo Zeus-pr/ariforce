@@ -499,6 +499,22 @@ export function PlaceDesk({ title }: { title: string }) {
           )
         ) : (
           <>
+            <div className="flex flex-col gap-2">
+              <h2 className="text-base font-semibold">All products</h2>
+              <YearCompareChart
+                label={`${focus?.name ?? 'This place'}, product primary and secondary`}
+                years={[
+                  {
+                    year: focus?.name ?? 'All',
+                    primary: salesProducts.reduce((sum, product) => sum + product.primaryValue, 0),
+                    secondary: salesProducts.reduce(
+                      (sum, product) => sum + product.secondaryValue,
+                      0,
+                    ),
+                  },
+                ]}
+              />
+            </div>
             {brandBars.length < salesProducts.length && (
               <div className="flex flex-col gap-2">
                 <h2 className="text-base font-semibold">Brands</h2>

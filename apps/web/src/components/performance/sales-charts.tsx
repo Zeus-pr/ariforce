@@ -75,12 +75,14 @@ const rupeeLabel = (value: unknown) => (Number(value) ? inr(Number(value)) : '')
 
 export function YearCompareChart({
   years,
+  label = 'This year and last year',
 }: {
   years: { year: string; primary: number; secondary: number }[];
+  label?: string;
 }) {
   const reduced = useReducedMotion();
   return (
-    <ChartFrame height={240} label="This year and last year">
+    <ChartFrame height={240} label={label}>
       <BarChart data={years} margin={{ top: 28, right: 8, left: 0, bottom: 0 }} barGap={4}>
         <CartesianGrid vertical={false} stroke={CHART.grid} />
         <XAxis dataKey="year" {...axisProps} />
