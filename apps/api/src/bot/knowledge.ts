@@ -4,13 +4,13 @@ import { hierarchyRank, ROLE_NAMES, ROLE_RANK, type RoleKey } from '@ariforce/co
 
 export type BotAudience = 'none' | 'team' | 'director';
 
-const COMPANY_ROLES: readonly RoleKey[] = ['director', 'system_admin', 'distribution_head'];
+const COMPANY_ROLES: readonly RoleKey[] = ['director', 'distribution_head'];
 
-/** ABM through Director see their line. Director, System Admin, and Distribution Head see the company. */
+/** Who may ask. Company figures are a separate check: the principal's team list is null. */
 export function botAudience(roles: readonly RoleKey[]): BotAudience {
   if (roles.some((role) => COMPANY_ROLES.includes(role))) return 'director';
-  if (hierarchyRank(roles) < 2) return 'none';
-  return 'team';
+  if (roles.includes('system_admin') || hierarchyRank(roles) >= 2) return 'team';
+  return 'none';
 }
 
 export function askerRoleLabel(roles: readonly RoleKey[]): string {

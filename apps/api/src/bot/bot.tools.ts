@@ -126,7 +126,10 @@ export class BotTools {
     });
   }
 
-  private query(args: unknown, companyWide: boolean) {
+  private query(
+    args: unknown,
+    companyWide: boolean,
+  ): { error: ToolOutcome } | { data: z.output<typeof KpiQuery> } {
     const raw = (typeof args === 'object' && args ? args : {}) as Record<string, unknown>;
     const requested = Array.isArray(raw.kpis)
       ? raw.kpis.filter((k): k is KpiKey => (KPI_KEYS as readonly string[]).includes(String(k)))

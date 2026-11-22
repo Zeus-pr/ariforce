@@ -35,6 +35,17 @@ export type ChatMsg =
 
 const ROUNDS = 3;
 const NUM = /\d+(?:\.\d+)?/g;
+const HEAVY = /\b(?:why|compare|compared|comparison|versus|vs\.?|difference|trend)\b/i;
+
+/** One choice, before any model call. A lookup stays on 4.3. */
+export function modelFor(message: string): 'grok-4.3' | 'grok-4.7' {
+  if (HEAVY.test(message)) return 'grok-4.7';
+  const months = message.match(/\b20\d{2}-\d{2}\b/g);
+  if (months && new Set(months).size > 1) return 'grok-4.7';
+  if (/\bthis month\b/i.test(message) && /\b(?:last|previous|prior) month\b/i.test(message))
+    return 'grok-4.7';
+  return 'grok-4.3';
+}
 
 const kpiEnum = [...KPI_KEYS];
 
@@ -93,6 +104,9 @@ export function guardNarrative(
 ): { narrative: string; refused: boolean } {
   const allowed = new Set(allowedText.match(NUM) ?? []);
   const bad = (narrative.match(NUM) ?? []).filter((n) => !allowed.has(n));
+  const email = narrative.match(/[^\s@]+@[^\s@]+\.[^\s@]+/g) ?? [];
+  if (email.some((address) => !allowedText.includes(address)))
+    return { narrative: 'I can’t answer that from AriForce.', refused: true };
   if (bad.length === 0) return { narrative, refused: false };
   if (hasBlock) return { narrative: 'The figures are in the table.', refused: false };
   return { narrative: 'I can’t answer that from AriForce.', refused: true };

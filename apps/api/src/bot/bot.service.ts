@@ -4,7 +4,7 @@ import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { askerRoleLabel, botAudience, knowledgeFor } from './knowledge';
 import { BotTools } from './bot.tools';
-import { runBot, toolSpecs, type AssistantMsg, type ChatMsg, type ToolSpec } from './run';
+import { modelFor, runBot, toolSpecs, type AssistantMsg, type ChatMsg, type ToolSpec } from './run';
 
 const err = (status: number, code: string, message: string) =>
   new HttpException({ code, message }, status);
@@ -45,7 +45,7 @@ export async function completeGrok(
           }
         : {}),
     }),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(model === 'grok-4.7' ? 60_000 : 30_000),
   });
   if (!res.ok) throw err(503, 'BOT_UNAVAILABLE', 'ARIBOT could not answer just now.');
   const body = (await res.json()) as {
@@ -69,11 +69,15 @@ export class BotService {
   async ask(p: Principal, message: string) {
     const audience = botAudience(p.roles);
     if (audience === 'none')
-      throw err(403, 'FORBIDDEN', 'ARIBOT is for managers, the Distribution Head, and System Admin.');
+      throw err(
+        403,
+        'FORBIDDEN',
+        'ARIBOT is for managers, the Distribution Head, and System Admin.',
+      );
     const key = process.env.XAI_API_KEY?.trim();
     if (!key) throw err(503, 'BOT_UNAVAILABLE', 'ARIBOT is not configured yet.');
-    const model = process.env.XAI_MODEL?.trim() || 'grok-4.7';
-    const companyWide = audience === 'director';
+    const model = modelFor(message);
+    const companyWide = p.teamUserIds === null;
     const result = await runBot({
       knowledge: knowledgeFor(audience),
       scopeLine: companyWide
@@ -88,13 +92,16 @@ export class BotService {
       this.audit.record(tx, p, 'bot.ask', {
         after: {
           message: message.slice(0, 500),
+          model,
           tools: result.toolNames,
           blocks: result.blocks.length,
           refused: result.refused,
         },
       }),
     );
-    this.log.log(`ask tools=${result.toolNames.join(',') || '-'} refused=${result.refused}`);
+    this.log.log(
+      `ask model=${model} tools=${result.toolNames.join(',') || '-'} refused=${result.refused}`,
+    );
     return { narrative: result.narrative, blocks: result.blocks, refused: result.refused };
   }
 }

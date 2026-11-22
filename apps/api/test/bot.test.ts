@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { askerRoleLabel, botAudience, knowledgeFor } from '../src/bot/knowledge';
-import { guardNarrative, runBot, toolSpecs } from '../src/bot/run';
+import { guardNarrative, modelFor, runBot, toolSpecs } from '../src/bot/run';
 
 describe('ARIBOT access', () => {
   it('stops below Area Business Manager and opens the company only for a Director', () => {
     expect(botAudience(['business_manager'])).toBe('none');
     expect(botAudience(['hr'])).toBe('none');
-    expect(botAudience(['system_admin'])).toBe('director');
+    expect(botAudience(['system_admin'])).toBe('team');
     expect(botAudience(['distribution_head'])).toBe('director');
     expect(botAudience(['area_business_manager'])).toBe('team');
     expect(botAudience(['regional_business_manager'])).toBe('team');
@@ -28,6 +28,17 @@ describe('ARIBOT access', () => {
   });
 });
 
+describe('ARIBOT model', () => {
+  it('keeps a lookup on 4.3 and steps up for a comparison', () => {
+    expect(modelFor('How do I find this month’s sales figures?')).toBe('grok-4.3');
+    expect(modelFor('What is company secondary sales this month?')).toBe('grok-4.3');
+    expect(modelFor('What is my coverage for 2026-11?')).toBe('grok-4.3');
+    expect(modelFor('Why is coverage down versus last month?')).toBe('grok-4.7');
+    expect(modelFor('Compare 2026-10 and 2026-11.')).toBe('grok-4.7');
+    expect(modelFor('Show this month against last month.')).toBe('grok-4.7');
+  });
+});
+
 describe('ARIBOT answers', () => {
   it('keeps a number that a tool returned and drops one it invented', () => {
     expect(guardNarrative('Coverage is 81.2%.', '81.2', true)).toEqual({
@@ -38,6 +49,9 @@ describe('ARIBOT answers', () => {
       'The figures are in the table.',
     );
     expect(guardNarrative('Coverage is 99%.', '', false).refused).toBe(true);
+    expect(guardNarrative('Write to a@arighna.com.', 'Coverage is a share.', false).refused).toBe(
+      true,
+    );
   });
 
   it('runs a tool, then answers from that table', async () => {

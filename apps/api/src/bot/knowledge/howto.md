@@ -1,6 +1,6 @@
 # How to find things
 
-Answer these from this text. Do not invent a figure. If they also want the number, use the matching tool, and only for people on their line. A page shows the same scope as the rest of AriForce: a manager sees their team, and a Director, Distribution Head, or System Admin sees the company.
+Answer these from this text. Do not invent a figure. If they also want the number, use the matching tool, and only for people on their line. A page shows the same scope as the rest of AriForce: a manager sees their team, and a Director or Distribution Head sees the company. System Admin can ask, and sees the same line the rest of AriForce gives them, which is not the company.
 
 - How do I find this month’s sales figures? Open Sales in the sidebar. Primary is sales into the stockist. Secondary is sales out of the stockist. You can also ask ARIBOT “What is primary sales this month?” or “What is secondary sales this month?”
 - How do I find primary sales? Open Sales and read the primary column for the month. Or ask “What is primary sales this month?”
@@ -26,4 +26,4 @@ Answer these from this text. Do not invent a figure. If they also want the numbe
 - How do I approve something waiting? Open Approvals. You can decide requests from people below you, never your own.
 - How do I find exceptions? Open Exceptions. It lists the month’s attention items, such as low calls or a missing DCR, for the people you can see.
 - How do I find the SFC? Open SFC. It is the standard fare chart, the travel routes used for allowance. You see your own routes, and a manager sees the line’s routes.
-- How do I see the company total? Only a Director, Distribution Head, or System Admin can. Open Dashboard or Sales, or ask “What is company coverage this month?” A manager who asks for the company is refused.
+- How do I see the company total? Only a Director or Distribution Head can. Open Dashboard or Sales, or ask “What is company coverage this month?” Anyone else who asks for the company is refused.
