@@ -7,18 +7,21 @@ import { Orb } from '@yogesharc/thinking-orbs';
 import { Button } from '@ariforce/ui/components/button';
 
 const FEATURES = [
-  { title: 'Your line, or the company', body: 'Managers see their own team. Director, Distribution Head, and System Admin see the whole company.' },
-  { title: 'Figures from AriForce', body: 'Coverage, calls, tour plans, sales, and products come back as a table. A number that was not looked up is not shown.' },
-  { title: 'Peers stay closed', body: 'An Area Business Manager cannot open another Area Business Manager’s numbers, or a company total.' },
+  {
+    title: 'Your line, or the company',
+    body: 'Managers see their own team. Director, Distribution Head, and System Admin see the whole company.',
+  },
+  {
+    title: 'Figures from AriForce',
+    body: 'Coverage, calls, tour plans, sales, and products come back as a table. A number that was not looked up is not shown.',
+  },
+  {
+    title: 'Peers stay closed',
+    body: 'An Area Business Manager cannot open another Area Business Manager’s numbers, or a company total.',
+  },
 ];
 
-export function AribotIntro({
-  userId,
-  onOpen,
-}: {
-  userId: string;
-  onOpen: () => void;
-}) {
+export function AribotIntro({ userId, onOpen }: { userId: string; onOpen: () => void }) {
   const key = `af:aribot-intro:${userId}`;
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -78,7 +81,13 @@ export function AribotIntro({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.08 }}
               >
-                <Orb state="reasoning" variant="twins" size={42} label="ARIBOT" className="text-[#f3e6d0]" />
+                <Orb
+                  state="reasoning"
+                  variant="twins"
+                  size={42}
+                  label="ARIBOT"
+                  className="text-[#f3e6d0]"
+                />
               </motion.div>
               <motion.p
                 className="mt-5 text-[11px] tracking-[0.22em] text-[#c4a574] uppercase"
@@ -103,7 +112,8 @@ export function AribotIntro({
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.3 }}
               >
-                Ask a business question in plain language. The answer stays inside what you are already allowed to see.
+                Ask a business question in plain language. The answer stays inside what you are
+                already allowed to see.
               </motion.p>
               <ul className="mt-5 flex flex-col gap-3">
                 {FEATURES.map((feature, i) => (
@@ -112,7 +122,12 @@ export function AribotIntro({
                     className="rounded-2xl bg-white/[0.04] px-4 py-3"
                     initial={{ opacity: 0, x: 16 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.38 + i * 0.08, type: 'spring', stiffness: 380, damping: 30 }}
+                    transition={{
+                      delay: 0.38 + i * 0.08,
+                      type: 'spring',
+                      stiffness: 380,
+                      damping: 30,
+                    }}
                   >
                     <p className="text-sm font-medium">{feature.title}</p>
                     <p className="mt-1 text-sm leading-relaxed text-[#f6f3ee]/65">{feature.body}</p>

@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { memo, type FC } from "react";
-import { cva, type VariantProps } from "class-variance-authority";
+import { memo, type FC } from 'react';
+import { cva, type VariantProps } from 'class-variance-authority';
 import {
   FileIcon,
   FileTextIcon,
@@ -10,92 +10,82 @@ import {
   VideoIcon,
   BracesIcon,
   DownloadIcon,
-} from "lucide-react";
-import type { FileMessagePartComponent } from "@assistant-ui/react";
-import { cn } from "@ariforce/ui/lib/utils";
-import { AudioPlayer, VideoPlayer } from "./media-player";
+} from 'lucide-react';
+import type { FileMessagePartComponent } from '@assistant-ui/react';
+import { cn } from '@ariforce/ui/lib/utils';
+import { AudioPlayer, VideoPlayer } from './media-player';
 
 const fileVariants = cva(
-  "aui-file-root inline-flex items-center gap-3 rounded-lg transition-colors",
+  'aui-file-root inline-flex items-center gap-3 rounded-lg transition-colors',
   {
     variants: {
       variant: {
-        outline: "border-border hover:bg-muted/50 border",
-        ghost: "hover:bg-muted/50",
-        muted: "bg-muted/50 hover:bg-muted/70",
+        outline: 'border-border hover:bg-muted/50 border',
+        ghost: 'hover:bg-muted/50',
+        muted: 'bg-muted/50 hover:bg-muted/70',
       },
       size: {
-        sm: "px-2.5 py-1.5 text-xs",
-        default: "px-3 py-2 text-sm",
-        lg: "px-4 py-3 text-base",
+        sm: 'px-2.5 py-1.5 text-xs',
+        default: 'px-3 py-2 text-sm',
+        lg: 'px-4 py-3 text-base',
       },
     },
     defaultVariants: {
-      variant: "outline",
-      size: "default",
+      variant: 'outline',
+      size: 'default',
     },
   },
 );
 
 function getMimeTypeIcon(mimeType: string): FC<{ className?: string }> {
   const type = mimeType.toLowerCase();
-  if (type.startsWith("image/")) {
+  if (type.startsWith('image/')) {
     return ImageIcon;
   }
-  if (type === "application/pdf") {
+  if (type === 'application/pdf') {
     return FileTextIcon;
   }
-  if (type === "application/json") {
+  if (type === 'application/json') {
     return BracesIcon;
   }
-  if (type.startsWith("text/")) {
+  if (type.startsWith('text/')) {
     return FileTextIcon;
   }
-  if (type.startsWith("audio/")) {
+  if (type.startsWith('audio/')) {
     return MusicIcon;
   }
-  if (type.startsWith("video/")) {
+  if (type.startsWith('video/')) {
     return VideoIcon;
   }
   return FileIcon;
 }
 
-export type FileDataKind = "data-uri" | "url" | "base64" | "id";
+export type FileDataKind = 'data-uri' | 'url' | 'base64' | 'id';
 
-function getFileDataKind(
-  data: string,
-  sourceType?: "url" | "id",
-): FileDataKind {
-  if (sourceType === "url" && /^data:/i.test(data)) return "data-uri";
+function getFileDataKind(data: string, sourceType?: 'url' | 'id'): FileDataKind {
+  if (sourceType === 'url' && /^data:/i.test(data)) return 'data-uri';
   // A stored part can carry any value here; only the two literals count.
-  if (sourceType === "url" || sourceType === "id") return sourceType;
-  if (/^data:/i.test(data)) return "data-uri";
-  if (/^(https?:\/\/|blob:)/i.test(data)) return "url";
-  return "base64";
+  if (sourceType === 'url' || sourceType === 'id') return sourceType;
+  if (/^data:/i.test(data)) return 'data-uri';
+  if (/^(https?:\/\/|blob:)/i.test(data)) return 'url';
+  return 'base64';
 }
 
 function isUnsafeScheme(data: string): boolean {
-  return (
-    /^[a-z][a-z\d+.-]*:/i.test(data) &&
-    !/^(data:|https?:\/\/|blob:)/i.test(data)
-  );
+  return /^[a-z][a-z\d+.-]*:/i.test(data) && !/^(data:|https?:\/\/|blob:)/i.test(data);
 }
 
-function getFileHref(
-  data: string,
-  mimeType: string,
-  sourceType?: "url" | "id",
-): string | null {
+function getFileHref(data: string, mimeType: string, sourceType?: 'url' | 'id'): string | null {
   if (isUnsafeScheme(data)) return null;
   const kind = getFileDataKind(data, sourceType);
-  if (kind === "id") return null;
-  if (kind === "data-uri") return /^data:[^,]*,/i.test(data) ? data : null;
-  if (kind === "url") return /^(https?:\/\/|blob:)/i.test(data) ? data : null;
+  if (kind === 'id') return null;
+  if (kind === 'data-uri') return /^data:[^,]*,/i.test(data) ? data : null;
+  if (kind === 'url') return /^(https?:\/\/|blob:)/i.test(data) ? data : null;
   return `data:${mimeType};base64,${data}`;
 }
 
 function getBase64PayloadSize(payload: string): number {
-  const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+  const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
   const firstNonBase64 = payload.search(/[^A-Za-z\d+/]/);
   if (
     (firstNonBase64 !== -1 && firstNonBase64 !== payload.length - padding) ||
@@ -108,16 +98,14 @@ function getBase64PayloadSize(payload: string): number {
 }
 
 function getBase64Size(base64: string): number {
-  const payload = /[\t\n\f\r ]/.test(base64)
-    ? base64.replace(/[\t\n\f\r ]/g, "")
-    : base64;
+  const payload = /[\t\n\f\r ]/.test(base64) ? base64.replace(/[\t\n\f\r ]/g, '') : base64;
   return getBase64PayloadSize(payload);
 }
 
 function getDataUrlSize(data: string): number {
-  const fragment = data.indexOf("#");
+  const fragment = data.indexOf('#');
   const end = fragment < 0 ? data.length : fragment;
-  const comma = data.indexOf(",");
+  const comma = data.indexOf(',');
   if (comma < 0 || comma >= end) {
     return 0;
   }
@@ -128,22 +116,19 @@ function getDataUrlSize(data: string): number {
         .replace(/%([\da-f]{2})/gi, (_match, hex: string) =>
           String.fromCharCode(Number.parseInt(hex, 16)),
         )
-        .replace(/[\t\n\f\r ]/g, "");
+        .replace(/[\t\n\f\r ]/g, '');
     }
     return getBase64PayloadSize(payload);
   }
 
   // Each percent escape is one byte, including octets that are not valid UTF-8.
-  return new TextEncoder().encode(payload.replace(/%[\da-f]{2}/gi, "_"))
-    .byteLength;
+  return new TextEncoder().encode(payload.replace(/%[\da-f]{2}/gi, '_')).byteLength;
 }
 
 function getFileLabel(mimeType: string): string {
-  const subtype = /^[^/;]+\/(?:x-)?(?:[^;+]*\.)?([^;+.\s]+)/.exec(
-    mimeType.toLowerCase(),
-  )?.[1];
-  if (!subtype || subtype === "octet-stream") return "File";
-  if (subtype === "plain") return "Text file";
+  const subtype = /^[^/;]+\/(?:x-)?(?:[^;+]*\.)?([^;+.\s]+)/.exec(mimeType.toLowerCase())?.[1];
+  if (!subtype || subtype === 'octet-stream') return 'File';
+  if (subtype === 'plain') return 'Text file';
   return `${subtype.toUpperCase()} file`;
 }
 
@@ -157,16 +142,9 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export type FileRootProps = React.ComponentProps<"div"> &
-  VariantProps<typeof fileVariants>;
+export type FileRootProps = React.ComponentProps<'div'> & VariantProps<typeof fileVariants>;
 
-function FileRoot({
-  className,
-  variant,
-  size,
-  children,
-  ...props
-}: FileRootProps) {
+function FileRoot({ className, variant, size, children, ...props }: FileRootProps) {
   return (
     <div
       data-slot="file-root"
@@ -180,47 +158,37 @@ function FileRoot({
   );
 }
 
-type FileIconDisplayProps = React.ComponentProps<"span"> & {
+type FileIconDisplayProps = React.ComponentProps<'span'> & {
   mimeType?: string;
 };
 
-function FileIconDisplay({
-  mimeType,
-  className,
-  children,
-  ...props
-}: FileIconDisplayProps) {
+function FileIconDisplay({ mimeType, className, children, ...props }: FileIconDisplayProps) {
   const IconComponent = mimeType ? getMimeTypeIcon(mimeType) : FileIcon;
 
   return (
     <span
       data-slot="file-icon"
-      className={cn("text-muted-foreground shrink-0", className)}
+      className={cn('text-muted-foreground shrink-0', className)}
       {...props}
     >
-      {/* eslint-disable-next-line react-hooks/static-components -- The helper only selects module-level icon components. */}
       {children ?? <IconComponent className="size-5" />}
     </span>
   );
 }
 
-function FileName({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<"span">) {
+function FileName({ className, children, ...props }: React.ComponentProps<'span'>) {
   return (
     <span
       data-slot="file-name"
-      className={cn("min-w-0 flex-1 truncate font-medium", className)}
+      className={cn('min-w-0 flex-1 truncate font-medium', className)}
       {...props}
     >
-      {children || "Unnamed file"}
+      {children || 'Unnamed file'}
     </span>
   );
 }
 
-type FileSizeProps = React.ComponentProps<"span"> & {
+type FileSizeProps = React.ComponentProps<'span'> & {
   bytes: number;
 };
 
@@ -228,7 +196,7 @@ function FileSize({ bytes, className, ...props }: FileSizeProps) {
   return (
     <span
       data-slot="file-size"
-      className={cn("text-muted-foreground shrink-0", className)}
+      className={cn('text-muted-foreground shrink-0', className)}
       {...props}
     >
       {formatFileSize(bytes)}
@@ -236,11 +204,11 @@ function FileSize({ bytes, className, ...props }: FileSizeProps) {
   );
 }
 
-type FileDownloadProps = Omit<React.ComponentProps<"a">, "href"> & {
+type FileDownloadProps = Omit<React.ComponentProps<'a'>, 'href'> & {
   data: string;
   mimeType: string;
   filename?: string;
-  sourceType?: "url" | "id";
+  sourceType?: 'url' | 'id';
 };
 
 function FileDownload({
@@ -252,7 +220,7 @@ function FileDownload({
   children,
   ...props
 }: FileDownloadProps) {
-  if (typeof data !== "string") return null;
+  if (typeof data !== 'string') return null;
   const kind = getFileDataKind(data, sourceType);
   const href = getFileHref(data, mimeType, sourceType);
   if (!href) return null;
@@ -261,13 +229,13 @@ function FileDownload({
     <a
       data-slot="file-download"
       href={href}
-      download={filename || "download"}
-      {...(kind === "url" && { target: "_blank", rel: "noopener noreferrer" })}
+      download={filename || 'download'}
+      {...(kind === 'url' && { target: '_blank', rel: 'noopener noreferrer' })}
       className={cn(
-        "text-muted-foreground hover:bg-accent hover:text-accent-foreground shrink-0 rounded-md p-1 transition-colors",
+        'text-muted-foreground hover:bg-accent hover:text-accent-foreground shrink-0 rounded-md p-1 transition-colors',
         className,
       )}
-      aria-label={!children ? `Download ${filename || "file"}` : undefined}
+      aria-label={!children ? `Download ${filename || 'file'}` : undefined}
       {...props}
     >
       {children || <DownloadIcon className="size-4" />}
@@ -275,14 +243,11 @@ function FileDownload({
   );
 }
 
-export interface FilePlayerProps extends Omit<
-  React.ComponentProps<"div">,
-  "children"
-> {
+export interface FilePlayerProps extends Omit<React.ComponentProps<'div'>, 'children'> {
   data: string;
   mimeType: string;
   filename?: string | undefined;
-  sourceType?: "url" | "id" | undefined;
+  sourceType?: 'url' | 'id' | undefined;
 }
 
 function FilePlayer({
@@ -298,15 +263,14 @@ function FilePlayer({
 
   if (
     !src ||
-    (!normalizedMimeType.startsWith("audio/") &&
-      !normalizedMimeType.startsWith("video/"))
+    (!normalizedMimeType.startsWith('audio/') && !normalizedMimeType.startsWith('video/'))
   ) {
     return null;
   }
 
   return (
-    <div data-slot="file-player" className={cn("w-full", className)} {...props}>
-      {normalizedMimeType.startsWith("audio/") ? (
+    <div data-slot="file-player" className={cn('w-full', className)} {...props}>
+      {normalizedMimeType.startsWith('audio/') ? (
         <AudioPlayer src={src} title={filename} />
       ) : (
         <VideoPlayer src={src} title={filename} />
@@ -319,32 +283,23 @@ const FileImpl: FileMessagePartComponent = (part) => {
   // History from storage can carry fields of the wrong type; render a generic
   // file instead of throwing. Without string data there is nothing to play,
   // size or download.
-  const data = typeof part.data === "string" ? part.data : undefined;
-  const mimeType =
-    typeof part.mimeType === "string"
-      ? part.mimeType
-      : "application/octet-stream";
-  const filename =
-    typeof part.filename === "string" ? part.filename : undefined;
+  const data = typeof part.data === 'string' ? part.data : undefined;
+  const mimeType = typeof part.mimeType === 'string' ? part.mimeType : 'application/octet-stream';
+  const filename = typeof part.filename === 'string' ? part.filename : undefined;
   const sourceType =
-    part.sourceType === "url" || part.sourceType === "id"
-      ? part.sourceType
-      : undefined;
-  const kind =
-    data === undefined ? undefined : getFileDataKind(data, sourceType);
+    part.sourceType === 'url' || part.sourceType === 'id' ? part.sourceType : undefined;
+  const kind = data === undefined ? undefined : getFileDataKind(data, sourceType);
   const bytes =
     data === undefined
       ? undefined
-      : kind === "data-uri"
+      : kind === 'data-uri'
         ? getDataUrlSize(data)
-        : kind === "base64"
+        : kind === 'base64'
           ? getBase64Size(data)
           : undefined;
-  const mediaSource =
-    data === undefined ? null : getFileHref(data, mimeType, sourceType);
+  const mediaSource = data === undefined ? null : getFileHref(data, mimeType, sourceType);
   const isMedia =
-    mimeType.toLowerCase().startsWith("audio/") ||
-    mimeType.toLowerCase().startsWith("video/");
+    mimeType.toLowerCase().startsWith('audio/') || mimeType.toLowerCase().startsWith('video/');
 
   if (data !== undefined && mediaSource && isMedia) {
     return (
@@ -357,10 +312,7 @@ const FileImpl: FileMessagePartComponent = (part) => {
         />
         <div className="flex min-w-0 items-center justify-end gap-2 px-1">
           {bytes !== undefined && (
-            <FileSize
-              bytes={bytes}
-              className="text-muted-foreground text-[11px]"
-            />
+            <FileSize bytes={bytes} className="text-muted-foreground text-[11px]" />
           )}
           <FileDownload
             data={data}
@@ -401,7 +353,7 @@ const File = memo(FileImpl) as unknown as FileMessagePartComponent & {
   Player: typeof FilePlayer;
 };
 
-File.displayName = "File";
+File.displayName = 'File';
 File.Root = FileRoot;
 File.Icon = FileIconDisplay;
 File.Name = FileName;

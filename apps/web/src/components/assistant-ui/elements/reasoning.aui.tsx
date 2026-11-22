@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
-import { forwardRef, memo, useCallback, useRef } from "react";
+import { forwardRef, memo, useCallback, useRef } from 'react';
 import {
   useScrollLock,
   useAuiState,
   type ReasoningMessagePartComponent,
   type ReasoningGroupComponent,
-} from "@assistant-ui/react";
-import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
+} from '@assistant-ui/react';
+import { MarkdownText } from '@/components/assistant-ui/elements/markdown-text';
 import {
   ANIMATION_DURATION,
   ReasoningRoot as ReasoningRootBase,
@@ -17,62 +17,53 @@ import {
   ReasoningFade,
   reasoningVariants,
   type ReasoningRootProps,
-} from "./reasoning";
+} from './reasoning';
 
-export type { ReasoningRootProps } from "./reasoning";
+export type { ReasoningRootProps } from './reasoning';
 
 /** `ReasoningRoot` with the thread viewport scroll locked during disclosure animations. */
-const ReasoningRoot = forwardRef<
-  HTMLDivElement,
-  Omit<ReasoningRootProps, "ref">
->(function ReasoningRoot({ onAnimationStart, ...props }, ref) {
-  const collapsibleRef = useRef<HTMLDivElement | null>(null);
-  const lockScroll = useScrollLock(collapsibleRef, ANIMATION_DURATION);
+const ReasoningRoot = forwardRef<HTMLDivElement, Omit<ReasoningRootProps, 'ref'>>(
+  function ReasoningRoot({ onAnimationStart, ...props }, ref) {
+    const collapsibleRef = useRef<HTMLDivElement | null>(null);
+    const lockScroll = useScrollLock(collapsibleRef, ANIMATION_DURATION);
 
-  const handleAnimationStart = useCallback(() => {
-    lockScroll();
-    onAnimationStart?.();
-  }, [lockScroll, onAnimationStart]);
+    const handleAnimationStart = useCallback(() => {
+      lockScroll();
+      onAnimationStart?.();
+    }, [lockScroll, onAnimationStart]);
 
-  const composedRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      collapsibleRef.current = node;
-      if (typeof ref === "function") {
-        const cleanup: unknown = ref(node);
-        if (typeof cleanup === "function") {
-          return () => {
-            collapsibleRef.current = null;
-            (cleanup as () => void)();
-          };
+    const composedRef = useCallback(
+      (node: HTMLDivElement | null) => {
+        collapsibleRef.current = node;
+        if (typeof ref === 'function') {
+          const cleanup: unknown = ref(node);
+          if (typeof cleanup === 'function') {
+            return () => {
+              collapsibleRef.current = null;
+              (cleanup as () => void)();
+            };
+          }
+        } else if (ref) {
+          (ref as { current: HTMLDivElement | null }).current = node;
         }
-      } else if (ref) {
-        (ref as { current: HTMLDivElement | null }).current = node;
-      }
-      return undefined;
-    },
-    [ref],
-  );
+        return undefined;
+      },
+      [ref],
+    );
 
-  return (
-    <ReasoningRootBase
-      ref={composedRef}
-      onAnimationStart={handleAnimationStart}
-      {...props}
-    />
-  );
-});
+    return (
+      <ReasoningRootBase ref={composedRef} onAnimationStart={handleAnimationStart} {...props} />
+    );
+  },
+);
 
 const ReasoningImpl: ReasoningMessagePartComponent = () => <MarkdownText />;
 
-const ReasoningGroupImpl: ReasoningGroupComponent = ({
-  children,
-  startIndex,
-  endIndex,
-}) => {
+const ReasoningGroupImpl: ReasoningGroupComponent = ({ children, startIndex, endIndex }) => {
   const isReasoningStreaming = useAuiState((s) => {
-    if (s.message.status?.type !== "running") return false;
+    if (s.message.status?.type !== 'running') return false;
     for (let index = startIndex; index <= endIndex; index++) {
-      if (s.message.parts[index]?.status.type === "running") return true;
+      if (s.message.parts[index]?.status.type === 'running') return true;
     }
     return false;
   });
@@ -87,9 +78,7 @@ const ReasoningGroupImpl: ReasoningGroupComponent = ({
   );
 };
 
-const Reasoning = memo(
-  ReasoningImpl,
-) as unknown as ReasoningMessagePartComponent & {
+const Reasoning = memo(ReasoningImpl) as unknown as ReasoningMessagePartComponent & {
   Root: typeof ReasoningRoot;
   Trigger: typeof ReasoningTrigger;
   Content: typeof ReasoningContent;
@@ -97,7 +86,7 @@ const Reasoning = memo(
   Fade: typeof ReasoningFade;
 };
 
-Reasoning.displayName = "Reasoning";
+Reasoning.displayName = 'Reasoning';
 Reasoning.Root = ReasoningRoot;
 Reasoning.Trigger = ReasoningTrigger;
 Reasoning.Content = ReasoningContent;
@@ -112,7 +101,7 @@ Reasoning.Fade = ReasoningFade;
  * See `thread.aui.tsx` for an example.
  */
 const ReasoningGroup = memo(ReasoningGroupImpl);
-ReasoningGroup.displayName = "ReasoningGroup";
+ReasoningGroup.displayName = 'ReasoningGroup';
 
 export {
   Reasoning,

@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { Orb } from '@yogesharc/thinking-orbs';
-import { CyclingOrb } from '@/components/bot/orb-cycle';
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
@@ -91,10 +90,6 @@ const adapter: ChatModelAdapter = {
         .map((part) => (part.type === 'text' ? part.text : ''))
         .join('')
         .trim() ?? '';
-    yield {
-      content: [{ type: 'reasoning', text: 'Checking your line in AriForce.' }],
-    };
-    await new Promise((resolve) => setTimeout(resolve, 800));
     if (abortSignal.aborted) return;
     let res: Response;
     try {
@@ -107,35 +102,37 @@ const adapter: ChatModelAdapter = {
       });
     } catch (error) {
       if (abortSignal.aborted) throw error;
-      throw new Error(chatError(0));
+      throw new Error(chatError(0), { cause: error });
     }
     const body = (await res.json().catch(() => null)) as BotReply | null;
     if (!res.ok || !body?.narrative) throw new Error(chatError(res.status));
-    yield {
-      content: [
-        {
-          type: 'reasoning',
-          text: 'Checked your line in AriForce. The figures below are only from that line.',
-        },
-        { type: 'text', text: asMarkdown(body) },
-      ],
-    };
+    yield { content: [{ type: 'text', text: asMarkdown(body) }] };
   },
 };
 
 function AribotOrb() {
   const running = useAuiState((s) => s.thread.isRunning);
-  return <CyclingOrb active={running} size={22} />;
+  return running ? (
+    <Orb state="reasoning" variant="twins" size={22} label="ARIBOT" className="text-primary" />
+  ) : (
+    <Orb state="working" variant="gyro" size={22} label="ARIBOT" className="text-primary" />
+  );
 }
 
 function Welcome() {
   const { role } = useRole();
-  const companyWide = role === 'director' || role === 'system_admin' || role === 'distribution_head';
+  const companyWide = role === 'director' || role === 'distribution_head';
   const asks = READY.filter((item) => !item.director || companyWide);
   const groups = [...new Set(asks.map((item) => item.group))];
   return (
     <div className="mb-6 flex flex-col gap-1 px-2">
-      <Orb state="reasoning" variant="twins" size={36} label="ARIBOT" className="text-primary mb-3" />
+      <Orb
+        state="reasoning"
+        variant="twins"
+        size={36}
+        label="ARIBOT"
+        className="text-primary mb-3"
+      />
       <p className="animate-in fade-in slide-in-from-bottom-1 fill-mode-both text-2xl font-medium tracking-tight duration-200">
         Ask about your team
       </p>

@@ -1,15 +1,8 @@
-"use client";
+'use client';
 
-import {
-  memo,
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  type PropsWithChildren,
-} from "react";
-import { createPortal } from "react-dom";
-import { cva, type VariantProps } from "class-variance-authority";
+import { memo, useState, useEffect, useCallback, useRef, type PropsWithChildren } from 'react';
+import { createPortal } from 'react-dom';
+import { cva, type VariantProps } from 'class-variance-authority';
 import {
   CopyIcon,
   DownloadIcon,
@@ -19,39 +12,34 @@ import {
   RefreshCwIcon,
   ShieldAlertIcon,
   XIcon,
-} from "lucide-react";
-import type {
-  ImageMessagePart,
-  ImageMessagePartComponent,
-} from "@assistant-ui/react";
-import { cn } from "@ariforce/ui/lib/utils";
-import { hostOf, safeHref } from "../utils/href";
+} from 'lucide-react';
+import type { ImageMessagePart, ImageMessagePartComponent } from '@assistant-ui/react';
+import { cn } from '@ariforce/ui/lib/utils';
+import { hostOf, safeHref } from '../utils/href';
 
 const extensionForMimeType = (mimeType?: string): string => {
   switch (mimeType) {
-    case "image/png":
-      return "png";
-    case "image/jpeg":
-    case "image/jpg":
-      return "jpg";
-    case "image/webp":
-      return "webp";
-    case "image/gif":
-      return "gif";
-    case "image/svg+xml":
-      return "svg";
+    case 'image/png':
+      return 'png';
+    case 'image/jpeg':
+    case 'image/jpg':
+      return 'jpg';
+    case 'image/webp':
+      return 'webp';
+    case 'image/gif':
+      return 'gif';
+    case 'image/svg+xml':
+      return 'svg';
     default:
-      return "png";
+      return 'png';
   }
 };
 
 const dataUriToBlob = (dataUri: string): Blob | null => {
-  const commaIndex = dataUri.indexOf(",");
+  const commaIndex = dataUri.indexOf(',');
   const meta = commaIndex >= 0 ? dataUri.slice(0, commaIndex) : dataUri;
-  const data = commaIndex >= 0 ? dataUri.slice(commaIndex + 1) : "";
-  const mime =
-    meta.match(/data:([^;]+)/i)?.[1]?.toLowerCase() ??
-    "application/octet-stream";
+  const data = commaIndex >= 0 ? dataUri.slice(commaIndex + 1) : '';
+  const mime = meta.match(/data:([^;]+)/i)?.[1]?.toLowerCase() ?? 'application/octet-stream';
   if (!/;base64/i.test(meta)) {
     const parts: BlobPart[] = [];
     let last = 0;
@@ -60,10 +48,7 @@ const dataUriToBlob = (dataUri: string): Blob | null => {
       const run = match[0];
       const escaped = new Uint8Array(run.length / 3);
       for (let index = 0; index < escaped.length; index++) {
-        escaped[index] = Number.parseInt(
-          run.slice(index * 3 + 1, index * 3 + 3),
-          16,
-        );
+        escaped[index] = Number.parseInt(run.slice(index * 3 + 1, index * 3 + 3), 16);
       }
       parts.push(escaped);
       last = match.index + run.length;
@@ -93,22 +78,24 @@ const defaultFilenameFromImage = (image: string): string => {
   if (mime) return `image.${extensionForMimeType(mime)}`;
   try {
     const path = new URL(image, document.baseURI).pathname;
-    const encodedBasename = path.split("/").pop() ?? "";
+    const encodedBasename = path.split('/').pop() ?? '';
     let basename = encodedBasename;
     try {
       basename = decodeURIComponent(encodedBasename);
-    } catch {}
+    } catch {
+      /* keep the encoded name */
+    }
     if (/\.(png|jpe?g|webp|gif|svg)$/i.test(basename)) return basename;
-  } catch {}
-  return "image.png";
+  } catch {
+    /* not a URL */
+  }
+  return 'image.png';
 };
 
 const safeImageDownloadHref = (image: string): string | null => {
   try {
     const url = new URL(image, document.baseURI);
-    return url.protocol === "http:" ||
-      url.protocol === "https:" ||
-      url.protocol === "blob:"
+    return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'blob:'
       ? image
       : null;
   } catch {
@@ -116,10 +103,8 @@ const safeImageDownloadHref = (image: string): string | null => {
   }
 };
 
-const downloadImagePart = (
-  part: Pick<ImageMessagePart, "image" | "filename">,
-): void => {
-  if (typeof document === "undefined") return;
+const downloadImagePart = (part: Pick<ImageMessagePart, 'image' | 'filename'>): void => {
+  if (typeof document === 'undefined') return;
   const filename = part.filename ?? defaultFilenameFromImage(part.image);
   const isDataUri = /^data:/i.test(part.image);
   const blob = isDataUri ? dataUriToBlob(part.image) : null;
@@ -127,67 +112,55 @@ const downloadImagePart = (
   const objectUrl = blob ? URL.createObjectURL(blob) : null;
   const href = objectUrl ?? safeImageDownloadHref(part.image);
   if (!href) return;
-  const a = document.createElement("a");
+  const a = document.createElement('a');
   a.href = href;
   a.download = filename;
-  a.rel = "noopener";
+  a.rel = 'noopener';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   if (objectUrl) setTimeout(() => URL.revokeObjectURL(objectUrl), 40_000);
 };
 
-const copyImagePart = async (
-  part: Pick<ImageMessagePart, "image">,
-): Promise<void> => {
+const copyImagePart = async (part: Pick<ImageMessagePart, 'image'>): Promise<void> => {
   if (
-    typeof navigator === "undefined" ||
+    typeof navigator === 'undefined' ||
     !navigator.clipboard ||
-    typeof ClipboardItem === "undefined"
+    typeof ClipboardItem === 'undefined'
   ) {
-    throw new Error("Clipboard API is not available in this environment.");
+    throw new Error('Clipboard API is not available in this environment.');
   }
   const blob = /^data:/i.test(part.image)
     ? dataUriToBlob(part.image)
     : await fetch(part.image).then((r) => r.blob());
   if (!blob) return;
-  const mime = mimeFromImage(part.image) ?? blob.type ?? "image/png";
+  const mime = mimeFromImage(part.image) ?? blob.type ?? 'image/png';
   await navigator.clipboard.write([new ClipboardItem({ [mime]: blob })]);
 };
 
-const imageVariants = cva(
-  "aui-image-root relative overflow-hidden rounded-lg",
-  {
-    variants: {
-      variant: {
-        outline: "border-border border",
-        ghost: "",
-        muted: "bg-muted/50",
-      },
-      size: {
-        sm: "max-w-64",
-        default: "max-w-96",
-        lg: "max-w-[512px]",
-        full: "w-full",
-      },
+const imageVariants = cva('aui-image-root relative overflow-hidden rounded-lg', {
+  variants: {
+    variant: {
+      outline: 'border-border border',
+      ghost: '',
+      muted: 'bg-muted/50',
     },
-    defaultVariants: {
-      variant: "outline",
-      size: "default",
+    size: {
+      sm: 'max-w-64',
+      default: 'max-w-96',
+      lg: 'max-w-[512px]',
+      full: 'w-full',
     },
   },
-);
+  defaultVariants: {
+    variant: 'outline',
+    size: 'default',
+  },
+});
 
-export type ImageRootProps = React.ComponentProps<"div"> &
-  VariantProps<typeof imageVariants>;
+export type ImageRootProps = React.ComponentProps<'div'> & VariantProps<typeof imageVariants>;
 
-function ImageRoot({
-  className,
-  variant,
-  size,
-  children,
-  ...props
-}: ImageRootProps) {
+function ImageRoot({ className, variant, size, children, ...props }: ImageRootProps) {
   return (
     <div
       data-slot="image-root"
@@ -201,20 +174,20 @@ function ImageRoot({
   );
 }
 
-type ImagePreviewProps = Omit<React.ComponentProps<"img">, "children"> & {
+type ImagePreviewProps = Omit<React.ComponentProps<'img'>, 'children'> & {
   containerClassName?: string | undefined;
-  ratio?: "auto" | "1:1" | "4:3" | "16:9" | "9:16" | undefined;
-  fit?: "cover" | "contain" | undefined;
+  ratio?: 'auto' | '1:1' | '4:3' | '16:9' | '9:16' | undefined;
+  fit?: 'cover' | 'contain' | undefined;
 };
 
 function ImagePreview({
   className,
   containerClassName,
-  ratio = "auto",
-  fit = "contain",
+  ratio = 'auto',
+  fit = 'contain',
   onLoad,
   onError,
-  alt = "Image content",
+  alt = 'Image content',
   src,
   ...props
 }: ImagePreviewProps) {
@@ -224,21 +197,21 @@ function ImagePreview({
 
   const loaded = loadedSrc === src;
   const error = errorSrc === src;
-  const fixedRatio = ratio !== "auto";
+  const fixedRatio = ratio !== 'auto';
   const ratioClassName =
-    ratio === "1:1"
-      ? "aspect-square"
-      : ratio === "4:3"
-        ? "aspect-[4/3]"
-        : ratio === "16:9"
-          ? "aspect-video"
-          : ratio === "9:16"
-            ? "aspect-[9/16]"
+    ratio === '1:1'
+      ? 'aspect-square'
+      : ratio === '4:3'
+        ? 'aspect-[4/3]'
+        : ratio === '16:9'
+          ? 'aspect-video'
+          : ratio === '9:16'
+            ? 'aspect-[9/16]'
             : undefined;
 
   useEffect(() => {
     const image = imgRef.current;
-    if (typeof src !== "string" || !image?.complete) return;
+    if (typeof src !== 'string' || !image?.complete) return;
     if (image.naturalWidth > 0) setLoadedSrc(src);
     else setErrorSrc(src);
   }, [src]);
@@ -246,11 +219,7 @@ function ImagePreview({
   return (
     <div
       data-slot="image-preview"
-      className={cn(
-        "relative",
-        fixedRatio ? ratioClassName : "min-h-32",
-        containerClassName,
-      )}
+      className={cn('relative', fixedRatio ? ratioClassName : 'min-h-32', containerClassName)}
     >
       {!loaded && !error && (
         <div
@@ -264,8 +233,8 @@ function ImagePreview({
         <div
           data-slot="image-preview-error"
           className={cn(
-            "bg-muted/50 flex min-h-32 items-center justify-center p-4",
-            fixedRatio && "absolute inset-0",
+            'bg-muted/50 flex min-h-32 items-center justify-center p-4',
+            fixedRatio && 'absolute inset-0',
           )}
         >
           <ImageOffIcon className="text-muted-foreground size-8" />
@@ -277,20 +246,20 @@ function ImagePreview({
           alt={alt}
           className={cn(
             fixedRatio
-              ? cn("block h-full w-full", {
-                  "object-cover": fit === "cover",
-                  "object-contain": fit === "contain",
+              ? cn('block h-full w-full', {
+                  'object-cover': fit === 'cover',
+                  'object-contain': fit === 'contain',
                 })
-              : "block h-auto w-full object-contain",
-            !loaded && "invisible",
+              : 'block h-auto w-full object-contain',
+            !loaded && 'invisible',
             className,
           )}
           onLoad={(e) => {
-            if (typeof src === "string") setLoadedSrc(src);
+            if (typeof src === 'string') setLoadedSrc(src);
             onLoad?.(e);
           }}
           onError={(e) => {
-            if (typeof src === "string") setErrorSrc(src);
+            if (typeof src === 'string') setErrorSrc(src);
             onError?.(e);
           }}
           {...props}
@@ -304,15 +273,9 @@ export type ImageSourceProps = {
   label?: string | undefined;
   url?: string | undefined;
   iconUrl?: string | undefined;
-} & React.ComponentProps<"div">;
+} & React.ComponentProps<'div'>;
 
-function ImageSource({
-  className,
-  label,
-  url,
-  iconUrl,
-  ...props
-}: ImageSourceProps) {
+function ImageSource({ className, label, url, iconUrl, ...props }: ImageSourceProps) {
   const href = safeHref(url);
   const host = hostOf(url);
   const displayLabel = label || host;
@@ -326,7 +289,7 @@ function ImageSource({
     <div
       data-slot="image-source"
       className={cn(
-        "text-muted-foreground flex items-center gap-2 border-t px-2 py-1.5 text-xs",
+        'text-muted-foreground flex items-center gap-2 border-t px-2 py-1.5 text-xs',
         className,
       )}
       {...props}
@@ -368,20 +331,13 @@ function ImageSource({
   );
 }
 
-function ImageFilename({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<"span">) {
+function ImageFilename({ className, children, ...props }: React.ComponentProps<'span'>) {
   if (!children) return null;
 
   return (
     <span
       data-slot="image-filename"
-      className={cn(
-        "text-muted-foreground block truncate px-2 py-1.5 text-xs",
-        className,
-      )}
+      className={cn('text-muted-foreground block truncate px-2 py-1.5 text-xs', className)}
       {...props}
     >
       {children}
@@ -394,7 +350,7 @@ type ImageZoomProps = PropsWithChildren<{
   alt?: string;
 }>;
 
-function ImageZoom({ src, alt = "Image preview", children }: ImageZoomProps) {
+function ImageZoom({ src, alt = 'Image preview', children }: ImageZoomProps) {
   const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -409,11 +365,11 @@ function ImageZoom({ src, alt = "Image preview", children }: ImageZoomProps) {
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === 'Escape') {
         handleClose();
         return;
       }
-      if (e.key !== "Tab") return;
+      if (e.key !== 'Tab') return;
       const focusables = overlayRef.current?.querySelectorAll<HTMLElement>(
         'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
       );
@@ -428,14 +384,14 @@ function ImageZoom({ src, alt = "Image preview", children }: ImageZoomProps) {
         first.focus();
       }
     };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, handleClose]);
 
   useEffect(() => {
     if (!isOpen) return;
     const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = originalOverflow;
     };
@@ -451,15 +407,15 @@ function ImageZoom({ src, alt = "Image preview", children }: ImageZoomProps) {
         ref={triggerRef}
         onClick={handleOpen}
         onKeyDown={(e) => {
-          if (e.key === "Enter") {
+          if (e.key === 'Enter') {
             e.preventDefault();
             e.currentTarget.click();
-          } else if (e.key === " ") {
+          } else if (e.key === ' ') {
             e.preventDefault();
           }
         }}
         onKeyUp={(e) => {
-          if (e.key === " ") e.currentTarget.click();
+          if (e.key === ' ') e.currentTarget.click();
         }}
         role="button"
         tabIndex={0}
@@ -512,10 +468,7 @@ function ImageGenerating({ className }: { className?: string }) {
   return (
     <div
       data-slot="image-generating"
-      className={cn(
-        "bg-muted/50 flex min-h-32 items-center justify-center p-4",
-        className,
-      )}
+      className={cn('bg-muted/50 flex min-h-32 items-center justify-center p-4', className)}
     >
       <Loader2Icon className="text-muted-foreground size-8 animate-spin" />
       <span className="sr-only">Generating image…</span>
@@ -523,18 +476,12 @@ function ImageGenerating({ className }: { className?: string }) {
   );
 }
 
-function ImageContentFilterError({
-  className,
-  reason,
-}: {
-  className?: string;
-  reason?: string;
-}) {
+function ImageContentFilterError({ className, reason }: { className?: string; reason?: string }) {
   return (
     <div
       data-slot="image-content-filter-error"
       className={cn(
-        "bg-muted/50 flex min-h-32 flex-col items-center justify-center gap-2 p-4 text-center",
+        'bg-muted/50 flex min-h-32 flex-col items-center justify-center gap-2 p-4 text-center',
         className,
       )}
     >
@@ -555,11 +502,7 @@ export type ImageActionsProps = {
   className?: string;
 };
 
-function RegenerateButton({
-  onRegenerate,
-}: {
-  onRegenerate: () => void | Promise<void>;
-}) {
+function RegenerateButton({ onRegenerate }: { onRegenerate: () => void | Promise<void> }) {
   const [isRegenerating, setIsRegenerating] = useState(false);
   return (
     <button
@@ -569,6 +512,7 @@ function RegenerateButton({
         try {
           await onRegenerate();
         } catch {
+          /* keep the current image */
         } finally {
           setIsRegenerating(false);
         }
@@ -578,19 +522,14 @@ function RegenerateButton({
       aria-label="Regenerate image"
       className="hover:bg-muted inline-flex size-7 items-center justify-center rounded disabled:opacity-50"
     >
-      <RefreshCwIcon
-        className={cn("size-4", isRegenerating && "animate-spin")}
-      />
+      <RefreshCwIcon className={cn('size-4', isRegenerating && 'animate-spin')} />
     </button>
   );
 }
 
 function ImageActions({ part, onRegenerate, className }: ImageActionsProps) {
   return (
-    <div
-      data-slot="image-actions"
-      className={cn("flex items-center gap-1 p-1", className)}
-    >
+    <div data-slot="image-actions" className={cn('flex items-center gap-1 p-1', className)}>
       <button
         type="button"
         onClick={() => downloadImagePart(part)}
@@ -619,7 +558,7 @@ function ImageActions({ part, onRegenerate, className }: ImageActionsProps) {
 const ImageImpl: ImageMessagePartComponent = (props) => {
   const { image, filename, status } = props;
 
-  if (status?.type === "running") {
+  if (status?.type === 'running') {
     return (
       <ImageRoot>
         <ImageGenerating />
@@ -628,7 +567,7 @@ const ImageImpl: ImageMessagePartComponent = (props) => {
     );
   }
 
-  if (status?.type === "incomplete" && status.reason === "content-filter") {
+  if (status?.type === 'incomplete' && status.reason === 'content-filter') {
     return (
       <ImageRoot>
         <ImageContentFilterError reason="The provider blocked this image." />
@@ -638,8 +577,8 @@ const ImageImpl: ImageMessagePartComponent = (props) => {
 
   return (
     <ImageRoot>
-      <ImageZoom src={image} alt={filename || "Image content"}>
-        <ImagePreview src={image} alt={filename || "Image content"} />
+      <ImageZoom src={image} alt={filename || 'Image content'}>
+        <ImagePreview src={image} alt={filename || 'Image content'} />
       </ImageZoom>
       <ImageFilename>{filename}</ImageFilename>
     </ImageRoot>
@@ -657,7 +596,7 @@ const Image = memo(ImageImpl) as unknown as ImageMessagePartComponent & {
   ContentFilterError: typeof ImageContentFilterError;
 };
 
-Image.displayName = "Image";
+Image.displayName = 'Image';
 Image.Root = ImageRoot;
 Image.Preview = ImagePreview;
 Image.Source = ImageSource;
