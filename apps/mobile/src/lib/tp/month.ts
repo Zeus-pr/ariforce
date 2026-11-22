@@ -3,7 +3,7 @@ import type { TpPlan } from './adapter';
 /**
  * One tour plan for the next calendar month.
  * Working days need a saved draft. A full-day pending or approved leave does not.
- * The company weekly off does not. Sunday is required when it is a working day.
+ * The company weekly off does not. Sunday never does: a plan on Sunday is fine, and so is none.
  * Slide-to-submit sends those days as one item, which is one approval.
  */
 
@@ -229,7 +229,7 @@ export type MonthView =
 
 /**
  * ready: every working day has a draft and nothing in the month is already sent.
- * sent: every working day is already pending or approved (or the month has no working day).
+ * sent: every working day is already pending or approved. Sunday is never required.
  * gaps: some working days have no plan yet.
  * split: part of the month is already sent, so the rest cannot join one request.
  */
@@ -240,7 +240,9 @@ export function monthView(
   leave: Set<string>,
   weeklyOff: number[],
 ): MonthView {
-  const required = eachDate(from, to).filter((d) => !leave.has(d) && !weeklyOff.includes(dow(d)));
+  const required = eachDate(from, to).filter(
+    (d) => dow(d) !== 0 && !leave.has(d) && !weeklyOff.includes(dow(d)),
+  );
   const overlaps = (t: MonthItem) => t.from <= to && t.to >= from;
   const blocking = items.filter(
     (t) => (t.status === 'pending' || t.status === 'approved') && overlaps(t),

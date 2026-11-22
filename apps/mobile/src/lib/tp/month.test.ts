@@ -139,6 +139,44 @@ describe('tour plan month', () => {
     expect(sent.kind).toBe('sent');
   });
 
+  it('accepts December with or without a Sunday plan', () => {
+    const weekdays = [
+      '2026-12-01',
+      '2026-12-02',
+      '2026-12-03',
+      '2026-12-04',
+      '2026-12-05',
+      '2026-12-07',
+    ].map((date, i) => item(String(i), date, date, 'approved'));
+    const bare = monthView(weekdays, '2026-12-01', '2026-12-07', new Set(), []);
+    expect(bare.kind).toBe('sent');
+    const withSunday = monthView(
+      [...weekdays, item('sun', '2026-12-06', '2026-12-06', 'approved')],
+      '2026-12-01',
+      '2026-12-07',
+      new Set(),
+      [],
+    );
+    expect(withSunday.kind).toBe('sent');
+    const december = Array.from({ length: 31 }, (_, i) => {
+      const date = `2026-12-${String(i + 1).padStart(2, '0')}`;
+      return new Date(`${date}T00:00:00Z`).getUTCDay() === 0
+        ? null
+        : item(date, date, date, 'approved');
+    }).filter((row): row is MonthItem => row !== null);
+    const now = new Date('2026-11-22T10:00:00+05:30');
+    expect(
+      tpPunchGate({
+        today: '2026-11-22',
+        now,
+        rank: 1,
+        items: december,
+        leaveDates: new Set(),
+        weeklyOff: [],
+      }).blocked,
+    ).toBe(false);
+  });
+
   it('refuses to mix a day that is already sent with drafts', () => {
     const view = monthView(
       [
