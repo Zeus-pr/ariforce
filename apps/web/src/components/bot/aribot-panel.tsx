@@ -52,6 +52,12 @@ const READY: { group: string; ask: string; director?: boolean }[] = [
   { group: 'Company', ask: 'Which area has the lowest coverage?', director: true },
   { group: 'Company', ask: 'What is company primary sales this month?', director: true },
   { group: 'Company', ask: 'What is company secondary sales this month?', director: true },
+  { group: 'How to', ask: 'How do I find this month’s sales figures?' },
+  { group: 'How to', ask: 'How do I find this month’s coverage?' },
+  { group: 'How to', ask: 'How do I find my team?' },
+  { group: 'How to', ask: 'How do I file a DCR?' },
+  { group: 'How to', ask: 'How do I apply for leave?' },
+  { group: 'How to', ask: 'How do I submit an expense?' },
 ];
 
 function chatError(status: number): string {

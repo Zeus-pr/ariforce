@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { Orb } from '@yogesharc/thinking-orbs';
 import { Button } from '@ariforce/ui/components/button';
@@ -38,7 +39,9 @@ export function AribotIntro({
     if (thenOpen) onOpen();
   };
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -57,7 +60,7 @@ export function AribotIntro({
           <motion.div
             role="dialog"
             aria-labelledby="aribot-intro-title"
-            className="relative w-full max-w-md overflow-hidden rounded-3xl bg-[#161a22] text-[#f6f3ee] shadow-[0_30px_80px_rgba(18,21,28,0.45)]"
+            className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-[#161a22] text-[#f6f3ee] shadow-[0_30px_80px_rgba(18,21,28,0.45)]"
             initial={{ opacity: 0, y: 28, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 16, scale: 0.98 }}
@@ -69,7 +72,7 @@ export function AribotIntro({
               animate={{ scale: [1, 1.08, 1], opacity: [0.45, 0.7, 0.45] }}
               transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
             />
-            <div className="relative px-7 pt-7 pb-6">
+            <div className="relative min-h-0 flex-1 overflow-y-auto px-7 pt-7 pb-5">
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -116,32 +119,28 @@ export function AribotIntro({
                   </motion.li>
                 ))}
               </ul>
-              <motion.div
-                className="mt-6 flex items-center justify-end gap-2"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.7 }}
+            </div>
+            <div className="relative flex shrink-0 items-center justify-end gap-2 border-t border-white/10 px-7 py-4">
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-[#f6f3ee]/70 hover:bg-white/10 hover:text-[#f6f3ee]"
+                onClick={() => dismiss(false)}
               >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="text-[#f6f3ee]/70 hover:bg-white/10 hover:text-[#f6f3ee]"
-                  onClick={() => dismiss(false)}
-                >
-                  Not now
-                </Button>
-                <Button
-                  type="button"
-                  className="bg-[#f3e6d0] text-[#161a22] hover:bg-[#f3e6d0]/90"
-                  onClick={() => dismiss(true)}
-                >
-                  Open ARIBOT
-                </Button>
-              </motion.div>
+                Not now
+              </Button>
+              <Button
+                type="button"
+                className="bg-[#f3e6d0] text-[#161a22] hover:bg-[#f3e6d0]/90"
+                onClick={() => dismiss(true)}
+              >
+                Open ARIBOT
+              </Button>
             </div>
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
