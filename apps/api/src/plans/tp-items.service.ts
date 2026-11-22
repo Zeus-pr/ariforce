@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import {
   dcrDetailsKind,
   istDate,
+  tpItemDates,
   type TourPlanItem,
   type TourPlanItemPlan,
   type TourPlanItemUpsert,
@@ -36,21 +37,14 @@ export interface TpItemQuery {
 }
 type Decision = { decision: 'approve' | 'reject'; comment?: string };
 
-/** Next calendar month only, and only before the 22nd of this month at 12:00 AM IST. */
+/** Next calendar month only. It stays open through the last day of this month. */
 function assertTpWindow(from: string) {
   const today = istDate();
   const currentYm = today.slice(0, 7);
   const [y, m] = currentYm.split('-').map(Number);
   const nextYm = m! === 12 ? `${y! + 1}-01` : `${y}-${String(m! + 1).padStart(2, '0')}`;
-  const planYm = from.slice(0, 7);
-  if (planYm !== nextYm)
+  if (from.slice(0, 7) !== nextYm)
     throw err(422, 'TP_CUTOFF', 'Tour plans are only for the next calendar month');
-  if (Date.now() >= new Date(`${currentYm}-22T00:00:00+05:30`).getTime())
-    throw err(
-      422,
-      'TP_CUTOFF',
-      'Tour plans for that month closed after the 22nd of the previous month at 12:00 AM IST',
-    );
 }
 
 /**
@@ -183,6 +177,24 @@ export class TourPlanItemsService {
     }
     if (Object.keys(bad).length)
       throw err(422, 'VALIDATION', 'Unknown or out-of-scope references', bad);
+    for (const day of plan.days ?? []) await this.validatePlan(tx, p, day);
+  }
+
+  /** Each listed day sits inside from..to, once. */
+  private assertDayDates(from: string, to: string, plan: TourPlanItemPlan) {
+    const days = plan.days ?? [];
+    if (!days.length) return;
+    const span = new Set(tpItemDates(from, to));
+    const seen = new Set<string>();
+    for (const day of days) {
+      if (seen.has(day.date))
+        throw err(422, 'VALIDATION', 'A day is listed twice', { field: 'plan.days' });
+      seen.add(day.date);
+      if (!span.has(day.date))
+        throw err(422, 'VALIDATION', 'A planned day is outside the tour plan', {
+          field: 'plan.days',
+        });
+    }
   }
 
   /** Own pending/approved items overlapping from..to (other than `exceptId`). */
@@ -288,6 +300,7 @@ export class TourPlanItemsService {
   upsert(p: Principal, b: TourPlanItemUpsert) {
     return this.tenant.run(p, async (tx) => {
       await this.validatePlan(tx, p, b.plan);
+      this.assertDayDates(b.from, b.to, b.plan);
       if (!b.id) {
         const id = uuidv7();
         await tx.insert(tourPlanItems).values({
@@ -346,6 +359,7 @@ export class TourPlanItemsService {
           field: 'from',
         });
       await this.validatePlan(tx, p, cur.plan as TourPlanItemPlan);
+      this.assertDayDates(cur.fromDate, cur.toDate, cur.plan as TourPlanItemPlan);
       await this.overlap(tx, p.userId, cur.fromDate, cur.toDate, cur.id);
       await tx
         .update(tourPlanItems)
