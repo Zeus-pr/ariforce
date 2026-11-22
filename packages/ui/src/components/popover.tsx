@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Popover as PopoverPrimitive } from 'radix-ui';
+import { Popover as PopoverPrimitive } from '@animate-ui/react/primitives/radix-ui';
 import { useDialogContainer } from '../lib/dialog-layer';
 import { cn } from '../lib/utils';
 

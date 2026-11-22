@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { AlertDialog as AlertDialogPrimitive } from 'radix-ui';
+import { AlertDialog as AlertDialogPrimitive } from '@animate-ui/react/primitives/radix-ui';
 
 import { buttonVariants } from '@ariforce/ui/components/button';
 import { cn } from '@ariforce/ui/lib/utils';

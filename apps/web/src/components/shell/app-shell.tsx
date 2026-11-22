@@ -8,6 +8,7 @@ import { AuthGate } from '@/components/auth/auth-gate';
 import { useQuery } from '@tanstack/react-query';
 import { useSession } from '@/lib/auth';
 import { meQuery } from '@/lib/query';
+import { PageTransition } from '@/components/animate-ui/components/page-transition';
 import { ScrollReset } from './scroll-reset';
 import { SiteHeader } from './site-header';
 import { ConfirmedSessionProvider } from './role-context';
@@ -49,8 +50,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             data-testid="app-main"
             className="af-page af-scroll min-h-0 min-w-0 overflow-y-auto pb-[env(safe-area-inset-bottom)]"
           >
-            <ScrollReset />
-            <AuthGate>{children}</AuthGate>
+            <PageTransition effect="slide">
+              <ScrollReset />
+              <AuthGate>{children}</AuthGate>
+            </PageTransition>
           </SidebarInset>
         </div>
       </SidebarProvider>
