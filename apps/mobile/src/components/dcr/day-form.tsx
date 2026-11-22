@@ -1122,9 +1122,12 @@ export function DcrForm({
   }
 
   const stretches = isTp && tpItem ? stretchesOf(tpItem) : [];
+  const multi = stretches.length > 1;
   const title = isTp
     ? tpItem
-      ? `Tour plan · ${rangeLabel(tpItem.from, tpItem.to)}`
+      ? multi
+        ? `Tour plan · ${stretches.length} plans`
+        : `Tour plan · ${rangeLabel(tpItem.from, tpItem.to)}`
       : 'New tour plan'
     : fromTp
       ? `TP day · ${dateLabel(s.date)}`
@@ -1198,24 +1201,55 @@ export function DcrForm({
           ) : (
             <Chip label={status} tone={statusTone} />
           )}
-          <AppText variant="small">{isTp ? rangeLabel(s.date, tpTo) : dateLabel(s.date)}</AppText>
+          <AppText variant="small">
+            {isTp ? (multi ? `${stretches.length} plans` : rangeLabel(s.date, tpTo)) : dateLabel(s.date)}
+          </AppText>
         </View>
-        {stretches.length > 1 ? (
-          <View style={styles.warn}>
-            {stretches.map((stretch) => (
-              <AppText key={stretch.from} variant="body">
-                {rangeLabel(stretch.from, stretch.to)}
-                {stretch.plan.workTypeId
-                  ? ` · ${
-                      normaliseWorkTypes(optionsQ.data?.workTypes ?? []).find(
-                        (workType) => workType.id === stretch.plan.workTypeId,
-                      )?.name ?? 'Plan'
-                    }`
-                  : ''}
-              </AppText>
-            ))}
-          </View>
-        ) : null}
+        {multi && tpItem
+          ? stretches.map((stretch, index) => {
+              const blocks = [stretch.plan, ...(stretch.plan.sections ?? [])];
+              return (
+                <Card key={`${stretch.from}-${stretch.to}`} style={styles.stretch}>
+                  <AppText variant="label">
+                    {`Plan ${index + 1} · ${rangeLabel(stretch.from, stretch.to)}`}
+                  </AppText>
+                  {blocks.map((block, blockIndex) => {
+                    const work = (workTypes ?? []).find((item) => item.id === block.workTypeId);
+                    const places = block.territoryIds
+                      .map((id) => placeName.get(id))
+                      .filter((name): name is string => !!name);
+                    const people = block.workWithUserIds
+                      .map((id) => personName.get(id))
+                      .filter((name): name is string => !!name);
+                    return (
+                      <View key={`${block.workTypeId}-${blockIndex}`} style={styles.stretchBlock}>
+                        {blocks.length > 1 ? (
+                          <AppText variant="small">{`Set ${blockIndex + 1}`}</AppText>
+                        ) : null}
+                        <AppText variant="body">{work?.name ?? 'Work type'}</AppText>
+                        {places.length ? (
+                          <AppText variant="bodyMuted">{places.join(', ')}</AppText>
+                        ) : null}
+                        <AppText variant="small">
+                          {people.length ? people.join(', ') : 'Alone'}
+                        </AppText>
+                        <TpSfcReview
+                          item={tpItem}
+                          workTypeId={block.workTypeId}
+                          territoryIds={block.territoryIds}
+                          sfcRoutes={block.sfcRoutes}
+                          filerFacts={
+                            tpItem.routeFacts?.length ? tpItem.routeFacts : undefined
+                          }
+                          embedded
+                        />
+                      </View>
+                    );
+                  })}
+                </Card>
+              );
+            })
+          : null}
 
         {isTp && tpItem?.status === 'rejected' ? (
           <View style={styles.warn}>
@@ -1315,7 +1349,7 @@ export function DcrForm({
           </View>
         ) : null}
 
-        {isTp ? (
+        {isTp && !multi ? (
           <>
             <Field
               label="From"
@@ -1337,7 +1371,7 @@ export function DcrForm({
           />
         ) : null}
 
-        {sections.map((section, index) => {
+        {!multi && sections.map((section, index) => {
           const title = `${sectionWord} ${index + 1}`;
           const expanded = index === openIndex;
           return (
@@ -1642,7 +1676,7 @@ export function DcrForm({
           />
         ) : null}
 
-        <DayAllowance sections={sections} />
+        {multi ? null : <DayAllowance sections={sections} />}
 
         {formError ? (
           <AppText variant="caption" style={dcrStyles.err} accessibilityLiveRegion="polite">
@@ -1650,7 +1684,7 @@ export function DcrForm({
           </AppText>
         ) : null}
 
-        {!readOnly && !blocked ? (
+        {!multi && !readOnly && !blocked ? (
           <View style={styles.dayActions}>
             {sections.length < MAX_DAY_SECTIONS ? (
               <Button
@@ -1694,7 +1728,7 @@ export function DcrForm({
             )}
           </View>
         ) : null}
-        {isTp && tpItem && !readOnly ? (
+        {isTp && tpItem && !readOnly && !multi ? (
           <Pressable
             onPress={confirmDeleteTp}
             style={styles.remove}
@@ -1863,6 +1897,13 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.teal,
   },
+  stretch: {
+    padding: spacing.lg,
+    gap: spacing.md,
+    borderWidth: 1.5,
+    borderColor: colors.teal,
+  },
+  stretchBlock: { gap: spacing.xs },
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',
