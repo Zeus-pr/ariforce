@@ -1,10 +1,12 @@
 'use client';
 
-import { ChevronDown, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronLeft, Trash2 } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
+import { Tabs, TabsList, TabsTrigger } from '@ariforce/ui/components/tabs';
 import { cn } from '@ariforce/ui/lib/utils';
+import { RowsSkeleton } from '@/components/shell/page-skeletons';
 import {
   confirmFile,
   downloadPdf,
@@ -34,6 +36,24 @@ const inr = new Intl.NumberFormat('en-IN', {
   currency: 'INR',
   maximumFractionDigits: 2,
 });
+const rupees = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 0,
+});
+const statusOrder: Record<StatementStatus, number> = {
+  pending: 0,
+  rejected: 1,
+  draft: 2,
+  approved: 3,
+};
+const statusTone: Record<StatementStatus, string> = {
+  pending: 'bg-amber-100 text-amber-950',
+  approved: 'bg-teal-100 text-teal-950',
+  rejected: 'bg-rose-100 text-rose-950',
+  draft: 'bg-muted text-muted-foreground',
+};
+const filters = ['all', 'pending', 'approved', 'rejected', 'draft'] as const;
 const monthNow = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -67,7 +87,10 @@ export function AwsSsScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [statements, setStatements] = useState<HistoryItem[] | null>(null);
   const [waiting, setWaiting] = useState<HistoryItem[]>([]);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<(typeof filters)[number]>('all');
   const [historyStatus, setHistoryStatus] = useState<StatementStatus | 'all'>('all');
   const historyRef = useRef<HTMLDialogElement>(null);
   const [rejecting, setRejecting] = useState(false);
@@ -75,13 +98,20 @@ export function AwsSsScreen() {
   const [editing, setEditing] = useState(false);
   const versionRef = useRef(0);
 
+  function refreshLists() {
+    return Promise.all([listStatements({}), listStatements({ waiting: true })])
+      .then(([all, mine]) => {
+        setStatements(all.items);
+        setWaiting(mine.items);
+      })
+      .catch((e) => setError(messageOf(e)));
+  }
+
   useEffect(() => {
     listStockists()
       .then((r) => setStockists(r.items))
       .catch((e) => setError(messageOf(e)));
-    listStatements({ waiting: true })
-      .then((r) => setWaiting(r.items))
-      .catch(() => setWaiting([]));
+    void refreshLists();
   }, []);
 
   const selected = (stockists ?? []).find((s) => s.id === stockistId) ?? null;
@@ -115,6 +145,43 @@ export function AwsSsScreen() {
       void load(s, m || monthNow());
     }
   }, []);
+
+  async function openRow(item: HistoryItem) {
+    setBusy('open');
+    setError(null);
+    setSaved(false);
+    setDrafts({});
+    try {
+      const next = await getStatement(item.id);
+      setStockistId(next.stockistId);
+      setMonth(next.month.slice(0, 7));
+      setSheet(next);
+      const q = new URLSearchParams(window.location.search);
+      q.set('statement', next.id);
+      q.delete('stockist');
+      window.history.replaceState(null, '', `${window.location.pathname}?${q}`);
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function closeSheet() {
+    setSheet(null);
+    setDrafts({});
+    setRejecting(false);
+    setReason('');
+    const q = new URLSearchParams(window.location.search);
+    q.delete('statement');
+    q.delete('stockist');
+    const search = q.toString();
+    window.history.replaceState(
+      null,
+      '',
+      search ? `${window.location.pathname}?${search}` : window.location.pathname,
+    );
+  }
 
   async function load(id: string, m: string) {
     setBusy('open');
@@ -263,6 +330,7 @@ export function AwsSsScreen() {
       }
       const next = await submitStatement(current.id, versionRef.current);
       setSheet(next);
+      void refreshLists();
     } catch (e) {
       setError(messageOf(e));
     } finally {
@@ -360,7 +428,7 @@ export function AwsSsScreen() {
       setSheet(await getStatement(current.id));
       setRejecting(false);
       setReason('');
-      setWaiting((await listStatements({ waiting: true })).items);
+      void refreshLists();
     } catch (e) {
       setError(messageOf(e));
     } finally {
@@ -376,66 +444,102 @@ export function AwsSsScreen() {
   const history = (sheet?.history ?? []).filter(
     (h) => historyStatus === 'all' || h.status === historyStatus,
   );
+  const mine = useMemo(() => new Set(waiting.map((item) => item.id)), [waiting]);
+  const ledger = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const rows = (statements ?? [])
+      .filter((item) => statusFilter === 'all' || item.status === statusFilter)
+      .filter((item) => !needle || item.stockistName.toLowerCase().includes(needle))
+      .slice()
+      .sort((a, b) => {
+        const month = b.month.localeCompare(a.month);
+        if (month !== 0) return month;
+        const status = statusOrder[a.status] - statusOrder[b.status];
+        if (status !== 0) return status;
+        return a.stockistName.localeCompare(b.stockistName);
+      });
+    const groups: { month: string; items: HistoryItem[] }[] = [];
+    for (const item of rows) {
+      const month = item.month.slice(0, 7);
+      const last = groups[groups.length - 1];
+      if (last?.month === month) last.items.push(item);
+      else groups.push({ month, items: [item] });
+    }
+    return groups;
+  }, [statements, query, statusFilter]);
+  const counts = useMemo(() => {
+    const tally = { all: 0, pending: 0, approved: 0, rejected: 0, draft: 0 };
+    for (const item of statements ?? []) {
+      tally.all += 1;
+      tally[item.status] += 1;
+    }
+    return tally;
+  }, [statements]);
 
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="relative z-50 grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-start">
-        <StockistDropdown
-          stockists={stockists}
-          selected={selected}
-          onSelect={(id) => {
-            setStockistId(id);
-            setDrafts({});
-            if (id) {
-              remember(id, month);
-              void load(id, month);
+  const opener = (
+    <div className="relative z-50 grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-start">
+      <StockistDropdown
+        stockists={stockists}
+        selected={selected}
+        onSelect={(id) => {
+          setStockistId(id);
+          setDrafts({});
+          if (id) {
+            remember(id, month);
+            void load(id, month);
+          }
+        }}
+      />
+      <label className="flex flex-col gap-1 text-sm">
+        Month
+        <Input
+          type="month"
+          value={month}
+          max={monthNow()}
+          onChange={(e) => {
+            const next = e.target.value;
+            setMonth(next);
+            if (stockistId && next) {
+              remember(stockistId, next);
+              void load(stockistId, next);
             }
           }}
         />
-        <label className="flex flex-col gap-1 text-sm">
-          Month
-          <Input
-            type="month"
-            value={month}
-            max={monthNow()}
-            onChange={(e) => {
-              const next = e.target.value;
-              setMonth(next);
-              if (stockistId && next) {
-                remember(stockistId, next);
-                void load(stockistId, next);
-              }
-            }}
-          />
-        </label>
-      </div>
+      </label>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-5">
       {error && <p className="text-sm text-destructive">{error}</p>}
-      {waiting.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium">Waiting for you</h2>
-          <ul className="flex flex-col">
-            {waiting.map((item) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className="text-sm underline-offset-4 hover:underline"
-                  onClick={() => {
-                    const next = item.month.slice(0, 7);
-                    setStockistId(item.stockistId);
-                    setMonth(next);
-                    remember(item.stockistId, next);
-                    void load(item.stockistId, next);
-                  }}
-                >
-                  {item.stockistName}, {item.month}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+      {!sheet && (
+        <>
+          {opener}
+          <StatementLedger
+            statements={statements}
+            groups={ledger}
+            counts={counts}
+            query={query}
+            statusFilter={statusFilter}
+            mine={mine}
+            busy={busy === 'open'}
+            onQuery={setQuery}
+            onStatus={setStatusFilter}
+            onOpen={(item) => void openRow(item)}
+          />
+        </>
       )}
       {sheet && (
         <div key={sheet.id + sheet.month} className="af-sheet flex flex-col gap-4">
+          <button
+            type="button"
+            className="inline-flex w-fit items-center gap-1 text-sm font-medium underline-offset-4 hover:underline"
+            onClick={closeSheet}
+          >
+            <ChevronLeft className="size-4" aria-hidden />
+            All statements
+          </button>
+          {opener}
           <div className="min-w-0">
             {sheet.address && (
               <p className="break-words text-sm text-muted-foreground">{sheet.address}</p>
@@ -1170,4 +1274,141 @@ function label(status: StatementStatus) {
   if (status === 'pending') return 'Pending';
   if (status === 'approved') return 'Approved';
   return 'Rejected';
+}
+
+function monthLabel(month: string) {
+  const [year, m] = month.slice(0, 7).split('-').map(Number);
+  return new Date(year ?? 2000, (m ?? 1) - 1, 1).toLocaleDateString('en-IN', {
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function party(item: HistoryItem, mine: boolean) {
+  if (item.status === 'pending') {
+    if (mine) return 'With you';
+    if (item.currentApproverName) return `With ${item.currentApproverName}`;
+    return 'Waiting for approval';
+  }
+  if (item.status === 'approved')
+    return item.decidedByName ? `Approved by ${item.decidedByName}` : null;
+  if (item.status === 'rejected')
+    return item.decidedByName ? `Rejected by ${item.decidedByName}` : null;
+  if (item.submittedByName) return `Started by ${item.submittedByName}`;
+  return null;
+}
+
+function StatementLedger({
+  statements,
+  groups,
+  counts,
+  query,
+  statusFilter,
+  mine,
+  busy,
+  onQuery,
+  onStatus,
+  onOpen,
+}: {
+  statements: HistoryItem[] | null;
+  groups: { month: string; items: HistoryItem[] }[];
+  counts: Record<(typeof filters)[number], number>;
+  query: string;
+  statusFilter: (typeof filters)[number];
+  mine: Set<string>;
+  busy: boolean;
+  onQuery: (value: string) => void;
+  onStatus: (value: (typeof filters)[number]) => void;
+  onOpen: (item: HistoryItem) => void;
+}) {
+  const empty =
+    statements != null && statements.length === 0
+      ? 'No stock statements yet. Choose a stockist below to start one.'
+      : statements != null && groups.length === 0
+        ? 'Nothing matches this search.'
+        : null;
+  return (
+    <section className="flex flex-col gap-4" aria-busy={statements == null || busy}>
+      <div className="flex flex-col gap-3">
+        <Input
+          value={query}
+          onChange={(e) => onQuery(e.target.value)}
+          placeholder="Search stockists"
+          aria-label="Search statements"
+        />
+        <Tabs
+          value={statusFilter}
+          onValueChange={(value) => onStatus(value as typeof statusFilter)}
+        >
+          <TabsList className="h-auto flex-wrap">
+            {filters.map((status) => (
+              <TabsTrigger key={status} value={status} className="gap-1.5">
+                {status === 'all' ? 'All' : label(status)}
+                <span className="tabular-nums">{counts[status]}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      </div>
+      {statements == null ? (
+        <RowsSkeleton rows={8} />
+      ) : empty ? (
+        <p className="text-sm text-muted-foreground">{empty}</p>
+      ) : (
+        <div className="overflow-hidden rounded-lg border bg-background">
+          {groups.map((group) => (
+            <div key={group.month}>
+              <h2 className="border-b bg-muted/60 px-4 py-2 text-sm font-medium">
+                {monthLabel(group.month)}
+              </h2>
+              <ul>
+                {group.items.map((item) => {
+                  const who = party(item, mine.has(item.id));
+                  return (
+                    <li key={item.id} className="border-b last:border-b-0">
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-4 px-4 py-3 text-left hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                        onClick={() => onOpen(item)}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{item.stockistName}</span>
+                          {who && (
+                            <span
+                              className={cn(
+                                'block truncate text-sm text-muted-foreground',
+                                mine.has(item.id) && 'font-medium text-foreground',
+                              )}
+                            >
+                              {who}
+                            </span>
+                          )}
+                        </span>
+                        <span className="flex shrink-0 flex-col items-end gap-1">
+                          <span
+                            className={cn(
+                              'rounded-md px-2 py-0.5 text-xs font-medium',
+                              statusTone[item.status],
+                            )}
+                          >
+                            {label(item.status)}
+                          </span>
+                          <span className="flex items-baseline gap-1.5 text-sm tabular-nums">
+                            <span className="text-xs text-muted-foreground">Secondary</span>
+                            <span className="font-medium">
+                              {rupees.format(item.actualSecondary)}
+                            </span>
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }

@@ -69,6 +69,8 @@ export type HistoryItem = {
   status: StatementStatus;
   actualSecondary: number;
   submittedByName: string | null;
+  currentApproverName?: string | null;
+  decidedByName?: string | null;
 };
 
 export type StockistOption = { id: string; name: string; city: string | null };
