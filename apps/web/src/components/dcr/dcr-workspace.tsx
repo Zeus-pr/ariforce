@@ -11,6 +11,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import type { Dcr, TourPlan } from '@ariforce/contracts';
+import { WorkPageSkeleton } from '@/components/shell/page-skeletons';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -85,7 +86,7 @@ type ApprovedTpDraft = {
 export function DcrWorkspace() {
   const today = useSyncExternalStore(noop, todayIST, () => null);
   const session = useSession();
-  if (!today || session === undefined) return <div className="h-[560px]" aria-busy="true" />;
+  if (!today || session === undefined) return <WorkPageSkeleton />;
   return <Workspace today={today} />;
 }
 

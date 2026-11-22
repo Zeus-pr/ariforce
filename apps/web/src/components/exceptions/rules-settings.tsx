@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { EXCEPTION_RULES, type ExceptionRule } from '@ariforce/contracts';
 import { Badge } from '@ariforce/ui/components/badge';
+import { RowsSkeleton } from '@/components/shell/page-skeletons';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import {
@@ -45,7 +46,7 @@ export function RulesSettings() {
         {error}
       </p>
     );
-  if (!rules) return <div className="h-64 animate-pulse rounded-lg bg-muted" aria-busy="true" />;
+  if (!rules) return <RowsSkeleton />;
   return (
     <div className="flex flex-col gap-3">
       {rules.map((r) => (

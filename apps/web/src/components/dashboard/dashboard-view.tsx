@@ -22,6 +22,7 @@ import { formatKpi, HEADLINE, KPI_META, TEAM_COLUMNS } from './kpi-meta';
 import { KpiCards } from './kpi-cards';
 import { DistributionDashboard } from './distribution-dashboard';
 import { rollupFor } from './rollup';
+import { DeskPageSkeleton } from '@/components/shell/page-skeletons';
 
 type Severity = 'high' | 'medium' | 'low';
 
@@ -65,7 +66,7 @@ function FormulaNote() {
 export function DashboardView() {
   const { role } = useRole();
   const month = useSyncExternalStore(noop, thisMonth, () => null);
-  if (!month) return <div className="mx-auto h-[640px] w-full max-w-7xl" aria-busy="true" />;
+  if (!month) return <DeskPageSkeleton />;
   return <Dashboard role={role} month={month} />;
 }
 

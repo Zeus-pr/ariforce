@@ -9,6 +9,7 @@ import {
   type ExceptionSummary,
 } from '@ariforce/contracts';
 import { Badge } from '@ariforce/ui/components/badge';
+import { RowsSkeleton } from '@/components/shell/page-skeletons';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
@@ -206,7 +207,7 @@ export function ExceptionsView() {
         </p>
       )}
       {items === null ? (
-        <div className="h-48 animate-pulse rounded-lg bg-muted" aria-busy="true" />
+        <RowsSkeleton />
       ) : items.length === 0 ? (
         <p
           className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground"

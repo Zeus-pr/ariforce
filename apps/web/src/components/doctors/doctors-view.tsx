@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 
 import { PlaceholderTag } from '@/components/masters/placeholder';
+import { RowsSkeleton } from '@/components/shell/page-skeletons';
 
 import {
   ArrowLeft,
@@ -169,7 +170,7 @@ function DoctorList() {
   const canWrite = canWriteMasters(role);
   const [adding, setAdding] = useState(false);
   const [reload, setReload] = useState(0);
-  if (!lk.ready) return <div className="h-96" aria-busy="true" />;
+  if (!lk.ready) return <RowsSkeleton rows={8} />;
   return (
     <>
       <RecordSheet
@@ -331,7 +332,7 @@ function Doctor360({ id }: { id: string }) {
     };
   });
 
-  if (doc === undefined || !visits || !lk.ready) return <div className="h-96" aria-busy="true" />;
+  if (doc === undefined || !visits || !lk.ready) return <RowsSkeleton rows={8} />;
   if (doc === null)
     return (
       <div className="flex flex-col items-start gap-3 py-10">

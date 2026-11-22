@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@ariforce/ui/components/button';
+import { DeskPageSkeleton } from '@/components/shell/page-skeletons';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { KpiReport, Territory } from '@ariforce/contracts';
@@ -175,8 +176,7 @@ export function TeamView() {
     fileName: `ariforce-team-${(node?.code ?? 'all').toLowerCase()}-${month}`,
   });
 
-  if (!month || !tree)
-    return <div className="h-96 animate-pulse rounded-lg bg-muted/40" aria-busy="true" />;
+  if (!month || !tree) return <DeskPageSkeleton embedded />;
 
   return (
     <div className="flex flex-col gap-5">
