@@ -633,9 +633,6 @@ export function PlaceDesk({
   const earlierPerson = chosen
     ? priorPeople.find((person) => person.userId === chosen.userId)
     : undefined;
-  const earlierByProduct = new Map(
-    (earlierPerson?.products ?? []).map((product) => [product.productId, product]),
-  );
   const personBars: LiquidItem[] = chosen
     ? [
         {
@@ -661,18 +658,6 @@ export function PlaceDesk({
           ),
         },
       ]
-    : [];
-  const personProducts: LiquidItem[] = chosen
-    ? chosen.products.map((product) => ({
-        id: product.productId,
-        name: product.name,
-        primary: product.primaryValue,
-        secondary: product.secondaryValue,
-        primaryTarget: 0,
-        secondaryTarget: 0,
-        priorPrimary: earlierByProduct.get(product.productId)?.primaryValue ?? 0,
-        priorSecondary: earlierByProduct.get(product.productId)?.secondaryValue ?? 0,
-      }))
     : [];
   const personHqIds = new Set(personHqs.map((place) => place.id));
   const personBrands = new Map<string, LiquidItem>();
@@ -961,13 +946,6 @@ export function PlaceDesk({
                   <LiquidColumns items={personBrandBars} />
                 </ChartBox>
               )}
-              <ChartBox
-                title={`${chosen.name} product primary and secondary`}
-                fileName={`sales-${chosen.name.toLowerCase().replace(/\s+/g, '-')}-products`}
-                items={personProducts}
-              >
-                <LiquidColumns items={personProducts} />
-              </ChartBox>
             </>
           )}
         </section>
