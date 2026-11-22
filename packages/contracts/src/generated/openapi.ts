@@ -6588,6 +6588,8 @@ export interface components {
       /** @description Set while rejected */
       rejectionReason: string | null;
       plan: components['schemas']['TourPlanItemPlanOutput'];
+      /** @description Fares of the routes stored on this plan, from the filer's chart */
+      routeFacts?: components['schemas']['TourPlanRouteFact'][];
       /** @description Days in from..to with a counted DCR of the owner (submitted/approved; rejected don't count) */
       filedDates: string[];
       version: number;
@@ -6610,6 +6612,30 @@ export interface components {
       da?: number;
       /** @description True when this pending plan is waiting for you */
       canDecide?: boolean;
+    };
+    TourPlanRouteFact: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      id: string;
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      hqTerritoryId: string;
+      fromPlace: string;
+      toPlace: string;
+      oneWayKm: number;
+      bothWayKm: number;
+      oneWayAmount: number | null;
+      bothWayAmount: number | null;
+      actualFare: boolean;
+      travelMode: components['schemas']['SfcTravelMode'] | null;
+      category: string | null;
+      da: number | null;
     };
     StandardTourPlan: {
       /**
@@ -7151,6 +7177,8 @@ export interface components {
       /** @description Set while rejected */
       rejectionReason: string | null;
       plan: components['schemas']['TourPlanItemPlanOutput'];
+      /** @description Fares of the routes stored on this plan, from the filer's chart */
+      routeFacts?: components['schemas']['TourPlanRouteFact'][];
       /** @description Days in from..to with a counted DCR of the owner (submitted/approved; rejected don't count) */
       filedDates: string[];
       version: number;

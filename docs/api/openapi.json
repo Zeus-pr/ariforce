@@ -32207,6 +32207,13 @@
           "plan": {
             "$ref": "#/components/schemas/TourPlanItemPlanOutput"
           },
+          "routeFacts": {
+            "description": "Fares of the routes stored on this plan, from the filer's chart",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TourPlanRouteFact"
+            }
+          },
           "filedDates": {
             "type": "array",
             "items": {
@@ -32304,6 +32311,89 @@
           "submittedAt",
           "decidedAt",
           "decidedBy"
+        ],
+        "additionalProperties": false
+      },
+      "TourPlanRouteFact": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "hqTerritoryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "fromPlace": {
+            "type": "string"
+          },
+          "toPlace": {
+            "type": "string"
+          },
+          "oneWayKm": {
+            "type": "number"
+          },
+          "bothWayKm": {
+            "type": "number"
+          },
+          "oneWayAmount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "bothWayAmount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "actualFare": {
+            "type": "boolean"
+          },
+          "travelMode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SfcTravelMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "da": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "hqTerritoryId",
+          "fromPlace",
+          "toPlace",
+          "oneWayKm",
+          "bothWayKm",
+          "oneWayAmount",
+          "bothWayAmount",
+          "actualFare",
+          "travelMode",
+          "category",
+          "da"
         ],
         "additionalProperties": false
       },
@@ -33935,6 +34025,13 @@
           },
           "plan": {
             "$ref": "#/components/schemas/TourPlanItemPlanOutput"
+          },
+          "routeFacts": {
+            "description": "Fares of the routes stored on this plan, from the filer's chart",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TourPlanRouteFact"
+            }
           },
           "filedDates": {
             "type": "array",
