@@ -14,9 +14,9 @@ import {
   CheckIcon,
   ChevronDownIcon,
   CircleMinusIcon,
-  LoaderIcon,
   XCircleIcon,
 } from "lucide-react";
+import { Orb } from "@yogesharc/thinking-orbs";
 import {
   toolApprovalAcceptsText,
   useAuiState,
@@ -103,7 +103,7 @@ function ToolFallbackRoot({
 type ToolStatus = ToolCallMessagePartStatus["type"];
 
 const statusIconMap: Record<ToolStatus, React.ElementType> = {
-  running: LoaderIcon,
+  running: CircleMinusIcon,
   complete: CheckIcon,
   incomplete: XCircleIcon,
   "requires-action": AlertCircleIcon,
@@ -179,14 +179,23 @@ function ToolFallbackTrigger({
       )}
       {...props}
     >
-      <Icon
-        data-slot="tool-fallback-trigger-icon"
-        className={cn(
-          "aui-tool-fallback-trigger-icon size-4 shrink-0",
-          isCancelled && "text-muted-foreground",
-          isRunning && "animate-spin [animation-duration:0.6s]",
-        )}
-      />
+      {isRunning ? (
+        <Orb
+          state="working"
+          variant="gyro"
+          size={16}
+          label="Working"
+          className="text-primary shrink-0"
+        />
+      ) : (
+        <Icon
+          data-slot="tool-fallback-trigger-icon"
+          className={cn(
+            "aui-tool-fallback-trigger-icon size-4 shrink-0",
+            isCancelled && "text-muted-foreground",
+          )}
+        />
+      )}
       <span
         data-slot="tool-fallback-trigger-label"
         className={cn(

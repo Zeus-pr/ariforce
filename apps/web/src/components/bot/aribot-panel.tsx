@@ -44,13 +44,16 @@ function asMarkdown(reply: BotReply) {
 }
 
 const adapter: ChatModelAdapter = {
-  async run({ messages, abortSignal }) {
+  async *run({ messages, abortSignal }) {
     const last = [...messages].reverse().find((message) => message.role === 'user');
     const message =
       last?.content
         .map((part) => (part.type === 'text' ? part.text : ''))
         .join('')
         .trim() ?? '';
+    yield {
+      content: [{ type: 'reasoning', text: 'Checking your line in AriForce.' }],
+    };
     const res = await fetch(`${API_URL}/v1/bot/ask`, {
       method: 'POST',
       credentials: 'include',
@@ -62,7 +65,15 @@ const adapter: ChatModelAdapter = {
     if (!res.ok || !body?.narrative) {
       throw new Error(body?.message || 'ARIBOT could not answer just now.');
     }
-    return { content: [{ type: 'text', text: asMarkdown(body) }] };
+    yield {
+      content: [
+        {
+          type: 'reasoning',
+          text: 'Checked your line in AriForce. The figures below are only from that line.',
+        },
+        { type: 'text', text: asMarkdown(body) },
+      ],
+    };
   },
 };
 
@@ -114,14 +125,24 @@ export function AribotButton() {
       <Button
         type="button"
         variant="ghost"
-        className="h-9 gap-1.5 px-2 text-muted-foreground"
+        className="h-9 gap-2 px-2"
         aria-label="ARIBOT"
         aria-expanded={open}
         data-testid="aribot-open"
         onClick={() => setOpen(true)}
       >
         <AribotOrb />
-        <span className="text-sm font-medium">ARIBOT</span>
+        <span className="relative text-[12px] font-semibold tracking-[0.28em]">
+          <span
+            aria-hidden
+            className="absolute inset-0 bg-[linear-gradient(105deg,#7c6bff,#e879f9,#38bdf8)] bg-clip-text text-transparent blur-[5px]"
+          >
+            ARIBOT
+          </span>
+          <span className="relative bg-[linear-gradient(105deg,#6d5efc_0%,#d946ef_46%,#38bdf8_100%)] bg-clip-text text-transparent">
+            ARIBOT
+          </span>
+        </span>
       </Button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent

@@ -11,7 +11,8 @@ import {
 } from "react";
 import { useIsomorphicLayoutEffect } from "../utils/useIsomorphicLayoutEffect";
 import { cva, type VariantProps } from "class-variance-authority";
-import { BrainIcon, ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon } from "lucide-react";
+import { Orb } from "@yogesharc/thinking-orbs";
 import { cn } from "@ariforce/ui/lib/utils";
 import {
   CollapsibleRoot as Collapsible,
@@ -189,9 +190,12 @@ function ReasoningTrigger({
       )}
       {...props}
     >
-      <BrainIcon
-        data-slot="reasoning-trigger-icon"
-        className="aui-reasoning-trigger-icon size-4 shrink-0"
+      <Orb
+        state={active ? "reasoning" : "idle"}
+        variant={active ? "twins" : "blink"}
+        size={16}
+        label={active ? "Thinking" : "Thought"}
+        className="text-primary shrink-0"
       />
       <span
         data-slot="reasoning-trigger-label"
