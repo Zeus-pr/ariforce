@@ -12,6 +12,7 @@ import {
   type Ref,
 } from 'react';
 import type { Dcr } from '@ariforce/contracts';
+import { WorkPageSkeleton } from '@/components/shell/page-skeletons';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
@@ -131,7 +132,7 @@ export type FlowProps = {
 
 export function DcrFlow(props: FlowProps) {
   const today = useSyncExternalStore(noop, todayIST, () => null);
-  if (!today) return <div className="h-[560px]" aria-busy="true" />;
+  if (!today) return <WorkPageSkeleton />;
   return <Flow today={today} {...props} />;
 }
 

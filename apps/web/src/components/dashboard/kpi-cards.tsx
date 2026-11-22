@@ -5,6 +5,7 @@ import { useState } from 'react';
 import type { KpiReport } from '@ariforce/contracts';
 import { Button } from '@ariforce/ui/components/button';
 import { NumberTicker } from '@ariforce/ui/components/number-ticker';
+import NumberFlow from '@number-flow/react';
 import { cn } from '@ariforce/ui/lib/utils';
 import { formatKpi, HEADLINE, KPI_META } from './kpi-meta';
 
@@ -56,7 +57,11 @@ export function KpiCards({
                 ) : m.value === null ? (
                   '—'
                 ) : m.unit === 'inr' ? (
-                  formatKpi(m.value ?? null, 'inr')
+                  <NumberFlow
+                    value={m.value!}
+                    locales="en-IN"
+                    format={{ style: 'currency', currency: 'INR', maximumFractionDigits: 0 }}
+                  />
                 ) : (
                   <NumberTicker
                     value={m.value!}

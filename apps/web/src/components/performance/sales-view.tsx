@@ -11,6 +11,7 @@ import { ChartCard, exportedAt, MonthSwitch, PerfTable, useMonth } from './perf-
 import { can } from '@/components/exceptions/model';
 import { isApprover, isFieldRole } from '@/lib/roles';
 import { PlaceDesk } from './place-desk';
+import { SalesSkeleton } from './sales-skeleton';
 import { SalesManage } from './sales-manage';
 import { breakdownFor, pick, usePerf, val } from './use-perf';
 import { salesTarget, salesCols, SALES_KPIS } from './sales-kpis';
@@ -67,7 +68,7 @@ export function SalesView() {
   const perf = usePerf(role, month, SALES_KPIS, rev);
   const by = breakdownFor(role);
   const mayWrite = can(role, 'sales:write');
-  if (!month) return <div className="h-96" aria-busy="true" />;
+  if (!month) return <SalesSkeleton />;
   if (role === 'distribution_head' || isApprover(role) || isFieldRole(role)) {
     return (
       <div className="flex flex-col gap-6">

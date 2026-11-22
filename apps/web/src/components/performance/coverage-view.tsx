@@ -9,6 +9,7 @@ import { monthLabel } from '@/lib/period';
 import { ChartCard, exportedAt, MonthSwitch, PerfTable, useMonth } from './perf-ui';
 import { breakdownFor, pick, usePerf, val } from './use-perf';
 import { coverageCols, COVERAGE_KPIS } from './coverage-kpis';
+import { DeskPageSkeleton } from '@/components/shell/page-skeletons';
 
 const CoverageTrendChart = dynamic(
   () => import('./coverage-charts').then((m) => m.CoverageTrendChart),
@@ -34,7 +35,7 @@ export function CoverageView() {
   const month = useMonth();
   const perf = usePerf(role, month, COVERAGE_KPIS);
   const by = breakdownFor(role);
-  if (!month) return <div className="h-96" aria-busy="true" />;
+  if (!month) return <DeskPageSkeleton embedded />;
   const first = by === 'byTerritory' ? 'Zone' : by === 'byUser' ? 'Team member' : 'You';
   const trend = (perf?.trend ?? []).map((t) => ({
     name: monthLabel(t.month).slice(0, 3),

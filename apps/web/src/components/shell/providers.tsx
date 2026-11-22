@@ -1,9 +1,13 @@
 'use client';
 
+import { AnimateUIProvider } from '@animate-ui/react/provider';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/query';
 
-/** App-wide client providers: the shared React Query cache. Light theme only; motion is CSS-only. */
 export function Providers({ children }: { children: React.ReactNode }) {
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  return (
+    <AnimateUIProvider checkAnimation="pop">
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </AnimateUIProvider>
+  );
 }

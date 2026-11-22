@@ -4,6 +4,7 @@ import { useEffect, useRef, useId, useState } from 'react';
 import Link from 'next/link';
 import { CircleCheck, Eye, EyeOff, LinkIcon, LoaderCircle } from 'lucide-react';
 import { Button } from '@ariforce/ui/components/button';
+import { RowsSkeleton } from '@/components/shell/page-skeletons';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
 import { api, apiReady, toApiError } from '@/lib/api';
@@ -113,7 +114,7 @@ export function AcceptInviteForm() {
     setErr('Could not reach the server. Check your connection and try again.');
   };
 
-  if (state === 'reading') return <div className="h-64" aria-busy="true" />;
+  if (state === 'reading') return <RowsSkeleton />;
   if (state in DEAD)
     return (
       <div

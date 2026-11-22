@@ -10,6 +10,7 @@ import {
   type TeamProfile,
 } from '@ariforce/contracts';
 import { Badge } from '@ariforce/ui/components/badge';
+import { DeskPageSkeleton, RowsSkeleton } from '@/components/shell/page-skeletons';
 import { Button } from '@ariforce/ui/components/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@ariforce/ui/components/card';
 import { Input } from '@ariforce/ui/components/input';
@@ -102,7 +103,7 @@ export function ProfileView({ userId }: { userId: string }) {
         </p>
       </div>
     );
-  if (!p) return <div className="h-96" aria-busy="true" />;
+  if (!p) return <DeskPageSkeleton embedded />;
   const m = p.member;
   return (
     <div className="grid gap-5" data-testid="profile">
@@ -271,7 +272,7 @@ function Performance({ userId, canSeeExpenses }: { userId: string; canSeeExpense
           {err}
         </p>
       ) : !data ? (
-        <div className="h-40" aria-busy="true" />
+        <RowsSkeleton rows={4} />
       ) : (
         <div className="overflow-x-auto">
           <Table data-testid="perf-table">
@@ -444,7 +445,7 @@ function Outlets({ userId }: { userId: string }) {
         </p>
       )}
       {!rows ? (
-        <div className="h-32" aria-busy="true" />
+        <RowsSkeleton rows={3} />
       ) : !rows.length ? (
         <p className="px-4 pb-6 text-sm text-muted-foreground" data-testid="outlets-empty">
           {term ? 'No matches.' : `No ${kind} in this person's territories.`}

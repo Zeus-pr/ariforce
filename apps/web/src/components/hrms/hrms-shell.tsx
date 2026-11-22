@@ -13,6 +13,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { PageTransition } from '@/components/animate-ui/components/page-transition';
 import {
   Sidebar,
   SidebarContent,
@@ -125,24 +126,26 @@ export function HrmsShell({ children }: { children: React.ReactNode }) {
             id="af-main"
             className="af-page af-scroll min-h-0 min-w-0 overflow-y-auto pb-[env(safe-area-inset-bottom)]"
           >
-            <ScrollReset />
-            {canOpenHrms(session.role) ? (
-              children
-            ) : (
-              <div className="mx-auto max-w-lg p-6">
-                <h1 className="text-lg font-semibold">This account is for the field desk</h1>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  HR is open to HR, a director, or a system admin. Your sign-in can continue in
-                  Fieldforce.
-                </p>
-                <Link
-                  href={homeFor(session.role)}
-                  className="mt-4 inline-block text-sm font-medium text-primary"
-                >
-                  Open Fieldforce
-                </Link>
-              </div>
-            )}
+            <PageTransition effect="slide">
+              <ScrollReset />
+              {canOpenHrms(session.role) ? (
+                children
+              ) : (
+                <div className="mx-auto max-w-lg p-6">
+                  <h1 className="text-lg font-semibold">This account is for the field desk</h1>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    HR is open to HR, a director, or a system admin. Your sign-in can continue in
+                    Fieldforce.
+                  </p>
+                  <Link
+                    href={homeFor(session.role)}
+                    className="mt-4 inline-block text-sm font-medium text-primary"
+                  >
+                    Open Fieldforce
+                  </Link>
+                </div>
+              )}
+            </PageTransition>
           </SidebarInset>
         </div>
       </SidebarProvider>

@@ -10,6 +10,7 @@ import type {
   Doctor,
 } from '@ariforce/contracts';
 import { Badge } from '@ariforce/ui/components/badge';
+import { WorkPageSkeleton } from '@/components/shell/page-skeletons';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { Label } from '@ariforce/ui/components/label';
@@ -69,7 +70,7 @@ const noop = () => () => {};
 /** The page is prerendered, so "today" must come from the browser, never the build. */
 export function AttendanceView() {
   const today = useSyncExternalStore(noop, todayIST, () => null);
-  if (!today) return <div className="h-[560px]" aria-busy="true" />;
+  if (!today) return <WorkPageSkeleton />;
   return <AttendanceDayView today={today} />;
 }
 

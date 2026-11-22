@@ -8,6 +8,7 @@ import type { ProductKpiReport } from '@ariforce/contracts';
 import { Card } from '@ariforce/ui/components/card';
 import { cn } from '@ariforce/ui/lib/utils';
 import { rollupFor } from '@/components/dashboard/rollup';
+import { DeskPageSkeleton, RowsSkeleton } from '@/components/shell/page-skeletons';
 import { coverageCols, COVERAGE_KPIS } from '@/components/performance/coverage-kpis';
 import {
   exportedAt,
@@ -78,7 +79,7 @@ export function ReportsView() {
   const params = useSearchParams();
   const pathname = usePathname();
   const r = (REPORTS.find((x) => x.id === params.get('r'))?.id ?? 'activity') as ReportId;
-  if (!month) return <div className="h-96" aria-busy="true" />;
+  if (!month) return <DeskPageSkeleton embedded />;
   const href = (id: string) => {
     const s = new URLSearchParams(params.toString());
     s.set('r', id);
@@ -153,7 +154,7 @@ function KpiReport({
         ? coverageCols(first)
         : salesCols(first);
   const title = REPORTS.find((x) => x.id === id)!.title;
-  if (!perf) return <div className="h-64" aria-busy="true" />;
+  if (!perf) return <RowsSkeleton />;
   if (perf.error)
     return (
       <p role="alert" className="text-sm text-destructive">
@@ -204,7 +205,7 @@ function ProductReport({ role, month }: { role: Role; month: string }) {
       live = false;
     };
   }, [role, month]);
-  if (!data || data.month !== month) return <div className="h-64" aria-busy="true" />;
+  if (!data || data.month !== month) return <RowsSkeleton />;
   type P = ProductKpiReport['rows'][number];
   return (
     <PerfTable<P>

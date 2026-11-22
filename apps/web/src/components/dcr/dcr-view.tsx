@@ -3,6 +3,7 @@
 import { Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { Dcr, Doctor, TourPlan, WorkType } from '@ariforce/contracts';
+import { WorkPageSkeleton } from '@/components/shell/page-skeletons';
 import { Button } from '@ariforce/ui/components/button';
 import {
   Dialog,
@@ -69,7 +70,7 @@ const noop = () => () => {};
 
 export function DcrView() {
   const today = useSyncExternalStore(noop, todayIST, () => null);
-  if (!today) return <div className="h-[560px]" aria-busy="true" />;
+  if (!today) return <WorkPageSkeleton />;
   return (
     <LookupsProvider>
       <DcrDay today={today} />

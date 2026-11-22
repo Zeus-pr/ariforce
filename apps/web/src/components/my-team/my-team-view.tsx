@@ -3,6 +3,7 @@
 import { ChevronsDownUp, ChevronsUpDown, Search, Send, UserPlus, Users } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@ariforce/ui/components/badge';
+import { RowsSkeleton } from '@/components/shell/page-skeletons';
 import { Button } from '@ariforce/ui/components/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@ariforce/ui/components/card';
 import { Input } from '@ariforce/ui/components/input';
@@ -122,7 +123,7 @@ export function MyTeamView() {
         {error}
       </p>
     );
-  if (!tree || !expanded) return <div className="h-96" aria-busy="true" />;
+  if (!tree || !expanded) return <RowsSkeleton rows={8} />;
 
   const withKids = new Set(tree.nodes.map((e) => e.managerId).filter((x): x is string => !!x));
   const query = q.trim().toLowerCase();

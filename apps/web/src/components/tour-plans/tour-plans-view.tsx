@@ -13,6 +13,7 @@ import {
   type WorkType,
 } from '@ariforce/contracts';
 import { Button } from '@ariforce/ui/components/button';
+import { WorkPageSkeleton } from '@/components/shell/page-skeletons';
 import {
   Dialog,
   DialogContent,
@@ -126,7 +127,7 @@ const UNPLANNED = 'unplanned';
 
 export function TourPlansView() {
   const current = useSyncExternalStore(noop, thisMonthIST, () => null);
-  if (!current) return <div className="h-[640px]" aria-busy="true" />;
+  if (!current) return <WorkPageSkeleton />;
   // Default to the open next-month window; if closed, still land on next month (read-only).
   const initial = tpOpenMonth() ?? nextYmOf(current);
   return (
