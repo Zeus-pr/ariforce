@@ -33,34 +33,27 @@ export type ChatMsg =
   | { role: 'assistant'; content: string | null; tool_calls?: ToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string };
 
-const ROUNDS = 3;
+const ROUNDS = 4;
 const NUM = /\d+(?:\.\d+)?/g;
-const HEAVY = /\b(?:why|compare|compared|comparison|versus|vs\.?|difference|trend)\b/i;
 
-/** One choice, before any model call. A lookup stays on 4.3. */
+/** A how-to does not need the larger model. A data question does. */
 export function modelFor(message: string): 'grok-4.3' | 'grok-4.7' {
-  if (HEAVY.test(message)) return 'grok-4.7';
-  const months = message.match(/\b20\d{2}-\d{2}\b/g);
-  if (months && new Set(months).size > 1) return 'grok-4.7';
-  if (/\bthis month\b/i.test(message) && /\b(?:last|previous|prior) month\b/i.test(message))
-    return 'grok-4.7';
-  return 'grok-4.3';
+  if (/^how do i\b/i.test(message.trim())) return 'grok-4.3';
+  return 'grok-4.7';
 }
 
-/** One path for this question, so the model does not choose a different one. */
-export function answerShape(message: string): string {
-  const s = message.toLowerCase();
-  if (/^how do i\b/.test(s.trim()))
-    return 'Answer from the how-to text only. Do not call a tool and do not state a figure.';
-  if (/\b(sales|primary|secondary)\b/.test(s))
-    return 'Sales question. Call kpi_report with rollup team unless a person or place is named. A place name is the place argument. Do not call list_team.';
-  if (/\b(doing|performance|so far|quarter|year|coverage|adherence|pob)\b/.test(s))
-    return 'Performance question. Call kpi_report with rollup team. Pass month as this month, this quarter, or this year. Do not call list_team.';
-  if (/\b(product|detailed|detailing|samples)\b/.test(s))
-    return 'Product question. Call product_kpis only.';
-  if (/\b(who|people|manager)\b/.test(s) || /\b(team list|on my team|my team)\b/.test(s))
-    return 'People question. Call list_team only.';
-  return 'Call kpi_report with rollup team for the measure asked. Do not answer from memory.';
+/** Sales live on the headquarters. The same name at territory level is not a second place. */
+export function choosePlace<T extends { name: string; level: string }>(
+  rows: T[],
+  needle: string,
+): T | null {
+  const name = needle.trim().toLowerCase();
+  const exact = rows.filter((row) => row.name.trim().toLowerCase() === name);
+  const pool = exact.length ? exact : rows;
+  const headquarters = pool.filter((row) => row.level === 'headquarter');
+  if (headquarters.length === 1) return headquarters[0] ?? null;
+  if (pool.length === 1) return pool[0] ?? null;
+  return null;
 }
 
 const kpiEnum = [...KPI_KEYS];
@@ -177,7 +170,7 @@ export function toolSpecs(director: boolean): ToolSpec[] {
     {
       name: 'kpi_report',
       description:
-        'Coverage, call average, DCR compliance, tour-plan adherence, POB and sales for this line. Prefer rollup team or self. byUser is one row per person, so pass few kpis. For a headquarters or other place, pass place and month. Sales of a place use primary_sales_value and secondary_sales_value.',
+        'The figures for this line. Pass the kpis the question needs: coverage_pct, call_average, dcr_compliance_pct, tp_adherence_pct, pob_value, primary_sales_value, secondary_sales_value. rollup team is the line, byUser is one row per person, place is a headquarters. A general “how are we doing” passes the field measures and both sales figures.',
       parameters: {
         type: 'object',
         properties: {
@@ -189,6 +182,38 @@ export function toolSpecs(director: boolean): ToolSpec[] {
             description: 'Headquarters or territory name, such as Suri. Not a person’s name.',
           },
           kpis: { type: 'array', items: { type: 'string', enum: kpiEnum } },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'read_records',
+      description:
+        'Anything else this account can already open: doctors, chemists, stockists, dcrs, tour_plans, leave, leave_balances, expenses, approvals, stock_statements, exceptions. Scoped to this person. A 403 means it is not on their account.',
+      parameters: {
+        type: 'object',
+        properties: {
+          kind: {
+            type: 'string',
+            enum: [
+              'doctors',
+              'chemists',
+              'stockists',
+              'dcrs',
+              'tour_plans',
+              'leave',
+              'leave_balances',
+              'expenses',
+              'approvals',
+              'stock_statements',
+              'exceptions',
+              'holidays',
+              'sfc',
+            ],
+          },
+          name: { type: 'string', description: 'Part of a doctor, chemist, or stockist name' },
+          userId: period.userId,
+          month: period.month,
         },
         additionalProperties: false,
       },
@@ -217,7 +242,14 @@ export function guardNarrative(
   if (email.some((address) => !allowedText.includes(address)))
     return { narrative: 'I can’t answer that from AriForce.', refused: true };
   if (bad.length === 0) return { narrative, refused: false };
-  if (hasBlock) return { narrative: 'The figures are in the table.', refused: false };
+  if (hasBlock) {
+    const kept = narrative
+      .split(/(?<=[.!?])\s+(?=[A-Z])/)
+      .filter((sentence) => !(sentence.match(NUM) ?? []).some((n) => !allowed.has(n)));
+    const text = kept.join(' ').trim();
+    if (text) return { narrative: text, refused: false };
+    return { narrative: 'The figures are in the table.', refused: false };
+  }
   return { narrative: 'I can’t answer that from AriForce.', refused: true };
 }
 
@@ -233,15 +265,6 @@ function narrativeFrom(content: string | null): string {
   return raw;
 }
 
-export function clipNarrative(narrative: string, sentences: number): string {
-  const parts = narrative.split(/(?<=[.!?])\s+(?=[A-Z])/);
-  return parts
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .slice(0, sentences)
-    .join(' ');
-}
-
 export async function runBot(input: {
   knowledge: string;
   scopeLine: string;
@@ -253,7 +276,7 @@ export async function runBot(input: {
   const messages: ChatMsg[] = [
     {
       role: 'system',
-      content: `${input.knowledge}\n\n${input.scopeLine}\n\n${answerShape(input.message)}\n\nReply with only {"narrative":"..."}. At most two sentences. Use only names and numbers a tool returned. Do not explain, recommend, or add a cause.`,
+      content: `${input.knowledge}\n\n${input.scopeLine}\n\nDecide which tools to call. Read what they return, then answer in normal language. Lead with the result. When a target is present, say the actual, the target, and whether it is ahead or behind. If many rows matter, say the pattern instead of reciting every cell. A headquarters name such as Suri is a place on kpi_report, not a person. If a tool says the record is outside the team or not on this account, say only that. Never invent a number or a name. Reply with only {"narrative":"..."}.`,
     },
     { role: 'user', content: input.message },
   ];
@@ -291,12 +314,5 @@ export async function runBot(input: {
     allowed.join('\n'),
     blocks.length > 0,
   );
-  return {
-    ...guarded,
-    narrative: guarded.refused
-      ? guarded.narrative
-      : clipNarrative(guarded.narrative, toolNames.length ? 2 : 4),
-    blocks: blocks.slice(0, 6),
-    toolNames,
-  };
+  return { ...guarded, blocks: blocks.slice(0, 6), toolNames };
 }

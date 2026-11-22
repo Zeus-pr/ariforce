@@ -13,6 +13,6 @@ import { TourPlansService } from './tour-plans.service';
   imports: [TeamModule],
   controllers: [TourPlanItemsController, TourPlansController, ApprovalsController],
   providers: [ApprovalsService, TourPlansService, TourPlanItemsService],
-  exports: [ApprovalsService],
+  exports: [ApprovalsService, TourPlansService],
 })
 export class PlansModule {}

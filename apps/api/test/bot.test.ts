@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { askerRoleLabel, botAudience, knowledgeFor } from '../src/bot/knowledge';
 import {
-  answerShape,
+  choosePlace,
   guardNarrative,
   modelFor,
   monthArg,
@@ -39,13 +39,11 @@ describe('ARIBOT access', () => {
 });
 
 describe('ARIBOT model', () => {
-  it('keeps a lookup on 4.3 and steps up for a comparison', () => {
+  it('uses the larger model for a data question and the smaller one for a how-to', () => {
     expect(modelFor('How do I find this month’s sales figures?')).toBe('grok-4.3');
-    expect(modelFor('What is company secondary sales this month?')).toBe('grok-4.3');
-    expect(modelFor('What is my coverage for 2026-11?')).toBe('grok-4.3');
+    expect(modelFor('What is company secondary sales this month?')).toBe('grok-4.7');
+    expect(modelFor('What is my coverage for 2026-11?')).toBe('grok-4.7');
     expect(modelFor('Why is coverage down versus last month?')).toBe('grok-4.7');
-    expect(modelFor('Compare 2026-10 and 2026-11.')).toBe('grok-4.7');
-    expect(modelFor('Show this month against last month.')).toBe('grok-4.7');
   });
 });
 
@@ -57,10 +55,15 @@ describe('ARIBOT month', () => {
     expect(monthArg('this month', '2026-11-22')).toBe('2026-11');
     expect(monthArg('last month', '2026-11-22')).toBe('2026-10');
     expect(monthArg('2026-10', '2026-11-22')).toBe('2026-10');
-    expect(answerShape('give me october sales metric for suri')).toContain('Sales question');
-    expect(answerShape('How do I find my team?')).toContain('how-to text');
-    expect(answerShape('Who is on my team?')).toContain('list_team');
-    expect(answerShape('how is my team doing so far this month')).toContain('kpi_report');
+    expect(
+      choosePlace(
+        [
+          { name: 'Suri', level: 'headquarter' },
+          { name: 'SURI', level: 'territory' },
+        ],
+        'suri',
+      ),
+    ).toEqual({ name: 'Suri', level: 'headquarter' });
     expect(periodArg('this quarter', '2026-11-22')).toEqual({
       from: '2026-10-01',
       to: '2026-11-22',
