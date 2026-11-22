@@ -21,6 +21,8 @@ const DEFAULT_KPIS: KpiKey[] = [
   'call_average',
   'dcr_compliance_pct',
   'tp_adherence_pct',
+  'primary_sales_value',
+  'secondary_sales_value',
   'pob_value',
 ];
 

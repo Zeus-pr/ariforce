@@ -35,7 +35,8 @@ export type ChatMsg =
 
 const ROUNDS = 3;
 const NUM = /\d+(?:\.\d+)?/g;
-const HEAVY = /\b(?:why|compare|compared|comparison|versus|vs\.?|difference|trend)\b/i;
+const HEAVY =
+  /\b(?:why|compare|compared|comparison|versus|vs\.?|difference|trend|doing|performance|so far|behind|ahead)\b/i;
 
 /** One choice, before any model call. A lookup stays on 4.3. */
 export function modelFor(message: string): 'grok-4.3' | 'grok-4.7' {
@@ -47,20 +48,20 @@ export function modelFor(message: string): 'grok-4.3' | 'grok-4.7' {
   return 'grok-4.3';
 }
 
-/** One path for this question, so the model does not choose a different one. */
+/** Which figures to fetch. The model still reads the result and writes the answer. */
 export function answerShape(message: string): string {
   const s = message.toLowerCase();
   if (/^how do i\b/.test(s.trim()))
-    return 'Answer from the how-to text only. Do not call a tool and do not state a figure.';
+    return 'How-to question. Answer from the how-to text only. Do not call a tool and do not state a figure.';
   if (/\b(sales|primary|secondary)\b/.test(s))
-    return 'Sales question. Call kpi_report with rollup team unless a person or place is named. A place name is the place argument. Do not call list_team.';
-  if (/\b(doing|performance|so far|quarter|year|coverage|adherence|pob)\b/.test(s))
-    return 'Performance question. Call kpi_report with rollup team. Pass month as this month, this quarter, or this year. Do not call list_team.';
+    return 'Sales question. Fetch kpi_report with primary_sales_value and secondary_sales_value for the team, the named person, or the place. A headquarters name goes in place. Then read actual against target, and say what is behind.';
+  if (/\b(doing|performance|so far)\b/.test(s))
+    return 'Performance question. Fetch kpi_report for that team and period, with coverage_pct, call_average, dcr_compliance_pct, tp_adherence_pct, primary_sales_value and secondary_sales_value. Then say what is on target and what is behind. Use list_team only if the question asks who.';
   if (/\b(product|detailed|detailing|samples)\b/.test(s))
-    return 'Product question. Call product_kpis only.';
+    return 'Product question. Fetch product_kpis, then say which products were detailed and where the POB sits.';
   if (/\b(who|people|manager)\b/.test(s) || /\b(team list|on my team|my team)\b/.test(s))
-    return 'People question. Call list_team only.';
-  return 'Call kpi_report with rollup team for the measure asked. Do not answer from memory.';
+    return 'People question. Fetch list_team. If they also asked how those people are doing, fetch kpi_report for them too.';
+  return 'Fetch the tool that holds the figures this question needs, then read what came back. Do not state a figure from memory.';
 }
 
 /** Sales live on the headquarters. The same name at territory level is not a second place. */
@@ -191,7 +192,7 @@ export function toolSpecs(director: boolean): ToolSpec[] {
     {
       name: 'kpi_report',
       description:
-        'Coverage, call average, DCR compliance, tour-plan adherence, POB and sales for this line. Prefer rollup team or self. byUser is one row per person, so pass few kpis. For a headquarters or other place, pass place and month. Sales of a place use primary_sales_value and secondary_sales_value.',
+        'The figures for this line. Pass the kpis the question needs: coverage_pct, call_average, dcr_compliance_pct, tp_adherence_pct, pob_value, primary_sales_value, secondary_sales_value. rollup team is the line, byUser is one row per person, place is a headquarters. A general “how are we doing” passes the field measures and both sales figures.',
       parameters: {
         type: 'object',
         properties: {
@@ -231,7 +232,14 @@ export function guardNarrative(
   if (email.some((address) => !allowedText.includes(address)))
     return { narrative: 'I can’t answer that from AriForce.', refused: true };
   if (bad.length === 0) return { narrative, refused: false };
-  if (hasBlock) return { narrative: 'The figures are in the table.', refused: false };
+  if (hasBlock) {
+    const kept = narrative
+      .split(/(?<=[.!?])\s+(?=[A-Z])/)
+      .filter((sentence) => !(sentence.match(NUM) ?? []).some((n) => !allowed.has(n)));
+    const text = kept.join(' ').trim();
+    if (text) return { narrative: text, refused: false };
+    return { narrative: 'The figures are in the table.', refused: false };
+  }
   return { narrative: 'I can’t answer that from AriForce.', refused: true };
 }
 
@@ -267,7 +275,7 @@ export async function runBot(input: {
   const messages: ChatMsg[] = [
     {
       role: 'system',
-      content: `${input.knowledge}\n\n${input.scopeLine}\n\n${answerShape(input.message)}\n\nReply with only {"narrative":"..."}. At most two sentences. Use only names and numbers a tool returned. Do not explain, recommend, or add a cause.`,
+      content: `${input.knowledge}\n\n${input.scopeLine}\n\n${answerShape(input.message)}\n\nReply with only {"narrative":"..."}. Read the tool result in plain language: what the period shows, what is ahead of target, and what is behind or missing. Use only names and numbers the tools returned. Do not invent a cause.`,
     },
     { role: 'user', content: input.message },
   ];
@@ -309,7 +317,7 @@ export async function runBot(input: {
     ...guarded,
     narrative: guarded.refused
       ? guarded.narrative
-      : clipNarrative(guarded.narrative, toolNames.length ? 2 : 4),
+      : clipNarrative(guarded.narrative, toolNames.length ? 8 : 6),
     blocks: blocks.slice(0, 6),
     toolNames,
   };

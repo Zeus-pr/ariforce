@@ -31,7 +31,7 @@ export async function completeGrok(
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
     body: JSON.stringify({
       model,
-      temperature: 0,
+      temperature: 0.3,
       messages,
       ...(tools
         ? {
