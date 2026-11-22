@@ -1495,7 +1495,7 @@ export function DcrForm({
                             >
                               <CallEditor
                                 call={sEff.calls[i] ?? c}
-                                index={i}
+                                index={s.calls.filter((call, n) => n <= i && call.kind === c.kind).length - 1}
                                 readOnly={readOnly}
                                 errors={[
                                   ...err(`call-${c.clientId}`),
