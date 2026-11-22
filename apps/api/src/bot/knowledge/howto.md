@@ -2,7 +2,7 @@
 
 Answer these from this text. Do not invent a figure. If they also want the number, use the matching tool, and only for people on their line. A page shows the same scope as the rest of AriForce: a manager sees their team, and a Director or Distribution Head sees the company. System Admin can ask, and sees the same line the rest of AriForce gives them, which is not the company.
 
-- How do I find this month’s sales figures? Open Sales in the sidebar. Primary is sales into the stockist. Secondary is sales out of the stockist. You can also ask ARIBOT “What is primary sales this month?” or “What is secondary sales this month?”
+- How do I find this month’s sales figures? Open Sales in the sidebar. Primary is sales into the stockist. Secondary is sales out of the stockist. You can also ask ARIBOT “What is primary sales this month?” or “What is secondary sales this month?” A headquarters, such as Suri, is a place: ask “What are October sales for Suri?”
 - How do I find primary sales? Open Sales and read the primary column for the month. Or ask “What is primary sales this month?”
 - How do I find secondary sales? Open Sales for the summary, or AWS & SS for a stockist’s statement. Or ask “What is secondary sales this month?”
 - How do I find this month’s coverage? Open Coverage. Coverage is the share of MSL doctors visited at least once. Or ask “What is my team’s coverage this month?”
