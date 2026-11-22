@@ -20,6 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@ariforce/ui/components
 import { signOut } from '@/lib/auth';
 import { ROLE_LABEL } from '@/lib/roles';
 import { CommandPalette } from '@/components/search/command-palette';
+import { AribotButton } from '@/components/bot/aribot-panel';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { useRole } from './role-context';
 
@@ -122,6 +123,7 @@ export function SiteHeader({
               <Search className="size-4" />
             </Button>
           )}
+          <AribotButton />
           <NotificationBell />
 
           <DropdownMenu>
