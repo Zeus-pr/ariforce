@@ -149,7 +149,35 @@ dialog::backdrop {
 .af-liquid {
   animation: af-liquid 1.8s linear infinite;
 }
+@keyframes aribots-sheen {
+  0%,
+  58% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -20% 0;
+  }
+}
+.aribot-mark {
+  background-image: linear-gradient(
+    100deg,
+    #1c2130 0%,
+    #1c2130 40%,
+    #f7f4ee 50%,
+    #1c2130 60%,
+    #1c2130 100%
+  );
+  background-size: 220% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: aribots-sheen 5.5s ease-in-out infinite;
+}
 @media (prefers-reduced-motion: reduce) {
+  .aribot-mark {
+    animation: none;
+    background-image: none;
+    color: #1c2130;
+  }
   .af-enter,
   .af-route,
   .af-fade,

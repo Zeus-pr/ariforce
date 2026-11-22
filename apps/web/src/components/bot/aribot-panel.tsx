@@ -29,7 +29,35 @@ interface BotReply {
   message?: string;
 }
 
-const STARTERS = ['Who is on my team?', 'Coverage this month', 'Tour plan adherence this month'];
+const READY: { group: string; ask: string; director?: boolean }[] = [
+  { group: 'Team', ask: 'Who is on my team?' },
+  { group: 'Team', ask: 'Who on my line has no manager?' },
+  { group: 'Field', ask: "What is my team's coverage this month?" },
+  { group: 'Field', ask: 'What is frequency compliance this month?' },
+  { group: 'Field', ask: 'What share of doctors were missed this month?' },
+  { group: 'Field', ask: 'What is the call average this month?' },
+  { group: 'Field', ask: 'What is DCR compliance this month?' },
+  { group: 'Field', ask: 'What is tour plan adherence this month?' },
+  { group: 'Sales', ask: 'What is POB this month?' },
+  { group: 'Sales', ask: 'What is primary sales this month?' },
+  { group: 'Sales', ask: 'What is secondary sales this month?' },
+  { group: 'Products', ask: 'Which products were detailed this month?' },
+  { group: 'Products', ask: 'Which product has the highest POB this month?' },
+  { group: 'Company', ask: 'What is company coverage this month?', director: true },
+  { group: 'Company', ask: 'Which area has the lowest coverage?', director: true },
+  { group: 'Company', ask: 'What is company primary sales this month?', director: true },
+  { group: 'Company', ask: 'What is company secondary sales this month?', director: true },
+];
+
+function chatError(status: number): string {
+  if (status === 401) return 'Your session has ended. Sign in again, then ask.';
+  if (status === 403) return 'ARIBOT is for Area Business Managers and above.';
+  if (status === 404) return 'ARIBOT is not available on the server yet.';
+  if (status === 429) return 'Too many questions this hour. Try again shortly.';
+  if (status === 503) return 'ARIBOT is not ready yet. The Grok key still needs to be set.';
+  if (status === 0) return 'Could not reach AriForce. Check your connection and try again.';
+  return 'ARIBOT could not answer that just now. Try again in a moment.';
+}
 
 function asMarkdown(reply: BotReply) {
   const tables = (reply.blocks ?? []).map((block) => {
@@ -54,17 +82,21 @@ const adapter: ChatModelAdapter = {
     yield {
       content: [{ type: 'reasoning', text: 'Checking your line in AriForce.' }],
     };
-    const res = await fetch(`${API_URL}/v1/bot/ask`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message }),
-      signal: abortSignal,
-    });
-    const body = (await res.json().catch(() => null)) as BotReply | null;
-    if (!res.ok || !body?.narrative) {
-      throw new Error(body?.message || 'ARIBOT could not answer just now.');
+    let res: Response;
+    try {
+      res = await fetch(`${API_URL}/v1/bot/ask`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message }),
+        signal: abortSignal,
+      });
+    } catch (error) {
+      if (abortSignal.aborted) throw error;
+      throw new Error(chatError(0));
     }
+    const body = (await res.json().catch(() => null)) as BotReply | null;
+    if (!res.ok || !body?.narrative) throw new Error(chatError(res.status));
     yield {
       content: [
         {
@@ -92,22 +124,34 @@ function AribotOrb() {
 }
 
 function Welcome() {
+  const { role } = useRole();
+  const asks = READY.filter((item) => !item.director || role === 'director');
+  const groups = [...new Set(asks.map((item) => item.group))];
   return (
     <div className="mb-6 flex flex-col gap-1 px-2">
       <Orb state="reasoning" variant="twins" size={36} label="ARIBOT" className="text-primary mb-3" />
       <p className="animate-in fade-in slide-in-from-bottom-1 fill-mode-both text-2xl font-medium tracking-tight duration-200">
         Ask about your team
       </p>
-      <div className="mt-3 flex flex-col">
-        {STARTERS.map((prompt) => (
-          <ThreadPrimitive.Suggestion key={prompt} prompt={prompt} send asChild>
-            <button
-              type="button"
-              className="animate-in fade-in slide-in-from-bottom-2 fill-mode-both hover:bg-foreground/[0.03] rounded-md px-2 py-2 text-left text-sm duration-200"
-            >
-              {prompt}
-            </button>
-          </ThreadPrimitive.Suggestion>
+      <div className="mt-4 flex max-h-72 flex-col gap-3 overflow-y-auto">
+        {groups.map((group) => (
+          <div key={group}>
+            <p className="text-muted-foreground px-2 pb-1 text-[11px] tracking-[0.16em] uppercase">
+              {group}
+            </p>
+            {asks
+              .filter((item) => item.group === group)
+              .map((item) => (
+                <ThreadPrimitive.Suggestion key={item.ask} prompt={item.ask} send asChild>
+                  <button
+                    type="button"
+                    className="hover:bg-foreground/[0.03] w-full rounded-md px-2 py-1.5 text-left text-sm"
+                  >
+                    {item.ask}
+                  </button>
+                </ThreadPrimitive.Suggestion>
+              ))}
+          </div>
         ))}
       </div>
     </div>
@@ -132,17 +176,7 @@ export function AribotButton() {
         onClick={() => setOpen(true)}
       >
         <AribotOrb />
-        <span className="relative text-[12px] font-semibold tracking-[0.28em]">
-          <span
-            aria-hidden
-            className="absolute inset-0 bg-[linear-gradient(105deg,#7c6bff,#e879f9,#38bdf8)] bg-clip-text text-transparent blur-[5px]"
-          >
-            ARIBOT
-          </span>
-          <span className="relative bg-[linear-gradient(105deg,#6d5efc_0%,#d946ef_46%,#38bdf8_100%)] bg-clip-text text-transparent">
-            ARIBOT
-          </span>
-        </span>
+        <span className="aribot-mark text-[13px] font-semibold tracking-[0.22em]">ARIBOT</span>
       </Button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
