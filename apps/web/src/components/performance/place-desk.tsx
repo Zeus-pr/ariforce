@@ -6,12 +6,15 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@ariforce/ui/components/button';
 import { Combobox } from '@ariforce/ui/components/combobox';
 import { Input } from '@ariforce/ui/components/input';
-import { cn } from '@ariforce/ui/lib/utils';
 import { exportXlsx, type ExportCell, type ExportCol } from '@/components/export/export';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { addMonths, monthLabel } from '@/lib/period';
 import { getTerritories } from '@/lib/query';
+import NumberFlow from '@number-flow/react';
+import { motion } from 'motion/react';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { LiquidColumns, SalesTrendChart, YearCompareChart, type LiquidItem } from './sales-charts';
+import { SalesChartsSkeleton, SalesSkeleton } from './sales-skeleton';
 import { MonthSwitch, inr, useMonth } from './perf-ui';
 
 const KPIS =
@@ -595,8 +598,7 @@ export function PlaceDesk({
     turn(direction, () => setFocusId(id));
   }
 
-  if (!month || !places)
-    return <div className="h-96 animate-pulse rounded-lg bg-muted/40" aria-busy="true" />;
+  if (!month || !places) return <SalesSkeleton />;
 
   const placeChoices = places
     .filter(
@@ -742,8 +744,24 @@ export function PlaceDesk({
             {focus?.name ?? title}
           </h1>
           {focus && (
-            <p className="mt-1 text-sm text-muted-foreground">
-              {LEVEL[focus.level]} · primary in, secondary out
+            <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+              <span>{LEVEL[focus.level]}</span>
+              <span className="font-medium text-indigo-700">
+                Primary{' '}
+                <NumberFlow
+                  value={now.primary}
+                  locales="en-IN"
+                  format={{ style: 'currency', currency: 'INR', maximumFractionDigits: 0 }}
+                />
+              </span>
+              <span className="font-medium text-cyan-700">
+                Secondary{' '}
+                <NumberFlow
+                  value={now.secondary}
+                  locales="en-IN"
+                  format={{ style: 'currency', currency: 'INR', maximumFractionDigits: 0 }}
+                />
+              </span>
             </p>
           )}
         </div>
@@ -765,35 +783,17 @@ export function PlaceDesk({
             if (next) open(next, 'forward');
           }}
         />
-        <div
-          className="inline-flex rounded-full bg-foreground p-1"
-          role="group"
-          aria-label="Period"
-        >
-          {(
-            [
-              ['month', 'Month'],
-              ['quarter', 'Quarter'],
-              ['fy', 'Financial year'],
-              ['custom', 'Custom'],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={span === id}
-              className={cn(
-                'rounded-full px-3 py-1.5 text-sm font-medium',
-                span === id
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-background hover:bg-background/15',
-              )}
-              onClick={() => setSpan(id)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          label="Period"
+          value={span}
+          onValueChange={setSpan}
+          options={[
+            { value: 'month', label: 'Month' },
+            { value: 'quarter', label: 'Quarter' },
+            { value: 'fy', label: 'Financial year' },
+            { value: 'custom', label: 'Custom' },
+          ]}
+        />
         {span === 'custom' && (
           <>
             <Input
@@ -817,10 +817,15 @@ export function PlaceDesk({
         </p>
       )}
       {busy ? (
-        <div className="h-60 animate-pulse rounded-md bg-muted/40" aria-busy="true" />
+        <SalesChartsSkeleton />
       ) : trend.some((point) => point.primary || point.secondary || point.target) ||
         hqBars.length > 0 ? (
-        <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.8fr)]">
+        <motion.div
+          className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.8fr)]"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: 'spring', bounce: 0.2, duration: 0.45 }}
+        >
           <ChartBox
             title={periodTitle(span, month)}
             fileName={`sales-period-${period?.from ?? month}`}
@@ -853,7 +858,7 @@ export function PlaceDesk({
           >
             <YearCompareChart years={years} label="This period and last year" />
           </ChartBox>
-        </div>
+        </motion.div>
       ) : (
         !error && (
           <p className="py-8 text-sm text-muted-foreground">
@@ -885,7 +890,7 @@ export function PlaceDesk({
         </p>
       )}
       {salesProducts === null ? (
-        <div className="h-48 animate-pulse rounded-md bg-muted/40" aria-busy="true" />
+        <SalesChartsSkeleton />
       ) : (
         salesProducts.length > 0 && (
           <>
