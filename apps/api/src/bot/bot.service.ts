@@ -69,7 +69,7 @@ export class BotService {
   async ask(p: Principal, message: string) {
     const audience = botAudience(p.roles);
     if (audience === 'none')
-      throw err(403, 'FORBIDDEN', 'ARIBOT is for Area Business Managers and above');
+      throw err(403, 'FORBIDDEN', 'ARIBOT is for managers, the Distribution Head, and System Admin.');
     const key = process.env.XAI_API_KEY?.trim();
     if (!key) throw err(503, 'BOT_UNAVAILABLE', 'ARIBOT is not configured yet.');
     const model = process.env.XAI_MODEL?.trim() || 'grok-4.7';

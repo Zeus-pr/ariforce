@@ -5,7 +5,9 @@ import { guardNarrative, runBot, toolSpecs } from '../src/bot/run';
 describe('ARIBOT access', () => {
   it('stops below Area Business Manager and opens the company only for a Director', () => {
     expect(botAudience(['business_manager'])).toBe('none');
-    expect(botAudience(['system_admin'])).toBe('none');
+    expect(botAudience(['hr'])).toBe('none');
+    expect(botAudience(['system_admin'])).toBe('director');
+    expect(botAudience(['distribution_head'])).toBe('director');
     expect(botAudience(['area_business_manager'])).toBe('team');
     expect(botAudience(['regional_business_manager'])).toBe('team');
     expect(botAudience(['director'])).toBe('director');

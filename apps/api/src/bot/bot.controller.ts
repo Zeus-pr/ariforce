@@ -1,7 +1,7 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { BotAskRequest } from '@ariforce/contracts';
 import type * as z from 'zod';
-import { CurrentPrincipal, RequirePermissions } from '../auth/decorators';
+import { CurrentPrincipal } from '../auth/decorators';
 import type { Principal } from '../auth/principal';
 import { enforce, LIMITS } from '../common/rate-limit';
 import { ZodPipe } from '../common/zod.pipe';
@@ -13,7 +13,6 @@ export class BotController {
 
   @Post('ask')
   @HttpCode(200)
-  @RequirePermissions('reports:read')
   async ask(
     @CurrentPrincipal() p: Principal,
     @Body(new ZodPipe(BotAskRequest)) b: z.output<typeof BotAskRequest>,
