@@ -9606,6 +9606,7 @@ export interface components {
     StockStatementSalesReport: {
       products: components['schemas']['StockStatementSalesProduct'][];
       people: components['schemas']['StockStatementSalesPerson'][];
+      brandTargets: components['schemas']['StockStatementSalesBrandTarget'][];
       lines: components['schemas']['StockStatementSalesLine'][];
     };
     StockStatementSalesProduct: {
@@ -9633,6 +9634,11 @@ export interface components {
       name: string;
       headquarters: string[];
       products: components['schemas']['StockStatementSalesProduct'][];
+    };
+    StockStatementSalesBrandTarget: {
+      name: string;
+      primary: number;
+      secondary: number;
     };
     StockStatementSalesLine: {
       /**

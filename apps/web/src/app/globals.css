@@ -138,10 +138,22 @@ dialog::backdrop {
   }
 }
 
+@keyframes af-liquid {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.af-liquid {
+  animation: af-liquid 1.8s linear infinite;
+}
 @media (prefers-reduced-motion: reduce) {
   .af-enter,
   .af-route,
-  .af-fade {
+  .af-fade,
+  .af-liquid {
     animation: none;
   }
   ::view-transition-group(place-list),

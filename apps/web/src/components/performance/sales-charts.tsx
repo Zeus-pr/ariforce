@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import {
   Bar,
   BarChart,
@@ -27,6 +28,7 @@ export function SalesTrendChart({
     primary: number | null;
     secondary: number | null;
     target: number | null;
+    secondaryTarget?: number | null;
   }[];
   onMonth?: (month: string) => void;
 }) {
@@ -61,7 +63,15 @@ export function SalesTrendChart({
         <Line
           dataKey="target"
           name="Primary target"
-          stroke={CHART.muted}
+          stroke={CHART.series[0]}
+          strokeDasharray="4 3"
+          dot={false}
+          isAnimationActive={!reduced}
+        />
+        <Line
+          dataKey="secondaryTarget"
+          name="Secondary target"
+          stroke={CHART.series[1]}
           strokeDasharray="4 3"
           dot={false}
           isAnimationActive={!reduced}
@@ -256,5 +266,294 @@ export function ProductColumnChart({
         </ChartFrame>
       </div>
     </div>
+  );
+}
+
+export type LiquidItem = {
+  id: string;
+  name: string;
+  primary: number;
+  secondary: number;
+  primaryTarget: number;
+  secondaryTarget: number;
+  priorPrimary?: number;
+  priorSecondary?: number;
+};
+
+const COLUMNS = 28;
+const STEP = 1 / 120;
+const SPREAD = 2600;
+const RESTORE = 18;
+const SURFACE_DAMPING = 2.2;
+const MAX_WAVE = 8;
+const RIM = 3;
+
+function clamp(v: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, v));
+}
+
+function surfacePolygon(
+  heights: Float64Array,
+  levelY: number,
+  width: number,
+  height: number,
+  lift: number,
+) {
+  let points = '';
+  for (let i = 0; i < COLUMNS; i++) {
+    const x = (i / (COLUMNS - 1)) * width;
+    const y = clamp(levelY + (heights[i] ?? 0) - lift, -40, height + 40);
+    points += `${x.toFixed(1)}px ${y.toFixed(1)}px,`;
+  }
+  return `polygon(${points}${width}px ${height + 40}px,0px ${height + 40}px)`;
+}
+
+function useLiquidClip(root: React.RefObject<HTMLElement | null>) {
+  const reduced = useReducedMotion();
+  useEffect(() => {
+    const node = root.current;
+    if (!node) return;
+    if (reduced) {
+      node.querySelectorAll<HTMLElement>('[data-liquid]').forEach((el) => {
+        const fill = Number(el.dataset.fill ?? 100);
+        const top = 100 - fill;
+        el.style.clipPath = `polygon(0% ${top}%,100% ${top}%,100% 100%,0% 100%)`;
+      });
+      return;
+    }
+    const heights = new Float64Array(COLUMNS);
+    const speeds = new Float64Array(COLUMNS);
+    let raf = 0;
+    let last = 0;
+    let carry = 0;
+    let time = 0;
+    const tick = (now: number) => {
+      const elapsed = last ? Math.min((now - last) / 1000, 0.05) : STEP;
+      last = now;
+      carry += elapsed;
+      while (carry >= STEP) {
+        for (let i = 0; i < COLUMNS; i++) {
+          const left = heights[i > 0 ? i - 1 : i] ?? 0;
+          const right = heights[i < COLUMNS - 1 ? i + 1 : i] ?? 0;
+          const accel =
+            (left + right - 2 * (heights[i] ?? 0)) * SPREAD -
+            (heights[i] ?? 0) * RESTORE -
+            (speeds[i] ?? 0) * SURFACE_DAMPING;
+          speeds[i] = (speeds[i] ?? 0) + accel * STEP + Math.sin(time * 0.7 + i * 0.45) * 3.2;
+        }
+        for (let i = 0; i < COLUMNS; i++) {
+          heights[i] = clamp((heights[i] ?? 0) + (speeds[i] ?? 0) * STEP, -MAX_WAVE, MAX_WAVE);
+        }
+        time += STEP;
+        carry -= STEP;
+      }
+      node.querySelectorAll<HTMLElement>('[data-liquid]').forEach((el) => {
+        const fill = Number(el.dataset.fill ?? 100);
+        const width = el.clientWidth;
+        const height = el.clientHeight;
+        if (!width || !height) return;
+        const levelY = height * (1 - fill / 100);
+        el.style.clipPath = surfacePolygon(heights, levelY, width, height, 0);
+        const rim = el.nextElementSibling as HTMLElement | null;
+        if (rim?.dataset.rim != null) {
+          rim.style.clipPath = surfacePolygon(heights, levelY, width, height, RIM);
+        }
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [reduced, root]);
+}
+
+const PLOT = 220;
+const HEAD = 72;
+
+const TANKS = {
+  primary: {
+    fill: 'var(--brand-navy)',
+    track: 'color-mix(in oklch, var(--brand-navy) 32%, white)',
+    ink: 'var(--brand-navy)',
+  },
+  secondary: {
+    fill: 'var(--brand-teal)',
+    track: 'color-mix(in oklch, var(--brand-teal) 46%, white)',
+    ink: 'var(--brand-teal)',
+  },
+} as const;
+
+function LiquidBar({
+  actual,
+  target,
+  max,
+  tank,
+  label,
+}: {
+  actual: number;
+  target: number;
+  max: number;
+  tank: (typeof TANKS)[keyof typeof TANKS];
+  label: string;
+}) {
+  const topped = target > 0 ? target : actual;
+  const track = max > 0 ? (topped / max) * PLOT : 0;
+  const fill = target > 0 ? Math.min(100, (actual / target) * 100) : actual > 0 ? 100 : 0;
+  const pct = target > 0 ? Math.round((actual / target) * 100) : null;
+  if (actual <= 0 && target <= 0) return <div className="w-8" style={{ height: PLOT }} />;
+  return (
+    <button
+      type="button"
+      className="group relative flex w-8 flex-col justify-end"
+      style={{ height: PLOT }}
+      aria-label={`${label} ${inr(actual)}${pct != null ? `, ${pct}% of target` : ''}`}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') event.currentTarget.blur();
+      }}
+    >
+      <div
+        className="relative w-full rounded-t-md border-2"
+        style={{ height: track, background: tank.track, borderColor: tank.fill }}
+      >
+        <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 hidden -translate-x-1/2 rounded-md bg-neutral-900 px-2 py-1 text-[11px] font-medium whitespace-nowrap text-white group-hover:block group-focus-visible:block">
+          {inr(actual)}
+        </span>
+        <div className="absolute inset-0 overflow-hidden rounded-t-[4px]">
+          <div
+            data-liquid
+            data-fill={fill}
+            className="absolute inset-0"
+            style={{ background: tank.fill }}
+          />
+          <div data-rim className="pointer-events-none absolute inset-0 bg-white/15" />
+        </div>
+        {pct != null && (
+          <span className="pointer-events-none absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-1/2 -rotate-90 rounded bg-white/90 px-1 text-[10px] font-bold whitespace-nowrap text-neutral-900">
+            {pct}%
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function Column({
+  item,
+  max,
+  onOpen,
+}: {
+  item: LiquidItem;
+  max: number;
+  onOpen?: (id: string) => void;
+}) {
+  const name = (
+    <span className="absolute top-1 left-1/2 origin-top-left rotate-[40deg] whitespace-nowrap text-[11px] font-medium">
+      {item.name}
+    </span>
+  );
+  return (
+    <div className="flex w-36 shrink-0 flex-col items-center">
+      <div className="flex w-full items-end justify-center gap-1.5" style={{ height: HEAD }}>
+        <span className="relative h-full w-8">
+          <span
+            className="absolute bottom-0 left-1/2 origin-bottom-left -rotate-[40deg] text-[11px] font-semibold whitespace-nowrap tabular-nums"
+            style={{ color: TANKS.primary.ink }}
+          >
+            {item.primaryTarget > 0 ? lakh(item.primaryTarget) : ''}
+          </span>
+        </span>
+        <span className="relative h-full w-8">
+          <span
+            className="absolute bottom-0 left-1/2 origin-bottom-left -rotate-[40deg] text-[11px] font-semibold whitespace-nowrap tabular-nums"
+            style={{ color: TANKS.secondary.ink }}
+          >
+            {item.secondaryTarget > 0 ? lakh(item.secondaryTarget) : ''}
+          </span>
+        </span>
+      </div>
+      <div className="flex items-end justify-center gap-1.5" style={{ height: PLOT }}>
+        <LiquidBar
+          actual={item.primary}
+          target={item.primaryTarget}
+          max={max}
+          tank={TANKS.primary}
+          label="Primary"
+        />
+        <LiquidBar
+          actual={item.secondary}
+          target={item.secondaryTarget}
+          max={max}
+          tank={TANKS.secondary}
+          label="Secondary"
+        />
+      </div>
+      {onOpen ? (
+        <button
+          type="button"
+          className="relative h-24 w-full overflow-hidden"
+          onClick={() => onOpen(item.id)}
+        >
+          {name}
+        </button>
+      ) : (
+        <div className="relative h-24 w-full overflow-hidden">{name}</div>
+      )}
+    </div>
+  );
+}
+
+/** Rupee axis on the left. Each place is one column, so its name and targets share the bars' center. */
+export function LiquidColumns({
+  items,
+  onOpen,
+}: {
+  items: LiquidItem[];
+  onOpen?: (id: string) => void;
+}) {
+  const root = useRef<HTMLElement>(null);
+  useLiquidClip(root);
+  const max = Math.max(
+    1,
+    ...items.flatMap((item) => [
+      item.primaryTarget > 0 ? item.primaryTarget : item.primary,
+      item.secondaryTarget > 0 ? item.secondaryTarget : item.secondary,
+    ]),
+  );
+  const ticks = [1, 0.75, 0.5, 0.25, 0].map((step) => max * step);
+  return (
+    <figure ref={root} className="flex">
+      <div
+        className="relative w-16 shrink-0 text-[11px] tabular-nums text-muted-foreground"
+        style={{ height: PLOT, marginTop: HEAD }}
+      >
+        {ticks.map((tick) => (
+          <span
+            key={tick}
+            className="absolute right-2 -translate-y-1/2"
+            style={{ top: `${(1 - tick / max) * 100}%` }}
+          >
+            {inr(tick)}
+          </span>
+        ))}
+      </div>
+      <div className="min-w-0 flex-1 overflow-x-auto">
+        <div className="relative flex w-max border-l border-border">
+          <div
+            className="pointer-events-none absolute right-0 left-0 border-b border-border"
+            style={{ top: HEAD, height: PLOT }}
+          >
+            {ticks.slice(0, -1).map((tick) => (
+              <div
+                key={tick}
+                className="absolute right-0 left-0 border-t border-border/70"
+                style={{ bottom: `${(tick / max) * 100}%` }}
+              />
+            ))}
+          </div>
+          {items.map((item) => (
+            <Column key={item.id} item={item} max={max} onOpen={onOpen} />
+          ))}
+        </div>
+      </div>
+    </figure>
   );
 }

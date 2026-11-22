@@ -175,6 +175,14 @@ export const StockStatementSalesLine = z
   })
   .meta({ id: 'StockStatementSalesLine' });
 
+export const StockStatementSalesBrandTarget = z
+  .object({
+    name: z.string(),
+    primary: z.number(),
+    secondary: z.number(),
+  })
+  .meta({ id: 'StockStatementSalesBrandTarget' });
+
 export const StockStatementSalesPerson = z
   .object({
     userId: Id,
@@ -188,6 +196,7 @@ export const StockStatementSalesReport = z
   .object({
     products: z.array(StockStatementSalesProduct),
     people: z.array(StockStatementSalesPerson),
+    brandTargets: z.array(StockStatementSalesBrandTarget),
     lines: z.array(StockStatementSalesLine),
   })
   .meta({ id: 'StockStatementSalesReport' });

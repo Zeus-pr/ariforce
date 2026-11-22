@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { Button } from '@ariforce/ui/components/button';
 import { KpiCards } from '@/components/dashboard/kpi-cards';
@@ -9,11 +9,49 @@ import { useRole } from '@/components/shell/role-context';
 import { monthLabel } from '@/lib/period';
 import { ChartCard, exportedAt, MonthSwitch, PerfTable, useMonth } from './perf-ui';
 import { can } from '@/components/exceptions/model';
-import { isApprover } from '@/lib/roles';
+import { isApprover, isFieldRole } from '@/lib/roles';
 import { PlaceDesk } from './place-desk';
 import { SalesManage } from './sales-manage';
 import { breakdownFor, pick, usePerf, val } from './use-perf';
 import { salesTarget, salesCols, SALES_KPIS } from './sales-kpis';
+
+function SetTargetsButton({ onChanged }: { onChanged: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  return (
+    <>
+      <Button type="button" onClick={() => ref.current?.showModal()}>
+        Set targets
+      </Button>
+      <dialog
+        ref={ref}
+        closedby="any"
+        aria-labelledby="set-targets-title"
+        className="m-auto w-[min(76rem,calc(100vw-2rem))] max-h-[min(44rem,calc(100dvh-2rem))] flex-col gap-4 overflow-y-auto rounded-xl border bg-background p-6 text-foreground shadow-lg open:flex"
+        onClick={(event) => {
+          const dialog = event.currentTarget;
+          if (event.target !== dialog) return;
+          const rect = dialog.getBoundingClientRect();
+          const inside =
+            rect.top <= event.clientY &&
+            event.clientY <= rect.bottom &&
+            rect.left <= event.clientX &&
+            event.clientX <= rect.right;
+          if (!inside) dialog.close();
+        }}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="set-targets-title" className="text-lg font-semibold">
+            Set targets
+          </h2>
+          <Button type="button" variant="outline" onClick={() => ref.current?.close()}>
+            Close
+          </Button>
+        </div>
+        <SalesManage onChanged={onChanged} />
+      </dialog>
+    </>
+  );
+}
 
 const SalesTrendChart = dynamic(() => import('./sales-charts').then((m) => m.SalesTrendChart), {
   ssr: false,
@@ -28,21 +66,18 @@ export function SalesView() {
   const [rev, setRev] = useState(0);
   const perf = usePerf(role, month, SALES_KPIS, rev);
   const by = breakdownFor(role);
-  const [targets, setTargets] = useState(false);
   const mayWrite = can(role, 'sales:write');
   if (!month) return <div className="h-96" aria-busy="true" />;
-  if (role === 'distribution_head' || isApprover(role)) {
+  if (role === 'distribution_head' || isApprover(role) || isFieldRole(role)) {
     return (
       <div className="flex flex-col gap-6">
-        <PlaceDesk title="Sales" />
-        {mayWrite && (
-          <div className="flex flex-col gap-4">
-            <Button type="button" variant="outline" onClick={() => setTargets((v) => !v)}>
-              {targets ? 'Hide targets' : 'Set targets'}
-            </Button>
-            {targets && <SalesManage onChanged={() => setRev((n) => n + 1)} />}
-          </div>
-        )}
+        <PlaceDesk
+          title="Sales"
+          reload={rev}
+          headerExtra={
+            mayWrite ? <SetTargetsButton onChanged={() => setRev((n) => n + 1)} /> : undefined
+          }
+        />
       </div>
     );
   }
@@ -52,6 +87,7 @@ export function SalesView() {
     primary: val(t.row, 'primary_sales_value'),
     secondary: val(t.row, 'secondary_sales_value'),
     target: salesTarget(t.row, 'primary'),
+    secondaryTarget: salesTarget(t.row, 'secondary'),
   }));
   return (
     <div className="flex flex-col gap-5">
@@ -88,14 +124,7 @@ export function SalesView() {
           }}
         />
       )}
-      {mayWrite && (
-        <div className="flex flex-col gap-4">
-          <Button type="button" variant="outline" onClick={() => setTargets((v) => !v)}>
-            {targets ? 'Hide targets' : 'Set targets'}
-          </Button>
-          {targets && <SalesManage onChanged={() => setRev((n) => n + 1)} />}
-        </div>
-      )}
+      {mayWrite && <SetTargetsButton onChanged={() => setRev((n) => n + 1)} />}
     </div>
   );
 }
