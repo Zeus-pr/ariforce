@@ -21,6 +21,8 @@ export function askerRoleLabel(roles: readonly RoleKey[]): string {
 export function knowledgeFor(audience: Exclude<BotAudience, 'none'>): string {
   const dir = join(__dirname, 'knowledge');
   const all = readFileSync(join(dir, 'all.md'), 'utf8').trim();
-  if (audience === 'team') return all;
-  return `${all}\n\n${readFileSync(join(dir, 'director.md'), 'utf8').trim()}`;
+  const how = readFileSync(join(dir, 'howto.md'), 'utf8').trim();
+  const base = `${all}\n\n${how}`;
+  if (audience === 'team') return base;
+  return `${base}\n\n${readFileSync(join(dir, 'director.md'), 'utf8').trim()}`;
 }

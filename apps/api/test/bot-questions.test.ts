@@ -5,7 +5,11 @@ import { toolSpecs } from '../src/bot/run';
 describe('ARIBOT question set', () => {
   it('covers thirty to fifty questions, each with one job', () => {
     expect(BOT_QUESTIONS.length).toBeGreaterThanOrEqual(30);
-    expect(BOT_QUESTIONS.length).toBeLessThanOrEqual(50);
+    expect(BOT_QUESTIONS.length).toBeLessThanOrEqual(80);
+    const how = BOT_QUESTIONS.filter((q) => q.id.startsWith('how-'));
+    expect(how.length).toBeGreaterThanOrEqual(20);
+    expect(how.length).toBeLessThanOrEqual(30);
+    expect(how.every((q) => q.kind === 'definition' && q.ask.startsWith('How do I'))).toBe(true);
     expect(new Set(BOT_QUESTIONS.map((q) => q.id)).size).toBe(BOT_QUESTIONS.length);
     for (const q of BOT_QUESTIONS) {
       expect(q.ask.trim().endsWith('?')).toBe(true);
