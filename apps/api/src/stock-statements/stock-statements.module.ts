@@ -8,5 +8,6 @@ import { StockStatementsService } from './stock-statements.service';
   imports: [PlansModule, FilesModule],
   controllers: [StockStatementsController],
   providers: [StockStatementsService],
+  exports: [StockStatementsService],
 })
 export class StockStatementsModule {}

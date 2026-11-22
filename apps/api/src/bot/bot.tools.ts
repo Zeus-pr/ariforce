@@ -14,6 +14,7 @@ import type { Principal } from '../auth/principal';
 import { TenantService } from '../common/tenant.service';
 import { KpisService } from '../kpis/kpis.service';
 import { TeamService } from '../team/team.service';
+import { BotRecords } from './bot.records';
 import { choosePlace, periodArg, type ToolOutcome } from './run';
 
 const DEFAULT_KPIS: KpiKey[] = [
@@ -138,6 +139,7 @@ export class BotTools {
     private readonly team: TeamService,
     private readonly kpis: KpisService,
     private readonly tenant: TenantService,
+    private readonly records: BotRecords,
   ) {}
 
   async call(
@@ -150,6 +152,7 @@ export class BotTools {
       if (name === 'list_team') return await this.listTeam(p, args);
       if (name === 'kpi_report') return await this.kpisFor(p, companyWide, args);
       if (name === 'product_kpis') return await this.productsFor(p, companyWide, args);
+      if (name === 'read_records') return await this.records.read(p, args);
       return { model: { error: 'Unknown tool.' }, block: null };
     } catch (e) {
       return failed(e);

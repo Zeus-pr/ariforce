@@ -57,6 +57,12 @@ export function answerShape(message: string): string {
     return 'Sales question. Fetch kpi_report with primary_sales_value and secondary_sales_value for the team, the named person, or the place. A headquarters name goes in place. Then read actual against target, and say what is behind.';
   if (/\b(doing|performance|so far)\b/.test(s))
     return 'Performance question. Fetch kpi_report for that team and period, with coverage_pct, call_average, dcr_compliance_pct, tp_adherence_pct, primary_sales_value and secondary_sales_value. Then say what is on target and what is behind. Use list_team only if the question asks who.';
+  if (/\b(doctor|chemist|stockist)\b/.test(s))
+    return 'Outlet question. Fetch read_records with kind doctors, chemists, or stockists and the name. Report only the rows returned.';
+  if (/\b(dcr|daily call|tour plan)\b/.test(s))
+    return 'Field-work question. Fetch read_records with kind dcrs or tour_plans and the month. Summarise what was filed.';
+  if (/\b(leave|expense|approval|stock statement)\b/.test(s))
+    return 'Account question. Fetch read_records with kind leave, leave_balances, expenses, approvals, or stock_statements. Report only rows returned for this account.';
   if (/\b(product|detailed|detailing|samples)\b/.test(s))
     return 'Product question. Fetch product_kpis, then say which products were detailed and where the POB sits.';
   if (/\b(who|people|manager)\b/.test(s) || /\b(team list|on my team|my team)\b/.test(s))
@@ -204,6 +210,35 @@ export function toolSpecs(director: boolean): ToolSpec[] {
             description: 'Headquarters or territory name, such as Suri. Not a person’s name.',
           },
           kpis: { type: 'array', items: { type: 'string', enum: kpiEnum } },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'read_records',
+      description:
+        'Anything else this account can already open: doctors, chemists, stockists, dcrs, tour_plans, leave, leave_balances, expenses, approvals, stock_statements, exceptions. Scoped to this person. A 403 means it is not on their account.',
+      parameters: {
+        type: 'object',
+        properties: {
+          kind: {
+            type: 'string',
+            enum: [
+              'doctors',
+              'chemists',
+              'stockists',
+              'dcrs',
+              'tour_plans',
+              'leave',
+              'leave_balances',
+              'expenses',
+              'approvals',
+              'stock_statements',
+              'exceptions',
+            ],
+          },
+          name: { type: 'string', description: 'Part of a doctor, chemist, or stockist name' },
+          month: period.month,
         },
         additionalProperties: false,
       },

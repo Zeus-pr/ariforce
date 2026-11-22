@@ -13,5 +13,6 @@ import { ExpensesService } from './expenses.service';
   imports: [PlansModule, FilesModule],
   controllers: [ExpenseClaimsController, ExpenseAttachmentsController, ExpenseReportsController],
   providers: [ExpensesService, ExpenseAutoDraftService],
+  exports: [ExpensesService],
 })
 export class ExpensesModule {}
