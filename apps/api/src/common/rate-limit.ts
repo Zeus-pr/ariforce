@@ -83,4 +83,5 @@ export const LIMITS = {
   passwordForgotIp: () => ({ limit: num('PASSWORD_RESET_RATE_PER_IP', 10), windowMs: HOUR }),
   passwordForgotEmail: () => ({ limit: num('PASSWORD_RESET_RATE_PER_EMAIL', 3), windowMs: HOUR }),
   passwordResetIp: () => ({ limit: num('PASSWORD_RESET_RATE_PER_IP', 10) * 2, windowMs: HOUR }),
+  botAsk: () => ({ limit: num('BOT_RATE_PER_USER', 40), windowMs: HOUR }),
 };

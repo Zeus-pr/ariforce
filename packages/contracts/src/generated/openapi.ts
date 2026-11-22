@@ -915,6 +915,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/bot/ask': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Read-only business question for Area Business Manager through Director. Figures come from the caller’s reporting line; a Director is company-wide. */
+    post: operations['askBot'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/kpis/products': {
     parameters: {
       query?: never;
@@ -3660,6 +3677,9 @@ export interface components {
       | 'secondary_sales_value'
       | 'secondary_achievement_pct'
       | 'growth_vs_ly_pct';
+    BotAskRequest: {
+      message: string;
+    };
     GeofenceSettings: {
       /** @description Default visit geofence radius (#24) */
       radiusM: number;
@@ -6262,6 +6282,18 @@ export interface components {
     };
     /** @enum {string} */
     KpiUnit: 'count' | 'ratio' | 'percent' | 'inr';
+    BotAskResponse: {
+      narrative: string;
+      blocks: components['schemas']['BotTableBlock'][];
+      refused: boolean;
+    };
+    BotTableBlock: {
+      /** @constant */
+      type: 'table';
+      title: string;
+      columns: string[];
+      rows: string[][];
+    };
     ProductKpiReport: {
       /**
        * Format: date
@@ -14084,6 +14116,66 @@ export interface operations {
       };
       /** @description Invalid query */
       422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  askBot: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['BotAskRequest'];
+      };
+    };
+    responses: {
+      /** @description Narrative plus tables */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['BotAskResponse'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Below Area Business Manager, or missing reports:read */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Too many questions this hour */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description XAI_API_KEY is not set, or the model call failed */
+      503: {
         headers: {
           [name: string]: unknown;
         };

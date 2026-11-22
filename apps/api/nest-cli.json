@@ -5,7 +5,7 @@
   "compilerOptions": {
     "builder": "tsc",
     "deleteOutDir": true,
-    "assets": ["expenses/*.png"],
+    "assets": ["expenses/*.png", "bot/knowledge/*.md"],
     "watchAssets": true
   }
 }

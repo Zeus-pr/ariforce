@@ -21,6 +21,7 @@ import { AuditLogModule } from './audit/audit-log.module';
 import { ExceptionsModule } from './exceptions/exceptions.module';
 import { HomeModule } from './home/home.module';
 import { ProductPricesModule } from './product-prices/product-prices.module';
+import { BotModule } from './bot/bot.module';
 import { MeController } from './me/me.controller';
 import { OpenApiController } from './openapi/openapi.controller';
 
@@ -46,6 +47,7 @@ import { OpenApiController } from './openapi/openapi.controller';
     SfcModule,
     StockStatementsModule,
     AuditLogModule,
+    BotModule,
   ],
   controllers: [HealthController, OpenApiController, MeController],
   providers: [WorkTypesCheck],

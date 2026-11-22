@@ -12,6 +12,7 @@ export * from './schemas/imports';
 export * from './schemas/field';
 export * from './schemas/dcr';
 export * from './schemas/kpis';
+export * from './schemas/bot';
 export { buildOpenApiDocument, type OpenApiDocument } from './openapi';
 export { createApiClient, type ApiClient } from './client';
 export type { paths, components } from './generated/openapi';
