@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { Bot } from 'lucide-react';
+import { Orb } from '@yogesharc/thinking-orbs';
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
+  useAuiState,
   useLocalRuntime,
   type ChatModelAdapter,
 } from '@assistant-ui/react';
@@ -65,9 +66,24 @@ const adapter: ChatModelAdapter = {
   },
 };
 
+function AribotOrb() {
+  const running = useAuiState((s) => s.thread.isRunning);
+  return (
+    <Orb
+      state={running ? 'reasoning' : 'working'}
+      variant={running ? 'twins' : 'gyro'}
+      size={22}
+      speed={1.15}
+      label="ARIBOT"
+      className="text-primary"
+    />
+  );
+}
+
 function Welcome() {
   return (
     <div className="mb-6 flex flex-col gap-1 px-2">
+      <Orb state="reasoning" variant="twins" size={36} label="ARIBOT" className="text-primary mb-3" />
       <p className="animate-in fade-in slide-in-from-bottom-1 fill-mode-both text-2xl font-medium tracking-tight duration-200">
         Ask about your team
       </p>
@@ -104,7 +120,7 @@ export function AribotButton() {
         data-testid="aribot-open"
         onClick={() => setOpen(true)}
       >
-        <Bot className="size-4" />
+        <AribotOrb />
         <span className="text-sm font-medium">ARIBOT</span>
       </Button>
       <Sheet open={open} onOpenChange={setOpen}>
