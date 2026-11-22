@@ -63,6 +63,20 @@ export function answerShape(message: string): string {
   return 'Call kpi_report with rollup team for the measure asked. Do not answer from memory.';
 }
 
+/** Sales live on the headquarters. The same name at territory level is not a second place. */
+export function choosePlace<T extends { name: string; level: string }>(
+  rows: T[],
+  needle: string,
+): T | null {
+  const name = needle.trim().toLowerCase();
+  const exact = rows.filter((row) => row.name.trim().toLowerCase() === name);
+  const pool = exact.length ? exact : rows;
+  const headquarters = pool.filter((row) => row.level === 'headquarter');
+  if (headquarters.length === 1) return headquarters[0] ?? null;
+  if (pool.length === 1) return pool[0] ?? null;
+  return null;
+}
+
 const kpiEnum = [...KPI_KEYS];
 
 const MONTHS = [

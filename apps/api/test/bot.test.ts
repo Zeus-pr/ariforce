@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { askerRoleLabel, botAudience, knowledgeFor } from '../src/bot/knowledge';
 import {
   answerShape,
+  choosePlace,
   guardNarrative,
   modelFor,
   monthArg,
@@ -61,6 +62,15 @@ describe('ARIBOT month', () => {
     expect(answerShape('How do I find my team?')).toContain('how-to text');
     expect(answerShape('Who is on my team?')).toContain('list_team');
     expect(answerShape('how is my team doing so far this month')).toContain('kpi_report');
+    expect(
+      choosePlace(
+        [
+          { name: 'Suri', level: 'headquarter' },
+          { name: 'SURI', level: 'territory' },
+        ],
+        'suri',
+      ),
+    ).toEqual({ name: 'Suri', level: 'headquarter' });
     expect(periodArg('this quarter', '2026-11-22')).toEqual({
       from: '2026-10-01',
       to: '2026-11-22',

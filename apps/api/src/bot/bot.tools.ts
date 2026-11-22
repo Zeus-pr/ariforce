@@ -14,7 +14,7 @@ import type { Principal } from '../auth/principal';
 import { TenantService } from '../common/tenant.service';
 import { KpisService } from '../kpis/kpis.service';
 import { TeamService } from '../team/team.service';
-import { periodArg, type ToolOutcome } from './run';
+import { choosePlace, periodArg, type ToolOutcome } from './run';
 
 const DEFAULT_KPIS: KpiKey[] = [
   'coverage_pct',
@@ -248,31 +248,27 @@ export class BotTools {
           },
           block: null,
         };
-      if (found.length > 1)
+      const placeRow = choosePlace(found, place);
+      if (!placeRow)
         return asTable(
           'Places',
           ['Place', 'Level'],
           found.slice(0, 40).map((row) => [row.name, row.level]),
-          { note: 'More than one place matches. Ask again with the full name.' },
+          { note: 'More than one different place matches. Ask again with the full name.' },
         );
-      const placeRow = found[0];
-      if (!placeRow)
-        return {
-          model: {
-            error:
-              'No place on this line matches that name. If it is a person, call list_team. A stockist is not a headquarters.',
-          },
-          block: null,
-        };
       raw.territoryId = placeRow.id;
       raw.rollup = 'byTerritory';
-      if (!Array.isArray(raw.kpis) || raw.kpis.length === 0) raw.kpis = [...SALES_KPIS];
+      const asked = Array.isArray(raw.kpis) ? raw.kpis.map(String) : [];
+      const sales = asked.some((key) => key.startsWith('primary_') || key.startsWith('secondary_'));
+      if (!asked.length || sales) raw.kpis = [...SALES_KPIS];
     }
     const q = this.query(raw, companyWide);
     if (!('data' in q)) return q.error;
     if (q.data.userId && p.teamUserIds && !p.teamUserIds.includes(q.data.userId)) return outside();
     const report: KpiReport = await this.kpis.report(p, q.data as z.output<typeof KpiQuery>);
-    const table = kpiTable(report);
+    const only = typeof raw.territoryId === 'string' ? raw.territoryId : '';
+    const scoped = only ? report.rows.filter((row) => row.territoryId === only) : report.rows;
+    const table = kpiTable({ ...report, rows: scoped.length ? scoped : report.rows });
     if (!table.rows.length) return { model: { error: 'No figures for that month.' }, block: null };
     return asTable(`KPIs ${report.from} to ${report.to}`, table.columns, table.rows);
   }
