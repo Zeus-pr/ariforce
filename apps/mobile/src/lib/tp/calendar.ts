@@ -1,4 +1,5 @@
-import { datesOf, type TpItem, type TpStatus } from './adapter';
+import { datesOf, rangeLabel, type TpItem, type TpStatus } from './adapter';
+import { stretchesOf } from './month';
 import { joinShort, shortLabel, type CalendarPillStatus, type DayPill } from '../calendar-pills';
 
 export type { DayPill, CalendarPillStatus };
@@ -26,6 +27,19 @@ export function tpListLabel(
   t: TpItem,
   names: { territory: Map<string, string>; workType: Map<string, string> },
 ): string {
+  const stretches = stretchesOf(t);
+  if (stretches.length > 1) {
+    return stretches
+      .map((stretch) => {
+        const places = stretch.plan.territoryIds
+          .map((id) => names.territory.get(id))
+          .filter((name): name is string => !!name);
+        const work = names.workType.get(stretch.plan.workTypeId);
+        const what = places.length ? places.slice(0, 2).join(' · ') : (work ?? 'Plan');
+        return `${rangeLabel(stretch.from, stretch.to)} ${what}`;
+      })
+      .join(' · ');
+  }
   const terr = t.plan.territoryIds
     .map((id) => names.territory.get(id))
     .filter((n): n is string => !!n);
@@ -38,12 +52,12 @@ export function tpListLabel(
 /** Map TP items onto YYYY-MM-DD keys for the month grid (includes drafts). */
 export function pillsByDate(
   items: TpItem[],
-  labelOf: (t: TpItem) => string,
+  labelOf: (t: TpItem, date: string) => string,
 ): Map<string, DayPill[]> {
   const map = new Map<string, DayPill[]>();
   for (const t of items) {
-    const label = labelOf(t);
     for (const date of datesOf(t.from, t.to)) {
+      const label = labelOf(t, date);
       const list = map.get(date) ?? [];
       list.push({ date, label, status: pillStatus(t.status), itemId: t.id });
       map.set(date, list);

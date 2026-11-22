@@ -1,9 +1,9 @@
 import type { Dcr } from '@ariforce/contracts';
 import { useQueryClient } from '@tanstack/react-query';
-import { Stack, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Stack, usePreventRemove, useRouter } from 'expo-router';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as Haptics from 'expo-haptics';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -11,13 +11,19 @@ import Animated, {
   useReducedMotion,
 } from 'react-native-reanimated';
 import { AppText } from '@/components/app-text';
+import { Card } from '@/components/card';
 import { Button } from '@/components/button';
 import { Chip } from '@/components/chip';
 import { CallEditor } from '@/components/dcr/call-editor';
 import { PressableScale } from '@/components/pressable-scale';
 import { SlideToConfirm } from '@/components/slide-to-confirm';
 import { dcrStyles, Errors, Field } from '@/components/dcr/field';
-import { autoDraftNote, ensureExpenseDraft } from '@/lib/expenses';
+import {
+  autoDraftNote,
+  ensureExpenseDraft,
+  matchReceiptLines,
+  syncReceiptLines,
+} from '@/lib/expenses';
 import { LeaveFields } from '@/components/dcr/leave-fields';
 import { MeetingEditor } from '@/components/dcr/meeting-editor';
 import { MultiSelectSheet } from '@/components/dcr/multi-select-sheet';
@@ -84,6 +90,8 @@ import {
   useTp,
 } from '@/lib/tp/adapter';
 import { bandOf } from '@/lib/dcr/bands';
+import { MAX_DAY_SECTIONS, outletAlreadyOnDay } from '@/lib/dcr/day-rules';
+import { planForDay, stretchesOf } from '@/lib/tp/month';
 import {
   BANDS,
   KIND_LABEL,
@@ -107,7 +115,101 @@ import {
   type WorkTypeOption,
   plusMinutes,
 } from '@/lib/dcr/model';
+import { mustPresent } from '@/lib/roles';
+import { dayTaDa, type RouteFare } from '@/lib/ta-da';
 import { colors, layout, motion, radius, spacing, touch } from '@/theme';
+
+function DayAllowance({ sections }: { sections: FlowState[] }) {
+  const money = dayTaDa(sections.map(faresOf));
+  if (!money.ta && !money.da) return null;
+  return (
+    <View style={styles.allowance}>
+      <AppText variant="body">{`Day allowance · TA ₹${money.ta} · DA ₹${money.da}`}</AppText>
+      <AppText variant="small">
+        TA is the sum of the selected routes. DA is the greatest, and that amount goes to expenses.
+      </AppText>
+    </View>
+  );
+}
+
+function groupRouteChoice(routes: { hqTerritoryId: string; sfcRouteId: string }[]) {
+  const out: Record<string, string[]> = {};
+  for (const route of routes) {
+    out[route.hqTerritoryId] = [...(out[route.hqTerritoryId] ?? []), route.sfcRouteId];
+  }
+  return out;
+}
+
+function faresOf(state: FlowState): RouteFare[] {
+  if (!isRouteDay(state.workOn?.branch) || state.sfc.state !== 'ok') return [];
+  return state.sfc.hqs.flatMap((hq) => {
+    const picked = state.routeChoice[hq.hqTerritoryId] ?? [];
+    const ids = picked.length ? picked : hq.autoSelectedId ? [hq.autoSelectedId] : [];
+    return ids.flatMap((id) => {
+      const route = hq.candidates.find((c) => c.id === id);
+      return route ? [{ id: route.id, bothWayAmount: route.bothWayAmount, da: route.da }] : [];
+    });
+  });
+}
+
+function SectionCard({
+  title,
+  summary,
+  expanded,
+  onToggle,
+  onDelete,
+  children,
+}: {
+  title: string;
+  summary?: string;
+  expanded: boolean;
+  onToggle: () => void;
+  onDelete?: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Card style={styles.sectionCard}>
+      <View style={styles.sectionHead}>
+        <View style={styles.sectionToggle}>
+          <View style={styles.sectionTitles}>
+            <AppText variant="label">{title}</AppText>
+            {!expanded && summary ? (
+              <AppText variant="small" numberOfLines={1}>
+                {summary}
+              </AppText>
+            ) : null}
+          </View>
+          <Pressable
+            onPress={onToggle}
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            accessibilityLabel={`${expanded ? 'Collapse' : 'Expand'} ${title}`}
+            hitSlop={8}
+            style={styles.deleteBtn}
+          >
+            <Icon
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={22}
+              color={colors.tealDeep}
+            />
+          </Pressable>
+        </View>
+        {onDelete ? (
+          <Pressable
+            onPress={onDelete}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete ${title}`}
+            hitSlop={8}
+            style={styles.deleteBtn}
+          >
+            <Icon name="trash-can-outline" size={22} color={colors.danger} />
+          </Pressable>
+        ) : null}
+      </View>
+      {expanded ? children : null}
+    </Card>
+  );
+}
 
 const fresh = (date: string): FlowState => ({
   date,
@@ -157,11 +259,38 @@ export function DcrForm({
   const tpDelete = useDeleteTp();
   const [tpTo, setTpTo] = useState(initialDate);
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
+  const visitHeight = Math.min(96, Math.max(touch.control, Math.round(windowWidth / 11)));
+  const visitIcon = Math.round(visitHeight * 0.34);
+  const askingRef = useRef(false);
   const bottom = useBottomSpace();
   const callLayout = reduced ? undefined : LinearTransition.duration(motion.fast);
   const callEnter = reduced ? undefined : FadeIn.duration(motion.press);
   const callExit = reduced ? undefined : FadeOut.duration(motion.press);
-  const [s, setS] = useState<FlowState>(() => fresh(initialDate));
+  const [sections, setSections] = useState<FlowState[]>(() => [fresh(initialDate)]);
+  const [openIndex, setOpenIndex] = useState(0);
+  const openRef = useRef(0);
+  openRef.current = openIndex;
+  const s = (openIndex >= 0 ? sections[openIndex] : sections[0]) ?? sections[0]!;
+  const setS = (next: FlowState | ((prev: FlowState) => FlowState)) => {
+    setSections((list) => {
+      if (!list.length) return list;
+      const i = openRef.current;
+      const cur = i >= 0 && i < list.length ? list[i] : null;
+      const value = typeof next === 'function' ? next(cur ?? list[0]!) : next;
+      return list.map((item, idx) =>
+        cur && idx === i
+          ? value
+          : {
+              ...item,
+              date: value.date,
+              expenses: value.expenses,
+              deviationReason: value.deviationReason,
+              tourPlanItemId: value.tourPlanItemId,
+            },
+      );
+    });
+  };
   const [dcr, setDcr] = useState<Dcr | null>(null);
   const [workTypes, setWorkTypes] = useState<WorkTypeOption[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -200,7 +329,6 @@ export function DcrForm({
     | { meeting: 'title' | 'mode' | 'type' }
     | { office: 'type' }
   >(null);
-  const [routeHq, setRouteHq] = useState<string | null>(null);
   const submitKey = useRef<string | null>(null);
   const lastFieldWt = useRef('');
   const lastCampWt = useRef('');
@@ -275,18 +403,56 @@ export function DcrForm({
   const subRejected = !!daySub && reviewOf(daySub, decisions).status === 'rejected';
   const blocked = !!daySubmitted && dcr?.status !== 'submitted' && !subRejected;
   const dcrReview = review?.status ?? (dcr ? reviewOf(dcr, decisions).status : null);
+  const correcting =
+    !!dayLock?.unlockedUntil && new Date(dayLock.unlockedUntil).getTime() > Date.now();
+  const present = mustPresent(user?.roles ?? []);
   const readOnly = isTp
     ? tpItem?.status === 'pending' || tpItem?.status === 'approved'
-    : // Submitted / approved / locked are view-only. Rejected stays editable so they can fix & resubmit.
-      dcr?.status === 'submitted' ||
-      dcr?.status === 'locked' ||
-      dcrReview === 'submitted' ||
-      dcrReview === 'approved' ||
-      dcrReview === 'locked' ||
-      locked ||
-      dateClosed ||
-      blocked;
+    : correcting
+      ? false
+      : // Submitted / approved / locked are view-only. Rejected stays editable so they can fix & resubmit.
+        dcr?.status === 'submitted' ||
+        dcr?.status === 'locked' ||
+        dcrReview === 'submitted' ||
+        dcrReview === 'approved' ||
+        dcrReview === 'locked' ||
+        locked ||
+        dateClosed ||
+        blocked;
   const busy = !!saving || saveDraft.isPending || submitMut.isPending || deleteMut.isPending;
+  const [dirty, setDirty] = useState(false);
+  const disablePrevention = usePreventRemove(dirty && !readOnly, ({ repeat }) => {
+    if (askingRef.current) return;
+    askingRef.current = true;
+    Alert.alert(
+      'Warning',
+      'All your reports will be lost if the draft is not saved. Do you still want to go back?',
+      [
+        {
+          text: 'Stay',
+          style: 'cancel',
+          onPress: () => {
+            askingRef.current = false;
+          },
+        },
+        {
+          text: 'Go back',
+          style: 'destructive',
+          onPress: () => {
+            askingRef.current = false;
+            setDirty(false);
+            repeat();
+          },
+        },
+      ],
+    );
+  });
+
+  function leave() {
+    setDirty(false);
+    disablePrevention();
+    router.back();
+  }
 
   // Hydrate from options + optional record
   useEffect(() => {
@@ -302,7 +468,7 @@ export function DcrForm({
       return;
     }
     // Include lock/unlock so an approved correction re-opens the form without a remount.
-    const hydrateKey = `${optionsQ.data.date}|${reportId ?? ''}|${tpItem?.id ?? ''}|${optionsQ.data.locked ?? ''}|${optionsQ.data.unlockedUntil ?? optionsQ.data.dcr?.unlockedUntil ?? ''}|${optionsQ.data.dcr?.status ?? ''}`;
+    const hydrateKey = `${optionsQ.data.date}|${initialDate}|${reportId ?? ''}|${tpItem?.id ?? ''}|${optionsQ.data.locked ?? ''}|${optionsQ.data.unlockedUntil ?? optionsQ.data.dcr?.unlockedUntil ?? ''}|${optionsQ.data.dcr?.status ?? ''}`;
     if (hydratedFor.current === hydrateKey) return;
     const wts = normaliseWorkTypes(optionsQ.data.workTypes);
     setWorkTypes(wts);
@@ -326,12 +492,13 @@ export function DcrForm({
     setDcr(d);
     const next = fresh(isTp ? (tpItem?.from ?? initialDate) : optionsQ.data.date);
     if (isTp && tpItem) setTpTo(tpItem.to);
+    const planned = tpItem ? planForDay(tpItem.plan, initialDate) : null;
     // A saved report wins; else an approved tour plan's fields (TP mode, or a TP-prefilled day).
     const src =
       d ??
-      (tpItem
+      (planned
         ? {
-            ...tpItem.plan,
+            ...planned,
             deviationReason: null as string | null,
             status: 'draft' as Dcr['status'],
           }
@@ -343,9 +510,7 @@ export function DcrForm({
       next.territoryIds = src.territoryIds;
       next.workWith = src.workWithUserIds;
       next.workWithDone = isRouteDay(wo?.branch) && src.territoryIds.length > 0;
-      next.routeChoice = Object.fromEntries(
-        src.sfcRoutes.map((x) => [x.hqTerritoryId, x.sfcRouteId]),
-      );
+      next.routeChoice = groupRouteChoice(src.sfcRoutes);
       if (d) next.calls = callsFromDcr(d, names.current);
       if (d) next.expenses = expensesFromDcr(d);
       const det = src.details;
@@ -385,7 +550,76 @@ export function DcrForm({
         }
       }
     }
-    setS(next);
+    const extra = ((d as (Dcr & { sections?: Dcr['calls'] extends never ? never : unknown }) | null)
+      ?.sections ??
+      planned?.sections ??
+      []) as {
+      workTypeId: string;
+      territoryIds?: string[];
+      workWithUserIds?: string[];
+      sfcRoutes?: { hqTerritoryId: string; sfcRouteId: string }[];
+      details?: Dcr['details'];
+      calls?: Dcr['calls'];
+    }[];
+    const more = (d ? extra.slice(1) : extra).map((section) => {
+      const piece = fresh(next.date);
+      const wo = workOnFor(workOnChoices(wts), section.workTypeId);
+      piece.workOn = wo;
+      piece.workTypeId = section.workTypeId;
+      piece.territoryIds = section.territoryIds ?? [];
+      piece.workWith = section.workWithUserIds ?? [];
+      piece.workWithDone = isRouteDay(wo?.branch) && (section.territoryIds?.length ?? 0) > 0;
+      piece.routeChoice = groupRouteChoice(section.sfcRoutes ?? []);
+      piece.calls = callsFromDcr({ calls: section.calls ?? [] } as Dcr, names.current);
+      piece.expenses = next.expenses;
+      piece.deviationReason = next.deviationReason;
+      piece.tourPlanItemId = next.tourPlanItemId;
+      const det = section.details;
+      if (det?.kind === 'meeting' || det?.kind === 'training')
+        piece.meeting = {
+          title: det.title,
+          mode: det.mode,
+          location: det.location ?? '',
+          startTime: det.startTime,
+          endTime:
+            (det as { endTime?: string | null }).endTime ??
+            plusMinutes(det.startTime, det.durationMin),
+          durationMin: String(det.durationMin),
+          attendees: det.kind === 'meeting' ? (det.attendees ?? '') : '',
+          trainer: det.kind === 'training' ? (det.trainer ?? '') : '',
+          ...readPlaces(det),
+        };
+      if (det?.kind === 'office')
+        piece.office = {
+          taskType: det.taskType,
+          description: det.description,
+          startTime: det.startTime ?? '',
+          endTime:
+            (det as { endTime?: string | null }).endTime ??
+            (det.startTime ? plusMinutes(det.startTime, det.durationMin) : ''),
+          durationMin: String(det.durationMin),
+          ...readPlaces(det),
+        };
+      if (det?.kind === 'leave') piece.leaveRequestId = det.leaveRequestId;
+      return piece;
+    });
+    if (extra[0]?.calls) next.calls = callsFromDcr({ calls: extra[0].calls } as Dcr, names.current);
+    setSections([next, ...more]);
+    setOpenIndex(0);
+    if (d && user?.id && next.expenses?.some((e) => e.category && !e.lineId)) {
+      const date = next.date;
+      const expenses = next.expenses;
+      void matchReceiptLines(user.id, date, expenses)
+        .then((patched) => {
+          setSections((cur) => {
+            const current = cur[0]?.expenses;
+            if (!current || current.some((e, i) => e.id !== expenses[i]?.id || e.lineId))
+              return cur;
+            return cur.map((s) => ({ ...s, expenses: patched }));
+          });
+        })
+        .catch(() => undefined);
+    }
   }, [
     optionsQ.data,
     optionsQ.isError,
@@ -398,6 +632,7 @@ export function DcrForm({
     tpQ.isPending,
     tpQ.isError,
     tpItem,
+    initialDate,
   ]);
 
   // Resolve saved customer names, whenever a call still shows the placeholder.
@@ -454,14 +689,24 @@ export function DcrForm({
       dcrReview === 'approved' ||
       dcrReview === 'submitted');
   const sfcKey =
-    field && s.workTypeId && s.territoryIds.length && s.workWithDone && !frozenDcrSfc
-      ? `${s.date}|${s.workTypeId}|${s.territoryIds.join(',')}`
+    openIndex >= 0 &&
+    field &&
+    s.workTypeId &&
+    s.territoryIds.length &&
+    s.workWithDone &&
+    !frozenDcrSfc
+      ? `${openIndex}|${s.date}|${s.workTypeId}|${s.territoryIds.join(',')}`
       : '';
   useEffect(() => {
     if (!sfcKey) return;
     let live = true;
     setS((x) => ({ ...x, sfc: { state: 'loading', hqs: [] } }));
-    const [date, workTypeId, territoryIds] = sfcKey.split('|') as [string, string, string];
+    const [, date, workTypeId, territoryIds] = sfcKey.split('|') as [
+      string,
+      string,
+      string,
+      string,
+    ];
     void fetchSfcMatch(date, workTypeId, territoryIds.split(',')).then((r) => {
       if (!live) return;
       if (r.ok) {
@@ -482,6 +727,7 @@ export function DcrForm({
   }, [sfcKey, workTypes]);
 
   const update = (patch: Partial<FlowState> | ((x: FlowState) => Partial<FlowState>)) => {
+    setDirty(true);
     setS((x) => ({ ...x, ...(typeof patch === 'function' ? patch(x) : patch) }));
     setFormError(null);
   };
@@ -549,9 +795,9 @@ export function DcrForm({
 
   // Old API only: device log seeds Presentation by doctor for the day. On v2 the call's own
   // presentationOpened / presentationOpenedAt is source of truth (must clear when products change).
-  const sEff: FlowState = {
-    ...s,
-    calls: s.calls.map((c) =>
+  const prepared = sections.map((section) => ({
+    ...section,
+    calls: section.calls.map((c) =>
       !apiCaps.v2 &&
       c.kind === 'doctor' &&
       !c.presentationOpened &&
@@ -560,14 +806,42 @@ export function DcrForm({
         ? { ...c, presentationOpened: true }
         : c,
     ),
+  }));
+  const sectionInputs = prepared.map((section) => {
+    const body = draftBody({ ...section, savedSections: undefined, editorIsLast: false }, null);
+    return {
+      workTypeId: body.workTypeId,
+      territoryIds: body.territoryIds,
+      workWithUserIds: body.workWithUserIds ?? [],
+      sfcRoutes: body.sfcRoutes ?? [],
+      details: body.details ?? null,
+      calls: body.calls,
+    };
+  });
+  const sEff: FlowState = {
+    ...prepared[0]!,
+    savedSections: sectionInputs.length > 1 ? sectionInputs.slice(1) : undefined,
+    editorIsLast: false,
   };
-  const probs = findProblems(sEff, { calls: !isTp });
+  const openPrepared = prepared[openIndex] ?? prepared[0]!;
+  const probs = findProblems(openPrepared, { calls: !isTp, present });
+  const everyProblem = prepared.flatMap((section, index) =>
+    findProblems(section, { calls: !isTp, present }).map((problem) => ({ ...problem, index })),
+  );
   const err = (key: string) =>
     showErrors ? probs.filter((p) => p.key === key).map((p) => p.text) : [];
 
   /** True only when the draft was saved (or the report really submitted); false on every refusal or failure. */
   async function save(submit: boolean): Promise<boolean> {
     if (readOnly) return false;
+    if (sections.length > MAX_DAY_SECTIONS) {
+      setFormError(
+        isTp
+          ? 'A day can have two plans. Delete the extra one.'
+          : 'A day can have two reports. Delete the extra one.',
+      );
+      return false;
+    }
     if (isTp) return saveTp(submit);
     if (submit && s.date > todayIST()) {
       setFormError(
@@ -575,21 +849,26 @@ export function DcrForm({
       );
       return false;
     }
-    if (submit && probs.length) {
+    if (submit && everyProblem.length) {
+      setOpenIndex(everyProblem[0]!.index);
       setShowErrors(true);
-      setFormError((probs.find((p) => p.key === 'presentation') ?? probs[0]!).text);
+      setFormError((everyProblem.find((p) => p.key === 'presentation') ?? everyProblem[0]!).text);
       return false;
     }
     setSaving(submit ? 'submit' : 'draft');
     setFormError(null);
     try {
+      await syncReceiptLines(sEff.date, sEff.expenses ?? []);
       const saved = await saveDraft.mutateAsync({
         state: {
           ...sEff,
           tourPlanItemId:
             fromTp ?? (dcr as { tourPlanItemId?: string | null } | null)?.tourPlanItemId ?? null,
         },
-        saved: dcr?.status === 'draft' ? { id: dcr.id, version: dcr.version } : null,
+        saved:
+          dcr && (dcr.status === 'draft' || dcr.status === 'rejected' || correcting)
+            ? { id: dcr.id, version: dcr.version }
+            : null,
       });
       setDcr(saved);
       // Show the server's calledAt (new API stamps it on first save; the app never sends it).
@@ -601,9 +880,10 @@ export function DcrForm({
         }));
       }
       setFlagged({});
+      setDirty(false);
       if (!submit) {
         Alert.alert('Draft saved', 'You can come back and finish it later.');
-        router.back();
+        leave();
         return true;
       }
       submitKey.current ??= idempotencyKey();
@@ -632,18 +912,18 @@ export function DcrForm({
           }`,
           added?.kind === 'linked'
             ? [
-                { text: 'Done', onPress: () => router.back() },
+                { text: 'Done', onPress: () => leave() },
                 {
                   text: 'View claim',
                   onPress: () => {
-                    router.back();
+                    leave();
                     router.push({ pathname: '/expenses/[id]', params: { id: added.claimId } });
                   },
                 },
               ]
             : undefined,
         );
-        if (added?.kind !== 'linked') router.back();
+        if (added?.kind !== 'linked') leave();
         return true;
       } catch (e) {
         // Same as web dcr-flow.tsx: keep the key only when no answer came back (the submit may
@@ -690,9 +970,10 @@ export function DcrForm({
   }
 
   async function saveTp(send: boolean): Promise<boolean> {
-    if (send && probs.length) {
+    if (send && everyProblem.length) {
+      setOpenIndex(everyProblem[0]!.index);
       setShowErrors(true);
-      setFormError(probs[0]!.text);
+      setFormError(everyProblem[0]!.text);
       return false;
     }
     if (tpTo < s.date) {
@@ -722,24 +1003,26 @@ export function DcrForm({
           to: tpTo,
           user: { id: user.id, name: user.name ?? user.email ?? '' },
           plan: {
-            workTypeId: b.workTypeId,
-            territoryIds: b.territoryIds,
-            workWithUserIds: b.workWithUserIds ?? [],
-            sfcRoutes: b.sfcRoutes ?? [],
-            details: b.details ?? null,
-          },
+            workTypeId: (b.sections?.[0] ?? b).workTypeId,
+            territoryIds: (b.sections?.[0] ?? b).territoryIds,
+            workWithUserIds: (b.sections?.[0] ?? b).workWithUserIds ?? [],
+            sfcRoutes: (b.sections?.[0] ?? b).sfcRoutes ?? [],
+            details: (b.sections?.[0] ?? b).details ?? null,
+            sections: (b.sections ?? []).slice(1).map(({ calls: _calls, ...section }) => section),
+          } as never,
         },
       });
       if (send) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       }
+      setDirty(false);
       Alert.alert(
         send ? 'Sent for approval' : 'Tour plan saved',
         send
           ? `Tour plan for ${rangeLabel(s.date, tpTo)} sent to your manager.`
           : 'You can come back and send it for approval later.',
       );
-      router.back();
+      leave();
       return true;
     } catch (e) {
       setFormError(tpMessage(e));
@@ -761,7 +1044,7 @@ export function DcrForm({
           style: 'destructive',
           onPress: () =>
             tpDelete.mutate(tpItem.id, {
-              onSuccess: () => router.back(),
+              onSuccess: () => leave(),
               onError: (e) => setFormError(tpMessage(e)),
             }),
         },
@@ -781,7 +1064,7 @@ export function DcrForm({
           style: 'destructive',
           onPress: () =>
             deleteMut.mutate(dcr.id, {
-              onSuccess: () => router.back(),
+              onSuccess: () => leave(),
               onError: (e) => setFormError(saveMessage(e)),
             }),
         },
@@ -838,6 +1121,7 @@ export function DcrForm({
     }
   }
 
+  const stretches = isTp && tpItem ? stretchesOf(tpItem) : [];
   const title = isTp
     ? tpItem
       ? `Tour plan · ${rangeLabel(tpItem.from, tpItem.to)}`
@@ -878,6 +1162,22 @@ export function DcrForm({
       (id) => rows.find((r) => r.id === id)?.hqId === hqId && id !== hqId,
     ),
   }));
+  const sectionWord = isTp ? 'Plan' : 'Report';
+  const sfcPicked =
+    s.sfc.state === 'ok' &&
+    s.sfc.hqs.some((hq) => {
+      const picked = (s.routeChoice[hq.hqTerritoryId] ?? []).filter((id) =>
+        hq.candidates.some((c) => c.id === id),
+      );
+      return picked.length > 0 || Boolean(hq.autoSelectedId);
+    });
+
+  function askDelete(title: string, run: () => void) {
+    Alert.alert(`Delete ${title}?`, 'This section is removed from the day.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: run },
+    ]);
+  }
 
   return (
     <View style={styles.flex}>
@@ -900,6 +1200,22 @@ export function DcrForm({
           )}
           <AppText variant="small">{isTp ? rangeLabel(s.date, tpTo) : dateLabel(s.date)}</AppText>
         </View>
+        {stretches.length > 1 ? (
+          <View style={styles.warn}>
+            {stretches.map((stretch) => (
+              <AppText key={stretch.from} variant="body">
+                {rangeLabel(stretch.from, stretch.to)}
+                {stretch.plan.workTypeId
+                  ? ` · ${
+                      normaliseWorkTypes(optionsQ.data?.workTypes ?? []).find(
+                        (workType) => workType.id === stretch.plan.workTypeId,
+                      )?.name ?? 'Plan'
+                    }`
+                  : ''}
+              </AppText>
+            ))}
+          </View>
+        ) : null}
 
         {isTp && tpItem?.status === 'rejected' ? (
           <View style={styles.warn}>
@@ -929,19 +1245,7 @@ export function DcrForm({
           <View style={styles.warn}>
             <AppText variant="label">Rejected by your manager</AppText>
             <AppText variant="bodyMuted">{review.reason || 'No reason given.'}</AppText>
-            <AppText variant="small">
-              This report doesn’t count. The day is open again for 48 hours: file it as a new
-              report.
-            </AppText>
-            <Button
-              label="File this day again"
-              variant="secondary"
-              compact
-              onPress={() =>
-                // A brand-new form: new call clientIds and a new idempotency key, never the old ones.
-                router.replace({ pathname: '/dcr/form', params: { new: '1', date: s.date } })
-              }
-            />
+            <AppText variant="small">Change this report and submit it again.</AppText>
           </View>
         ) : null}
 
@@ -1033,208 +1337,286 @@ export function DcrForm({
           />
         ) : null}
 
-        <Field
-          label="Work on"
-          value={s.workOn?.label}
-          placeholder="Choose what you worked on"
-          onPress={readOnly ? undefined : () => setSheet('workOn')}
-          error={err('workOn')[0]}
-        />
-
-        {field ? (
-          <>
-            <Field
-              label="Band"
-              value={
-                BANDS.find(
-                  (b) =>
-                    b.band === bandOf((workTypes ?? []).find((w) => w.id === s.workTypeId)?.band),
-                )?.label
+        {sections.map((section, index) => {
+          const title = `${sectionWord} ${index + 1}`;
+          const expanded = index === openIndex;
+          return (
+            <SectionCard
+              key={index}
+              title={title}
+              summary={
+                [
+                  section.workOn?.label,
+                  faresOf(section).length ? `${faresOf(section).length} SFC` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || undefined
               }
-              placeholder="HQ, Ex-HQ or Out-station"
-              onPress={readOnly ? undefined : () => setSheet('band')}
-              error={err('band')[0]}
-            />
-            {s.workTypeId ? (
-              <Field
-                label="Territory"
-                value={
-                  s.territoryIds.length
-                    ? s.territoryIds.map((id) => placeName.get(id) ?? id).join(', ')
-                    : undefined
-                }
-                placeholder="Choose territories"
-                onPress={readOnly ? undefined : () => setSheet('territory')}
-                error={err('territory')[0]}
-              />
-            ) : null}
-            {s.territoryIds.length ? (
-              <>
-                <Field
-                  label="Work with"
-                  value={
-                    s.workWithDone
-                      ? s.workWith.length
-                        ? s.workWith.map((id) => personName.get(id) ?? id).join(', ')
-                        : 'Worked alone'
-                      : undefined
-                  }
-                  placeholder="Choose colleagues or Worked alone"
-                  onPress={readOnly ? undefined : () => setSheet('workWith')}
-                  error={err('workWith')[0]}
-                />
-                {!readOnly && !s.workWithDone ? (
-                  <Button
-                    label="Worked alone"
-                    variant="secondary"
-                    compact
-                    onPress={() => update({ workWith: [], workWithDone: true })}
+              expanded={expanded}
+              onToggle={() => setOpenIndex((current) => (current === index ? -1 : index))}
+              onDelete={
+                !readOnly && sections.length > 1
+                  ? () =>
+                      askDelete(title, () => {
+                        setDirty(true);
+                        setSections((list) => list.filter((_, i) => i !== index));
+                        setOpenIndex((current) =>
+                          current > index ? current - 1 : Math.min(current, sections.length - 2),
+                        );
+                      })
+                  : undefined
+              }
+            >
+              {expanded ? (
+                <>
+                  <Field
+                    label="Work on"
+                    value={s.workOn?.label}
+                    placeholder="Choose what you worked on"
+                    onPress={readOnly ? undefined : () => setSheet('workOn')}
+                    error={err('workOn')[0]}
                   />
-                ) : null}
-              </>
-            ) : null}
 
-            {isTp && tpItem && tpItem.status !== 'draft' ? (
-              <TpSfcReview item={tpItem} />
-            ) : s.workWithDone ? (
-              <SfcSection
-                sfc={s.sfc}
-                routeChoice={s.routeChoice}
-                readOnly={readOnly}
-                dcr={dcr}
-                errors={err('sfc')}
-                onChooseRoute={(hq) => {
-                  setRouteHq(hq);
-                  setSheet('route');
-                }}
-              />
-            ) : null}
-
-            {!isTp &&
-            s.workOn?.branch === 'field' &&
-            (s.sfc.state === 'ok' || (readOnly && (dcr?.calls?.length ?? 0) > 0)) ? (
-              <View style={dcrStyles.section}>
-                <AppText variant="label">Calls</AppText>
-                <Errors list={err('calls')} />
-                {s.calls.map((c, i) => (
-                  <Animated.View
-                    key={c.clientId}
-                    layout={callLayout}
-                    entering={callEnter}
-                    exiting={callExit}
-                  >
-                    <CallEditor
-                      call={sEff.calls[i] ?? c}
-                      index={i}
-                      readOnly={readOnly}
-                      errors={[
-                        ...err(`call-${c.clientId}`),
-                        ...(flagged[c.clientId] ? [flagged[c.clientId]!] : []),
-                      ]}
-                      products={productsQ.data ?? []}
-                      detail={productsQ.detail}
-                      onPresented={() => {
-                        // CallEditor already set presentationOpened + presentationCapture via onChange.
-                        if (c.outletId) presLog.record(c.outletId);
-                      }}
-                      scopes={scopes}
-                      names={placeName}
-                      onChange={(p) =>
-                        update((x) => ({
-                          calls: x.calls.map((row) => {
-                            if (row.clientId !== c.clientId) return row;
-                            const next = { ...row, ...p };
-                            // Products/deck changed: drop device log so old-API overlay cannot re-green.
-                            if (
-                              p.presentationOpened === false &&
-                              row.outletId &&
-                              row.presentationOpened
-                            )
-                              presLog.clear(row.outletId);
-                            return next;
-                          }),
-                        }))
-                      }
-                      onRemove={() =>
-                        update((x) => ({
-                          calls: x.calls.filter((row) => row.clientId !== c.clientId),
-                        }))
-                      }
-                    />
-                  </Animated.View>
-                ))}
-                {!readOnly ? (
-                  <View style={styles.row}>
-                    {(['doctor', 'chemist', 'stockist'] as CallKind[]).map((kind) => (
-                      <PressableScale
-                        key={kind}
-                        onPress={() =>
-                          update((x) => ({
-                            calls: [
-                              ...x.calls,
-                              {
-                                clientId: idempotencyKey(),
-                                kind,
-                                outletId: '',
-                                outletName: '',
-                                hqId: scopes[0]?.hqId ?? '',
-                                // New API: calledAt is stamped by the server on first save.
-                                time: sendsCalledAt() ? nowHHmm() : '',
-                                productIds: [],
-                                pob: [],
-                                checkInId: null,
-                                presentationOpened: false,
-                                presentationCapture: null,
-                                remarks: '',
-                              },
-                            ],
-                          }))
+                  {field ? (
+                    <>
+                      <Field
+                        label="Band"
+                        value={
+                          BANDS.find(
+                            (b) =>
+                              b.band ===
+                              bandOf((workTypes ?? []).find((w) => w.id === s.workTypeId)?.band),
+                          )?.label
                         }
-                        accessibilityLabel={`Add ${KIND_LABEL[kind].toLowerCase()} call`}
-                        scaleTo={0.96}
-                        style={styles.addCall}
-                      >
-                        <Icon name="plus" size={18} color={colors.navy} />
-                        <AppText variant="action">{KIND_LABEL[kind]}</AppText>
-                      </PressableScale>
-                    ))}
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-          </>
-        ) : null}
+                        placeholder="HQ, Ex-HQ or Out-station"
+                        onPress={readOnly ? undefined : () => setSheet('band')}
+                        error={err('band')[0]}
+                      />
+                      {s.workTypeId ? (
+                        <Field
+                          label="Territory"
+                          value={
+                            s.territoryIds.length
+                              ? s.territoryIds.map((id) => placeName.get(id) ?? id).join(', ')
+                              : undefined
+                          }
+                          placeholder="Choose territories"
+                          onPress={readOnly ? undefined : () => setSheet('territory')}
+                          error={err('territory')[0]}
+                        />
+                      ) : null}
+                      {s.territoryIds.length ? (
+                        <>
+                          <Field
+                            label="Work with"
+                            value={
+                              s.workWithDone
+                                ? s.workWith.length
+                                  ? s.workWith.map((id) => personName.get(id) ?? id).join(', ')
+                                  : 'Worked alone'
+                                : undefined
+                            }
+                            placeholder="Choose colleagues or Worked alone"
+                            onPress={readOnly ? undefined : () => setSheet('workWith')}
+                            error={err('workWith')[0]}
+                          />
+                          {!readOnly && !s.workWithDone ? (
+                            <Button
+                              label="Worked alone"
+                              variant="secondary"
+                              compact
+                              onPress={() => update({ workWith: [], workWithDone: true })}
+                            />
+                          ) : null}
+                        </>
+                      ) : null}
 
-        {s.workOn?.branch === 'meeting' || s.workOn?.branch === 'training' ? (
-          <MeetingEditor
-            kind={s.workOn.branch}
-            value={s.meeting}
-            readOnly={readOnly}
-            errors={{
-              title: err('title'),
-              location: err('location'),
-              startTime: err('startTime'),
-              endTime: err('endTime'),
-            }}
-            onChange={(meeting) => update({ meeting })}
-          />
-        ) : null}
+                      {isTp && readOnly && tpItem ? (
+                        <TpSfcReview item={tpItem} />
+                      ) : s.workWithDone ? (
+                        <SfcSection
+                          sfc={s.sfc}
+                          routeChoice={s.routeChoice}
+                          readOnly={readOnly}
+                          dcr={dcr}
+                          errors={err('sfc')}
+                          onChooseRoute={() => setSheet('route')}
+                        />
+                      ) : null}
 
-        {s.workOn?.branch === 'office' ? (
-          <OfficeEditor
-            value={s.office}
-            readOnly={readOnly}
-            errors={{
-              taskType: err('taskType'),
-              description: err('description'),
-              startTime: err('startTime'),
-              endTime: err('endTime'),
-            }}
-            onChange={(office) => update({ office })}
-          />
-        ) : null}
+                      {!isTp &&
+                      s.workOn?.branch === 'field' &&
+                      (sfcPicked ||
+                        s.calls.length > 0 ||
+                        (readOnly && (dcr?.calls?.length ?? 0) > 0)) ? (
+                        <View style={dcrStyles.section}>
+                          <AppText variant="label">Calls</AppText>
+                          <Errors list={err('calls')} />
+                          {s.calls.map((c, i) => (
+                            <Animated.View
+                              key={c.clientId}
+                              layout={callLayout}
+                              entering={callEnter}
+                              exiting={callExit}
+                            >
+                              <CallEditor
+                                call={sEff.calls[i] ?? c}
+                                index={i}
+                                readOnly={readOnly}
+                                errors={[
+                                  ...err(`call-${c.clientId}`),
+                                  ...(flagged[c.clientId] ? [flagged[c.clientId]!] : []),
+                                ]}
+                                products={productsQ.data ?? []}
+                                detail={productsQ.detail}
+                                onPresented={() => {
+                                  // CallEditor already set presentationOpened + presentationCapture via onChange.
+                                  if (c.outletId) presLog.record(c.outletId);
+                                }}
+                                scopes={scopes}
+                                names={placeName}
+                                onChange={(p) => {
+                                  if (
+                                    p.outletId &&
+                                    p.outletId !== c.outletId &&
+                                    outletAlreadyOnDay(sections, c.kind, p.outletId, c.clientId)
+                                  ) {
+                                    Alert.alert(
+                                      'Already on this day',
+                                      `This ${KIND_LABEL[c.kind].toLowerCase()} is already on this day’s report.`,
+                                    );
+                                    return;
+                                  }
+                                  update((x) => ({
+                                    calls: x.calls.map((row) => {
+                                      if (row.clientId !== c.clientId) return row;
+                                      const next = { ...row, ...p };
+                                      // Products/deck changed: drop device log so old-API overlay cannot re-green.
+                                      if (
+                                        p.presentationOpened === false &&
+                                        row.outletId &&
+                                        row.presentationOpened
+                                      )
+                                        presLog.clear(row.outletId);
+                                      return next;
+                                    }),
+                                  }));
+                                }}
+                                onRemove={() =>
+                                  update((x) => ({
+                                    calls: x.calls.filter((row) => row.clientId !== c.clientId),
+                                  }))
+                                }
+                              />
+                            </Animated.View>
+                          ))}
+                          {!readOnly && sfcPicked ? (
+                            <View style={styles.addRow}>
+                              {(['doctor', 'chemist', 'stockist'] as CallKind[]).map((kind) => (
+                                <PressableScale
+                                  key={kind}
+                                  onPress={() =>
+                                    update((x) => ({
+                                      calls: [
+                                        ...x.calls,
+                                        {
+                                          clientId: idempotencyKey(),
+                                          kind,
+                                          outletId: '',
+                                          outletName: '',
+                                          hqId: scopes[0]?.hqId ?? '',
+                                          // New API: calledAt is stamped by the server on first save.
+                                          time: sendsCalledAt() ? nowHHmm() : '',
+                                          productIds: [],
+                                          pob: [],
+                                          checkInId: null,
+                                          presentationOpened: false,
+                                          presentationCapture: null,
+                                          remarks: '',
+                                        },
+                                      ],
+                                    }))
+                                  }
+                                  accessibilityLabel={`Add ${KIND_LABEL[kind].toLowerCase()} call`}
+                                  scaleTo={0.96}
+                                  containerStyle={styles.addCallSlot}
+                                  style={[styles.addCall, { minHeight: visitHeight }]}
+                                  pressedStyle={styles.addCallPressed}
+                                >
+                                  <Icon
+                                    name={
+                                      kind === 'doctor'
+                                        ? 'stethoscope'
+                                        : kind === 'chemist'
+                                          ? 'pill'
+                                          : 'warehouse'
+                                    }
+                                    size={visitIcon}
+                                    color={colors.onNavy}
+                                  />
+                                  <AppText
+                                    variant="button"
+                                    numberOfLines={1}
+                                    adjustsFontSizeToFit
+                                    minimumFontScale={0.75}
+                                    style={styles.addCallLabel}
+                                  >
+                                    {KIND_LABEL[kind]}
+                                  </AppText>
+                                </PressableScale>
+                              ))}
+                            </View>
+                          ) : null}
+                        </View>
+                      ) : null}
+                    </>
+                  ) : null}
 
-        {DCR_V2_FIELDS && !isTp && s.workOn ? (
+                  {s.workOn?.branch === 'meeting' || s.workOn?.branch === 'training' ? (
+                    <MeetingEditor
+                      kind={s.workOn.branch}
+                      value={s.meeting}
+                      readOnly={readOnly}
+                      errors={{
+                        title: err('title'),
+                        location: err('location'),
+                        startTime: err('startTime'),
+                        endTime: err('endTime'),
+                      }}
+                      onChange={(meeting) => update({ meeting })}
+                    />
+                  ) : null}
+
+                  {s.workOn?.branch === 'office' ? (
+                    <OfficeEditor
+                      value={s.office}
+                      readOnly={readOnly}
+                      errors={{
+                        taskType: err('taskType'),
+                        description: err('description'),
+                        startTime: err('startTime'),
+                        endTime: err('endTime'),
+                      }}
+                      onChange={(office) => update({ office })}
+                    />
+                  ) : null}
+
+                  {s.workOn?.branch === 'leave' ? (
+                    <LeaveFields
+                      date={s.date}
+                      value={s.leaveRequestId}
+                      onChange={(leaveRequestId) => update({ leaveRequestId })}
+                      readOnly={readOnly}
+                      error={err('leave')[0]}
+                    />
+                  ) : null}
+                </>
+              ) : null}
+            </SectionCard>
+          );
+        })}
+
+        {DCR_V2_FIELDS && !isTp && (s.workOn || sections.length > 1) ? (
           readOnly ? (
             dcr && dcr.status !== 'draft' ? (
               <DcrExpenseChip dcr={dcr} />
@@ -1242,20 +1624,11 @@ export function DcrForm({
           ) : (
             <ExpenseItems
               value={s.expenses ?? []}
+              date={s.date}
               readOnly={readOnly}
               onChange={(expenses) => update({ expenses })}
             />
           )
-        ) : null}
-
-        {s.workOn?.branch === 'leave' ? (
-          <LeaveFields
-            date={s.date}
-            value={s.leaveRequestId}
-            onChange={(leaveRequestId) => update({ leaveRequestId })}
-            readOnly={readOnly}
-            error={err('leave')[0]}
-          />
         ) : null}
 
         {!isTp && !tpItem && (askDeviation || s.deviationReason) ? (
@@ -1269,6 +1642,8 @@ export function DcrForm({
           />
         ) : null}
 
+        <DayAllowance sections={sections} />
+
         {formError ? (
           <AppText variant="caption" style={dcrStyles.err} accessibilityLiveRegion="polite">
             {formError}
@@ -1276,7 +1651,27 @@ export function DcrForm({
         ) : null}
 
         {!readOnly && !blocked ? (
-          <>
+          <View style={styles.dayActions}>
+            {sections.length < MAX_DAY_SECTIONS ? (
+              <Button
+                label={isTp ? 'Add another plan' : 'Add another report'}
+                variant="teal"
+                onPress={() => {
+                  setDirty(true);
+                  setSections((list) => [
+                    ...list,
+                    {
+                      ...fresh(list[0]?.date ?? s.date),
+                      tourPlanItemId: list[0]?.tourPlanItemId,
+                      expenses: list[0]?.expenses,
+                      deviationReason: list[0]?.deviationReason ?? '',
+                    },
+                  ]);
+                  setOpenIndex(sections.length);
+                  setShowErrors(false);
+                }}
+              />
+            ) : null}
             <Button
               label="Save draft"
               variant="secondary"
@@ -1285,17 +1680,19 @@ export function DcrForm({
               disabled={busy || !s.workTypeId}
               onPress={() => void save(false)}
             />
-            <View style={styles.slideWrap}>
-              <SlideToConfirm
-                label={isTp ? 'Slide to send for approval' : 'Slide to submit'}
-                doneLabel={isTp ? 'Sent' : 'Submitted'}
-                errorLabel={isTp ? 'Could not send' : 'Could not submit'}
-                disabled={busy || !s.workTypeId}
-                onDragChange={setSliding}
-                onCommit={() => save(true)}
-              />
-            </View>
-          </>
+            {isTp ? null : (
+              <View style={styles.slideWrap}>
+                <SlideToConfirm
+                  label="Slide to submit"
+                  doneLabel="Submitted"
+                  errorLabel="Could not submit"
+                  disabled={busy || !s.workTypeId}
+                  onDragChange={setSliding}
+                  onCommit={() => save(true)}
+                />
+              </View>
+            )}
+          </View>
         ) : null}
         {isTp && tpItem && !readOnly ? (
           <Pressable
@@ -1375,24 +1772,44 @@ export function DcrForm({
         onSearch={searchPeople}
         loading={peopleQry.isFetching}
       />
-      <SelectSheet
-        visible={sheet === 'route' && !!routeHq}
-        title="SFC route"
-        options={(s.sfc.hqs.find((h) => h.hqTerritoryId === routeHq)?.candidates ?? []).map(
-          (c) => ({
-            value: c.id,
-            label: `${c.fromPlace} to ${c.toPlace}`,
-            hint: `${c.oneWayKm} km`,
-          }),
-        )}
-        value={routeHq ? (s.routeChoice[routeHq] ?? null) : null}
-        onPick={(v) => {
-          if (routeHq && v) update((x) => ({ routeChoice: { ...x.routeChoice, [routeHq]: v } }));
+      <MultiSelectSheet
+        visible={sheet === 'route' && s.sfc.state === 'ok'}
+        title="SFC routes"
+        options={
+          s.sfc.state === 'ok'
+            ? s.sfc.hqs.flatMap((h) =>
+                h.candidates.map((c) => ({
+                  value: c.id,
+                  label: `${c.fromPlace} to ${c.toPlace}`,
+                  hint: [
+                    h.hqName,
+                    c.bothWayAmount != null ? `TA ₹${c.bothWayAmount}` : `${c.oneWayKm} km`,
+                    c.da != null ? `DA ₹${c.da}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · '),
+                })),
+              )
+            : []
+        }
+        values={
+          s.sfc.state === 'ok'
+            ? s.sfc.hqs.flatMap((h) => {
+                const picked = s.routeChoice[h.hqTerritoryId] ?? [];
+                return picked.length ? picked : h.autoSelectedId ? [h.autoSelectedId] : [];
+              })
+            : []
+        }
+        onDone={(ids) => {
+          if (s.sfc.state !== 'ok') return;
+          const routeChoice: Record<string, string[]> = {};
+          for (const hq of s.sfc.hqs) {
+            const picked = ids.filter((id) => hq.candidates.some((c) => c.id === id));
+            if (picked.length) routeChoice[hq.hqTerritoryId] = picked;
+          }
+          update({ routeChoice });
         }}
-        onClose={() => {
-          setSheet(null);
-          setRouteHq(null);
-        }}
+        onClose={() => setSheet(null)}
       />
       <SelectSheet
         visible={sheet === 'date'}
@@ -1408,8 +1825,10 @@ export function DcrForm({
             return;
           }
           if (v && v !== s.date) {
+            setDirty(true);
             hydratedFor.current = null;
-            setS(fresh(v));
+            setSections([fresh(v)]);
+            setOpenIndex(0);
             setDcr(null);
             setDaySubmitted(null);
           }
@@ -1424,7 +1843,11 @@ export function DcrForm({
             (o) => o.value >= s.date && o.value <= addDays(s.date, MAX_TP_DAYS - 1),
           )}
           value={tpTo}
-          onPick={(v) => v && setTpTo(v)}
+          onPick={(v) => {
+            if (!v || v === tpTo) return;
+            setDirty(true);
+            setTpTo(v);
+          }}
           onClose={() => setSheet(null)}
         />
       ) : null}
@@ -1434,6 +1857,32 @@ export function DcrForm({
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.ground },
+  sectionCard: {
+    padding: spacing.lg,
+    gap: spacing.md,
+    borderWidth: 1.5,
+    borderColor: colors.teal,
+  },
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  sectionToggle: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: touch.min,
+  },
+  sectionTitles: { flex: 1, gap: 2 },
+  allowance: { gap: spacing.xs },
+  deleteBtn: {
+    width: touch.min,
+    height: touch.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   center: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1444,6 +1893,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm, gap: spacing.lg },
   /** Locks the CUTLY slider to 56pt so KeyboardAwareScrollView cannot stretch it. */
   slideWrap: { height: 56, width: '100%', flexGrow: 0, flexShrink: 0 },
+  dayActions: { marginTop: spacing.xl, gap: spacing.sm },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   warn: {
     gap: spacing.sm,
@@ -1452,18 +1902,20 @@ const styles = StyleSheet.create({
     borderCurve: 'continuous',
     backgroundColor: colors.warnWash,
   },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  addRow: { flexDirection: 'row', alignItems: 'stretch', alignSelf: 'stretch', gap: spacing.sm },
+  addCallSlot: { flex: 1 },
   addCall: {
-    flexDirection: 'row',
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.xs,
-    minHeight: touch.min,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.lg,
+    backgroundColor: colors.tealDeep,
   },
+  addCallPressed: { backgroundColor: colors.navy },
+  addCallLabel: { color: colors.onNavy, textAlign: 'center' },
   remove: {
     flexDirection: 'row',
     alignItems: 'center',
