@@ -12,9 +12,14 @@ import {
 import { Thread } from '@/components/assistant-ui/elements/thread.aui';
 import { Button } from '@ariforce/ui/components/button';
 import { Sheet, SheetContent, SheetTitle } from '@ariforce/ui/components/sheet';
+import { AribotIntro } from '@/components/bot/aribot-intro';
 import { API_URL } from '@/lib/api';
-import { roleLevel } from '@/lib/roles';
+import { roleLevel, type Role } from '@/lib/roles';
 import { useRole } from '@/components/shell/role-context';
+
+function canUseAribots(role: Role) {
+  return roleLevel(role) >= 2 || role === 'system_admin' || role === 'distribution_head';
+}
 
 interface BotTable {
   type: 'table';
@@ -51,7 +56,7 @@ const READY: { group: string; ask: string; director?: boolean }[] = [
 
 function chatError(status: number): string {
   if (status === 401) return 'Your session has ended. Sign in again, then ask.';
-  if (status === 403) return 'ARIBOT is for Area Business Managers and above.';
+  if (status === 403) return 'ARIBOT is for managers, the Distribution Head, and System Admin.';
   if (status === 404) return 'ARIBOT is not available on the server yet.';
   if (status === 429) return 'Too many questions this hour. Try again shortly.';
   if (status === 503) return 'ARIBOT is not ready yet. The Grok key still needs to be set.';
@@ -125,7 +130,8 @@ function AribotOrb() {
 
 function Welcome() {
   const { role } = useRole();
-  const asks = READY.filter((item) => !item.director || role === 'director');
+  const companyWide = role === 'director' || role === 'system_admin' || role === 'distribution_head';
+  const asks = READY.filter((item) => !item.director || companyWide);
   const groups = [...new Set(asks.map((item) => item.group))];
   return (
     <div className="mb-6 flex flex-col gap-1 px-2">
@@ -159,17 +165,18 @@ function Welcome() {
 }
 
 export function AribotButton() {
-  const { role } = useRole();
+  const { role, user } = useRole();
   const runtime = useLocalRuntime(adapter);
   const [open, setOpen] = useState(false);
-  if (roleLevel(role) < 2) return null;
+  if (!canUseAribots(role)) return null;
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
+      <AribotIntro userId={user.id} onOpen={() => setOpen(true)} />
       <Button
         type="button"
         variant="ghost"
-        className="h-9 gap-2 px-2"
+        className="aribot-live h-9 gap-2 rounded-full px-3"
         aria-label="ARIBOT"
         aria-expanded={open}
         data-testid="aribot-open"
