@@ -82,14 +82,14 @@ export function AribotButton() {
       <Button
         type="button"
         variant="ghost"
-        size="icon"
-        className="text-muted-foreground"
+        className="h-9 gap-1.5 px-2 text-muted-foreground"
         aria-label="ARIBOT"
         aria-expanded={open}
         data-testid="aribot-open"
         onClick={() => setOpen(true)}
       >
         <Bot className="size-4" />
+        <span className="text-sm font-medium">ARIBOT</span>
       </Button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="w-[min(100%,440px)] gap-0 p-0 sm:max-w-[440px]">
