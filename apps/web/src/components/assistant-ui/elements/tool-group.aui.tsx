@@ -9,7 +9,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import { ChevronDownIcon } from "lucide-react";
-import { Orb } from "@yogesharc/thinking-orbs";
+import { CyclingOrb } from "@/components/bot/orb-cycle";
 import { cva, type VariantProps } from "class-variance-authority";
 import { useScrollLock } from "@assistant-ui/react";
 import { cn } from "@ariforce/ui/lib/utils";
@@ -116,15 +116,7 @@ function ToolGroupTrigger({
       )}
       {...props}
     >
-      {active && (
-        <Orb
-          state="searching"
-          variant="lighthouse"
-          size={14}
-          label="Working"
-          className="text-primary shrink-0"
-        />
-      )}
+      {active && <CyclingOrb active size={14} />}
       <span
         data-slot="tool-group-trigger-label"
         className={cn(

@@ -12,7 +12,7 @@ import {
 import { useIsomorphicLayoutEffect } from "../utils/useIsomorphicLayoutEffect";
 import { cva, type VariantProps } from "class-variance-authority";
 import { ChevronDownIcon } from "lucide-react";
-import { Orb } from "@yogesharc/thinking-orbs";
+import { CyclingOrb, OrbSet } from "@/components/bot/orb-cycle";
 import { cn } from "@ariforce/ui/lib/utils";
 import {
   CollapsibleRoot as Collapsible,
@@ -190,13 +190,7 @@ function ReasoningTrigger({
       )}
       {...props}
     >
-      <Orb
-        state={active ? "reasoning" : "idle"}
-        variant={active ? "twins" : "blink"}
-        size={16}
-        label={active ? "Thinking" : "Thought"}
-        className="text-primary shrink-0"
-      />
+      <CyclingOrb active={!!active} size={16} />
       <span
         data-slot="reasoning-trigger-label"
         className={cn(
@@ -243,6 +237,7 @@ function ReasoningContent({
       {...props}
     >
       <ReasoningFade side="top" />
+      <OrbSet />
       {children}
       {isPreview ? <ReasoningFade /> : null}
     </CollapsibleContent>

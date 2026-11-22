@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Orb } from '@yogesharc/thinking-orbs';
+import { CyclingOrb } from '@/components/bot/orb-cycle';
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
@@ -93,6 +94,8 @@ const adapter: ChatModelAdapter = {
     yield {
       content: [{ type: 'reasoning', text: 'Checking your line in AriForce.' }],
     };
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    if (abortSignal.aborted) return;
     let res: Response;
     try {
       res = await fetch(`${API_URL}/v1/bot/ask`, {
@@ -122,16 +125,7 @@ const adapter: ChatModelAdapter = {
 
 function AribotOrb() {
   const running = useAuiState((s) => s.thread.isRunning);
-  return (
-    <Orb
-      state={running ? 'reasoning' : 'working'}
-      variant={running ? 'twins' : 'gyro'}
-      size={22}
-      speed={1.15}
-      label="ARIBOT"
-      className="text-primary"
-    />
-  );
+  return <CyclingOrb active={running} size={22} />;
 }
 
 function Welcome() {

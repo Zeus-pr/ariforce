@@ -16,7 +16,7 @@ import {
   CircleMinusIcon,
   XCircleIcon,
 } from "lucide-react";
-import { Orb } from "@yogesharc/thinking-orbs";
+import { CyclingOrb } from "@/components/bot/orb-cycle";
 import {
   toolApprovalAcceptsText,
   useAuiState,
@@ -180,13 +180,7 @@ function ToolFallbackTrigger({
       {...props}
     >
       {isRunning ? (
-        <Orb
-          state="working"
-          variant="gyro"
-          size={16}
-          label="Working"
-          className="text-primary shrink-0"
-        />
+        <CyclingOrb active size={16} />
       ) : (
         <Icon
           data-slot="tool-fallback-trigger-icon"
