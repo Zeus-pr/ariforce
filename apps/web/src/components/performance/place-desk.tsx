@@ -231,12 +231,15 @@ async function brandTargetsOf(from: string, to: string, ids: Set<string>) {
   await apiReady();
   const r = await api.GET('/v1/sales/targets', { params: { query: { from, to } } });
   if (r.error || !r.data) return [];
-  const totals = new Map<string, { name: string; primary: number; secondary: number }>();
+  const totals = new Map<
+    string,
+    { territoryId: string; name: string; primary: number; secondary: number }
+  >();
   for (const row of r.data.data) {
     const name = row.brand?.trim();
     if (!name || !ids.has(row.territoryId)) continue;
-    const key = name.toLowerCase();
-    const cur = totals.get(key) ?? { name, primary: 0, secondary: 0 };
+    const key = `${row.territoryId}:${name.toLowerCase()}`;
+    const cur = totals.get(key) ?? { territoryId: row.territoryId, name, primary: 0, secondary: 0 };
     if (row.kind === 'primary') cur.primary += row.value;
     else cur.secondary += row.value;
     totals.set(key, cur);
@@ -317,7 +320,7 @@ export function PlaceDesk({
   const [span, setSpan] = useState<Span>('month');
   const [personId, setPersonId] = useState('');
   const [brandTargets, setBrandTargets] = useState<
-    { name: string; primary: number; secondary: number }[]
+    { territoryId: string; name: string; primary: number; secondary: number }[]
   >([]);
   const [hqBars, setHqBars] = useState<HqBar[]>([]);
   const [customFrom, setCustomFrom] = useState('');
@@ -568,7 +571,11 @@ export function PlaceDesk({
       setPriorPeople(last.error ? [] : (last.data?.people ?? []));
       const listed = await brandTargetsOf(period.from, period.to, idsUnder(places ?? [], focus.id));
       if (!live) return;
-      setBrandTargets(listed.length ? listed : (r.data?.brandTargets ?? []));
+      setBrandTargets(
+        listed.length
+          ? listed
+          : (r.data?.brandTargets ?? []).map((target) => ({ territoryId: '', ...target })),
+      );
       setPersonId('');
     })().catch((e) => {
       if (!live) return;
@@ -667,6 +674,42 @@ export function PlaceDesk({
         priorSecondary: earlierByProduct.get(product.productId)?.secondaryValue ?? 0,
       }))
     : [];
+  const personHqIds = new Set(personHqs.map((place) => place.id));
+  const personBrands = new Map<string, LiquidItem>();
+  const personBrand = (brand: string) => {
+    const key = brand.toLowerCase();
+    const cur = personBrands.get(key) ?? {
+      id: key,
+      name: brand,
+      primary: 0,
+      secondary: 0,
+      primaryTarget: 0,
+      secondaryTarget: 0,
+    };
+    personBrands.set(key, cur);
+    return cur;
+  };
+  if (chosen) {
+    for (const product of chosen.products) {
+      const cur = personBrand(product.brand);
+      cur.primary += product.primaryValue;
+      cur.secondary += product.secondaryValue;
+    }
+    for (const product of earlierPerson?.products ?? []) {
+      const cur = personBrand(product.brand);
+      cur.priorPrimary = (cur.priorPrimary ?? 0) + product.primaryValue;
+      cur.priorSecondary = (cur.priorSecondary ?? 0) + product.secondaryValue;
+    }
+    for (const target of brandTargets) {
+      if (target.territoryId && !personHqIds.has(target.territoryId)) continue;
+      const cur = personBrand(target.name);
+      cur.primaryTarget += target.primary;
+      cur.secondaryTarget += target.secondary;
+    }
+  }
+  const personBrandBars = [...personBrands.values()]
+    .filter((item) => item.primary || item.secondary || item.primaryTarget || item.secondaryTarget)
+    .sort((a, b) => b.primary + b.secondary - (a.primary + a.secondary));
   const productPrimary = (salesProducts ?? []).reduce(
     (sum, product) => sum + product.primaryValue,
     0,
@@ -909,6 +952,15 @@ export function PlaceDesk({
               >
                 <LiquidColumns items={personBars} />
               </ChartBox>
+              {personBrandBars.length > 0 && (
+                <ChartBox
+                  title={`${chosen.name} brand target vs primary and secondary`}
+                  fileName={`sales-${chosen.name.toLowerCase().replace(/\s+/g, '-')}-brands`}
+                  items={personBrandBars}
+                >
+                  <LiquidColumns items={personBrandBars} />
+                </ChartBox>
+              )}
               <ChartBox
                 title={`${chosen.name} product primary and secondary`}
                 fileName={`sales-${chosen.name.toLowerCase().replace(/\s+/g, '-')}-products`}
