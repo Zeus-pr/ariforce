@@ -14174,7 +14174,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description OPENAI_API_KEY is not set, or the model call failed */
+      /** @description XAI_API_KEY is not set, or the model call failed */
       503: {
         headers: {
           [name: string]: unknown;

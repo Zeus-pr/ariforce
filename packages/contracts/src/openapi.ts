@@ -996,7 +996,7 @@ function buildDocument(): OpenApiDocument {
             '200': { description: 'Narrative plus tables', ...json(BotAskResponse) },
             '403': err('Below Area Business Manager, or missing reports:read'),
             '429': err('Too many questions this hour'),
-            '503': err('OPENAI_API_KEY is not set, or the model call failed'),
+            '503': err('XAI_API_KEY is not set, or the model call failed'),
           },
         }),
       },

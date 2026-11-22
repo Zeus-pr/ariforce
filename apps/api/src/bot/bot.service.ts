@@ -20,13 +20,13 @@ function textOf(content: unknown): string | null {
   return text || null;
 }
 
-export async function completeOpenAI(
+export async function completeGrok(
   key: string,
   model: string,
   messages: ChatMsg[],
   tools: ToolSpec[] | null,
 ): Promise<AssistantMsg> {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch('https://api.x.ai/v1/chat/completions', {
     method: 'POST',
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -70,9 +70,9 @@ export class BotService {
     const audience = botAudience(p.roles);
     if (audience === 'none')
       throw err(403, 'FORBIDDEN', 'ARIBOT is for Area Business Managers and above');
-    const key = process.env.OPENAI_API_KEY?.trim();
+    const key = process.env.XAI_API_KEY?.trim();
     if (!key) throw err(503, 'BOT_UNAVAILABLE', 'ARIBOT is not configured yet.');
-    const model = process.env.OPENAI_MODEL?.trim() || 'gpt-5.4-nano';
+    const model = process.env.XAI_MODEL?.trim() || 'grok-4.7';
     const companyWide = audience === 'director';
     const result = await runBot({
       knowledge: knowledgeFor(audience),
@@ -82,7 +82,7 @@ export class BotService {
       message,
       specs: toolSpecs(companyWide),
       call: (name, args) => this.tools.call(p, companyWide, name, args),
-      complete: (messages, tools) => completeOpenAI(key, model, messages, tools),
+      complete: (messages, tools) => completeGrok(key, model, messages, tools),
     });
     await this.tenant.run(p, (tx) =>
       this.audit.record(tx, p, 'bot.ask', {
