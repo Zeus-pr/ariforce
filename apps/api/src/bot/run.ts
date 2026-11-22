@@ -53,16 +53,31 @@ export function answerShape(message: string): string {
   const s = message.toLowerCase();
   if (/^how do i\b/.test(s.trim()))
     return 'How-to question. Answer from the how-to text only. Do not call a tool and do not state a figure.';
+  if (/\b(missed doctor|coverage|call average|dcr compliance|adherence)\b/.test(s))
+    return 'Field-measure question. Fetch kpi_report with the measure named, for the team or the place, and the period. Then read the table.';
+  if (
+    /\b(stock statement|aws)\b/.test(s) ||
+    (/\bstockist\b/.test(s) && /\b(sales|secondary|statement)\b/.test(s))
+  )
+    return 'Stock-statement question. Fetch read_records with kind stock_statements. Report only the rows returned.';
   if (/\b(sales|primary|secondary)\b/.test(s))
     return 'Sales question. Fetch kpi_report with primary_sales_value and secondary_sales_value for the team, the named person, or the place. A headquarters name goes in place. Then read actual against target, and say what is behind.';
   if (/\b(doing|performance|so far)\b/.test(s))
     return 'Performance question. Fetch kpi_report for that team and period, with coverage_pct, call_average, dcr_compliance_pct, tp_adherence_pct, primary_sales_value and secondary_sales_value. Then say what is on target and what is behind. Use list_team only if the question asks who.';
+  if (/\bholiday/.test(s))
+    return 'Holiday question. Fetch read_records with kind holidays for that period.';
+  if (/\b(exception|compliance gap)\b/.test(s))
+    return 'Exception question. Fetch read_records with kind exceptions. Say which are open.';
+  if (/\b(sfc|fare chart|fare)\b/.test(s))
+    return 'Fare-chart question. Fetch read_records with kind sfc. Report only the rows returned.';
+  if (/\bapproval/.test(s))
+    return 'Approval question. Fetch read_records with kind approvals. Say what is waiting and what is already decided.';
   if (/\b(doctor|chemist|stockist)\b/.test(s))
     return 'Outlet question. Fetch read_records with kind doctors, chemists, or stockists and the name. Report only the rows returned.';
   if (/\b(dcr|daily call|tour plan)\b/.test(s))
-    return 'Field-work question. Fetch read_records with kind dcrs or tour_plans and the month. Summarise what was filed.';
-  if (/\b(leave|expense|approval|stock statement)\b/.test(s))
-    return 'Account question. Fetch read_records with kind leave, leave_balances, expenses, approvals, or stock_statements. Report only rows returned for this account.';
+    return 'Field-work question. If a person is named, fetch list_team for their id, then read_records with kind dcrs or tour_plans, that userId, and the month. Summarise what was filed.';
+  if (/\b(leave|expense)\b/.test(s))
+    return 'Account question. Fetch read_records with kind leave, leave_balances, or expenses. Report only rows returned for this account.';
   if (/\b(product|detailed|detailing|samples)\b/.test(s))
     return 'Product question. Fetch product_kpis, then say which products were detailed and where the POB sits.';
   if (/\b(who|people|manager)\b/.test(s) || /\b(team list|on my team|my team)\b/.test(s))
@@ -235,9 +250,12 @@ export function toolSpecs(director: boolean): ToolSpec[] {
               'approvals',
               'stock_statements',
               'exceptions',
+              'holidays',
+              'sfc',
             ],
           },
           name: { type: 'string', description: 'Part of a doctor, chemist, or stockist name' },
+          userId: period.userId,
           month: period.month,
         },
         additionalProperties: false,

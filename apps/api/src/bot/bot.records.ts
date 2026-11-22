@@ -8,6 +8,8 @@ import { LeaveService } from '../leave/leave.service';
 import { ExpensesService } from '../expenses/expenses.service';
 import { StockStatementsService } from '../stock-statements/stock-statements.service';
 import { ExceptionsService } from '../exceptions/exceptions.service';
+import { HolidaysService } from '../leave/holidays.service';
+import { SfcService } from '../sfc/sfc.service';
 import type { Principal } from '../auth/principal';
 import { periodArg, type ToolOutcome } from './run';
 
@@ -23,6 +25,8 @@ const KINDS = [
   'approvals',
   'stock_statements',
   'exceptions',
+  'holidays',
+  'sfc',
 ] as const;
 
 type Kind = (typeof KINDS)[number];
@@ -42,13 +46,24 @@ function itemsOf(data: unknown): unknown[] {
   return [data];
 }
 
+function textOf(item: unknown): string | null {
+  if (item == null || typeof item === 'object') {
+    if (item && typeof item === 'object' && 'name' in item && typeof item.name === 'string')
+      return item.name;
+    return null;
+  }
+  const text = String(item);
+  if (!text) return null;
+  return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+}
+
 function cells(value: unknown): Record<string, string> {
   if (!value || typeof value !== 'object') return {};
   const out: Record<string, string> = {};
   for (const [key, item] of Object.entries(value)) {
-    if (HIDDEN.test(key) || item == null || typeof item === 'object') continue;
-    const text = String(item);
-    if (text) out[key] = text.length > 80 ? `${text.slice(0, 77)}...` : text;
+    if (HIDDEN.test(key)) continue;
+    const text = textOf(item);
+    if (text) out[key] = text;
   }
   return out;
 }
@@ -95,6 +110,8 @@ export class BotRecords {
     private readonly approvals: ApprovalsService,
     private readonly stock: StockStatementsService,
     private readonly exceptions: ExceptionsService,
+    private readonly holidays: HolidaysService,
+    private readonly sfc: SfcService,
   ) {}
 
   async read(p: Principal, args: unknown): Promise<ToolOutcome> {
@@ -103,9 +120,10 @@ export class BotRecords {
     if (!KINDS.includes(kind as Kind))
       return { model: { error: 'Unknown record kind.' }, block: null };
     const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+    const userId = typeof raw.userId === 'string' ? raw.userId : undefined;
     const span = periodArg(raw.month, indiaToday());
     try {
-      return table(kind, await this.fetch(p, kind as Kind, name, span));
+      return table(kind, await this.fetch(p, kind as Kind, name, userId, span));
     } catch (error) {
       const status = error instanceof HttpException ? error.getStatus() : 0;
       if (status === 403 || status === 404)
@@ -118,6 +136,7 @@ export class BotRecords {
     p: Principal,
     kind: Kind,
     name: string,
+    userId: string | undefined,
     span: { month?: string; from?: string; to?: string },
   ) {
     const month = span.month;
@@ -125,14 +144,19 @@ export class BotRecords {
     const to = span.to;
     if (kind === 'doctors' || kind === 'chemists' || kind === 'stockists')
       return this.masters.list(MASTERS[kind]!, p, { q: name || undefined, limit: 40 } as never);
-    if (kind === 'dcrs') return this.dcrs.list(p, { from, to, limit: 40 } as never);
-    if (kind === 'tour_plans') return this.plans.list(p, { month, limit: 40 } as never);
-    if (kind === 'leave') return this.leave.list(p, { from, to });
+    if (kind === 'dcrs') return this.dcrs.list(p, { from, to, userId, limit: 40 } as never);
+    if (kind === 'tour_plans') return this.plans.list(p, { month, userId, limit: 40 } as never);
+    if (kind === 'leave') return this.leave.list(p, { from, to, userId });
     if (kind === 'leave_balances')
-      return this.leave.balances(p, { year: month ? Number(month.slice(0, 4)) : undefined });
-    if (kind === 'expenses') return this.expenses.list(p, { month, limit: 40 });
+      return this.leave.balances(p, {
+        userId,
+        year: month ? Number(month.slice(0, 4)) : undefined,
+      });
+    if (kind === 'expenses') return this.expenses.list(p, { month, userId, limit: 40 });
     if (kind === 'approvals') return this.approvals.list(p, { limit: 40 } as never);
     if (kind === 'stock_statements') return this.stock.list(p, {});
+    if (kind === 'holidays') return this.holidays.list(p, { from, to });
+    if (kind === 'sfc') return this.sfc.employees(p);
     return this.exceptions.list(p, {} as never);
   }
 }

@@ -4,6 +4,7 @@ import { ExceptionsModule } from '../exceptions/exceptions.module';
 import { ExpensesModule } from '../expenses/expenses.module';
 import { KpisModule } from '../kpis/kpis.module';
 import { LeaveModule } from '../leave/leave.module';
+import { SfcModule } from '../sfc/sfc.module';
 import { MastersModule } from '../masters/masters.module';
 import { PlansModule } from '../plans/plans.module';
 import { StockStatementsModule } from '../stock-statements/stock-statements.module';
@@ -24,6 +25,7 @@ import { BotTools } from './bot.tools';
     ExpensesModule,
     StockStatementsModule,
     ExceptionsModule,
+    SfcModule,
   ],
   controllers: [BotController],
   providers: [BotService, BotTools, BotRecords],

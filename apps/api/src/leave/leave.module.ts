@@ -9,6 +9,6 @@ import { LeaveService } from './leave.service';
   imports: [PlansModule],
   controllers: [LeaveController, HolidaysController],
   providers: [LeaveService, HolidaysService],
-  exports: [LeaveService],
+  exports: [LeaveService, HolidaysService],
 })
 export class LeaveModule {}
