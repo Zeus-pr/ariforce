@@ -49,19 +49,48 @@ export async function itemsOut(tx: Tx, rows: ItemRow[]): Promise<TourPlanItem[]>
     ? await tx
         .select({
           id: sfcRoutes.id,
+          hqTerritoryId: sfcRoutes.hqTerritoryId,
+          fromPlace: sfcRoutes.fromPlace,
+          toPlace: sfcRoutes.toPlace,
+          oneWayKm: sfcRoutes.oneWayKm,
+          bothWayKm: sfcRoutes.bothWayKm,
+          oneWayAmount: sfcRoutes.oneWayAmount,
           bothWayAmount: sfcRoutes.bothWayAmount,
+          actualFare: sfcRoutes.actualFare,
+          travelMode: sfcRoutes.travelMode,
+          category: sfcRoutes.category,
           da: sfcRoutes.da,
         })
         .from(sfcRoutes)
         .where(inArray(sfcRoutes.id, routeIds))
     : [];
+  const num = (v: string | number | null) => (v == null ? null : Number(v));
   const fareOf = new Map(
     fares.map((f) => [
       f.id,
       {
         id: f.id,
-        bothWayAmount: f.bothWayAmount == null ? null : Number(f.bothWayAmount),
-        da: f.da == null ? null : Number(f.da),
+        bothWayAmount: num(f.bothWayAmount),
+        da: num(f.da),
+      },
+    ]),
+  );
+  const factOf = new Map(
+    fares.map((f) => [
+      f.id,
+      {
+        id: f.id,
+        hqTerritoryId: f.hqTerritoryId,
+        fromPlace: f.fromPlace,
+        toPlace: f.toPlace,
+        oneWayKm: Number(f.oneWayKm),
+        bothWayKm: Number(f.bothWayKm),
+        oneWayAmount: num(f.oneWayAmount),
+        bothWayAmount: num(f.bothWayAmount),
+        actualFare: f.actualFare,
+        travelMode: f.travelMode,
+        category: f.category,
+        da: num(f.da),
       },
     ]),
   );
@@ -81,6 +110,10 @@ export async function itemsOut(tx: Tx, rows: ItemRow[]): Promise<TourPlanItem[]>
       status: apiStatus(r.status),
       rejectionReason: r.status === 'rejected' ? r.decisionComment : null,
       plan: TourPlanItemPlan.parse(r.plan),
+      routeFacts: [...new Set(groups[i]!.flat())].flatMap((id) => {
+        const fact = factOf.get(id);
+        return fact ? [fact] : [];
+      }),
       filedDates: tpItemFiledDates(
         r.fromDate,
         r.toDate,
@@ -99,13 +132,27 @@ export async function itemsOut(tx: Tx, rows: ItemRow[]): Promise<TourPlanItem[]>
 }
 
 function routeGroups(plan: unknown): string[][] {
-  const p = (plan ?? {}) as {
-    sfcRoutes?: { sfcRouteId?: string }[];
-    sections?: { sfcRoutes?: { sfcRouteId?: string }[] }[];
-  };
   const ids = (rows?: { sfcRouteId?: string }[]) =>
     (rows ?? []).map((r) => r.sfcRouteId).filter((id): id is string => !!id);
-  return [ids(p.sfcRoutes), ...(p.sections ?? []).map((s) => ids(s.sfcRoutes))];
+  const walk = (node?: {
+    sfcRoutes?: { sfcRouteId?: string }[];
+    sections?: { sfcRoutes?: { sfcRouteId?: string }[] }[];
+    days?: {
+      sfcRoutes?: { sfcRouteId?: string }[];
+      sections?: { sfcRoutes?: { sfcRouteId?: string }[] }[];
+    }[];
+  }): string[][] => {
+    if (!node) return [];
+    return [
+      ids(node.sfcRoutes),
+      ...(node.sections ?? []).map((section) => ids(section.sfcRoutes)),
+      ...(node.days ?? []).flatMap((day) => [
+        ids(day.sfcRoutes),
+        ...(day.sections ?? []).map((section) => ids(section.sfcRoutes)),
+      ]),
+    ];
+  };
+  return walk(plan as Parameters<typeof walk>[0]);
 }
 
 /** The user's approved item covering `date` (the most recently approved if several), or null. */

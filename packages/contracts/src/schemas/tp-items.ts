@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { DateOnly, Id, Timestamp } from './common';
 import { DcrDetails, DcrSfcRouteChoice } from './dcr-parts';
+import { SfcTravelMode } from './sfc';
 
 export const TourPlanSection = z
   .object({
@@ -57,6 +58,25 @@ export const TourPlanItemPlan = z
   .meta({ id: 'TourPlanItemPlan' });
 export type TourPlanItemPlan = z.infer<typeof TourPlanItemPlan>;
 
+/** The filer's route, looked up by the id stored on the plan. Not the viewer's chart. */
+export const TourPlanRouteFact = z
+  .object({
+    id: Id,
+    hqTerritoryId: Id,
+    fromPlace: z.string(),
+    toPlace: z.string(),
+    oneWayKm: z.number(),
+    bothWayKm: z.number(),
+    oneWayAmount: z.number().nullable(),
+    bothWayAmount: z.number().nullable(),
+    actualFare: z.boolean(),
+    travelMode: SfcTravelMode.nullable(),
+    category: z.string().nullable(),
+    da: z.number().nullable(),
+  })
+  .meta({ id: 'TourPlanRouteFact' });
+export type TourPlanRouteFact = z.infer<typeof TourPlanRouteFact>;
+
 export const TourPlanItem = z
   .object({
     id: Id,
@@ -68,6 +88,9 @@ export const TourPlanItem = z
     status: TourPlanItemStatus,
     rejectionReason: z.string().nullable().meta({ description: 'Set while rejected' }),
     plan: TourPlanItemPlan,
+    routeFacts: z.array(TourPlanRouteFact).optional().meta({
+      description: "Fares of the routes stored on this plan, from the filer's chart",
+    }),
     filedDates: z.array(DateOnly).meta({
       description:
         "Days in from..to with a counted DCR of the owner (submitted/approved; rejected don't count)",
