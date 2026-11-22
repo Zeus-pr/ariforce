@@ -31,6 +31,7 @@ export async function completeGrok(
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
     body: JSON.stringify({
       model,
+      temperature: 0,
       messages,
       ...(tools
         ? {
@@ -78,11 +79,12 @@ export class BotService {
     if (!key) throw err(503, 'BOT_UNAVAILABLE', 'ARIBOT is not configured yet.');
     const model = modelFor(message);
     const companyWide = p.teamUserIds === null;
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
     const result = await runBot({
       knowledge: knowledgeFor(audience),
       scopeLine: companyWide
-        ? `Asker: ${askerRoleLabel(p.roles)}. Scope: the whole company.`
-        : `Asker: ${askerRoleLabel(p.roles)}. Scope: their reporting line only.`,
+        ? `Today is ${today} (India). A month named without a year is the latest one that is not after today. Asker: ${askerRoleLabel(p.roles)}. Scope: the whole company.`
+        : `Today is ${today} (India). A month named without a year is the latest one that is not after today. Asker: ${askerRoleLabel(p.roles)}. Scope: their reporting line only.`,
       message,
       specs: toolSpecs(companyWide),
       call: (name, args) => this.tools.call(p, companyWide, name, args),

@@ -7,11 +7,14 @@ import {
   type KpiReport,
   type ProductKpiReport,
 } from '@ariforce/contracts';
+import { territories } from '@ariforce/db';
+import { and, isNull, sql } from 'drizzle-orm';
 import type * as z from 'zod';
 import type { Principal } from '../auth/principal';
+import { TenantService } from '../common/tenant.service';
 import { KpisService } from '../kpis/kpis.service';
 import { TeamService } from '../team/team.service';
-import type { ToolOutcome } from './run';
+import { monthArg, type ToolOutcome } from './run';
 
 const DEFAULT_KPIS: KpiKey[] = [
   'coverage_pct',
@@ -28,17 +31,28 @@ const KPI_LABEL: Record<string, string> = {
   frequency_compliance_pct: 'Frequency',
   missed_doctor_pct: 'Missed doctors',
   unique_doctors_seen: 'Doctors seen',
+  doctor_visits_per_day: 'Visits per day',
   dcr_compliance_pct: 'DCR compliance',
   dcr_on_time_pct: 'DCR on time',
   tp_adherence_pct: 'Tour plan adherence',
   msl_size: 'MSL',
   pob_value: 'POB',
-  primary_sales_value: 'Primary sales',
-  primary_achievement_pct: 'Primary achievement',
-  secondary_sales_value: 'Secondary sales',
-  secondary_achievement_pct: 'Secondary achievement',
+  pob_achievement_pct: 'POB %',
+  primary_sales_value: 'Primary',
+  primary_achievement_pct: 'Primary %',
+  secondary_sales_value: 'Secondary',
+  secondary_achievement_pct: 'Secondary %',
   growth_vs_ly_pct: 'Growth vs last year',
 };
+
+const SALES_KPIS: KpiKey[] = [
+  'primary_sales_value',
+  'primary_achievement_pct',
+  'secondary_sales_value',
+  'secondary_achievement_pct',
+];
+
+const WITH_TARGET = new Set<KpiKey>(['primary_sales_value', 'secondary_sales_value', 'pob_value']);
 
 const outside = (): ToolOutcome => ({
   model: { error: 'That is outside your team.' },
@@ -64,7 +78,7 @@ function asTable(
 ): ToolOutcome {
   const shown = rows.slice(0, 40);
   return {
-    block: { type: 'table', title, columns, rows: shown },
+    block: shown.length ? { type: 'table', title, columns, rows: shown } : null,
     model: {
       title,
       columns,
@@ -75,11 +89,53 @@ function asTable(
   };
 }
 
+function indiaToday() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+}
+
+function expandKpis(keys: KpiKey[]): KpiKey[] {
+  const set = new Set(keys);
+  if (set.has('primary_sales_value') || set.has('primary_achievement_pct')) {
+    set.add('primary_sales_value');
+    set.add('primary_achievement_pct');
+  }
+  if (set.has('secondary_sales_value') || set.has('secondary_achievement_pct')) {
+    set.add('secondary_sales_value');
+    set.add('secondary_achievement_pct');
+  }
+  const rest = [...set].filter((key) => !SALES_KPIS.includes(key));
+  return [...SALES_KPIS.filter((key) => set.has(key)), ...rest];
+}
+
+function kpiTable(report: KpiReport) {
+  const keys: KpiKey[] = [];
+  for (const row of report.rows)
+    for (const metric of row.metrics) if (!keys.includes(metric.kpi)) keys.push(metric.kpi);
+  const lead = report.rollup === 'byTerritory' ? 'Place' : 'Who';
+  const columns = [lead];
+  for (const key of keys) {
+    columns.push(KPI_LABEL[key] ?? key);
+    if (WITH_TARGET.has(key)) columns.push(`${KPI_LABEL[key] ?? key} target`);
+  }
+  const rows = report.rows.map((row) => {
+    const cells = [row.label];
+    for (const key of keys) {
+      const metric = row.metrics.find((item) => item.kpi === key);
+      cells.push(metric ? figure(metric.value, metric.unit) : '—');
+      if (WITH_TARGET.has(key))
+        cells.push(metric?.target == null ? '—' : figure(metric.target, metric.unit));
+    }
+    return cells;
+  });
+  return { columns, rows };
+}
+
 @Injectable()
 export class BotTools {
   constructor(
     private readonly team: TeamService,
     private readonly kpis: KpisService,
+    private readonly tenant: TenantService,
   ) {}
 
   async call(
@@ -108,21 +164,43 @@ export class BotTools {
     );
     const matched = needle ? all.filter((n) => n.name.toLowerCase().includes(needle)) : all;
     const shown = matched.slice(0, 40);
-    const columns = ['Name', 'Role', 'Territory', 'Line'];
+    const columns = ['Name', 'Role', 'Territory'];
     const rows = shown.map((n) => [
       n.name,
       n.role ? ROLE_NAMES[n.role] : '',
       n.territories.map((t) => t.name).join(', '),
-      n.depth < 0 ? 'Unassigned' : 'Team',
     ]);
     return asTable('Team', columns, rows, {
       people: shown.map((n) => ({
         id: n.id,
         name: n.name,
         role: n.role ? ROLE_NAMES[n.role] : '',
+        unassigned: n.depth < 0,
       })),
       ...(matched.length > shown.length ? { note: `Showing 40 of ${matched.length}.` } : {}),
-      ...(matched.length === 0 ? { note: 'No one on this team matches that name.' } : {}),
+      ...(matched.length === 0
+        ? {
+            note: 'No person on this line matches that name. A headquarters is a place: call kpi_report with place. A stockist statement is on AWS & SS, not a person.',
+          }
+        : {}),
+    });
+  }
+
+  private async places(p: Principal, name: string) {
+    const needle = name.trim().toLowerCase().replace(/[%_]/g, '');
+    if (!needle) return [];
+    return this.tenant.run(p, async (tx) => {
+      const rows = await tx
+        .select({ id: territories.id, name: territories.name, level: territories.level })
+        .from(territories)
+        .where(
+          and(
+            isNull(territories.deletedAt),
+            sql`strpos(lower(${territories.name}), ${needle}) > 0`,
+            this.tenant.scope(p, territories.path),
+          ),
+        );
+      return rows;
     });
   }
 
@@ -135,10 +213,11 @@ export class BotTools {
       ? raw.kpis.filter((k): k is KpiKey => (KPI_KEYS as readonly string[]).includes(String(k)))
       : [];
     const parsed = KpiQuery.safeParse({
-      month: raw.month,
+      month: monthArg(raw.month, indiaToday()) ?? raw.month,
       userId: raw.userId,
       rollup: raw.rollup,
-      kpis: requested.length ? requested : [...DEFAULT_KPIS],
+      territoryId: raw.territoryId,
+      kpis: expandKpis(requested.length ? requested : [...DEFAULT_KPIS]),
     });
     if (!parsed.success)
       return {
@@ -152,14 +231,47 @@ export class BotTools {
   }
 
   private async kpisFor(p: Principal, companyWide: boolean, args: unknown): Promise<ToolOutcome> {
-    const q = this.query(args, companyWide);
+    const raw = (
+      typeof args === 'object' && args ? { ...(args as Record<string, unknown>) } : {}
+    ) as Record<string, unknown>;
+    const place = typeof raw.place === 'string' ? raw.place.trim() : '';
+    if (place) {
+      const found = await this.places(p, place);
+      if (found.length === 0)
+        return {
+          model: {
+            error:
+              'No place on this line matches that name. If it is a person, call list_team. A stockist is not a headquarters.',
+          },
+          block: null,
+        };
+      if (found.length > 1)
+        return asTable(
+          'Places',
+          ['Place', 'Level'],
+          found.slice(0, 40).map((row) => [row.name, row.level]),
+          { note: 'More than one place matches. Ask again with the full name.' },
+        );
+      const placeRow = found[0];
+      if (!placeRow)
+        return {
+          model: {
+            error:
+              'No place on this line matches that name. If it is a person, call list_team. A stockist is not a headquarters.',
+          },
+          block: null,
+        };
+      raw.territoryId = placeRow.id;
+      raw.rollup = 'byTerritory';
+      if (!Array.isArray(raw.kpis) || raw.kpis.length === 0) raw.kpis = [...SALES_KPIS];
+    }
+    const q = this.query(raw, companyWide);
     if (!('data' in q)) return q.error;
     if (q.data.userId && p.teamUserIds && !p.teamUserIds.includes(q.data.userId)) return outside();
     const report: KpiReport = await this.kpis.report(p, q.data as z.output<typeof KpiQuery>);
-    const rows = report.rows.flatMap((row) =>
-      row.metrics.map((m) => [row.label, KPI_LABEL[m.kpi] ?? m.kpi, figure(m.value, m.unit)]),
-    );
-    return asTable(`KPIs ${report.from} to ${report.to}`, ['Who', 'Measure', 'Value'], rows);
+    const table = kpiTable(report);
+    if (!table.rows.length) return { model: { error: 'No figures for that month.' }, block: null };
+    return asTable(`KPIs ${report.from} to ${report.to}`, table.columns, table.rows);
   }
 
   private async productsFor(
@@ -177,12 +289,15 @@ export class BotTools {
     const rows = report.rows.map((r) => [
       r.productName,
       String(r.detailedCalls),
+      String(r.firstPositionCalls),
+      r.detailingSharePct == null ? '—' : `${r.detailingSharePct}%`,
       String(r.sampleQty),
+      String(r.pobQty),
       String(r.pobValue),
     ]);
     return asTable(
       `Products ${report.from} to ${report.to}`,
-      ['Product', 'Detailed', 'Samples', 'POB'],
+      ['Product', 'Detailed', 'First position', 'Share', 'Samples', 'POB qty', 'POB'],
       rows,
     );
   }
