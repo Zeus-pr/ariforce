@@ -33,56 +33,13 @@ export type ChatMsg =
   | { role: 'assistant'; content: string | null; tool_calls?: ToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string };
 
-const ROUNDS = 3;
+const ROUNDS = 4;
 const NUM = /\d+(?:\.\d+)?/g;
-const HEAVY =
-  /\b(?:why|compare|compared|comparison|versus|vs\.?|difference|trend|doing|performance|so far|behind|ahead)\b/i;
 
-/** One choice, before any model call. A lookup stays on 4.3. */
+/** A how-to does not need the larger model. A data question does. */
 export function modelFor(message: string): 'grok-4.3' | 'grok-4.7' {
-  if (HEAVY.test(message)) return 'grok-4.7';
-  const months = message.match(/\b20\d{2}-\d{2}\b/g);
-  if (months && new Set(months).size > 1) return 'grok-4.7';
-  if (/\bthis month\b/i.test(message) && /\b(?:last|previous|prior) month\b/i.test(message))
-    return 'grok-4.7';
-  return 'grok-4.3';
-}
-
-/** Which figures to fetch. The model still reads the result and writes the answer. */
-export function answerShape(message: string): string {
-  const s = message.toLowerCase();
-  if (/^how do i\b/.test(s.trim()))
-    return 'How-to question. Answer from the how-to text only. Do not call a tool and do not state a figure.';
-  if (/\b(missed doctor|coverage|call average|dcr compliance|adherence)\b/.test(s))
-    return 'Field-measure question. Fetch kpi_report with the measure named, for the team or the place, and the period. Then read the table.';
-  if (
-    /\b(stock statement|aws)\b/.test(s) ||
-    (/\bstockist\b/.test(s) && /\b(sales|secondary|statement)\b/.test(s))
-  )
-    return 'Stock-statement question. Fetch read_records with kind stock_statements. Report only the rows returned.';
-  if (/\b(sales|primary|secondary)\b/.test(s))
-    return 'Sales question. Fetch kpi_report with primary_sales_value and secondary_sales_value for the team, the named person, or the place. A headquarters name goes in place. Then read actual against target, and say what is behind.';
-  if (/\b(doing|performance|so far)\b/.test(s))
-    return 'Performance question. Fetch kpi_report for that team and period, with coverage_pct, call_average, dcr_compliance_pct, tp_adherence_pct, primary_sales_value and secondary_sales_value. Then say what is on target and what is behind. Use list_team only if the question asks who.';
-  if (/\bholiday/.test(s))
-    return 'Holiday question. Fetch read_records with kind holidays for that period.';
-  if (/\b(exception|compliance gap)\b/.test(s))
-    return 'Exception question. Fetch read_records with kind exceptions. Say which are open.';
-  if (/\b(sfc|fare chart|fare)\b/.test(s))
-    return 'Fare-chart question. Fetch read_records with kind sfc. Report only the rows returned.';
-  if (/\bapproval/.test(s))
-    return 'Approval question. Fetch read_records with kind approvals. Say what is waiting and what is already decided.';
-  if (/\b(doctor|chemist|stockist)\b/.test(s))
-    return 'Outlet question. Fetch read_records with kind doctors, chemists, or stockists and the name. Report only the rows returned.';
-  if (/\b(dcr|daily call|tour plan)\b/.test(s))
-    return 'Field-work question. If a person is named, fetch list_team for their id, then read_records with kind dcrs or tour_plans, that userId, and the month. Summarise what was filed.';
-  if (/\b(leave|expense)\b/.test(s))
-    return 'Account question. Fetch read_records with kind leave, leave_balances, or expenses. Report only rows returned for this account.';
-  if (/\b(product|detailed|detailing|samples)\b/.test(s))
-    return 'Product question. Fetch product_kpis, then say which products were detailed and where the POB sits.';
-  if (/\b(who|people|manager)\b/.test(s) || /\b(team list|on my team|my team)\b/.test(s))
-    return 'People question. Fetch list_team. If they also asked how those people are doing, fetch kpi_report for them too.';
-  return 'Fetch the tool that holds the figures this question needs, then read what came back. Do not state a figure from memory.';
+  if (/^how do i\b/i.test(message.trim())) return 'grok-4.3';
+  return 'grok-4.7';
 }
 
 /** Sales live on the headquarters. The same name at territory level is not a second place. */
@@ -308,15 +265,6 @@ function narrativeFrom(content: string | null): string {
   return raw;
 }
 
-export function clipNarrative(narrative: string, sentences: number): string {
-  const parts = narrative.split(/(?<=[.!?])\s+(?=[A-Z])/);
-  return parts
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .slice(0, sentences)
-    .join(' ');
-}
-
 export async function runBot(input: {
   knowledge: string;
   scopeLine: string;
@@ -328,7 +276,7 @@ export async function runBot(input: {
   const messages: ChatMsg[] = [
     {
       role: 'system',
-      content: `${input.knowledge}\n\n${input.scopeLine}\n\n${answerShape(input.message)}\n\nReply with only {"narrative":"..."}. Read the tool result in plain language: what the period shows, what is ahead of target, and what is behind or missing. Use only names and numbers the tools returned. Do not invent a cause.`,
+      content: `${input.knowledge}\n\n${input.scopeLine}\n\nDecide which tools to call. Read what they return, then answer in normal language. Lead with the result. When a target is present, say the actual, the target, and whether it is ahead or behind. If many rows matter, say the pattern instead of reciting every cell. A headquarters name such as Suri is a place on kpi_report, not a person. If a tool says the record is outside the team or not on this account, say only that. Never invent a number or a name. Reply with only {"narrative":"..."}.`,
     },
     { role: 'user', content: input.message },
   ];
@@ -366,12 +314,5 @@ export async function runBot(input: {
     allowed.join('\n'),
     blocks.length > 0,
   );
-  return {
-    ...guarded,
-    narrative: guarded.refused
-      ? guarded.narrative
-      : clipNarrative(guarded.narrative, toolNames.length ? 8 : 6),
-    blocks: blocks.slice(0, 6),
-    toolNames,
-  };
+  return { ...guarded, blocks: blocks.slice(0, 6), toolNames };
 }
