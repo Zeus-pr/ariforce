@@ -190,6 +190,7 @@ import {
 import { RoleList } from './schemas/roles';
 import { Health } from './schemas/health';
 import { KpiQuery, KpiReport, ProductKpiReport } from './schemas/kpis';
+import { BotAskRequest, BotAskResponse } from './schemas/bot';
 import {
   Holiday,
   HolidayCopy,
@@ -981,6 +982,21 @@ function buildDocument(): OpenApiDocument {
             '200': { description: 'OK', ...json(KpiReport) },
             '403': err('rollup=company without company-wide scope, or userId outside your team'),
             '422': err('Invalid query'),
+          },
+        }),
+      },
+      '/v1/bot/ask': {
+        post: op({
+          tags: ['ARIBOT'],
+          operationId: 'askBot',
+          summary:
+            'Read-only business question for Area Business Manager through Director. Figures come from the caller’s reporting line; a Director is company-wide.',
+          requestBody: json(BotAskRequest),
+          responses: {
+            '200': { description: 'Narrative plus tables', ...json(BotAskResponse) },
+            '403': err('Below Area Business Manager, or missing reports:read'),
+            '429': err('Too many questions this hour'),
+            '503': err('OPENAI_API_KEY is not set, or the model call failed'),
           },
         }),
       },

@@ -6530,6 +6530,81 @@
         }
       }
     },
+    "/v1/bot/ask": {
+      "post": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "ARIBOT"
+        ],
+        "operationId": "askBot",
+        "summary": "Read-only business question for Area Business Manager through Director. Figures come from the caller’s reporting line; a Director is company-wide.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotAskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Narrative plus tables",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotAskResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Below Area Business Manager, or missing reports:read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many questions this hour",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "OPENAI_API_KEY is not set, or the model call failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/kpis/products": {
       "get": {
         "security": [
@@ -21512,6 +21587,19 @@
           "growth_vs_ly_pct"
         ]
       },
+      "BotAskRequest": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
       "GeofenceSettings": {
         "type": "object",
         "properties": {
@@ -31131,6 +31219,67 @@
           "percent",
           "inr"
         ]
+      },
+      "BotAskResponse": {
+        "type": "object",
+        "properties": {
+          "narrative": {
+            "type": "string"
+          },
+          "blocks": {
+            "maxItems": 6,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BotTableBlock"
+            }
+          },
+          "refused": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "narrative",
+          "blocks",
+          "refused"
+        ],
+        "additionalProperties": false
+      },
+      "BotTableBlock": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "table"
+          },
+          "title": {
+            "type": "string"
+          },
+          "columns": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rows": {
+            "maxItems": 40,
+            "type": "array",
+            "items": {
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "columns",
+          "rows"
+        ],
+        "additionalProperties": false
       },
       "ProductKpiReport": {
         "type": "object",
