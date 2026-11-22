@@ -13,6 +13,17 @@ export const TourPlanSection = z
   .meta({ id: 'TourPlanSection' });
 export type TourPlanSection = z.infer<typeof TourPlanSection>;
 
+/** One day inside a month item. The month is still one approval. */
+const TourPlanDay = z.object({
+  date: DateOnly,
+  workTypeId: Id,
+  territoryIds: z.array(Id).max(20).default([]),
+  workWithUserIds: z.array(Id).max(20).default([]),
+  sfcRoutes: z.array(DcrSfcRouteChoice).max(20).default([]),
+  details: DcrDetails.nullable().default(null),
+  sections: z.array(TourPlanSection).max(8).default([]),
+});
+
 /**
  * Tour plan items (TP feature): a one-day or from-to plan carrying the DCR's day fields, sent for
  * approval (reporting line, approvals:decide, never your own) and, once approved, offered on the
@@ -38,6 +49,10 @@ export const TourPlanItemPlan = z
         "Meeting/training/office details; kind must match the work type's detailsKind. Never leave",
     }),
     sections: z.array(TourPlanSection).max(8).default([]),
+    days: z.array(TourPlanDay).max(TP_ITEM_MAX_DAYS).optional().meta({
+      description:
+        'Per-day plans when from..to covers a month. The item is still one approval request.',
+    }),
   })
   .meta({ id: 'TourPlanItemPlan' });
 export type TourPlanItemPlan = z.infer<typeof TourPlanItemPlan>;

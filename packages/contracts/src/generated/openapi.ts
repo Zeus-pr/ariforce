@@ -3770,6 +3770,30 @@ export interface components {
       details: components['schemas']['DcrDetails'] | null;
       /** @default [] */
       sections: components['schemas']['TourPlanSection'][];
+      /** @description Per-day plans when from..to covers a month. The item is still one approval request. */
+      days?: {
+        /**
+         * Format: date
+         * @description Calendar date (YYYY-MM-DD, IST)
+         */
+        date: string;
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        workTypeId: string;
+        /** @default [] */
+        territoryIds: string[];
+        /** @default [] */
+        workWithUserIds: string[];
+        /** @default [] */
+        sfcRoutes: components['schemas']['DcrSfcRouteChoice'][];
+        /** @default null */
+        details: components['schemas']['DcrDetails'] | null;
+        /** @default [] */
+        sections: components['schemas']['TourPlanSection'][];
+      }[];
     };
     DcrSfcRouteChoice: {
       /**
@@ -9891,6 +9915,30 @@ export interface components {
       details: components['schemas']['DcrDetailsOutput'] | null;
       /** @default [] */
       sections: components['schemas']['TourPlanSectionOutput'][];
+      /** @description Per-day plans when from..to covers a month. The item is still one approval request. */
+      days?: {
+        /**
+         * Format: date
+         * @description Calendar date (YYYY-MM-DD, IST)
+         */
+        date: string;
+        /**
+         * Format: uuid
+         * @description UUIDv7 identifier
+         * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+         */
+        workTypeId: string;
+        /** @default [] */
+        territoryIds: string[];
+        /** @default [] */
+        workWithUserIds: string[];
+        /** @default [] */
+        sfcRoutes: components['schemas']['DcrSfcRouteChoiceOutput'][];
+        /** @default null */
+        details: components['schemas']['DcrDetailsOutput'] | null;
+        /** @default [] */
+        sections: components['schemas']['TourPlanSectionOutput'][];
+      }[];
     };
     DcrSfcRouteChoiceOutput: {
       /**

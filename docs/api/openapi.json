@@ -21811,6 +21811,84 @@
             "items": {
               "$ref": "#/components/schemas/TourPlanSection"
             }
+          },
+          "days": {
+            "description": "Per-day plans when from..to covers a month. The item is still one approval request.",
+            "maxItems": 31,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "description": "Calendar date (YYYY-MM-DD, IST)"
+                },
+                "workTypeId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUIDv7 identifier",
+                  "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                },
+                "territoryIds": {
+                  "default": [],
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUIDv7 identifier",
+                    "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                  }
+                },
+                "workWithUserIds": {
+                  "default": [],
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUIDv7 identifier",
+                    "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                  }
+                },
+                "sfcRoutes": {
+                  "default": [],
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DcrSfcRouteChoice"
+                  }
+                },
+                "details": {
+                  "default": null,
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DcrDetails"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sections": {
+                  "default": [],
+                  "maxItems": 8,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TourPlanSection"
+                  }
+                }
+              },
+              "required": [
+                "date",
+                "workTypeId"
+              ]
+            }
           }
         },
         "required": [
@@ -43557,6 +43635,90 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/TourPlanSectionOutput"
+            }
+          },
+          "days": {
+            "description": "Per-day plans when from..to covers a month. The item is still one approval request.",
+            "maxItems": 31,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "description": "Calendar date (YYYY-MM-DD, IST)"
+                },
+                "workTypeId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUIDv7 identifier",
+                  "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                },
+                "territoryIds": {
+                  "default": [],
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUIDv7 identifier",
+                    "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                  }
+                },
+                "workWithUserIds": {
+                  "default": [],
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUIDv7 identifier",
+                    "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+                  }
+                },
+                "sfcRoutes": {
+                  "default": [],
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DcrSfcRouteChoiceOutput"
+                  }
+                },
+                "details": {
+                  "default": null,
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DcrDetailsOutput"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sections": {
+                  "default": [],
+                  "maxItems": 8,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TourPlanSectionOutput"
+                  }
+                }
+              },
+              "required": [
+                "date",
+                "workTypeId",
+                "territoryIds",
+                "workWithUserIds",
+                "sfcRoutes",
+                "details",
+                "sections"
+              ],
+              "additionalProperties": false
             }
           }
         },
