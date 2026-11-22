@@ -53,11 +53,14 @@ export function answerShape(message: string): string {
   if (/^how do i\b/.test(s.trim()))
     return 'Answer from the how-to text only. Do not call a tool and do not state a figure.';
   if (/\b(sales|primary|secondary)\b/.test(s))
-    return 'Sales question. Call kpi_report. A place name is the place argument, not a person. Do not call list_team.';
+    return 'Sales question. Call kpi_report with rollup team unless a person or place is named. A place name is the place argument. Do not call list_team.';
+  if (/\b(doing|performance|so far|quarter|year|coverage|adherence|pob)\b/.test(s))
+    return 'Performance question. Call kpi_report with rollup team. Pass month as this month, this quarter, or this year. Do not call list_team.';
   if (/\b(product|detailed|detailing|samples)\b/.test(s))
     return 'Product question. Call product_kpis only.';
-  if (/\b(who|team|people|manager)\b/.test(s)) return 'People question. Call list_team only.';
-  return 'Call kpi_report for the measure asked. Do not answer from memory.';
+  if (/\b(who|people|manager)\b/.test(s) || /\b(team list|on my team|my team)\b/.test(s))
+    return 'People question. Call list_team only.';
+  return 'Call kpi_report with rollup team for the measure asked. Do not answer from memory.';
 }
 
 const kpiEnum = [...KPI_KEYS];
@@ -102,10 +105,56 @@ export function monthArg(value: unknown, today: string): string | undefined {
   return `${y}-${String(month).padStart(2, '0')}`;
 }
 
+function pad(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+function monthEnd(year: number, month: number) {
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${year}-${pad(month)}-${pad(last)}`;
+}
+
+/** A month, a calendar quarter, or the financial year (April–March), to date when it includes today. */
+export function periodArg(
+  value: unknown,
+  today: string,
+): { month?: string; from?: string; to?: string } {
+  const s = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  const year = Number(today.slice(0, 4));
+  const thisMonth = Number(today.slice(5, 7));
+  if (
+    !s ||
+    s === 'this month' ||
+    s === 'current month' ||
+    s === 'so far' ||
+    s === 'so far this month'
+  )
+    return { month: today.slice(0, 7) };
+  if (s === 'this quarter' || s === 'quarter' || s === 'so far this quarter') {
+    const startM = Math.floor((thisMonth - 1) / 3) * 3 + 1;
+    return { from: `${year}-${pad(startM)}-01`, to: today };
+  }
+  if (s === 'last quarter' || s === 'previous quarter') {
+    const startM = Math.floor((thisMonth - 1) / 3) * 3 + 1;
+    const endM = startM === 1 ? 12 : startM - 1;
+    const endY = startM === 1 ? year - 1 : year;
+    const qStart = endM <= 2 ? endM + 10 : endM - 2;
+    const qYear = endM <= 2 ? endY - 1 : endY;
+    return { from: `${qYear}-${pad(qStart)}-01`, to: monthEnd(endY, endM) };
+  }
+  if (s === 'this year' || s === 'financial year' || s === 'fy' || s === 'so far this year') {
+    const startYear = thisMonth >= 4 ? year : year - 1;
+    return { from: `${startYear}-04-01`, to: today };
+  }
+  const month = monthArg(value, today);
+  return month ? { month } : {};
+}
+
 const period = {
   month: {
     type: 'string',
-    description: 'YYYY-MM, or a month name such as October. Omit for the current month.',
+    description:
+      'this month, this quarter, last quarter, this year (April–March), a month name, or YYYY-MM. Omit for the current month.',
   },
   userId: { type: 'string', description: 'Id from list_team. Omit for the asker.' },
 };

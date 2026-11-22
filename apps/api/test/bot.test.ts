@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { askerRoleLabel, botAudience, knowledgeFor } from '../src/bot/knowledge';
-import { answerShape, guardNarrative, modelFor, monthArg, runBot, toolSpecs } from '../src/bot/run';
+import {
+  answerShape,
+  guardNarrative,
+  modelFor,
+  monthArg,
+  periodArg,
+  runBot,
+  toolSpecs,
+} from '../src/bot/run';
 
 describe('ARIBOT access', () => {
   it('stops below Area Business Manager and opens the company only for a Director', () => {
@@ -52,6 +60,16 @@ describe('ARIBOT month', () => {
     expect(answerShape('give me october sales metric for suri')).toContain('Sales question');
     expect(answerShape('How do I find my team?')).toContain('how-to text');
     expect(answerShape('Who is on my team?')).toContain('list_team');
+    expect(answerShape('how is my team doing so far this month')).toContain('kpi_report');
+    expect(periodArg('this quarter', '2026-11-22')).toEqual({
+      from: '2026-10-01',
+      to: '2026-11-22',
+    });
+    expect(periodArg('this year', '2026-11-22')).toEqual({ from: '2026-04-01', to: '2026-11-22' });
+    expect(periodArg('last quarter', '2026-11-22')).toEqual({
+      from: '2026-07-01',
+      to: '2026-09-30',
+    });
   });
 });
 

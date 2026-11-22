@@ -14,7 +14,7 @@ import type { Principal } from '../auth/principal';
 import { TenantService } from '../common/tenant.service';
 import { KpisService } from '../kpis/kpis.service';
 import { TeamService } from '../team/team.service';
-import { monthArg, type ToolOutcome } from './run';
+import { periodArg, type ToolOutcome } from './run';
 
 const DEFAULT_KPIS: KpiKey[] = [
   'coverage_pct',
@@ -212,10 +212,13 @@ export class BotTools {
     const requested = Array.isArray(raw.kpis)
       ? raw.kpis.filter((k): k is KpiKey => (KPI_KEYS as readonly string[]).includes(String(k)))
       : [];
+    const span = periodArg(raw.month, indiaToday());
     const parsed = KpiQuery.safeParse({
-      month: monthArg(raw.month, indiaToday()) ?? raw.month,
+      month: span.month,
+      from: span.from,
+      to: span.to,
       userId: raw.userId,
-      rollup: raw.rollup,
+      rollup: raw.rollup ?? (raw.userId ? 'self' : 'team'),
       territoryId: raw.territoryId,
       kpis: expandKpis(requested.length ? requested : [...DEFAULT_KPIS]),
     });
