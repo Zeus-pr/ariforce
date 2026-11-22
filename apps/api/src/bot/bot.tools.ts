@@ -102,7 +102,10 @@ export class BotTools {
     const name = typeof args === 'object' && args && 'name' in args ? String(args.name ?? '') : '';
     const needle = name.trim().toLowerCase();
     const tree = await this.team.tree(p);
-    const all = [...tree.nodes, ...tree.unassigned];
+    const allowed = p.teamUserIds ? new Set(p.teamUserIds) : null;
+    const all = [...tree.nodes, ...tree.unassigned].filter(
+      (n) => !allowed || n.depth < 0 || allowed.has(n.id),
+    );
     const matched = needle ? all.filter((n) => n.name.toLowerCase().includes(needle)) : all;
     const shown = matched.slice(0, 40);
     const columns = ['Name', 'Role', 'Territory', 'Line'];
@@ -148,6 +151,7 @@ export class BotTools {
   private async kpisFor(p: Principal, companyWide: boolean, args: unknown): Promise<ToolOutcome> {
     const q = this.query(args, companyWide);
     if (!('data' in q)) return q.error;
+    if (q.data.userId && p.teamUserIds && !p.teamUserIds.includes(q.data.userId)) return outside();
     const report: KpiReport = await this.kpis.report(p, q.data as z.output<typeof KpiQuery>);
     const rows = report.rows.flatMap((row) =>
       row.metrics.map((m) => [row.label, KPI_LABEL[m.kpi] ?? m.kpi, figure(m.value, m.unit)]),
@@ -162,6 +166,7 @@ export class BotTools {
   ): Promise<ToolOutcome> {
     const q = this.query(args, companyWide);
     if (!('data' in q)) return q.error;
+    if (q.data.userId && p.teamUserIds && !p.teamUserIds.includes(q.data.userId)) return outside();
     const report: ProductKpiReport = await this.kpis.products(
       p,
       q.data as z.output<typeof KpiQuery>,
