@@ -28,6 +28,7 @@ export function SalesTrendChart({
     primary: number | null;
     secondary: number | null;
     target: number | null;
+    secondaryTarget?: number | null;
   }[];
   onMonth?: (month: string) => void;
 }) {
@@ -62,7 +63,15 @@ export function SalesTrendChart({
         <Line
           dataKey="target"
           name="Primary target"
-          stroke={CHART.muted}
+          stroke={CHART.series[0]}
+          strokeDasharray="4 3"
+          dot={false}
+          isAnimationActive={!reduced}
+        />
+        <Line
+          dataKey="secondaryTarget"
+          name="Secondary target"
+          stroke={CHART.series[1]}
           strokeDasharray="4 3"
           dot={false}
           isAnimationActive={!reduced}
@@ -267,6 +276,8 @@ export type LiquidItem = {
   secondary: number;
   primaryTarget: number;
   secondaryTarget: number;
+  priorPrimary?: number;
+  priorSecondary?: number;
 };
 
 const COLUMNS = 28;
@@ -359,8 +370,16 @@ const PLOT = 220;
 const HEAD = 72;
 
 const TANKS = {
-  primary: { fill: '#4f46e5', track: '#c4b5fd', ink: '#312e81' },
-  secondary: { fill: '#0f9f8a', track: '#5eead4', ink: '#115e59' },
+  primary: {
+    fill: 'var(--brand-navy)',
+    track: 'color-mix(in oklch, var(--brand-navy) 32%, white)',
+    ink: 'var(--brand-navy)',
+  },
+  secondary: {
+    fill: 'var(--brand-teal)',
+    track: 'color-mix(in oklch, var(--brand-teal) 46%, white)',
+    ink: 'var(--brand-teal)',
+  },
 } as const;
 
 function LiquidBar({

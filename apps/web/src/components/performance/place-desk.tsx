@@ -28,7 +28,7 @@ const LEVEL: Record<TerritoryLevel, string> = {
 
 type Row = KpiReport['rows'][number];
 type Place = Territory;
-type Fig = { primary: number; secondary: number; target: number };
+type Fig = { primary: number; secondary: number; target: number; secondaryTarget: number };
 
 function money(row: Row | undefined, kpi: string) {
   return row?.metrics.find((m) => m.kpi === kpi)?.value ?? 0;
@@ -41,11 +41,8 @@ function fig(rows: Row[]): Fig {
     primary: rows.reduce((s, r) => s + money(r, 'primary_sales_value'), 0),
     secondary: rows.reduce((s, r) => s + money(r, 'secondary_sales_value'), 0),
     target: rows.reduce((s, r) => s + (targetOf(r, 'primary_sales_value') ?? 0), 0),
+    secondaryTarget: rows.reduce((s, r) => s + (targetOf(r, 'secondary_sales_value') ?? 0), 0),
   };
-}
-
-function grain(level: TerritoryLevel): TerritoryLevel {
-  return level === 'headquarter' || level === 'territory' ? 'territory' : 'headquarter';
 }
 
 type Span = 'month' | 'quarter' | 'fy' | 'custom';
@@ -89,6 +86,13 @@ function periodTitle(span: Span, month: string) {
   return monthLabel(month);
 }
 
+function pct(actual: number, target: number) {
+  return target > 0 ? Math.round((actual / target) * 100) : null;
+}
+function growth(current: number, prior = 0) {
+  return prior > 0 ? Math.round(((current - prior) / prior) * 100) : null;
+}
+
 function ChartBox({
   title,
   fileName,
@@ -102,17 +106,25 @@ function ChartBox({
 }) {
   const columns: ExportCol[] = [
     { header: 'Name', width: 28 },
-    { header: 'Primary', width: 16, align: 'right' },
     { header: 'Primary target', width: 16, align: 'right' },
-    { header: 'Secondary', width: 16, align: 'right' },
+    { header: 'Primary achievement', width: 20, align: 'right' },
+    { header: 'Primary ach. %', width: 16, align: 'right' },
+    { header: 'Primary growth %', width: 18, align: 'right' },
     { header: 'Secondary target', width: 18, align: 'right' },
+    { header: 'Secondary achievement', width: 22, align: 'right' },
+    { header: 'Secondary ach. %', width: 18, align: 'right' },
+    { header: 'Secondary growth %', width: 20, align: 'right' },
   ];
   const rows: ExportCell[][] = items.map((item) => [
     item.name,
-    item.primary,
     item.primaryTarget,
-    item.secondary,
+    item.primary,
+    pct(item.primary, item.primaryTarget),
+    growth(item.primary, item.priorPrimary),
     item.secondaryTarget,
+    item.secondary,
+    pct(item.secondary, item.secondaryTarget),
+    growth(item.secondary, item.priorSecondary),
   ]);
   return (
     <section className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs">
@@ -127,7 +139,7 @@ function ChartBox({
             void exportXlsx({
               title,
               meta: [
-                'Primary is purchase value. Secondary is secondary minus FRS. The tank fills to the target.',
+                'Achievement is purchase value for primary, and secondary minus FRS. Growth compares the same months last year.',
               ],
               fileName,
               columns,
@@ -168,6 +180,18 @@ function sumHq(lists: Row[][], byId: Map<string, Place>): HqBar[] {
     }
   }
   return [...map.values()].sort((a, b) => b.primary + b.secondary - (a.primary + a.secondary));
+}
+
+function hqOf(name: string, places: Place[], byId: Map<string, Place>) {
+  const start = places.find((place) => place.name.toLowerCase() === name.toLowerCase());
+  let cur = start;
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur.id)) {
+    if (cur.level === 'headquarter') return cur;
+    seen.add(cur.id);
+    cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+  }
+  return undefined;
 }
 
 type SalesProduct = {
@@ -270,10 +294,24 @@ export function PlaceDesk({
   const [focusId, setFocusId] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[] | null>(null);
   const [trend, setTrend] = useState<
-    { name: string; month: string; primary: number; secondary: number; target: number }[]
+    {
+      name: string;
+      month: string;
+      primary: number;
+      secondary: number;
+      target: number;
+      secondaryTarget: number;
+    }[]
   >([]);
   const [priorTrend, setPriorTrend] = useState<
-    { name: string; month: string; primary: number; secondary: number; target: number }[]
+    {
+      name: string;
+      month: string;
+      primary: number;
+      secondary: number;
+      target: number;
+      secondaryTarget: number;
+    }[]
   >([]);
   const [error, setError] = useState<string | null>(null);
   const [span, setSpan] = useState<Span>('month');
@@ -286,6 +324,8 @@ export function PlaceDesk({
   const [customTo, setCustomTo] = useState('');
   const [salesProducts, setSalesProducts] = useState<SalesProduct[] | null>(null);
   const [salesPeople, setSalesPeople] = useState<SalesPerson[]>([]);
+  const [priorProducts, setPriorProducts] = useState<SalesProduct[]>([]);
+  const [priorPeople, setPriorPeople] = useState<SalesPerson[]>([]);
   const [productError, setProductError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const jumped = useRef(false);
@@ -301,7 +341,8 @@ export function PlaceDesk({
         const tops = livePlaces.filter((p) => !p.parentId || !ids.has(p.parentId));
         const root = tops.length === 1 ? tops[0] : livePlaces.find((p) => !p.parentId);
         const children = root ? livePlaces.filter((p) => p.parentId === root.id) : [];
-        const start = children.length === 1 ? children[0] : root;
+        const hqs = livePlaces.filter((p) => p.level === 'headquarter');
+        const start = hqs.length === 1 ? hqs[0] : children.length === 1 ? children[0] : root;
         setFocusId((cur) => cur ?? start?.id ?? null);
       })
       .catch((e) => {
@@ -321,20 +362,30 @@ export function PlaceDesk({
     let live = true;
     setBusy(true);
     setError(null);
-    const level = grain(focus.level);
     const months = monthsOf(period.from, period.to);
     const prior = months.map((item) => addMonths(item, -12));
     const all = [...new Set([...months, ...prior])];
     void (async () => {
-      const packs = await Promise.all(all.map((item) => placesOf(item, focus.id, level)));
+      const packs = await Promise.all(all.map((item) => placesOf(item, focus.id, 'headquarter')));
       if (!live) return;
       const byMonth = new Map(all.map((item, i) => [item, packs[i] ?? []]));
       setRows(byMonth.get(months.at(-1) ?? month) ?? []);
-      setHqBars(
+      const currentHq = sumHq(
+        months.map((item) => byMonth.get(item) ?? []),
+        byId,
+      );
+      const earlierHq = new Map(
         sumHq(
-          months.map((item) => byMonth.get(item) ?? []),
+          prior.map((item) => byMonth.get(item) ?? []),
           byId,
-        ),
+        ).map((bar) => [bar.id, bar]),
+      );
+      setHqBars(
+        currentHq.map((bar) => ({
+          ...bar,
+          priorPrimary: earlierHq.get(bar.id)?.primary ?? 0,
+          priorSecondary: earlierHq.get(bar.id)?.secondary ?? 0,
+        })),
       );
       setTrend(
         months.map((item) => {
@@ -345,6 +396,7 @@ export function PlaceDesk({
             primary: total.primary,
             secondary: total.secondary,
             target: total.target,
+            secondaryTarget: total.secondaryTarget,
           };
         }),
       );
@@ -357,6 +409,7 @@ export function PlaceDesk({
             primary: total.primary,
             secondary: total.secondary,
             target: total.target,
+            secondaryTarget: total.secondaryTarget,
           };
         }),
       );
@@ -414,6 +467,20 @@ export function PlaceDesk({
       cur.secondary += product.secondaryValue;
       totals.set(key, cur);
     }
+    for (const product of priorProducts) {
+      const key = product.brand.toLowerCase();
+      const cur = totals.get(key) ?? {
+        id: key,
+        name: product.brand,
+        primary: 0,
+        secondary: 0,
+        primaryTarget: 0,
+        secondaryTarget: 0,
+      };
+      cur.priorPrimary = (cur.priorPrimary ?? 0) + product.primaryValue;
+      cur.priorSecondary = (cur.priorSecondary ?? 0) + product.secondaryValue;
+      totals.set(key, cur);
+    }
     for (const target of brandTargets) {
       const key = target.name.toLowerCase();
       const cur = totals.get(key) ?? {
@@ -433,12 +500,12 @@ export function PlaceDesk({
         (item) => item.primary || item.secondary || item.primaryTarget || item.secondaryTarget,
       )
       .sort((a, b) => b.primary + b.secondary - (a.primary + a.secondary));
-  }, [salesProducts, brandTargets]);
+  }, [salesProducts, priorProducts, brandTargets]);
   useEffect(() => {
     if (jumped.current || params.get('m') || !focus || !month) return;
     let live = true;
     const look = Array.from({ length: 12 }, (_, i) => addMonths(month, i - 11));
-    void Promise.all(look.map((item) => placesOf(item, focus.id, grain(focus.level))))
+    void Promise.all(look.map((item) => placesOf(item, focus.id, 'headquarter')))
       .then((packs) => {
         if (!live || jumped.current) return;
         jumped.current = true;
@@ -463,28 +530,42 @@ export function PlaceDesk({
     let live = true;
     setSalesProducts(null);
     setSalesPeople([]);
+    setPriorProducts([]);
+    setPriorPeople([]);
     setProductError(null);
     void (async () => {
       await apiReady();
-      const r = await api.GET('/v1/stock-statements/sales', {
-        params: {
-          query: {
-            from: period.from,
-            to: period.to,
-            ...(focus.level === 'national' ? {} : { territoryId: focus.id }),
+      const query = {
+        ...(focus.level === 'national' ? {} : { territoryId: focus.id }),
+      };
+      const [r, last] = await Promise.all([
+        api.GET('/v1/stock-statements/sales', {
+          params: { query: { from: period.from, to: period.to, ...query } },
+        }),
+        api.GET('/v1/stock-statements/sales', {
+          params: {
+            query: {
+              from: addMonths(period.from, -12),
+              to: addMonths(period.to, -12),
+              ...query,
+            },
           },
-        },
-      });
+        }),
+      ]);
       if (!live) return;
       if (r.error) {
         setProductError(toApiError(r).message);
         setSalesProducts([]);
         setSalesPeople([]);
+        setPriorProducts([]);
+        setPriorPeople([]);
         setBrandTargets([]);
         return;
       }
       setSalesProducts(r.data?.products ?? []);
       setSalesPeople(r.data?.people ?? []);
+      setPriorProducts(last.error ? [] : (last.data?.products ?? []));
+      setPriorPeople(last.error ? [] : (last.data?.people ?? []));
       const listed = await brandTargetsOf(period.from, period.to, idsUnder(places ?? [], focus.id));
       if (!live) return;
       setBrandTargets(listed.length ? listed : (r.data?.brandTargets ?? []));
@@ -494,6 +575,8 @@ export function PlaceDesk({
       setProductError(e instanceof Error ? e.message : 'Could not load product sales.');
       setSalesProducts([]);
       setSalesPeople([]);
+      setPriorProducts([]);
+      setPriorPeople([]);
       setBrandTargets([]);
     });
     return () => {
@@ -530,6 +613,60 @@ export function PlaceDesk({
       hint: place.parentId ? byId.get(place.parentId)?.name : null,
     }));
   const chosen = salesPeople.find((person) => person.userId === personId);
+  const personHqs = chosen
+    ? [
+        ...new Map(
+          chosen.headquarters
+            .map((name) => hqOf(name, places, byId))
+            .filter((place): place is Place => !!place)
+            .map((place) => [place.id, place]),
+        ).values(),
+      ]
+    : [];
+  const earlierPerson = chosen
+    ? priorPeople.find((person) => person.userId === chosen.userId)
+    : undefined;
+  const earlierByProduct = new Map(
+    (earlierPerson?.products ?? []).map((product) => [product.productId, product]),
+  );
+  const personBars: LiquidItem[] = chosen
+    ? [
+        {
+          id: personHqs.map((place) => place.id).join(',') || chosen.userId,
+          name: personHqs.map((place) => place.name).join(', ') || chosen.name,
+          primary: chosen.products.reduce((sum, product) => sum + product.primaryValue, 0),
+          secondary: chosen.products.reduce((sum, product) => sum + product.secondaryValue, 0),
+          primaryTarget: personHqs.reduce(
+            (sum, place) => sum + (hqBars.find((bar) => bar.id === place.id)?.primaryTarget ?? 0),
+            0,
+          ),
+          secondaryTarget: personHqs.reduce(
+            (sum, place) => sum + (hqBars.find((bar) => bar.id === place.id)?.secondaryTarget ?? 0),
+            0,
+          ),
+          priorPrimary: (earlierPerson?.products ?? []).reduce(
+            (sum, product) => sum + product.primaryValue,
+            0,
+          ),
+          priorSecondary: (earlierPerson?.products ?? []).reduce(
+            (sum, product) => sum + product.secondaryValue,
+            0,
+          ),
+        },
+      ]
+    : [];
+  const personProducts: LiquidItem[] = chosen
+    ? chosen.products.map((product) => ({
+        id: product.productId,
+        name: product.name,
+        primary: product.primaryValue,
+        secondary: product.secondaryValue,
+        primaryTarget: 0,
+        secondaryTarget: 0,
+        priorPrimary: earlierByProduct.get(product.productId)?.primaryValue ?? 0,
+        priorSecondary: earlierByProduct.get(product.productId)?.secondaryValue ?? 0,
+      }))
+    : [];
   const productPrimary = (salesProducts ?? []).reduce(
     (sum, product) => sum + product.primaryValue,
     0,
@@ -549,6 +686,8 @@ export function PlaceDesk({
           secondary: productSecondary,
           primaryTarget: hqPrimaryTarget,
           secondaryTarget: hqSecondaryTarget,
+          priorPrimary: priorProducts.reduce((sum, product) => sum + product.primaryValue, 0),
+          priorSecondary: priorProducts.reduce((sum, product) => sum + product.secondaryValue, 0),
         },
       ]
     : [];
@@ -657,13 +796,15 @@ export function PlaceDesk({
           <ChartBox
             title={periodTitle(span, month)}
             fileName={`sales-period-${period?.from ?? month}`}
-            items={trend.map((point) => ({
+            items={trend.map((point, i) => ({
               id: point.month,
               name: point.name,
               primary: point.primary,
               secondary: point.secondary,
               primaryTarget: point.target,
-              secondaryTarget: 0,
+              secondaryTarget: point.secondaryTarget,
+              priorPrimary: priorTrend[i]?.primary ?? 0,
+              priorSecondary: priorTrend[i]?.secondary ?? 0,
             }))}
           >
             <SalesTrendChart trend={trend} onMonth={pickMonth} />
@@ -671,13 +812,15 @@ export function PlaceDesk({
           <ChartBox
             title={`${periodTitle(span, addMonths(month, -12))} and ${periodTitle(span, month)}`}
             fileName={`sales-compare-${month}`}
-            items={years.map((year) => ({
+            items={years.map((year, i) => ({
               id: year.year,
               name: year.year,
               primary: year.primary,
               secondary: year.secondary,
               primaryTarget: 0,
               secondaryTarget: 0,
+              priorPrimary: i === 1 ? years[0]?.primary : undefined,
+              priorSecondary: i === 1 ? years[0]?.secondary : undefined,
             }))}
           >
             <YearCompareChart years={years} label="This period and last year" />
@@ -748,36 +891,32 @@ export function PlaceDesk({
             options={salesPeople.map((person) => ({
               value: person.userId,
               label: person.name,
-              hint: person.headquarters.join(', '),
+              hint: [
+                ...new Set(
+                  person.headquarters.map((name) => hqOf(name, places, byId)?.name ?? name),
+                ),
+              ].join(', '),
             }))}
             value={personId ? [personId] : []}
             onValueChange={(ids) => setPersonId(ids.at(-1) ?? '')}
           />
           {chosen && (
-            <ChartBox
-              title={`${chosen.name} target vs primary and secondary`}
-              fileName={`sales-${chosen.name.toLowerCase().replace(/\s+/g, '-')}`}
-              items={chosen.products.map((product) => ({
-                id: product.productId,
-                name: product.name,
-                primary: product.primaryValue,
-                secondary: product.secondaryValue,
-                primaryTarget: 0,
-                secondaryTarget: 0,
-              }))}
-            >
-              <p className="text-sm text-muted-foreground">{chosen.headquarters.join(' · ')}</p>
-              <LiquidColumns
-                items={chosen.products.map((product) => ({
-                  id: product.productId,
-                  name: product.name,
-                  primary: product.primaryValue,
-                  secondary: product.secondaryValue,
-                  primaryTarget: 0,
-                  secondaryTarget: 0,
-                }))}
-              />
-            </ChartBox>
+            <>
+              <ChartBox
+                title={`${chosen.name} target vs primary and secondary`}
+                fileName={`sales-${chosen.name.toLowerCase().replace(/\s+/g, '-')}`}
+                items={personBars}
+              >
+                <LiquidColumns items={personBars} />
+              </ChartBox>
+              <ChartBox
+                title={`${chosen.name} product primary and secondary`}
+                fileName={`sales-${chosen.name.toLowerCase().replace(/\s+/g, '-')}-products`}
+                items={personProducts}
+              >
+                <LiquidColumns items={personProducts} />
+              </ChartBox>
+            </>
           )}
         </section>
       )}

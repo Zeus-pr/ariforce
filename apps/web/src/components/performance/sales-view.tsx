@@ -87,6 +87,7 @@ export function SalesView() {
     primary: val(t.row, 'primary_sales_value'),
     secondary: val(t.row, 'secondary_sales_value'),
     target: salesTarget(t.row, 'primary'),
+    secondaryTarget: salesTarget(t.row, 'secondary'),
   }));
   return (
     <div className="flex flex-col gap-5">

@@ -352,6 +352,22 @@ export class StockStatementsService implements OnModuleInit {
             under,
           ),
         );
+      const named = await tx
+        .select({ name: territories.name, path: territories.path, level: territories.level })
+        .from(territories)
+        .where(and(isNull(territories.deletedAt), scope));
+      const hqName = (path: string) => {
+        let best = '';
+        let name = '';
+        for (const place of named) {
+          if (place.level !== 'headquarter') continue;
+          if (path !== place.path && !path.startsWith(`${place.path}.`)) continue;
+          if (place.path.length < best.length) continue;
+          best = place.path;
+          name = place.name;
+        }
+        return name;
+      };
       const holders = await tx
         .select({
           userId: users.id,
@@ -429,9 +445,10 @@ export class StockStatementsService implements OnModuleInit {
         const brand = productBrand({ name, brand: row.catalogBrand });
         const month = String(row.month).slice(0, 7);
         const owners = nearest(row.hqPath);
+        const headquarters = hqName(row.hqPath) || row.hq;
         lines.push({
           month,
-          headquarters: row.hq,
+          headquarters,
           stockist: row.stockist,
           person: owners.map((owner) => owner.name).join(', ') || null,
           product: name,
@@ -449,7 +466,7 @@ export class StockStatementsService implements OnModuleInit {
             headquarters: new Set<string>(),
             products: new Map<string, SalesProduct>(),
           };
-          person.headquarters.add(row.hq);
+          person.headquarters.add(headquarters);
           const theirs = person.products.get(row.productId) ?? {
             productId: row.productId,
             name,
