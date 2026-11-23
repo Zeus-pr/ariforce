@@ -129,12 +129,14 @@ export async function evaluateExceptions(
     kind: string;
     status: string;
     field_day: boolean;
+    field_weight: number;
     submitted: boolean;
     on_time: boolean;
     doctor_calls: number;
   }>(
     tx,
     sql`select user_id, to_char(date, 'YYYY-MM-DD') as d, work_type_kind::text as kind, status::text as status, field_day,
+               field_weight::float8 as field_weight,
                dcr_submitted as submitted, dcr_on_time as on_time, doctor_calls::int as doctor_calls
         from kpi_user_day where user_id in (${idList}) and date between ${from}::date and ${to}::date`,
   );
@@ -215,11 +217,12 @@ export async function evaluateExceptions(
       }
       check(p.id, 'dcr_late', d, submitted && !day!.on_time ? { value: null, context: {} } : null);
       const minCalls = thr('low_call_average');
+      const weight = Number(day?.field_weight ?? 0);
       check(
         p.id,
         'low_call_average',
         d,
-        submitted && day!.field_day && day!.doctor_calls < minCalls
+        submitted && weight > 0 && day!.doctor_calls < minCalls * weight
           ? { value: day!.doctor_calls, context: { doctorCalls: day!.doctor_calls } }
           : null,
       );

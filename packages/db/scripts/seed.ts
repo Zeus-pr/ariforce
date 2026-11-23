@@ -18,7 +18,7 @@ const PERMS = rolePermissionMatrix();
 await db.transaction(async (tx) => {
   await tx
     .insert(s.companies)
-    .values({ id: C, name: 'Arighna Pharmaceutical (demo)', slug: 'demo' })
+    .values({ id: C, name: 'ARIGHNA PHARMA PVT. LTD. (demo)', slug: 'demo' })
     .onConflictDoNothing();
   await tx
     .insert(s.roles)

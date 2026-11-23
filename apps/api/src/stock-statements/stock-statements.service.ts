@@ -805,7 +805,7 @@ export class StockStatementsService implements OnModuleInit {
         .filter(Boolean)
         .join(', ');
       return statementPdf({
-        company: company?.name ?? 'Arighna Pharmaceutical',
+        company: company?.name ?? 'ARIGHNA PHARMA PVT. LTD.',
         stockist: stockist.name,
         address,
         month: row.month,

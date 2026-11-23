@@ -101,7 +101,7 @@ export const roles: Role[] = ROLE_KEYS.map((key, i) => ({
 export const me: Me = {
   id: '01930000-0000-7000-8000-000000000301',
   companyId: COMPANY_ID,
-  companyName: 'Arighna Pharmaceutical (demo)',
+  companyName: 'ARIGHNA PHARMA PVT. LTD. (demo)',
   email: 'director@demo.ariforce.in',
   name: 'Demo Director',
   employeeCode: 'DIR001',
