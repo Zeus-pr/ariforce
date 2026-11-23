@@ -28444,6 +28444,12 @@
             "minimum": 1,
             "maximum": 5
           },
+          "activeLockCount": {
+            "description": "How many GPS pins are locked now. Present on list responses. A deactivated pin does not count.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
           "rejectionReason": {
             "description": "Latest rejection reason while approvalStatus is rejected; only for the adder, their reporting line, the approvers and company-wide roles (else null). Read-only.",
             "type": [
@@ -28805,6 +28811,12 @@
                 "type": "null"
               }
             ]
+          },
+          "activeLockCount": {
+            "description": "How many GPS pins are locked now. Present on list responses. A chemist or stockist has one pin.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           }
         },
         "required": [
@@ -29023,6 +29035,12 @@
                 "type": "null"
               }
             ]
+          },
+          "activeLockCount": {
+            "description": "How many GPS pins are locked now. Present on list responses. A chemist or stockist has one pin.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           },
           "code": {
             "type": "string",
