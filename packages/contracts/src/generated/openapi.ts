@@ -5590,6 +5590,8 @@ export interface components {
        * @default 1
        */
       maxActiveLocks: number;
+      /** @description How many GPS pins are locked now. Present on list responses. A deactivated pin does not count. */
+      activeLockCount?: number;
       /** @description Latest rejection reason while approvalStatus is rejected; only for the adder, their reporting line, the approvers and company-wide roles (else null). Read-only. */
       rejectionReason?: string | null;
       /** @description Who rejected it. Read-only. */
@@ -5692,6 +5694,8 @@ export interface components {
       pincode: string | null;
       location: components['schemas']['GeoPointOutput'] | null;
       phone: string | null;
+      /** @description How many GPS pins are locked now. Present on list responses. A chemist or stockist has one pin. */
+      activeLockCount?: number;
     };
     StockistPage: {
       items: components['schemas']['Stockist'][];
@@ -5747,6 +5751,8 @@ export interface components {
       pincode: string | null;
       location: components['schemas']['GeoPointOutput'] | null;
       phone: string | null;
+      /** @description How many GPS pins are locked now. Present on list responses. A chemist or stockist has one pin. */
+      activeLockCount?: number;
       code: string;
     };
     ProductPage: {

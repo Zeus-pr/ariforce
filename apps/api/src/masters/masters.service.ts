@@ -9,7 +9,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Id } from '@ariforce/contracts';
-import { territories, type Tx } from '@ariforce/db';
+import { outletLocations, territories, type Tx } from '@ariforce/db';
 import {
   and,
   asc,
@@ -68,6 +68,31 @@ export class MastersService {
   dto(def: MasterDef, r: Row) {
     const plain = baseFromRow(r);
     return def.dto.parse(def.fromRow ? def.fromRow(plain) : plain) as Row;
+  }
+
+  /** Active GPS pins per outlet, for the doctor / chemist / stockist lists. */
+  private async withLockCounts(tx: Tx, entity: string, items: Row[]): Promise<Row[]> {
+    if (!items.length || (entity !== 'doctor' && entity !== 'chemist' && entity !== 'stockist'))
+      return items;
+    const kind = entity;
+    const ids = items.map((i) => String(i.id));
+    const rows = await tx
+      .select({
+        outletId: outletLocations.outletId,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(outletLocations)
+      .where(
+        and(
+          eq(outletLocations.outletKind, kind),
+          inArray(outletLocations.outletId, ids),
+          eq(outletLocations.active, true),
+          isNull(outletLocations.deletedAt),
+        ),
+      )
+      .groupBy(outletLocations.outletId);
+    const by = new Map(rows.map((r) => [r.outletId, Number(r.n)]));
+    return items.map((i) => ({ ...i, activeLockCount: by.get(String(i.id)) ?? 0 }));
   }
 
   /** Products: presigned imageUrl for rows with a picture (local crypto; dto/audit keep it null). */
@@ -146,6 +171,7 @@ export class MastersService {
       let items = rows.slice(0, limit).map((r) => this.dto(def, r.r));
       if (def.entity === 'doctor') items = await this.doctorsSvc.withRejection(tx, p, items);
       items = await this.withImages(def, p, items);
+      items = await this.withLockCounts(tx, def.entity, items);
       return {
         items,
         nextCursor: rows.length > limit ? encodeCursor(offset + limit) : null,

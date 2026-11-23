@@ -69,6 +69,10 @@ export const Doctor = Syncable.extend({
     description:
       'Active GPS pins this doctor may have. Default 1. ABM and above, and system admin, set 1–5 on the lock card. A deactivated pin does not count. Read-only here.',
   }),
+  activeLockCount: z.int().min(0).optional().meta({
+    description:
+      'How many GPS pins are locked now. Present on list responses. A deactivated pin does not count.',
+  }),
   rejectionReason: z.string().nullable().optional().meta({
     description:
       'Latest rejection reason while approvalStatus is rejected; only for the adder, their reporting line, the approvers and company-wide roles (else null). Read-only.',
@@ -86,6 +90,10 @@ export const Chemist = Syncable.extend({
   gstin: z.string().max(15).nullable(),
   drugLicenseNo: z.string().max(60).nullable(),
   ...Address,
+  activeLockCount: z.int().min(0).optional().meta({
+    description:
+      'How many GPS pins are locked now. Present on list responses. A chemist or stockist has one pin.',
+  }),
 }).meta({ id: 'Chemist' });
 export type Chemist = z.infer<typeof Chemist>;
 
@@ -109,6 +117,7 @@ const DoctorFields = Doctor.omit({
   localTerritoryId: true,
   approvalStatus: true,
   maxActiveLocks: true,
+  activeLockCount: true,
   rejectionReason: true,
   rejectedBy: true,
   rejectedAt: true,
@@ -131,7 +140,12 @@ export const DoctorCreate = DoctorFields.extend({
 export const DoctorUpdate = DoctorFields.partial()
   .extend({ version: z.int().min(1), localTerritoryId: localTerritoryWrite })
   .meta({ id: 'DoctorUpdate' });
-export const ChemistCreate = Chemist.omit({ ...writable, localTerritoryId: true, code: true })
+export const ChemistCreate = Chemist.omit({
+  ...writable,
+  localTerritoryId: true,
+  code: true,
+  activeLockCount: true,
+})
   .extend({
     district: z.string().max(80).nullable().default(null),
     localTerritoryId: localTerritoryWrite,
@@ -146,7 +160,7 @@ export const ChemistCreate = Chemist.omit({ ...writable, localTerritoryId: true,
 export const ChemistUpdate = ChemistCreate.partial()
   .extend({ version: z.int().min(1) })
   .meta({ id: 'ChemistUpdate' });
-export const StockistCreate = Stockist.omit({ ...writable, code: true })
+export const StockistCreate = Stockist.omit({ ...writable, code: true, activeLockCount: true })
   .extend({
     district: z.string().max(80).nullable().default(null),
     code: z
