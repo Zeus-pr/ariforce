@@ -28,7 +28,7 @@ export function SignInDesk() {
             {hr ? 'Sign in to HR' : 'Sign in to AriForce'}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {hr ? 'People, joining and the reporting line' : 'Arighna Pharmaceutical field force'}
+            {hr ? 'People, joining and the reporting line' : 'ARIGHNA PHARMA PVT. LTD. field force'}
           </p>
         </div>
       </div>
