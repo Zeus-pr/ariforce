@@ -2,7 +2,7 @@
  * Shared month-grid pill model for Tour Plan and DCR calendars
  * (Outlook/Teams-style short labels inside each day cell).
  */
-export type CalendarPillStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'tp';
+export type CalendarPillStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'tp' | 'absent';
 
 export type DayPill = {
   date: string;
