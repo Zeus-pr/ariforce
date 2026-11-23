@@ -1,6 +1,7 @@
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
@@ -45,7 +46,11 @@ function LockMarks({ kind, count }: { kind: MasterKind; count: number }) {
   const slots = kind === 'doctors' ? DOCTOR_LOCKS : 1;
   const locked = Math.min(count, slots);
   return (
-    <View style={styles.marks} accessibilityElementsHidden importantForAccessibility="no">
+    <View
+      style={[styles.marks, { width: slots * 14 + (slots - 1) * 3 }]}
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+    >
       {Array.from({ length: slots }, (_, i) => (
         <Icon
           key={i}
@@ -99,7 +104,8 @@ function MasterList({ kind }: { kind: MasterKind }) {
   const [search, setSearch] = useState('');
   const q = useDebounced(search, 300);
   const [filters, setFilters] = useState<ListFilters>({});
-  const [picking, setPicking] = useState<keyof ListFilters | null>(null);
+  const [picking, setPicking] = useState<'territoryId' | 'specialtyId' | 'categoryId' | null>(null);
+  const [pickLocked, setPickLocked] = useState(false);
   const list = useMasterList(kind, q, filters);
 
   const rows = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? [], [list.data]);
@@ -139,7 +145,7 @@ function MasterList({ kind }: { kind: MasterKind }) {
   const pickingType = picking ? FILTER_TYPE[picking] : null;
 
   return (
-    <View style={styles.flex}>
+    <KeyboardAvoidingView behavior="padding" style={styles.flex}>
       <Stack.Screen options={{ title: cfg.title }} />
       <View style={styles.top}>
         <SearchBox
@@ -174,6 +180,35 @@ function MasterList({ kind }: { kind: MasterKind }) {
               </Pressable>
             );
           })}
+          <Pressable
+            onPress={() => setPickLocked(true)}
+            accessibilityRole="button"
+            accessibilityLabel={
+              filters.locked === 'true'
+                ? 'Location filter: locked'
+                : filters.locked === 'false'
+                  ? 'Location filter: not yet locked'
+                  : 'Location filter'
+            }
+            style={[styles.filter, filters.locked && styles.filterOn]}
+          >
+            <AppText
+              variant="action"
+              numberOfLines={1}
+              style={[styles.filterText, filters.locked && styles.filterTextOn]}
+            >
+              {filters.locked === 'true'
+                ? 'Locked'
+                : filters.locked === 'false'
+                  ? 'Not yet locked'
+                  : 'Location'}
+            </AppText>
+            <Icon
+              name="chevron-down"
+              size={18}
+              color={filters.locked ? colors.onNavy : colors.muted}
+            />
+          </Pressable>
         </ScrollView>
         {typeof total === 'number' ? (
           <AppText variant="small">
@@ -208,8 +243,8 @@ function MasterList({ kind }: { kind: MasterKind }) {
                 tone={FEATURES[kind].tone}
                 trailing={
                   <View style={styles.trail}>
-                    <LockMarks kind={kind} count={lockCount(item)} />
                     {tag(item)}
+                    <LockMarks kind={kind} count={lockCount(item)} />
                   </View>
                 }
                 accessibilityLabel={`${item.name}. ${lockLabel(kind, lockCount(item))}`}
@@ -273,7 +308,24 @@ function MasterList({ kind }: { kind: MasterKind }) {
         onPick={(v) => picking && setFilters((f) => ({ ...f, [picking]: v ?? undefined }))}
         onClose={() => setPicking(null)}
       />
-    </View>
+      <SelectSheet
+        visible={pickLocked}
+        title="Location"
+        options={[
+          { value: 'true', label: 'Locked' },
+          { value: 'false', label: 'Not yet locked' },
+        ]}
+        value={filters.locked ?? null}
+        noneLabel="All"
+        onPick={(v) =>
+          setFilters((f) => ({
+            ...f,
+            locked: v === 'true' || v === 'false' ? v : undefined,
+          }))
+        }
+        onClose={() => setPickLocked(false)}
+      />
+    </KeyboardAvoidingView>
   );
 }
 
@@ -298,7 +350,13 @@ const styles = StyleSheet.create({
   filterText: { color: colors.ink, flexShrink: 1 },
   filterTextOn: { color: colors.onNavy },
   trail: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  marks: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  marks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 3,
+    flexShrink: 0,
+  },
   listContent: { paddingHorizontal: layout.gutter, paddingTop: spacing.md, flexGrow: 1 },
   item: { backgroundColor: colors.surface, overflow: 'hidden' },
   first: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg },

@@ -270,7 +270,9 @@ function optionsUnsorted(
 
 // ---------- list / detail ----------
 
-export type ListFilters = Partial<Record<'territoryId' | 'specialtyId' | 'categoryId', string>>;
+export type ListFilters = Partial<Record<'territoryId' | 'specialtyId' | 'categoryId', string>> & {
+  locked?: 'true' | 'false';
+};
 
 export function useMasterList(kind: MasterKind, q: string, filters: ListFilters) {
   return useInfiniteQuery({
@@ -285,6 +287,7 @@ export function useMasterList(kind: MasterKind, q: string, filters: ListFilters)
           cursor: pageParam,
           q: q.trim() || undefined,
           includeTotal: 'true',
+          ...(filters.locked ? { locked: filters.locked } : {}),
           ...Object.fromEntries(FILTERS[kind].map((k) => [k, filters[k]])),
         },
       });
