@@ -252,4 +252,34 @@ describe.skipIf(!OWNER || !APP)('leave (real API)', () => {
       expect(dcr.body.error.code).toBe('LEAVE_DAY_BLOCKED');
     },
   );
+
+  it('leave is refused after punch-in, including a half day', async () => {
+    const day = D(40);
+    const user = (
+      await owner.query(`select id, company_id from users where email = 'bm@demo.ariforce.in'`)
+    ).rows[0] as { id: string; company_id: string };
+    const device = (
+      await owner.query(
+        `insert into devices (id, company_id, user_id, ownership, platform, install_id)
+         values (gen_random_uuid(), $1, $2, 'personal', 'android', $3) returning id`,
+        [user.company_id, user.id, `leave-punch-${day}-${Date.now()}`],
+      )
+    ).rows[0] as { id: string };
+    await owner.query(
+      `insert into geo_captures (id, company_id, user_id, device_id, kind, location, source, captured_at)
+       values (gen_random_uuid(), $1, $2, $3, 'punch_in', 'SRID=4326;POINT(88.37 22.6)', 'gps', $4)`,
+      [user.company_id, user.id, device.id, `${day}T10:00:00+05:30`],
+    );
+    const full = await apply('bm', { typeCode: 'CL', fromDate: day, toDate: day });
+    expect(full.status, JSON.stringify(full.body)).toBe(409);
+    expect(full.body.error.code).toBe('LEAVE_PUNCHED_IN');
+    expect(full.body.error.details.dates).toEqual([day]);
+    const half = await apply('bm', {
+      typeCode: 'SL',
+      fromDate: day,
+      toDate: day,
+      half: 'am',
+    });
+    expect(half.body.error?.code).toBe('LEAVE_PUNCHED_IN');
+  });
 });
