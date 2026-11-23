@@ -506,6 +506,8 @@ export function dcrErrorMessage(e: ApiError): string {
       return dcrDateNotTodayMessage(e.details);
     case 'DAY_ALREADY_SUBMITTED':
       return 'You already submitted a report for this day. This draft can’t be saved or submitted; you can delete it.';
+    case 'DAY_HAS_REJECTED':
+      return 'This day has a rejected report. Continue that report.';
     case 'NOT_FOUND':
       return 'This draft no longer exists. It may have been deleted on another device.';
     case 'DEVIATION_REASON_REQUIRED':
