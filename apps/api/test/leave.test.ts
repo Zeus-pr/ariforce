@@ -281,7 +281,5 @@ describe.skipIf(!OWNER || !APP)('leave (real API)', () => {
       half: 'am',
     });
     expect(half.body.error?.code).toBe('LEAVE_PUNCHED_IN');
-    await owner.query(`delete from geo_captures where device_id = $1`, [device.id]);
-    await owner.query(`delete from devices where id = $1`, [device.id]);
   });
 });

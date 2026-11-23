@@ -169,21 +169,27 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
       .send({ date: TODAY, workTypeId: field, territoryIds: [T.hq], calls: [], submit: true });
     expect(emptySubmit.status).toBe(422);
 
+    const loose = call({
+      jointWorkUserIds: [],
+      checkInId: null,
+      presentationOpenedAt: null,
+      presentationCapture: undefined,
+    });
     const c = call({ jointWorkUserIds: [] });
     const ok = await http()
       .put('/v1/dcrs')
       .set(as('bm'))
-      .send({ date: TODAY, workTypeId: field, territoryIds: [T.hq], calls: [c] });
+      .send({ date: TODAY, workTypeId: field, territoryIds: [T.hq], calls: [loose, c] });
     expect(ok.status, JSON.stringify(ok.body)).toBe(200);
     expect(ok.body).toMatchObject({ status: 'draft', deviationReason: null, territoryIds: [T.hq] });
     expect(ok.body.tourPlanId).toEqual(expect.any(String));
-    expect(ok.body.calls).toHaveLength(1);
-    expect(ok.body.calls[0]).toMatchObject({
+    expect(ok.body.calls).toHaveLength(2);
+    expect(ok.body.calls.find((x: { id: string }) => x.id === c.clientId)).toMatchObject({
       id: c.clientId,
       samples: [{ productId: product, quantity: 2 }],
     });
 
-    // Idempotent resend + submit; dropping a call soft-deletes it.
+    // A call with no check-in can be dropped. A checked-in call stays.
     const c2 = call();
     const sub = await http()
       .put('/v1/dcrs')
@@ -198,7 +204,9 @@ describe.skipIf(!OWNER || !APP)('DCR (real API)', () => {
       });
     expect(sub.status, JSON.stringify(sub.body)).toBe(200);
     expect(sub.body.status).toBe('submitted');
-    expect(sub.body.calls.map((x: { id: string }) => x.id)).toEqual([c2.clientId]);
+    expect(sub.body.calls.map((x: { id: string }) => x.id).sort()).toEqual(
+      [c.clientId, c2.clientId].sort(),
+    );
     const stale = await http()
       .put('/v1/dcrs')
       .set(as('bm'))
