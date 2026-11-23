@@ -80,7 +80,7 @@ One demo company, territory chain India > East Zone > West Bengal > Kolkata Nort
 
 ## Devices, consent and location (migration 0004)
 
-Context: single tenant in production (Arighna Pharmaceutical), 200-1,000 field reps, Android + iPhone (Expo), a mix of company-issued and personal phones. `company_id` + RLS stay on every row anyway.
+Context: single tenant in production (ARIGHNA PHARMA PVT. LTD.), 200-1,000 field reps, Android + iPhone (Expo), a mix of company-issued and personal phones. `company_id` + RLS stay on every row anyway.
 
 - **`devices`**: one row per app install (`install_id`, never IMEI/advertising id), `ownership` = `company` | `personal`, `platform` = `android` | `ios`, `status` = `pending_consent` -> `active` -> `revoked`. A personal phone becomes `active` only after explicit consent.
 - **`consent_records`** (append-only): `purpose` = `personal_device_enrolment` | `location_checkin`, `notice_version` (exact DPDP notice text shown), `granted`, `at`, ip, user agent. Withdrawal is a new row with `granted = false`; the latest row per (user, purpose) wins.
