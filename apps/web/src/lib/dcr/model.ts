@@ -177,6 +177,8 @@ export type CallDraft = {
   kind: CallKind;
   outletId: string;
   outletName: string;
+  /** Visit check-in. Set means this customer stays: no change, no remove. */
+  checkInId: string | null;
   /** HQ the customer is filed under; a territory change clears customers outside the new HQs. */
   hqId: string;
   time: string;
@@ -432,7 +434,7 @@ export function draftBody(
             clientId: c.clientId,
             outletKind: c.kind,
             outletId: c.outletId,
-            checkInId: null,
+            checkInId: c.checkInId,
             jointWorkUserIds: s.workWith,
             productsDetailed: c.productIds.map((productId, i) => ({ productId, order: i + 1 })),
             samples: [],
@@ -467,6 +469,7 @@ export function callsFromDcr(d: Dcr, names: Map<string, string>): CallDraft[] {
     kind: c.outletKind,
     outletId: c.outletId,
     outletName: names.get(c.outletId) ?? SAVED_CUSTOMER,
+    checkInId: c.checkInId,
     hqId: '',
     time: timeOfIso(c.calledAt),
     productIds: c.productsDetailed.sort((a, b) => a.order - b.order).map((p) => p.productId),

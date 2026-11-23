@@ -634,7 +634,9 @@ function Flow({
         sfc: { state: 'idle', hqs: [] },
         routeChoice: {},
         calls: x.calls.map((c) =>
-          c.hqId && !hq.has(c.hqId) ? { ...c, outletId: '', outletName: '', hqId: '' } : c,
+          c.hqId && !c.checkInId && !hq.has(c.hqId)
+            ? { ...c, outletId: '', outletName: '', hqId: '' }
+            : c,
         ),
       };
     });
@@ -647,6 +649,7 @@ function Flow({
           kind,
           outletId: '',
           outletName: '',
+          checkInId: null,
           hqId: '',
           time: nowHHmm(),
           productIds: [],

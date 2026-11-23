@@ -22,11 +22,7 @@ export function dcrSummary(d: Dcr, workType: string | undefined, placeName: Map<
       : null;
   const what =
     workType ??
-    (band
-      ? 'Field work'
-      : d.details?.kind
-        ? d.details.kind[0]!.toUpperCase() + d.details.kind.slice(1)
-        : 'Report');
+    (d.details?.kind ? d.details.kind[0]!.toUpperCase() + d.details.kind.slice(1) : 'Report');
   const n = d.callCount ?? d.calls.length;
   return [what, band ? band.label : null, territory, band || n ? calls(n) : null]
     .filter(Boolean)

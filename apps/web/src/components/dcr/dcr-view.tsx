@@ -403,7 +403,7 @@ function DcrDay({ today }: { today: string }) {
                   )}
                   {c.remarks && <p className="mt-0.5 text-xs">{c.remarks}</p>}
                 </div>
-                {!locked && (
+                {!locked && !c.checkInId && (
                   <Button
                     variant="ghost"
                     size="icon"

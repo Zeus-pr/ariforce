@@ -399,6 +399,7 @@ export function CallCard({
     .join(', ');
   const hqLabel = scope.map((x) => names.get(x.hqId) ?? 'your HQ').join(', ');
   const onQuery = useCallback((q: string) => setQ(q), [setQ]);
+  const checkedIn = !!call.checkInId;
   const noun = KIND_LABEL[call.kind];
   const labels = new Map(call.outletId ? [[call.outletId, call.outletName]] : []);
   const productOpts: Opt[] = products.map((p) => ({ id: p.id, name: p.label, pts: p.pts }));
@@ -424,7 +425,7 @@ export function CallCard({
           {noun} call{' '}
           <span className="font-normal text-muted-foreground tabular-nums">#{index + 1}</span>
         </h3>
-        {!readOnly && (
+        {!readOnly && !checkedIn && (
           <Button
             type="button"
             variant="ghost"
@@ -461,11 +462,11 @@ export function CallCard({
                 ? `No ${noun.toLowerCase()}s linked to ${scopeLabel}. Try all of ${hqLabel}.`
                 : `No ${noun.toLowerCase()}s found in the territories of the day.`
             }
-            disabled={readOnly}
+            disabled={readOnly || checkedIn}
             invalid={errors.some((e) => e.includes('choose'))}
             testId="dcr-call-customer"
           />
-          {narrowable && !readOnly && (
+          {narrowable && !readOnly && !checkedIn && (
             <p className="text-xs text-muted-foreground" data-testid="dcr-call-scope">
               {wide
                 ? `Showing all ${noun.toLowerCase()}s in ${hqLabel}. `
