@@ -26,18 +26,24 @@ import {
   territoryRows,
   workOnChoices,
   workOnFor,
+  type Candidate,
   type FlowState,
   type HqOption,
   type Person,
   type WorkTypeOption,
 } from '@/lib/dcr/model';
-import { bandOf } from '@/lib/dcr/bands';
+import { bandOf, sfcCategoryOf } from '@/lib/dcr/bands';
 import { thrownMessage } from '@/lib/dcr/errors';
 import { tpFutureMonthCutoffError } from '@/lib/tour-plans/cutoff';
 import { ChoiceSelect } from '@/components/dcr/choice-select';
-import { MeetingFields, OfficeFields, SfcPanel } from '@/components/dcr/dcr-sections';
+import { MeetingFields, OfficeFields, RouteFacts, SfcPanel } from '@/components/dcr/dcr-sections';
 import { SearchSelect, type SelectOption } from '@/components/dcr/search-select';
-import { saveTourPlanItem, submitTourPlanItem, type TpItem } from '@/lib/tour-plans/items';
+import {
+  saveTourPlanItem,
+  submitTourPlanItem,
+  type TpItem,
+  type TpRouteFact,
+} from '@/lib/tour-plans/items';
 import { endTimeProblem, extraFormOf, spanMin } from '@/lib/dcr/times';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -100,6 +106,84 @@ function keptRoutes(
 
 const itemDetails = (item: TpItem | null): DcrDetails | null =>
   isDetails(item?.plan.details) ? item.plan.details : null;
+
+function planRouteIds(plan: TpItem['plan']) {
+  const take = (rows?: { sfcRouteId: string }[]) =>
+    (rows ?? []).map((row) => row.sfcRouteId).filter(Boolean);
+  const ids: string[] = [];
+  const add = (list: string[]) => {
+    for (const id of list) if (!ids.includes(id)) ids.push(id);
+  };
+  add(take(plan.sfcRoutes));
+  for (const section of plan.sections ?? []) add(take(section.sfcRoutes));
+  for (const day of plan.days ?? []) {
+    add(take(day.sfcRoutes));
+    for (const section of day.sections ?? []) add(take(section.sfcRoutes));
+  }
+  return ids;
+}
+
+function FilerRoutes({
+  item,
+  hqNames,
+  band,
+}: {
+  item: TpItem | null;
+  hqNames: HqOption[];
+  band: Candidate['band'] | null;
+}) {
+  const facts = item?.routeFacts ?? [];
+  const ids = item ? planRouteIds(item.plan) : [];
+  const shown = (ids.length ? ids : facts.map((fact) => fact.id)).flatMap((id) => {
+    const fact = facts.find((row) => row.id === id);
+    return fact ? [fact] : [];
+  });
+  if (!shown.length) {
+    return (
+      <p className="rounded-lg border bg-muted/40 p-3 text-sm">
+        {ids.length ? "This route's fare is on the filer's chart." : 'No SFC routes on this plan.'}
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3" data-testid="tp-filer-sfc">
+      {shown.map((fact) => (
+        <RouteFacts
+          key={fact.id}
+          title={filerTitle(fact, hqNames)}
+          c={filerCandidate(fact, band)}
+          note="From the filer's SFC, saved on this plan."
+        />
+      ))}
+    </div>
+  );
+}
+
+function filerTitle(fact: TpRouteFact, hqNames: HqOption[]) {
+  const hq = hqNames.find((row) => row.id === fact.hqTerritoryId)?.name;
+  const places = `${fact.fromPlace} to ${fact.toPlace}`;
+  return hq ? `${hq} · ${places}` : places;
+}
+
+function filerCandidate(fact: TpRouteFact, band: Candidate['band'] | null): Candidate {
+  const category = sfcCategoryOf(fact.category) ?? 'hq';
+  return {
+    id: fact.id,
+    fromPlace: fact.fromPlace,
+    toPlace: fact.toPlace,
+    oneWayKm: fact.oneWayKm,
+    bothWayKm: fact.bothWayKm,
+    oneWayAmount: fact.oneWayAmount,
+    bothWayAmount: fact.bothWayAmount,
+    actualFare: fact.actualFare,
+    travelMode: fact.travelMode as Candidate['travelMode'],
+    category,
+    band: bandOf(fact.category) ?? band ?? 'hq',
+    da: fact.da,
+    version: 1,
+    source: 'own',
+  };
+}
 
 function flowFromItem(date: string, item: TpItem | null): FlowState {
   const state = emptyFlow(date);
@@ -281,7 +365,7 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
       : '';
 
   useEffect(() => {
-    if (!sfcKey) return;
+    if (!sfcKey || !mutable) return;
     let live = true;
     const [sfcDate, workTypeId, territoryIds] = sfcKey.split('|') as [string, string, string];
     setState((current) => ({ ...current, sfc: { state: 'loading', hqs: [] } }));
@@ -320,7 +404,7 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
     return () => {
       live = false;
     };
-  }, [sfcKey, chosenWorkType?.band]);
+  }, [sfcKey, chosenWorkType?.band, mutable]);
 
   const missingNames = missingHqIds.map((id) => rows.find((row) => row.id === id)?.name ?? id);
   const selectedDetails = detailsOf(state);
@@ -686,41 +770,32 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
                   doneLabel="Done"
                 />
               )}
-              {state.workWithDone &&
-                (editable ||
-                  routeFactsState.state === 'ok' ||
-                  routeFactsState.state === 'loading') &&
-                (routeFactsState.state === 'loading' && !editable ? (
-                  <p className="text-sm text-muted-foreground" aria-busy="true">
-                    Loading saved SFC route details…
-                  </p>
-                ) : (
-                  <SfcPanel
-                    state={routeFactsState.state}
-                    hqs={routeFactsState.hqs}
-                    choice={state.routeChoice}
-                    onChoose={routeChoice}
-                    onRetry={() => setSfcTick((tick) => tick + 1)}
-                    onChangeTerritory={() =>
-                      setField({
-                        territoryIds: [],
-                        workWith: [],
-                        workWithDone: false,
-                        sfc: emptySfc(),
-                      })
-                    }
-                    missingHqNames={missingNames}
-                    readOnly={!editable}
-                  />
-                ))}
-              {state.workWithDone &&
-                !editable &&
-                routeFactsState.state !== 'ok' &&
-                routeFactsState.state !== 'loading' && (
-                  <p className="rounded-lg border bg-muted/40 p-3 text-sm">
-                    Saved SFC route facts are not available from the current route data.
-                  </p>
-                )}
+              {state.workWithDone && editable && (
+                <SfcPanel
+                  state={routeFactsState.state}
+                  hqs={routeFactsState.hqs}
+                  choice={state.routeChoice}
+                  onChoose={routeChoice}
+                  onRetry={() => setSfcTick((tick) => tick + 1)}
+                  onChangeTerritory={() =>
+                    setField({
+                      territoryIds: [],
+                      workWith: [],
+                      workWithDone: false,
+                      sfc: emptySfc(),
+                    })
+                  }
+                  missingHqNames={missingNames}
+                  readOnly={false}
+                />
+              )}
+              {state.workWithDone && !editable && (
+                <FilerRoutes
+                  item={workingItem ?? item}
+                  hqNames={hqs}
+                  band={chosenWorkType?.band ?? null}
+                />
+              )}
             </>
           )}
 

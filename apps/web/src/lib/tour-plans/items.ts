@@ -1,5 +1,29 @@
 import { api, apiReady, toApiError } from '@/lib/api';
 
+type TpPlanSection = {
+  workTypeId: string;
+  territoryIds: string[];
+  workWithUserIds: string[];
+  sfcRoutes: { hqTerritoryId: string; sfcRouteId: string }[];
+  details: unknown;
+};
+
+/** Fare row for a route stored on the plan. It is the filer's chart, never the viewer's. */
+export type TpRouteFact = {
+  id: string;
+  hqTerritoryId: string;
+  fromPlace: string;
+  toPlace: string;
+  oneWayKm: number;
+  bothWayKm: number;
+  oneWayAmount: number | null;
+  bothWayAmount: number | null;
+  actualFare: boolean;
+  travelMode: string | null;
+  category: string | null;
+  da: number | null;
+};
+
 export type TpItem = {
   id: string;
   companyId: string;
@@ -15,14 +39,18 @@ export type TpItem = {
     workWithUserIds: string[];
     sfcRoutes: { hqTerritoryId: string; sfcRouteId: string }[];
     details: unknown;
-    sections?: {
+    sections?: TpPlanSection[];
+    days?: {
+      date: string;
       workTypeId: string;
       territoryIds: string[];
       workWithUserIds: string[];
       sfcRoutes: { hqTerritoryId: string; sfcRouteId: string }[];
       details: unknown;
+      sections?: TpPlanSection[];
     }[];
   };
+  routeFacts?: TpRouteFact[];
   version: number;
   filedDates: string[];
   createdAt: string;
