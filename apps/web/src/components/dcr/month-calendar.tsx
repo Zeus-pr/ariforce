@@ -24,6 +24,7 @@ const PILL: Record<CalendarPillStatus, { label: string; tone: string }> = {
     label: 'From TP',
     tone: 'border border-dashed border-teal-600/40 bg-teal-50 text-teal-900',
   },
+  absent: { label: 'Absent', tone: 'bg-red-950 text-white' },
 };
 
 function dominant(pills: DayPill[]): CalendarPillStatus | null {
@@ -87,13 +88,15 @@ export function DcrMonthCalendar({
           </Button>
         </div>
         <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-          {(['draft', 'pending', 'approved', 'rejected', 'locked', 'tp'] as const).map((s) => (
-            <span key={s} className="inline-flex items-center gap-1.5">
-              <span className={cn('rounded px-1.5 py-0.5 font-medium', PILL[s].tone)}>
-                {PILL[s].label}
+          {(['draft', 'pending', 'approved', 'rejected', 'locked', 'tp', 'absent'] as const).map(
+            (s) => (
+              <span key={s} className="inline-flex items-center gap-1.5">
+                <span className={cn('rounded px-1.5 py-0.5 font-medium', PILL[s].tone)}>
+                  {PILL[s].label}
+                </span>
               </span>
-            </span>
-          ))}
+            ),
+          )}
         </div>
       </div>
 
@@ -138,6 +141,7 @@ export function DcrMonthCalendar({
                   closed && 'cursor-not-allowed opacity-50 hover:bg-transparent active:scale-100',
                   isToday && 'border-primary',
                   isSelected && 'ring-2 ring-ring/40',
+                  status === 'absent' && 'border-red-950 bg-red-950 text-white hover:bg-red-900',
                 )}
               >
                 <span className="text-xs tabular-nums text-muted-foreground">

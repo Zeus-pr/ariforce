@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_ROLE_PERMISSIONS, ROLE_KEYS } from '../src/schemas/roles';
 
-describe('DCR unlock decisions are director-only (2026-10-29)', () => {
-  it('only director holds dcr_unlock:decide', () => {
+describe('DCR unlock decisions (2026-10-29, system admin added 2026-11-24)', () => {
+  it('director and system admin hold dcr_unlock:decide', () => {
     expect(
-      ROLE_KEYS.filter((k) => DEFAULT_ROLE_PERMISSIONS[k].includes('dcr_unlock:decide')),
-    ).toEqual(['director']);
+      ROLE_KEYS.filter((k) => DEFAULT_ROLE_PERMISSIONS[k].includes('dcr_unlock:decide')).sort(),
+    ).toEqual(['director', 'system_admin']);
+  });
+  it('system admin does not gain the general approvals queue', () => {
+    expect(DEFAULT_ROLE_PERMISSIONS.system_admin).not.toContain('approvals:decide');
   });
   it('dcr:review and approvals:decide stay on ABM and above', () => {
     for (const k of [
