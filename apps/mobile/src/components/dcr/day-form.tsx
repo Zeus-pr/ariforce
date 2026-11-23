@@ -954,6 +954,13 @@ export function DcrForm({
           setFormError(saveMessage(e));
           return false;
         }
+        if (e instanceof ApiError && e.code === 'DAY_HAS_REJECTED') {
+          const existingId = (e.details as { existingId?: string } | undefined)?.existingId;
+          if (existingId) {
+            router.replace({ pathname: '/dcr/form', params: { id: existingId, date: s.date } });
+            return false;
+          }
+        }
         setFormError(`${saveMessage(e)} Your draft is saved; press Submit again.`);
         return false;
       }
@@ -961,6 +968,13 @@ export function DcrForm({
       if (e instanceof ApiError && e.code === 'DAY_ALREADY_SUBMITTED') {
         const existingId = (e.details as { existingId?: string } | undefined)?.existingId ?? null;
         setDaySubmitted({ id: existingId });
+      }
+      if (e instanceof ApiError && e.code === 'DAY_HAS_REJECTED') {
+        const existingId = (e.details as { existingId?: string } | undefined)?.existingId;
+        if (existingId) {
+          router.replace({ pathname: '/dcr/form', params: { id: existingId, date: s.date } });
+          return false;
+        }
       }
       setFormError(saveMessage(e));
       return false;
