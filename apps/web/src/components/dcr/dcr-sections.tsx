@@ -211,7 +211,7 @@ function bandText(c: { band: unknown; category: unknown }) {
   return cat ? `${BAND_LABEL[band]} (${cat.toUpperCase()})` : BAND_LABEL[band];
 }
 
-function RouteFacts({ title, c, note }: { title: string; c: Candidate; note: string }) {
+export function RouteFacts({ title, c, note }: { title: string; c: Candidate; note: string }) {
   const facts: [string, string][] = [
     ['Band', bandText(c)],
     ['Travel', c.travelMode ? (MODE_LABEL[c.travelMode] ?? c.travelMode) : 'Not set'],
