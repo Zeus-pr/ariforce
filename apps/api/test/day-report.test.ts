@@ -98,6 +98,20 @@ describe('resolveDraftTarget', () => {
       row: rejected,
     });
   });
+  it('a day with a rejected report takes no new draft, and keeps an existing draft', () => {
+    const rejected = row('r', 'rejected', '2026-10-28T11:00:00Z', 4);
+    expect(resolveDraftTarget({ date: D }, undefined, [rejected])).toEqual({
+      action: 'error',
+      status: 409,
+      code: 'DAY_HAS_REJECTED',
+      message: expect.any(String),
+      details: { existingId: 'r' },
+    });
+    expect(resolveDraftTarget({ id: 'a', date: D, version: 2 }, a, [a, rejected])).toEqual({
+      action: 'update',
+      row: a,
+    });
+  });
   it('a day with a submitted report takes no draft saves', () => {
     for (const input of [{ date: D }, { id: 'a', date: D }, { date: D, version: 2 }])
       expect(resolveDraftTarget(input, input.id ? a : undefined, [a, sub])).toEqual({

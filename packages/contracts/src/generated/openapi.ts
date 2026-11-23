@@ -1392,7 +1392,7 @@ export interface paths {
     get?: never;
     /**
      * Save a draft DCR: update one by id, or create a new one (several drafts per day)
-     * @description With id: updates that draft (yours, still a draft, same date, version check). Without id: creates a new draft, except that a body with version but no id (older clients) updates the latest draft of the date. A day with a submitted report takes no new drafts.
+     * @description With id: updates that draft or rejected report (yours, same date, version check). Without id: creates a new draft, except that a body with version but no id (older clients) updates the latest draft of the date. A day with a submitted report takes no new drafts. A day with a rejected report takes no new draft (409 DAY_HAS_REJECTED, details.existingId); save that id to continue it.
      */
     put: operations['putDcrDraft'];
     post?: never;
@@ -16061,7 +16061,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description ALREADY_SUBMITTED (this DCR is not a draft), DAY_ALREADY_SUBMITTED (the date has a submitted report; details.existingId), DAY_LOCKED, VERSION_CONFLICT */
+      /** @description ALREADY_SUBMITTED (this DCR is not a draft), DAY_ALREADY_SUBMITTED (the date has a submitted report; details.existingId), DAY_HAS_REJECTED (the date has a rejected report; details.existingId; continue that id), DAY_LOCKED, VERSION_CONFLICT */
       409: {
         headers: {
           [name: string]: unknown;
