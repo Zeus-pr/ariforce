@@ -177,7 +177,7 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarFooter>
         <p className="px-2 pb-1 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-          Arighna Pharmaceutical · {ROLE_LABEL[role]}
+          ARIGHNA PHARMA PVT. LTD. · {ROLE_LABEL[role]}
         </p>
       </SidebarFooter>
       <SidebarRail />

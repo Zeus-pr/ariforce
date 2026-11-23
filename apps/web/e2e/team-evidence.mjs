@@ -9,8 +9,8 @@ const crumbs = (page) => page.locator('[data-testid=breadcrumb] li').allTextCont
   await page.getByTestId('team-row').first().waitFor();
   check((await crumbs(page)).length === 1, `director starts at the top (${await crumbs(page)})`);
   check((await page.getByTestId('kpi-card').count()) >= 4, 'scope KPI cards render');
-  await page.locator('[role=img] .recharts-bar-rectangle').first().waitFor();
-  check(true, 'coverage chart renders');
+  await page.getByTestId('team-rank').waitFor();
+  check(true, 'ranked list renders');
   await noBannedWords(page, 'team');
   await shot(page, 'top-desktop.png');
 
@@ -27,9 +27,7 @@ const crumbs = (page) => page.locator('[data-testid=breadcrumb] li').allTextCont
   const trail = await crumbs(page);
   check(trail.length >= 3, `breadcrumb drills down (${trail.join(' › ')})`);
   check(new URL(page.url()).searchParams.has('t'), 'drill state is in the URL');
-  const name = (
-    await page.getByTestId('team-row').first().locator('td').first().textContent()
-  ).trim();
+  const name = (await page.getByTestId('team-row-name').first().textContent()).trim();
   await page.getByTestId('team-row').first().click();
   await page.waitForURL((u) => u.searchParams.has('u'));
   await page.locator('[data-testid=breadcrumb] [aria-current=page]', { hasText: name }).waitFor();

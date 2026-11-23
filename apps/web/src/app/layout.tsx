@@ -10,7 +10,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: { default: 'AriForce', template: '%s · AriForce' },
-  description: 'Field force management for Arighna Pharmaceutical.',
+  description: 'Field force management for ARIGHNA PHARMA PVT. LTD.',
   applicationName: 'AriForce',
 };
 
