@@ -21,7 +21,9 @@ import { TenantService } from '../common/tenant.service';
 import { decodeCursor, encodeCursor } from '../masters/masters.service';
 import { autoCloseOpenPunches } from './auto-punch-out';
 import { leaveBlocksWork } from '../leave/leave.util';
+import { ABSENT_FROM, blocksNextPunchIn } from './day-status';
 import {
+  addDays,
   companySettings,
   doctorLockLimitMessage,
   localDate,
@@ -254,6 +256,44 @@ export class CheckInsService {
         throw err(409, 'SEQUENCE', 'Already punched out today');
       if (b.kind === 'punch_in' && (await leaveBlocksWork(tx, p.userId, day)))
         throw err(422, 'LEAVE_DAY_BLOCKED', 'Leave covers this day, so punch in stays closed');
+      if (b.kind === 'punch_in') {
+        const yesterday = addDays(day, -1);
+        if (yesterday >= ABSENT_FROM) {
+          const prior = await tx
+            .select({ kind: geoCaptures.kind })
+            .from(geoCaptures)
+            .where(
+              and(
+                eq(geoCaptures.userId, p.userId),
+                sql`${capDate(s.timezone)} = ${yesterday}::date`,
+              ),
+            );
+          const [filed] = await tx
+            .select({ id: dcrs.id })
+            .from(dcrs)
+            .where(
+              and(
+                eq(dcrs.userId, p.userId),
+                eq(dcrs.date, yesterday),
+                isNull(dcrs.deletedAt),
+                inArray(dcrs.status, ['submitted', 'approved']),
+              ),
+            )
+            .limit(1);
+          if (
+            blocksNextPunchIn({
+              punchedIn: prior.some((r) => r.kind === 'punch_in'),
+              submitted: !!filed,
+            })
+          )
+            throw err(
+              409,
+              'PREVIOUS_DCR_UNSUBMITTED',
+              'Submit an unlock request for yesterday’s DCR, then submit that DCR, before punching in.',
+              { date: yesterday },
+            );
+        }
+      }
 
       if (b.kind === 'punch_out') {
         const [dcr] = await tx

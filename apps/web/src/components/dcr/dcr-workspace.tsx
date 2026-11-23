@@ -236,6 +236,8 @@ function CalendarPanel({
   const monthLoad = useRef<{ key: string; promise: Promise<void> } | null>(null);
 
   const [holidayNames, setHolidayNames] = useState<Record<string, string>>({});
+  const [absentDays, setAbsentDays] = useState<string[]>([]);
+  const session = useSession();
   useEffect(() => {
     const ac = new AbortController();
     const days = datesOf(month);
@@ -252,10 +254,20 @@ function CalendarPanel({
         setHolidayNames(
           Object.fromEntries(r.data.items.map((h) => [calendarDate(h.date), h.name])),
         );
+        const me = session?.user?.id;
+        if (!me) return;
+        const att = await api.GET('/v1/attendance', {
+          params: { query: { from, to, userId: me, limit: 40 } },
+          signal: ac.signal,
+        });
+        if (ac.signal.aborted || att.error || !att.data) return;
+        setAbsentDays(
+          att.data.items.filter((d) => d.status === 'absent' && d.date < today).map((d) => d.date),
+        );
       })();
     }
     return () => ac.abort();
-  }, [month]);
+  }, [month, session?.user?.id, today]);
   const cursor = useMemo(() => cursorFromYmd(`${month}-01`), [month]);
   const range = useMemo(() => monthRange(cursor.year, cursor.monthIndex), [cursor]);
 
@@ -424,10 +436,16 @@ function CalendarPanel({
     }
   }, [items, today]);
 
-  const pills = useMemo(
-    () => dcrPillsByDate(items ?? [], tpCards, wtName, placeName, outletName),
-    [items, tpCards, wtName, placeName, outletName],
-  );
+  const pills = useMemo(() => {
+    const map = dcrPillsByDate(items ?? [], tpCards, wtName, placeName, outletName);
+    for (const date of absentDays) {
+      const list = map.get(date) ?? [];
+      if (list.length) continue;
+      list.push({ date, label: 'Absent', status: 'absent', itemId: `absent:${date}` });
+      map.set(date, list);
+    }
+    return map;
+  }, [items, tpCards, wtName, placeName, outletName, absentDays]);
   const groups = useMemo(() => groupDcrs(items ?? []), [items]);
 
   const settleOpen = useCallback(async (): Promise<boolean> => {

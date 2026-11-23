@@ -287,7 +287,10 @@ export class ApprovalsService {
     return (
       r.state === 'pending' &&
       r.requestedBy !== p.userId &&
-      p.permissions.includes('approvals:decide') &&
+      (p.permissions.includes('approvals:decide') ||
+        (opt?.route === 'permission_holders' &&
+          !!opt.permission &&
+          p.permissions.includes(opt.permission))) &&
       (!opt?.permission || p.permissions.includes(opt.permission)) &&
       (opt?.route === 'permission_holders' ||
         !cur?.approverUserId ||
@@ -869,6 +872,8 @@ export class ApprovalsService {
     if (q.scope === 'org' && !q.mine) return this.listOrg(p, q);
     return this.tenant.run(p, async (tx) => {
       const canDecide = p.permissions.includes('approvals:decide');
+      const unlockOnly = !canDecide &&
+        p.permissions.includes('dcr_unlock:decide') && ['dcr_correction', 'stock_statement_unlock'];
       const state =
         q.status === 'pending' ? ['pending', 'draft'] : q.status ? [q.status] : undefined;
       const where = [
@@ -881,12 +886,18 @@ export class ApprovalsService {
           : undefined,
         q.mine === 'requested' ? eq(approvalRequests.requestedBy, p.userId) : undefined,
         q.mine === 'to_decide'
-          ? canDecide
+          ? canDecide || unlockOnly
             ? and(
                 eq(approvalRequests.state, 'pending'),
                 ne(approvalRequests.requestedBy, p.userId),
                 this.undecidable(p).length
                   ? notInArray(approvalRequests.entityType, this.undecidable(p))
+                  : undefined,
+                unlockOnly
+                  ? inArray(approvalRequests.entityType, [
+                      'dcr_correction',
+                      'stock_statement_unlock',
+                    ])
                   : undefined,
               )
             : sql`false`

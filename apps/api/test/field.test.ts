@@ -277,7 +277,7 @@ describe.skipIf(!OWNER || !APP)(
         (d: { userName: string; punchIn: unknown }) => d.userName === BM_NAME && d.punchIn,
       );
       expect(bm).toMatchObject({ status: 'incomplete', visits: 2 });
-      expect(r.body.items.some((d: { status: string }) => d.status === 'absent')).toBe(true);
+      expect(r.body.items.some((d: { status: string }) => d.status === 'absent')).toBe(false);
       const range = await http()
         .get('/v1/attendance?from=2026-01-01&to=2026-01-03&includeTotal=true')
         .set(as('bm'));

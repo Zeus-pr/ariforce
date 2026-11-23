@@ -222,6 +222,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'sfc:write',
     'expenses:pay',
     'dcr:review',
+    'dcr_unlock:decide',
     'sales:write',
     // Outlet locks / check-ins on Doctor 360 (list requires field:read; manage needs write).
     'field:read',

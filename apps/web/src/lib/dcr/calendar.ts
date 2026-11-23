@@ -5,7 +5,8 @@
 import type { Dcr } from '@ariforce/contracts';
 import { BANDS } from '@/lib/dcr/model';
 
-export type CalendarPillStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'tp' | 'locked';
+export type CalendarPillStatus =
+  'draft' | 'pending' | 'approved' | 'rejected' | 'tp' | 'locked' | 'absent';
 
 export type DayPill = {
   date: string;

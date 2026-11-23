@@ -2,6 +2,7 @@ import { DEFAULT_ROLE_PERMISSIONS } from '@ariforce/contracts';
 import type { LucideIcon } from 'lucide-react';
 import {
   CheckCheck,
+  LockKeyhole,
   ScrollText,
   UserCog,
   UserPlus,
@@ -194,6 +195,14 @@ export const NAV: NavItem[] = [
     href: '/approvals',
     icon: CheckCheck,
     roles: ROLES.filter((r) => (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('approvals:decide')),
+    section: 'admin',
+  },
+  {
+    slug: 'unlocks',
+    title: 'Unlocks',
+    href: '/unlocks',
+    icon: LockKeyhole,
+    roles: ROLES.filter((r) => (DEFAULT_ROLE_PERMISSIONS[r] ?? []).includes('dcr_unlock:decide')),
     section: 'admin',
   },
   {

@@ -1,4 +1,5 @@
 import { approvedLeaveDays } from '../leave/leave.util';
+import { ABSENT_FROM, isAbsentDay, isSunday } from './day-status';
 import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
 import {
   CheckInCreate,
@@ -10,6 +11,7 @@ import {
   type UserSummary,
 } from '@ariforce/contracts';
 import {
+  companyHolidays,
   dcrs,
   geoCaptures,
   roles,
@@ -21,7 +23,7 @@ import {
   users,
   workTypes,
 } from '@ariforce/db';
-import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import type { Response } from 'express';
 import * as z from 'zod';
 import { CurrentPrincipal, RequirePermissions } from '../auth/decorators';
@@ -171,6 +173,32 @@ export class AttendanceController {
       const leaveMap = new Map(
         (await approvedLeaveDays(tx, ids, from, to)).map((l) => [key(l.userId, l.date), l]),
       );
+      const holidayRows = await tx
+        .select({ date: companyHolidays.date })
+        .from(companyHolidays)
+        .where(
+          and(
+            isNull(companyHolidays.deletedAt),
+            sql`${companyHolidays.date} between ${from}::date and ${to}::date`,
+          ),
+        );
+      const holidays = new Set(holidayRows.map((r) => String(r.date).slice(0, 10)));
+      const pendingLeave = ids.length
+        ? (
+            await tx.execute<{ user_id: string; from_date: string; to_date: string }>(sql`
+              select user_id, to_char(from_date, 'YYYY-MM-DD') as from_date,
+                     to_char(to_date, 'YYYY-MM-DD') as to_date
+              from leave_requests
+              where deleted_at is null and status = 'pending'
+                and user_id in (${sql.join(
+                  ids.map((i) => sql`${i}::uuid`),
+                  sql`, `,
+                )})
+                and from_date <= ${to}::date and to_date >= ${from}::date`)
+          ).rows
+        : [];
+      const onPendingLeave = (userId: string, dt: string) =>
+        pendingLeave.some((r) => r.user_id === userId && r.from_date <= dt && r.to_date >= dt);
       const byDay = new Map<string, typeof caps>();
       for (const c of caps) {
         const k = key(c.userId, localDate(c.capturedAt, s.timezone));
@@ -185,17 +213,27 @@ export class AttendanceController {
           const pout = c.find((x) => x.kind === 'punch_out');
           const wt = plan.get(key(u.id, dt));
           const lv = leaveMap.get(key(u.id, dt));
+          const holiday = holidays.has(dt) || wt?.kind === 'holiday';
+          const leave = !!lv || wt?.kind === 'leave' || onPendingLeave(u.id, dt);
           const status: AttendanceDay['status'] = pin
             ? pout || dt < today
               ? pout
                 ? 'present'
                 : 'incomplete'
               : 'incomplete'
-            : lv || wt?.kind === 'leave'
+            : leave
               ? 'leave'
-              : wt?.kind === 'holiday'
+              : holiday || (dt >= ABSENT_FROM && dt < today && isSunday(dt))
                 ? 'holiday'
-                : 'absent';
+                : isAbsentDay({
+                      date: dt,
+                      today,
+                      punchedIn: false,
+                      leave: false,
+                      holiday: false,
+                    }) || dt < ABSENT_FROM
+                  ? 'absent'
+                  : 'incomplete';
           all.push({
             userId: u.id,
             userName: u.name,

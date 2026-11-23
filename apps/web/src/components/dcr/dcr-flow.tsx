@@ -23,6 +23,7 @@ import { dateLabel, todayIST } from '@/components/attendance/format';
 import { dcrDateClosedText, dcrDateOpen } from '@/lib/dcr/date-rule';
 import Link from 'next/link';
 import { api, apiReady, toApiError, type ApiError } from '@/lib/api';
+import { useSession } from '@/lib/auth';
 import {
   BANDS,
   KIND_LABEL,
@@ -232,6 +233,25 @@ function Flow({
   const [unlockedUntil, setUnlockedUntil] = useState<string | null>(null);
   const [unlockReason, setUnlockReason] = useState('');
   const [unlockBusy, setUnlockBusy] = useState(false);
+  const [punchedIn, setPunchedIn] = useState<boolean | null>(null);
+  const session = useSession();
+  useEffect(() => {
+    const id = session?.user?.id;
+    if (!id) return;
+    let live = true;
+    void (async () => {
+      await apiReady();
+      const r = await api.GET('/v1/attendance', {
+        params: { query: { from: s.date, to: s.date, userId: id, limit: 5 } },
+      });
+      if (!live || !r.data) return;
+      setPunchedIn(!!r.data.items[0]?.punchIn);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [session?.user?.id, s.date]);
+  const canUnlock = !!dcr?.submittedAt || punchedIn === true;
   const [unlockPending, setUnlockPending] = useState(false);
   const onDaySubmittedRef = useRef(onDaySubmitted);
   useEffect(() => {
@@ -835,13 +855,17 @@ function Flow({
               </p>
               <p className="text-muted-foreground">
                 {dayLocked || dcr?.status === 'locked'
-                  ? 'The day is locked, so it is read-only. Request an unlock if something needs correcting.'
+                  ? canUnlock
+                    ? 'The day is locked, so it is read-only. Request an unlock if something needs correcting.'
+                    : punchedIn === false
+                      ? 'This day is absent. There is nothing to unlock.'
+                      : 'The day is locked, so it is read-only.'
                   : 'It is read-only now. Ask your manager if something needs correcting.'}
               </p>
               {expenseOutcome && <p data-testid="dcr-expense-outcome">{expenseOutcome}</p>}
             </div>
           </div>
-          {(dayLocked || dcr?.status === 'locked') && (
+          {(dayLocked || dcr?.status === 'locked') && canUnlock && (
             <div
               className="flex flex-col gap-2 border-t border-success/30 pt-3"
               data-testid="dcr-unlock"
