@@ -30,6 +30,34 @@ import {
 import { canWriteMasters } from '@/lib/roles';
 import { colors, layout, radius, shadows, spacing, touch } from '@/theme';
 
+const DOCTOR_LOCKS = 5;
+
+function lockLabel(kind: MasterKind, count: number) {
+  if (kind === 'doctors') {
+    const n = Math.min(count, DOCTOR_LOCKS);
+    return `${n} of ${DOCTOR_LOCKS} locations locked`;
+  }
+  return count > 0 ? 'Location locked' : 'Location not locked';
+}
+
+/** Doctors show five pins. A chemist or stockist shows the one pin. A green tick is a locked pin. */
+function LockMarks({ kind, count }: { kind: MasterKind; count: number }) {
+  const slots = kind === 'doctors' ? DOCTOR_LOCKS : 1;
+  const locked = Math.min(count, slots);
+  return (
+    <View style={styles.marks} accessibilityElementsHidden importantForAccessibility="no">
+      {Array.from({ length: slots }, (_, i) => (
+        <Icon
+          key={i}
+          name={i < locked ? 'check-circle' : 'circle-outline'}
+          size={14}
+          color={i < locked ? colors.success : colors.subtle}
+        />
+      ))}
+    </View>
+  );
+}
+
 const FILTER_LABEL = { territoryId: 'HQ', specialtyId: 'Specialty', categoryId: 'Category' };
 const ALL_LABEL = {
   territoryId: 'All HQs',
@@ -86,6 +114,11 @@ function MasterList({ kind }: { kind: MasterKind }) {
         ? [aripCode(r), name(r.specialtyId), town, name(r.territoryId), r.city]
         : [aripCode(r), town, name(r.territoryId), r.city, r.phone];
     return parts.filter(Boolean).join(' · ') || '—';
+  };
+
+  const lockCount = (r: MasterRow) => {
+    const n = (r as { activeLockCount?: unknown }).activeLockCount;
+    return typeof n === 'number' && n > 0 ? n : 0;
   };
 
   const tag = (r: MasterRow) => {
@@ -173,7 +206,13 @@ function MasterList({ kind }: { kind: MasterKind }) {
                 subtitle={subtitle(item)}
                 icon={FEATURES[kind].icon}
                 tone={FEATURES[kind].tone}
-                trailing={tag(item)}
+                trailing={
+                  <View style={styles.trail}>
+                    <LockMarks kind={kind} count={lockCount(item)} />
+                    {tag(item)}
+                  </View>
+                }
+                accessibilityLabel={`${item.name}. ${lockLabel(kind, lockCount(item))}`}
                 divider={index < rows.length - 1}
                 onPress={() =>
                   router.push({ pathname: '/masters/[kind]/[id]', params: { kind, id: item.id } })
@@ -258,6 +297,8 @@ const styles = StyleSheet.create({
   filterOn: { backgroundColor: colors.navy, borderColor: colors.navy },
   filterText: { color: colors.ink, flexShrink: 1 },
   filterTextOn: { color: colors.onNavy },
+  trail: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  marks: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   listContent: { paddingHorizontal: layout.gutter, paddingTop: spacing.md, flexGrow: 1 },
   item: { backgroundColor: colors.surface, overflow: 'hidden' },
   first: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg },

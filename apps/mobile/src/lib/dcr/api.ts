@@ -220,6 +220,8 @@ export type CustomerScope = { hqId: string; localIds: string[] };
 export type CustomerRow = {
   id: string;
   name: string;
+  code?: string | null;
+  specialtyId?: string | null;
   city?: string | null;
   territoryId?: string | null;
   localTerritoryId?: string | null;

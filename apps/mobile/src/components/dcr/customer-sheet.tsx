@@ -11,7 +11,7 @@ import { SkeletonSheetRows } from '@/components/skeleton';
 import { useCustomers, type CustomerRow, type CustomerScope } from '@/lib/dcr/api';
 import { thrownMessage } from '@/lib/dcr/errors';
 import { KIND_LABEL, type CallKind } from '@/lib/dcr/model';
-import { APPROVAL_LABEL } from '@/lib/masters';
+import { APPROVAL_LABEL, useLookups } from '@/lib/masters';
 import { colors, layout, radius, sizes, spacing, touch } from '@/theme';
 
 /** Same words as the website's picker (web components/pickers/pickers.tsx). */
@@ -42,6 +42,7 @@ export function CustomerSheet({
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const lookups = useLookups();
   const [search, setSearch] = useState('');
   const [q, setQ] = useState('');
   useEffect(() => {
@@ -132,6 +133,8 @@ export function CustomerSheet({
             const hint = rejected
               ? REJECTED
               : [
+                  item.code,
+                  kind === 'doctor' && item.specialtyId ? lookups.byId.get(item.specialtyId) : null,
                   item.city,
                   item.localTerritoryId ? names.get(item.localTerritoryId) : null,
                   item.territoryId ? names.get(item.territoryId) : null,
@@ -164,7 +167,7 @@ export function CustomerSheet({
                     {item.name}
                   </AppText>
                   {hint ? (
-                    <AppText variant="small" numberOfLines={1}>
+                    <AppText variant="small" numberOfLines={2}>
                       {hint}
                     </AppText>
                   ) : null}
