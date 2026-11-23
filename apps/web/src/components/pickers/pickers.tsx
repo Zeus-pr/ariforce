@@ -27,6 +27,8 @@ const ALL = '__all';
 type Row = {
   id: string;
   name: string;
+  code?: string | null;
+  specialtyId?: string | null;
   city?: string | null;
   territoryId?: string | null;
   approvalStatus?: string;
@@ -65,7 +67,15 @@ async function outletPage(
   const items = (r.data.items as Row[]).map((x): PickOption => ({
     id: x.id,
     name: x.name,
-    hint: [x.city, territoryName(x.territoryId)].filter(Boolean).join(' · ') || null,
+    hint:
+      [
+        x.code,
+        kind === 'doctor' ? territoryName(x.specialtyId) : null,
+        x.city,
+        territoryName(x.territoryId),
+      ]
+        .filter(Boolean)
+        .join(' · ') || null,
     badge:
       kind === 'doctor' && x.approvalStatus && x.approvalStatus !== 'approved'
         ? APPROVAL_LABEL[x.approvalStatus]

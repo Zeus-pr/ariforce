@@ -178,6 +178,41 @@ type Details = {
 /** What the day was: summary, meeting/office details, and the calls with names. */
 function WorkDone({ d }: { d: Dcr }) {
   const det = (d.details ?? null) as Details | null;
+  const workNames = useQuery({
+    queryKey: ['work-types', 'names'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      await apiReady();
+      const r = await api.GET('/v1/work-types', { params: { query: { limit: 100 } } });
+      if (!r.data) throw new Error(failureMessage(r, 'Could not load work types.'));
+      return new Map(r.data.items.map((w) => [w.id, w.name]));
+    },
+  });
+  const sections = d.sections?.length
+    ? d.sections
+    : [
+        {
+          workTypeId: d.workTypeId,
+          band: d.band,
+          territoryIds: d.territoryIds,
+          calls: d.calls,
+        },
+      ];
+  const summary = sections
+    .map((s) =>
+      dcrSummary(
+        {
+          ...d,
+          band: s.band,
+          territoryIds: s.territoryIds,
+          calls: s.calls,
+          callCount: s.calls.length,
+        },
+        workNames.data?.get(s.workTypeId),
+        new Map(),
+      ),
+    )
+    .join(' · ');
   const names = useQuery({
     queryKey: ['dcr-outlet-names', d.id],
     enabled: d.calls.length > 0,
@@ -218,7 +253,9 @@ function WorkDone({ d }: { d: Dcr }) {
     <section className="flex flex-col gap-2">
       <h2 className="text-sm font-medium">
         {d.details || !sorted.length
-          ? dcrSummary(d, undefined, new Map())
+          ? workNames.isPending
+            ? '…'
+            : summary
           : callsLabel(sorted.length)}
       </h2>
       {det && (det.title || det.taskType || facts.length > 0 || det.remarks) && (

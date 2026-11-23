@@ -12,6 +12,7 @@ import { Label } from '@ariforce/ui/components/label';
 import { Skeleton } from '@ariforce/ui/components/skeleton';
 import { cn } from '@ariforce/ui/lib/utils';
 import { api, apiReady } from '@/lib/api';
+import { useLookups } from '@/components/masters/lookups';
 import {
   BAND_LABEL,
   KIND_LABEL,
@@ -259,6 +260,8 @@ export function RouteFacts({ title, c, note }: { title: string; c: Candidate; no
 type OutletRow = {
   id: string;
   name: string;
+  code?: string | null;
+  specialtyId?: string | null;
   city?: string | null;
   territoryId?: string | null;
   localTerritoryId?: string | null;
@@ -288,6 +291,7 @@ function useCustomers(
   const [opts, setOpts] = useState<SelectOption[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const { byId } = useLookups();
   const narrow = kind !== 'stockist' && !wide;
   const key = scope.map((x) => `${x.hqId}:${narrow ? x.localIds.join('+') : ''}`).join(',');
   useEffect(() => {
@@ -339,10 +343,11 @@ function useCustomers(
           if (kind === 'doctor' && x.approvalStatus === 'rejected') continue;
           const where = x.localTerritoryId ? names.get(x.localTerritoryId) : null;
           const hq = x.territoryId ? names.get(x.territoryId) : null;
+          const specialty = kind === 'doctor' && x.specialtyId ? byId.get(x.specialtyId) : null;
           out.push({
             id: x.id,
             label: x.name,
-            hint: [x.city, where, hq].filter(Boolean).join(' · ') || null,
+            hint: [x.code, specialty, x.city, where, hq].filter(Boolean).join(' · ') || null,
             badge: kind === 'doctor' && x.approvalStatus === 'pending' ? 'Awaiting approval' : null,
             meta: x.territoryId ?? undefined,
           });
@@ -352,7 +357,7 @@ function useCustomers(
     return () => {
       live = false;
     };
-  }, [kind, key, q, tick, names]);
+  }, [kind, key, q, tick, names, byId]);
   return { opts, error, setQ, retry: () => setTick((t) => t + 1) };
 }
 
@@ -399,6 +404,7 @@ export function CallCard({
     .join(', ');
   const hqLabel = scope.map((x) => names.get(x.hqId) ?? 'your HQ').join(', ');
   const onQuery = useCallback((q: string) => setQ(q), [setQ]);
+  const checkedIn = !!call.checkInId;
   const noun = KIND_LABEL[call.kind];
   const labels = new Map(call.outletId ? [[call.outletId, call.outletName]] : []);
   const productOpts: Opt[] = products.map((p) => ({ id: p.id, name: p.label, pts: p.pts }));
@@ -424,7 +430,7 @@ export function CallCard({
           {noun} call{' '}
           <span className="font-normal text-muted-foreground tabular-nums">#{index + 1}</span>
         </h3>
-        {!readOnly && (
+        {!readOnly && !checkedIn && (
           <Button
             type="button"
             variant="ghost"
@@ -461,11 +467,11 @@ export function CallCard({
                 ? `No ${noun.toLowerCase()}s linked to ${scopeLabel}. Try all of ${hqLabel}.`
                 : `No ${noun.toLowerCase()}s found in the territories of the day.`
             }
-            disabled={readOnly}
+            disabled={readOnly || checkedIn}
             invalid={errors.some((e) => e.includes('choose'))}
             testId="dcr-call-customer"
           />
-          {narrowable && !readOnly && (
+          {narrowable && !readOnly && !checkedIn && (
             <p className="text-xs text-muted-foreground" data-testid="dcr-call-scope">
               {wide
                 ? `Showing all ${noun.toLowerCase()}s in ${hqLabel}. `
