@@ -144,7 +144,7 @@ export function CallEditor({
             {call.time ? `Visited ${formatHHmmLabel(call.time)}` : 'Time is recorded when saved'}
           </AppText>
         </View>
-        {!readOnly ? (
+        {!readOnly && !checkedIn ? (
           <Pressable
             onPress={onRemove}
             accessibilityRole="button"
@@ -159,7 +159,7 @@ export function CallEditor({
         label={label}
         value={call.outletName || undefined}
         placeholder={`Choose ${label.toLowerCase()}`}
-        onPress={readOnly ? undefined : () => setPick(true)}
+        onPress={readOnly || checkedIn ? undefined : () => setPick(true)}
         error={errors.find((e) => !isProd(e))}
       />
       {call.outletId ? (

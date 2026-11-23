@@ -105,6 +105,8 @@ export function leaveMessage(e: unknown): string {
       return 'This leave type cannot be taken as a half day.';
     case 'LEAVE_DCR_EXISTS':
       return `A DCR already exists on${list(d.dates) || ' one of these days'}.`;
+    case 'LEAVE_PUNCHED_IN':
+      return `You already punched in${list(d.dates) || ' on one of these days'}, so leave stays closed.`;
     case 'LEAVE_NOT_CANCELLABLE':
       return e.message || 'This leave can no longer be cancelled.';
     case 'REJECTION_REASON_REQUIRED':

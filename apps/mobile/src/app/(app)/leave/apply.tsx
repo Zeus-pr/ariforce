@@ -12,6 +12,7 @@ import { KeyboardAwareScrollView } from '@/components/scroll';
 import { SkeletonForm } from '@/components/skeleton';
 import { TextField } from '@/components/text-field';
 import { todayIST } from '@/lib/dcr/dates';
+import { fetchMeToday } from '@/lib/me-today';
 import {
   addDays,
   countDays,
@@ -56,6 +57,15 @@ export default function ApplyLeaveScreen() {
     if (!typeCode) return setError('Choose the leave type.');
     if (to < from) return setError('The end date is before the start date.');
     if (!days) return setError('Every selected date is a weekly off.');
+    if (from <= today && today <= to) {
+      try {
+        const me = await fetchMeToday();
+        if (me.punch.status === 'in' || me.punch.status === 'out')
+          return setError('You already punched in today, so leave stays closed.');
+      } catch {
+        // The server still refuses a leave that covers a punched-in day.
+      }
+    }
     setError(null);
     try {
       await apply.mutateAsync({
