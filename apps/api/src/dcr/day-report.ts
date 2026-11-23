@@ -52,6 +52,8 @@ export type Resolution<T> =
  * - no id, version (older clients that upserted per day): update the latest draft of the date.
  * - no id, no version: create a new draft.
  * A date that already has a submitted report takes no draft saves (409 DAY_ALREADY_SUBMITTED).
+ * A date whose report was rejected takes no new draft (409 DAY_HAS_REJECTED); the rejected
+ * report is updated when the save names its id.
  */
 export function resolveDraftTarget<T extends DayRow>(
   input: { id?: string; date: string; version?: number },
@@ -101,6 +103,17 @@ export function resolveDraftTarget<T extends DayRow>(
   }
   if (row && input.version && input.version !== row.version)
     return { action: 'error', status: 409, code: 'VERSION_CONFLICT', message: 'Stale version' };
+  if (!row) {
+    const rejected = rejectedNewestFirst(day)[0];
+    if (rejected)
+      return {
+        action: 'error',
+        status: 409,
+        code: 'DAY_HAS_REJECTED',
+        message: 'This day has a rejected report. Continue that report.',
+        details: { existingId: rejected.id },
+      };
+  }
   return row ? { action: 'update', row } : { action: 'create' };
 }
 

@@ -1445,13 +1445,13 @@ function buildDocument(): OpenApiDocument {
           summary:
             'Save a draft DCR: update one by id, or create a new one (several drafts per day)',
           description:
-            'With id: updates that draft (yours, still a draft, same date, version check). Without id: creates a new draft, except that a body with version but no id (older clients) updates the latest draft of the date. A day with a submitted report takes no new drafts.',
+            'With id: updates that draft or rejected report (yours, same date, version check). Without id: creates a new draft, except that a body with version but no id (older clients) updates the latest draft of the date. A day with a submitted report takes no new drafts. A day with a rejected report takes no new draft (409 DAY_HAS_REJECTED, details.existingId); save that id to continue it.',
           requestBody: json(DcrDraftPut),
           responses: {
             '200': { description: 'Saved draft', ...json(Dcr) },
             '404': err('Not found (no such draft of yours)'),
             '409': err(
-              'ALREADY_SUBMITTED (this DCR is not a draft), DAY_ALREADY_SUBMITTED (the date has a submitted report; details.existingId), DAY_LOCKED, VERSION_CONFLICT',
+              'ALREADY_SUBMITTED (this DCR is not a draft), DAY_ALREADY_SUBMITTED (the date has a submitted report; details.existingId), DAY_HAS_REJECTED (the date has a rejected report; details.existingId; continue that id), DAY_LOCKED, VERSION_CONFLICT',
             ),
             '422': err(
               'DCR_DATE_NOT_TODAY (only today in IST; a past day only while unlocked; details.date/today), VALIDATION (details.field), SFC_MISMATCH (details.hqTerritoryIds / sfcRouteIds), MEETING_TYPE_INVALID (meeting details.title not Cycle Meeting / Review Meeting; details.allowed), END_TIME_NOT_AFTER_START (end <= start, or endTime without startTime; details.startTime/endTime), DURATION_TOO_LONG (end - start > 720 min), DCR_EXPENSE_CATEGORY_INVALID (details.index, details.allowed)',
