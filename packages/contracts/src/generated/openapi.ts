@@ -11743,6 +11743,8 @@ export interface operations {
         specialtyId?: string;
         categoryId?: string;
         approvalStatus?: 'pending' | 'approved' | 'rejected';
+        /** @description true = at least one active GPS pin. false = none yet. */
+        locked?: 'true' | 'false';
         /** @description Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page. */
         ids?: string;
       };
@@ -12163,6 +12165,8 @@ export interface operations {
         territoryId?: string;
         /** @description Only rows linked to this territory (level `territory`, exact match), or `none` for rows not linked to any territory */
         localTerritoryId?: string | 'none';
+        /** @description true = at least one active GPS pin. false = none yet. */
+        locked?: 'true' | 'false';
         /** @description Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page. */
         ids?: string;
       };
@@ -12521,6 +12525,8 @@ export interface operations {
         includeTotal?: 'true' | 'false';
         /** @description Only rows in this territory or any descendant (within the caller scope) */
         territoryId?: string;
+        /** @description true = at least one active GPS pin. false = none yet. */
+        locked?: 'true' | 'false';
         /** @description Batch fetch: comma-separated ids (max 100). Only rows the caller can read are returned; others are absent. Pass limit=100 to get all in one page. */
         ids?: string;
       };

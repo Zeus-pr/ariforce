@@ -209,21 +209,27 @@ const batchIds = z
   });
 /** Shared `ids=` batch param (1..100 comma-separated UUIDs). */
 export const BatchIds = batchIds;
+const lockedFilter = z.enum(['true', 'false']).optional().meta({
+  description: 'true = at least one active GPS pin. false = none yet.',
+});
 export const DoctorListQuery = listQuery(['name', 'city', 'updatedAt', 'createdAt'] as const, {
   territoryId: territoryFilter,
   localTerritoryId: localTerritoryFilter,
   specialtyId: Id.optional(),
   categoryId: Id.optional(),
   approvalStatus: DoctorApprovalStatus.optional(),
+  locked: lockedFilter,
   ids: batchIds,
 });
 export const OutletListQuery = listQuery(['name', 'city', 'updatedAt', 'createdAt'] as const, {
   territoryId: territoryFilter,
+  locked: lockedFilter,
   ids: batchIds,
 });
 export const ChemistListQuery = listQuery(['name', 'city', 'updatedAt', 'createdAt'] as const, {
   territoryId: territoryFilter,
   localTerritoryId: localTerritoryFilter,
+  locked: lockedFilter,
   ids: batchIds,
 });
 export const CodeNameListQuery = listQuery(['code', 'name', 'updatedAt'] as const, {});
