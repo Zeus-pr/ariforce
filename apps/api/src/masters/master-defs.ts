@@ -116,6 +116,15 @@ const localTerritory = (col: AnyPgColumn, v: unknown) =>
       ? isNull(col)
       : eq(col, String(v));
 
+/** Active GPS pin on this outlet, or the absence of one. */
+const lockFilter = (idCol: AnyPgColumn, kind: string, locked: unknown) => {
+  const has = sql`exists (select 1 from outlet_locations l where l.outlet_kind = ${kind} and l.outlet_id = ${idCol} and l.active and l.deleted_at is null)`;
+  if (locked === 'true') return has;
+  if (locked === 'false')
+    return sql`not exists (select 1 from outlet_locations l where l.outlet_kind = ${kind} and l.outlet_id = ${idCol} and l.active and l.deleted_at is null)`;
+  return undefined;
+};
+
 /** Subtree of `id` (or `id` itself) by territory path. */
 export const inSubtree = (col: AnyPgColumn, id: string) =>
   exists(
@@ -160,6 +169,7 @@ const outlet = (
     q.territoryId ? inSubtree(table.territoryId, String(q.territoryId)) : undefined,
     linksTerritory ? localTerritory(table.localTerritoryId, q.localTerritoryId) : undefined,
     q.ids ? inArray(table.id, String(q.ids).toLowerCase().split(',')) : undefined,
+    lockFilter(table.id, entity, q.locked),
   ],
   fromRow: withLocation,
   toRow: locationToRow,
@@ -201,6 +211,7 @@ export const MASTERS: Record<string, MasterDef> = {
       q.approvalStatus
         ? eq(doctors.approvalStatus, q.approvalStatus as 'pending' | 'approved' | 'rejected')
         : undefined,
+      lockFilter(doctors.id, 'doctor', q.locked),
     ],
     fromRow: withLocation,
     toRow: locationToRow,
