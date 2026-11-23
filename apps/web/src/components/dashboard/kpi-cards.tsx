@@ -15,10 +15,14 @@ export function KpiCards({
   metrics,
   error,
   loading,
+  compare,
+  compareLabel,
 }: {
   metrics: Metric[];
   error: string | null;
   loading: boolean;
+  compare?: Metric[] | null;
+  compareLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   if (error)
@@ -37,6 +41,12 @@ export function KpiCards({
           const meta = KPI_META[m.kpi!];
           const ready = 'unit' in m;
           const met = ready && m.target != null && m.value != null ? m.value >= m.target : null;
+          const earlier = compare?.find((item) => item.kpi === m.kpi);
+          const delta =
+            ready && earlier?.value != null && m.value != null ? m.value - earlier.value : null;
+          const flat = delta != null && Math.abs(delta) < (m.unit === 'inr' ? 0.5 : 0.05);
+          const better =
+            delta != null && !flat && (meta.higherIsBetter === false ? delta < 0 : delta > 0);
           return (
             <li
               key={m.kpi}
@@ -92,7 +102,19 @@ export function KpiCards({
                   />
                 </span>
               )}
-              {ready && (
+              {ready && delta != null && compareLabel && (
+                <p
+                  className={cn(
+                    'mt-1 text-xs tabular-nums',
+                    flat ? 'text-muted-foreground' : better ? 'text-success' : 'text-destructive',
+                  )}
+                >
+                  {flat
+                    ? `0 vs ${compareLabel}`
+                    : `${delta > 0 ? '+' : '−'}${formatKpi(Math.abs(delta), m.unit!)} vs ${compareLabel}`}
+                </p>
+              )}
+              {ready && delta == null && (
                 <p className="mt-1 text-xs">
                   {m.target == null ? (
                     <span className="text-muted-foreground">No target set</span>
