@@ -9,8 +9,10 @@ average, coverage, frequency compliance, missed doctors, hierarchy-scoped rollup
 - **Period**: a calendar month (`month=YYYY-MM`) or a date range (`from`/`to`, inclusive, IST).
   Month is the default grain; ranges are summed from day rows.
 - **Time zone**: all dates are Asia/Kolkata (IST). A DCR is "on time" if submitted by end of D+1 IST.
-- **Field day**: a DCR whose work type has `counts_as_field_day = true`. Leave, holiday and non-field
-  days (meeting, transit, admin) are excluded from call denominators.
+- **Field day**: every plan on a submitted day counts. A day of only field work weighs 1, whether
+  it has one plan or two. A day that mixes field work with camp or other non-field work weighs 0.5.
+  A day with no field work weighs 0 and stays out of the call-average denominator. Doctor and chemist
+  calls on a weighed day all count. Five doctors on a field half is 5 ÷ 0.5 = 10.
 - **MSL (master/must-see list)**: approved, non-deleted doctors in the subtree of the territories
   assigned to the user (`kpi_user_doctor_list`). Required visits per month =
   `doctor.visits_per_cycle_override` ?? `doctor_category.visits_per_cycle` ?? 1.
@@ -43,7 +45,7 @@ list and again on a BM's list is one doctor. Those three are still summed across
 
 | #   | KPI                                      | Formula         | Numerator                                                       | Denominator                                | Period      | View                                | Edge cases                                                                                      |
 | --- | ---------------------------------------- | --------------- | --------------------------------------------------------------- | ------------------------------------------ | ----------- | ----------------------------------- | ----------------------------------------------------------------------------------------------- |
-| 1   | Call average (doctor)                    | N / D           | doctor calls on field days                                      | field days                                 | month/range | `kpi_user_month.call_average`       | 0 field days → null, not 0; chemist calls reported separately                                   |
+| 1   | Call average (doctor)                    | N / D           | doctor calls on days with field weight above 0                  | sum of field-day weights                   | month/range | `kpi_user_month.call_average`       | 0 weight → null, not 0; a mixed day weighs 0.5; chemist calls use the same weight               |
 | 2   | Chemist call average                     | N / D           | chemist calls on field days                                     | field days                                 | month       | `kpi_user_month`                    | as above                                                                                        |
 | 3   | Coverage / reach %                       | 100·N / D       | MSL doctors visited ≥ 1 time                                    | MSL size                                   | month       | `coverage_pct`                      | doctor moved territory mid-month counts in the list at query time; MSL 0 → null                 |
 | 4   | Frequency compliance %                   | 100·N / D       | MSL doctors with visits ≥ required visits                       | MSL size                                   | month       | `frequency_compliance_pct`          | required = 0 counts as met; extra visits don't compensate other doctors                         |

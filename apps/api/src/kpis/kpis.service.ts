@@ -370,9 +370,9 @@ export class KpisService {
     const [data] = await rows<Record<string, string | null>>(
       tx,
       sql`${here}
-            select count(*) filter (where d.field_day) as field_days,
-                   coalesce(sum(d.doctor_calls) filter (where d.field_day), 0) as doctor_calls,
-                   coalesce(sum(d.chemist_calls) filter (where d.field_day), 0) as chemist_calls,
+            select coalesce(sum(d.field_weight), 0) as field_days,
+                   coalesce(sum(d.doctor_calls) filter (where d.field_weight > 0), 0) as doctor_calls,
+                   coalesce(sum(d.chemist_calls) filter (where d.field_weight > 0), 0) as chemist_calls,
                    count(*) filter (where d.dcr_submitted) as submitted,
                    count(*) filter (where d.dcr_on_time) as on_time
               from kpi_user_day d
