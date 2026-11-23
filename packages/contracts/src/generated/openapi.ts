@@ -17963,7 +17963,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
-      /** @description LEAVE_OVERLAP, LEAVE_DCR_EXISTS */
+      /** @description LEAVE_OVERLAP, LEAVE_DCR_EXISTS, LEAVE_PUNCHED_IN */
       409: {
         headers: {
           [name: string]: unknown;

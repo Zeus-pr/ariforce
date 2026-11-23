@@ -30,7 +30,20 @@ import {
   workTypes,
   type Tx,
 } from '@ariforce/db';
-import { and, asc, desc, eq, inArray, isNull, lte, gte, ne, notInArray, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  gte,
+  ne,
+  notInArray,
+  sql,
+} from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
@@ -1120,6 +1133,19 @@ export class DcrFlowService {
         throw err(409, 'DAY_LOCKED', 'This day is locked; request a correction', {
           lockAt: li.lockAt.toISOString(),
         });
+      const [visited] = await tx
+        .select({ id: dcrCalls.id })
+        .from(dcrCalls)
+        .where(
+          and(eq(dcrCalls.dcrId, id), isNull(dcrCalls.deletedAt), isNotNull(dcrCalls.geoCaptureId)),
+        )
+        .limit(1);
+      if (visited)
+        throw err(
+          409,
+          'CALL_CHECKED_IN',
+          'A checked-in visit is on this report, so it can’t be deleted',
+        );
       const now = new Date();
       const calls = await tx
         .update(dcrCalls)

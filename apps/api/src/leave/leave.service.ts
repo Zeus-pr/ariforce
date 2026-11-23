@@ -681,6 +681,21 @@ export class LeaveService implements OnModuleInit {
         throw err(409, 'LEAVE_OVERLAP', 'You already have leave on some of these dates', {
           requestIds: clash.map((c) => c.id),
         });
+      const punched = await tx.execute<{ date: string }>(sql`
+        select distinct to_char((g.captured_at at time zone ${tz})::date, 'YYYY-MM-DD') as date
+        from geo_captures g
+        where g.user_id = ${p.userId}
+          and g.kind = 'punch_in'
+          and (g.captured_at at time zone ${tz})::date between ${b.fromDate}::date and ${b.toDate}::date
+        order by 1`);
+      const punchHit = punched.rows.map((r) => r.date).filter((d) => dates.includes(d));
+      if (punchHit.length)
+        throw err(
+          409,
+          'LEAVE_PUNCHED_IN',
+          'You already punched in on these dates, so leave stays closed',
+          { dates: punchHit },
+        );
       if (!b.half) {
         const worked = await tx.execute<{ date: string }>(sql`
           select to_char(d.date, 'YYYY-MM-DD') as date from dcrs d join work_types w on w.id = d.work_type_id

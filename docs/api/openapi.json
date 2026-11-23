@@ -12536,7 +12536,7 @@
             }
           },
           "409": {
-            "description": "LEAVE_OVERLAP, LEAVE_DCR_EXISTS",
+            "description": "LEAVE_OVERLAP, LEAVE_DCR_EXISTS, LEAVE_PUNCHED_IN",
             "content": {
               "application/json": {
                 "schema": {

@@ -843,6 +843,7 @@ export class DcrService {
         and(
           eq(dcrCalls.dcrId, dcrId),
           isNull(dcrCalls.deletedAt),
+          isNull(dcrCalls.geoCaptureId),
           keep.length ? notInArray(dcrCalls.id, keep) : sql`true`,
         ),
       );
@@ -851,6 +852,8 @@ export class DcrService {
       ? await tx
           .select({
             id: dcrCalls.id,
+            outletKind: dcrCalls.outletKind,
+            outletId: dcrCalls.outletId,
             presentationOpenedAt: dcrCalls.presentationOpenedAt,
             presentationLocationId: dcrCalls.presentationLocationId,
             presentationDistanceM: dcrCalls.presentationDistanceM,
@@ -1026,9 +1029,11 @@ export class DcrService {
         presentationAccuracyM = cap.accuracyM;
       }
 
+      const checkedIn = !!was?.geoCaptureId;
+      if (checkedIn && was) geoCaptureId = was.geoCaptureId;
       const v = {
-        outletKind: c.outletKind,
-        outletId: c.outletId,
+        outletKind: checkedIn && was ? was.outletKind : c.outletKind,
+        outletId: checkedIn && was ? was.outletId : c.outletId,
         geoCaptureId,
         jointWorkUserId: c.jointWorkUserIds[0] ?? null,
         jointWorkUserIds: c.jointWorkUserIds,

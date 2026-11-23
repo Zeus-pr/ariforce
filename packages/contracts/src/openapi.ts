@@ -1930,7 +1930,7 @@ function buildDocument(): OpenApiDocument {
           requestBody: json(LeaveApply),
           responses: {
             '201': { description: 'Pending request (director: approved)', ...json(LeaveRequest) },
-            '409': err('LEAVE_OVERLAP, LEAVE_DCR_EXISTS'),
+            '409': err('LEAVE_OVERLAP, LEAVE_DCR_EXISTS, LEAVE_PUNCHED_IN'),
             '422': err(
               'LEAVE_TYPE_UNKNOWN, LEAVE_HALF_DAY_NOT_ALLOWED, LEAVE_SPANS_YEARS, LEAVE_BACKDATE_WINDOW, LEAVE_TOO_FAR_AHEAD, LEAVE_NO_WORKING_DAYS, LEAVE_INSUFFICIENT_BALANCE, VALIDATION',
             ),
