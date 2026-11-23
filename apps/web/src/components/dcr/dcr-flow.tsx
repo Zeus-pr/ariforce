@@ -744,6 +744,13 @@ function Flow({
       setDaySubmitted({ id: existingId });
       onDaySubmitted?.(s.date, existingId);
     }
+    if (e.code === 'DAY_HAS_REJECTED') {
+      const existingId = (e.details as { existingId?: string | null } | undefined)?.existingId;
+      if (existingId && onOpenReport) {
+        onOpenReport(existingId, s.date);
+        return;
+      }
+    }
     if (status === 404 || e.code === 'NOT_FOUND') {
       setGone(true);
       return void toast.error(dcrErrorMessage({ ...e, code: 'NOT_FOUND' }), { duration: 10000 });
