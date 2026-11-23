@@ -83,6 +83,36 @@ export function SalesTrendChart({
 
 const rupeeLabel = (value: unknown) => (Number(value) ? inr(Number(value)) : '');
 
+/** Amounts sit on a slant so neighbouring bars do not cover each other's figures. */
+function SlantedAmount({
+  x,
+  y,
+  width,
+  value,
+}: {
+  x?: string | number;
+  y?: string | number;
+  width?: string | number;
+  value?: unknown;
+}) {
+  const text = rupeeLabel(value);
+  if (!text || x == null || y == null) return null;
+  const left = Number(x) + Number(width ?? 0) / 2;
+  const top = Number(y) - 4;
+  return (
+    <text
+      x={left}
+      y={top}
+      textAnchor="start"
+      fontSize={10}
+      className="fill-foreground"
+      transform={`rotate(-58 ${left} ${top})`}
+    >
+      {text}
+    </text>
+  );
+}
+
 export function YearCompareChart({
   years,
   label = 'This year and last year',
@@ -219,8 +249,8 @@ export function ProductColumnChart({
   return (
     <div className="overflow-x-auto">
       <div style={{ width: places.length > 10 ? wide : '100%', minWidth: '100%' }}>
-        <ChartFrame height={300} label={label}>
-          <BarChart data={places} margin={{ top: 20, right: 8, left: 0, bottom: 4 }} barGap={2}>
+        <ChartFrame height={320} label={label}>
+          <BarChart data={places} margin={{ top: 72, right: 28, left: 0, bottom: 4 }} barGap={2}>
             <CartesianGrid vertical={false} stroke={CHART.grid} />
             <XAxis
               dataKey="name"
@@ -241,12 +271,7 @@ export function ProductColumnChart({
               radius={[3, 3, 0, 0]}
               isAnimationActive={!reduced}
             >
-              <LabelList
-                dataKey="primary"
-                position="top"
-                formatter={rupeeLabel}
-                className="fill-foreground text-[10px]"
-              />
+              <LabelList dataKey="primary" position="top" content={SlantedAmount} />
             </Bar>
             <Bar
               dataKey="secondary"
@@ -255,12 +280,7 @@ export function ProductColumnChart({
               radius={[3, 3, 0, 0]}
               isAnimationActive={!reduced}
             >
-              <LabelList
-                dataKey="secondary"
-                position="top"
-                formatter={rupeeLabel}
-                className="fill-foreground text-[10px]"
-              />
+              <LabelList dataKey="secondary" position="top" content={SlantedAmount} />
             </Bar>
           </BarChart>
         </ChartFrame>
