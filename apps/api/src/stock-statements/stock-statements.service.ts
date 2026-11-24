@@ -27,13 +27,17 @@ import {
   type Tx,
 } from '@ariforce/db';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
-import { v7 as uuidv7 } from 'uuid';
+import { v5 as uuidv5, v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { AuditService } from '../common/audit.service';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
 import { companySettings, localDate } from '../field/field.util';
 import { excelContentMatches } from './excel-sniff';
+import { salesSeat } from './sales-seat';
+
+/** Stable id for an empty headquarters, so the same vacant seat matches across months. */
+const VACANT_SEAT = '6ba7b811-9dad-11d1-80b4-00c04fd430c8';
 import { StorageService } from '../files/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ApprovalsService } from '../plans/approvals.service';
@@ -373,27 +377,13 @@ export class StockStatementsService implements OnModuleInit {
           userId: users.id,
           name: users.name,
           path: territories.path,
-          territory: territories.name,
+          status: users.status,
+          hrStatus: users.hrStatus,
         })
         .from(userTerritories)
         .innerJoin(users, eq(users.id, userTerritories.userId))
         .innerJoin(territories, eq(territories.id, userTerritories.territoryId))
         .where(and(isNull(users.deletedAt), isNull(territories.deletedAt), scope, under));
-      const depth = (path: string) => path.split('.').length;
-      const nearest = (path: string) => {
-        let best = 0;
-        const hits: typeof holders = [];
-        for (const holder of holders) {
-          if (path !== holder.path && !path.startsWith(`${holder.path}.`)) continue;
-          const d = depth(holder.path);
-          if (d > best) {
-            best = d;
-            hits.length = 0;
-            hits.push(holder);
-          } else if (d === best) hits.push(holder);
-        }
-        return hits;
-      };
       const productsOut = new Map<
         string,
         {
@@ -444,8 +434,11 @@ export class StockStatementsService implements OnModuleInit {
         const name = row.lineName || row.catalogName || 'Product';
         const brand = productBrand({ name, brand: row.catalogBrand });
         const month = String(row.month).slice(0, 7);
-        const owners = nearest(row.hqPath);
         const headquarters = hqName(row.hqPath) || row.hq;
+        const seat = salesSeat(holders, row.hqPath);
+        const owners = seat.vacant
+          ? [{ userId: uuidv5(seat.path, VACANT_SEAT), name: 'Vacant' }]
+          : seat.people;
         lines.push({
           month,
           headquarters,

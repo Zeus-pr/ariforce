@@ -13,6 +13,7 @@ import type * as z from 'zod';
 import type { Principal } from '../auth/principal';
 import { TenantService } from '../common/tenant.service';
 import { companySettings, localDate } from '../field/field.util';
+import { holdsSeat } from '../stock-statements/sales-seat';
 
 type Q = z.output<typeof KpiQuery>;
 type Metric = KpiReport['rows'][number]['metrics'][number];
@@ -103,9 +104,9 @@ export class KpisService {
   }
 
   private async teamUsers(tx: Tx, p: Principal) {
-    return rows<{ id: string; name: string }>(
+    return rows<{ id: string; name: string; status: string; hr_status: string | null }>(
       tx,
-      sql`select id, name from users where deleted_at is null
+      sql`select id, name, status::text as status, hr_status from users where deleted_at is null
           ${p.teamUserIds ? sql`and id = any(${arr(p.teamUserIds)})` : sql``} order by name`,
     );
   }
@@ -215,7 +216,7 @@ export class KpisService {
         return people.map((t) => ({
           userId: t.id,
           territoryId: null,
-          label: t.name,
+          label: holdsSeat({ status: t.status, hrStatus: t.hr_status }) ? t.name : 'Vacant',
           users: [t.id],
           paths: byUser.get(t.id) ?? [],
         }));
