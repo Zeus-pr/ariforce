@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { TreeFlow } from '@/components/flow/tree-flow';
 import { listPeople, type Person } from '@/lib/people/adapter';
+import { seatIsVacant } from '@/lib/people/seat';
 import { roleLabel } from '@/lib/roles';
 
 const ROLE_COLOR: Record<string, string> = {
@@ -48,14 +49,16 @@ export function OrgChart() {
   const ids = new Set((people ?? []).map((p) => p.id));
   const items = (people ?? []).map((person) => {
     const role = person.primaryRole ?? person.roles[0] ?? '';
+    const vacant = seatIsVacant(person);
+    const place = person.territories?.[0]?.name;
     return {
       id: person.id,
       parentId: person.managerId && ids.has(person.managerId) ? person.managerId : null,
-      title: person.name,
-      subtitle: [person.employeeCode, person.designation, roleLabel(role)]
-        .filter(Boolean)
-        .join(' · '),
-      color: ROLE_COLOR[role] ?? '#64748b',
+      title: vacant ? 'Vacant' : person.name,
+      subtitle: vacant
+        ? [place, roleLabel(role)].filter(Boolean).join(' · ')
+        : [person.employeeCode, person.designation, roleLabel(role)].filter(Boolean).join(' · '),
+      color: vacant ? '#94a3b8' : (ROLE_COLOR[role] ?? '#64748b'),
     };
   });
 
