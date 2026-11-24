@@ -7,6 +7,7 @@ import { Button } from '@ariforce/ui/components/button';
 import { NumberTicker } from '@ariforce/ui/components/number-ticker';
 import NumberFlow from '@number-flow/react';
 import { cn } from '@ariforce/ui/lib/utils';
+import { LineSparkline } from '@/components/charts/sparkline';
 import { formatKpi, HEADLINE, KPI_META } from './kpi-meta';
 
 type Metric = KpiReport['rows'][number]['metrics'][number];
@@ -17,12 +18,14 @@ export function KpiCards({
   loading,
   compare,
   compareLabel,
+  sparklines,
 }: {
   metrics: Metric[];
   error: string | null;
   loading: boolean;
   compare?: Metric[] | null;
   compareLabel?: string;
+  sparklines?: Record<string, { values: number[]; color: string }>;
 }) {
   const [open, setOpen] = useState(false);
   if (error)
@@ -80,6 +83,15 @@ export function KpiCards({
                   />
                 )}
               </div>
+              {ready && sparklines?.[m.kpi!] && sparklines[m.kpi!]!.values.length > 1 && (
+                <LineSparkline
+                  data={sparklines[m.kpi!]!.values.map((value) => ({ value }))}
+                  dataKey="value"
+                  color={sparklines[m.kpi!]!.color}
+                  height={28}
+                  aria-label={`${meta.label} over six months`}
+                />
+              )}
               {ready && m.value != null && (
                 <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-muted">
                   <span

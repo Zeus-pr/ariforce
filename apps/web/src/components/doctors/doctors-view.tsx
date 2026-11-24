@@ -54,11 +54,28 @@ import {
 } from './doctor-data';
 import { useProductNames } from './products';
 
+const chartLoading = () => (
+  <div className="h-[170px] animate-pulse rounded-md bg-muted/40" aria-busy="true" />
+);
 const VisitsChart = dynamic(() => import('./doctor-charts').then((m) => m.VisitsChart), {
   ssr: false,
-  loading: () => (
-    <div className="h-[170px] animate-pulse rounded-md bg-muted/40" aria-busy="true" />
-  ),
+  loading: chartLoading,
+});
+const VisitGauge = dynamic(() => import('./doctor-charts').then((m) => m.VisitGauge), {
+  ssr: false,
+  loading: chartLoading,
+});
+const VisitHeatmap = dynamic(() => import('./doctor-charts').then((m) => m.VisitHeatmap), {
+  ssr: false,
+  loading: chartLoading,
+});
+const VisitFunnel = dynamic(() => import('./doctor-charts').then((m) => m.VisitFunnel), {
+  ssr: false,
+  loading: chartLoading,
+});
+const OrderScatter = dynamic(() => import('./doctor-charts').then((m) => m.OrderScatter), {
+  ssr: false,
+  loading: chartLoading,
 });
 
 function dayLabel(iso: string) {
@@ -547,6 +564,58 @@ function Doctor360({ id }: { id: string }) {
               <VisitsChart monthly={monthly} />
             </div>
           </Card>
+          {target > 0 && (
+            <Card className="gap-0 py-0 shadow-xs">
+              <CardHeader className="px-4 pt-4 pb-0">
+                <CardTitle className="text-sm">This month against the category</CardTitle>
+              </CardHeader>
+              <div className="px-2 pb-2">
+                <VisitGauge visits={thisMonthVisits.length} target={target} />
+              </div>
+            </Card>
+          )}
+          {visits.length > 0 && (
+            <Card className="gap-0 py-0 shadow-xs">
+              <CardHeader className="px-4 pt-4 pb-0">
+                <CardTitle className="text-sm">Calls that became orders</CardTitle>
+              </CardHeader>
+              <div className="px-2 pb-2">
+                <VisitFunnel
+                  visits={visits.length}
+                  detailed={visits.filter((visit) => visit.products.length > 0).length}
+                  orders={visits.filter((visit) => visit.pobValue).length}
+                />
+              </div>
+            </Card>
+          )}
+          {visits.filter((visit) => visit.pobValue).length > 1 && (
+            <Card className="gap-0 py-0 shadow-xs">
+              <CardHeader className="px-4 pt-4 pb-0">
+                <CardTitle className="text-sm">Order value</CardTitle>
+              </CardHeader>
+              <div className="px-2 pb-2">
+                <OrderScatter
+                  points={visits.flatMap((visit) =>
+                    visit.pobValue ? [{ date: visit.date, pob: visit.pobValue }] : [],
+                  )}
+                />
+              </div>
+            </Card>
+          )}
+          {visits.length > 0 && (
+            <Card className="gap-0 py-0 shadow-xs">
+              <CardHeader className="px-4 pt-4 pb-2">
+                <CardTitle className="text-sm">Visit days</CardTitle>
+              </CardHeader>
+              <div className="px-4 pb-4">
+                <VisitHeatmap
+                  dates={visits.map((visit) => visit.date)}
+                  from={new Date(`${addDays(todayYmd(), -HISTORY_DAYS)}T12:00:00`)}
+                  to={new Date(`${todayYmd()}T12:00:00`)}
+                />
+              </div>
+            </Card>
+          )}
           <Card className="gap-0 py-0 shadow-xs">
             <CardHeader className="border-b px-4 py-4">
               <CardTitle className="text-base">Products detailed</CardTitle>

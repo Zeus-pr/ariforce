@@ -14,6 +14,7 @@ import { PlaceDesk } from './place-desk';
 import { SalesSkeleton } from './sales-skeleton';
 import { SalesManage } from './sales-manage';
 import { breakdownFor, pick, usePerf, val } from './use-perf';
+import { SalesGauges } from './sales-charts';
 import { salesTarget, salesCols, SALES_KPIS } from './sales-kpis';
 
 function SetTargetsButton({ onChanged }: { onChanged: () => void }) {
@@ -85,6 +86,7 @@ export function SalesView() {
   const first = by === 'byTerritory' ? 'Zone' : by === 'byUser' ? 'Team member' : 'You';
   const trend = (perf?.trend ?? []).map((t) => ({
     name: monthLabel(t.month).slice(0, 3),
+    month: t.month,
     primary: val(t.row, 'primary_sales_value'),
     secondary: val(t.row, 'secondary_sales_value'),
     target: salesTarget(t.row, 'primary'),
@@ -104,6 +106,22 @@ export function SalesView() {
           .filter((m) => !!m)}
         error={perf?.error ?? null}
         loading={!perf}
+        sparklines={{
+          primary_sales_value: {
+            values: trend.map((point) => point.primary ?? 0),
+            color: 'var(--chart-1)',
+          },
+          secondary_sales_value: {
+            values: trend.map((point) => point.secondary ?? 0),
+            color: 'var(--chart-7)',
+          },
+        }}
+      />
+      <SalesGauges
+        primary={val(perf?.head, 'primary_sales_value') ?? 0}
+        primaryTarget={salesTarget(perf?.head, 'primary') ?? 0}
+        secondary={val(perf?.head, 'secondary_sales_value') ?? 0}
+        secondaryTarget={salesTarget(perf?.head, 'secondary') ?? 0}
       />
       <ChartCard title="Sales against target, six months">
         <SalesTrendChart trend={trend} />

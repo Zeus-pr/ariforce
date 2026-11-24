@@ -13,7 +13,13 @@ import { getTerritories } from '@/lib/query';
 import NumberFlow from '@number-flow/react';
 import { motion } from 'motion/react';
 import { SegmentedControl } from '@/components/ui/segmented-control';
-import { LiquidColumns, SalesTrendChart, YearCompareChart, type LiquidItem } from './sales-charts';
+import {
+  LiquidColumns,
+  SalesGauges,
+  SalesTrendChart,
+  YearCompareChart,
+  type LiquidItem,
+} from './sales-charts';
 import { SalesChartsSkeleton, SalesSkeleton } from './sales-skeleton';
 import { MonthSwitch, inr, useMonth } from './perf-ui';
 
@@ -96,15 +102,23 @@ function growth(current: number, prior = 0) {
   return prior > 0 ? Math.round(((current - prior) / prior) * 100) : null;
 }
 
+function named<T extends { name: string }>(items: T[], query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return items;
+  return items.filter((item) => item.name.toLowerCase().includes(q));
+}
+
 function ChartBox({
   title,
   fileName,
   items,
+  search,
   children,
 }: {
   title: string;
   fileName: string;
   items: LiquidItem[];
+  search?: { label: string; value: string; onValueChange: (value: string) => void };
   children: ReactNode;
 }) {
   const columns: ExportCol[] = [
@@ -131,29 +145,41 @@ function ChartBox({
   ]);
   return (
     <section className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-base font-semibold">{title}</h2>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={!rows.length}
-          onClick={() =>
-            void exportXlsx({
-              title,
-              meta: [
-                'Achievement is purchase value for primary, and secondary minus FRS. Growth compares the same months last year.',
-              ],
-              fileName,
-              columns,
-              rows,
-            })
-          }
-        >
-          Download
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {search && (
+            <Input
+              type="search"
+              value={search.value}
+              aria-label={search.label}
+              placeholder={search.label}
+              onChange={(event) => search.onValueChange(event.target.value)}
+              className="h-8 w-52"
+            />
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!rows.length}
+            onClick={() =>
+              void exportXlsx({
+                title,
+                meta: [
+                  'Achievement is purchase value for primary, and secondary minus FRS. Growth compares the same months last year.',
+                ],
+                fileName,
+                columns,
+                rows,
+              })
+            }
+          >
+            Download
+          </Button>
+        </div>
       </div>
-      {children}
+      {items.length > 0 ? children : <p className="text-sm text-muted-foreground">No match.</p>}
     </section>
   );
 }
@@ -299,6 +325,16 @@ export function PlaceDesk({
   const [places, setPlaces] = useState<Place[] | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [graph, setGraph] = useState<
+    {
+      name: string;
+      month: string;
+      primary: number;
+      secondary: number;
+      target: number;
+      secondaryTarget: number;
+    }[]
+  >([]);
   const [trend, setTrend] = useState<
     {
       name: string;
@@ -326,6 +362,8 @@ export function PlaceDesk({
     { territoryId: string; name: string; primary: number; secondary: number }[]
   >([]);
   const [hqBars, setHqBars] = useState<HqBar[]>([]);
+  const [hqQuery, setHqQuery] = useState('');
+  const [brandQuery, setBrandQuery] = useState('');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [salesProducts, setSalesProducts] = useState<SalesProduct[] | null>(null);
@@ -369,8 +407,9 @@ export function PlaceDesk({
     setBusy(true);
     setError(null);
     const months = monthsOf(period.from, period.to);
+    const graphMonths = monthsOf(addMonths(month, -5), month);
     const prior = months.map((item) => addMonths(item, -12));
-    const all = [...new Set([...months, ...prior])];
+    const all = [...new Set([...months, ...prior, ...graphMonths])];
     void (async () => {
       const packs = await Promise.all(all.map((item) => placesOf(item, focus.id, 'headquarter')));
       if (!live) return;
@@ -393,19 +432,19 @@ export function PlaceDesk({
           priorSecondary: earlierHq.get(bar.id)?.secondary ?? 0,
         })),
       );
-      setTrend(
-        months.map((item) => {
-          const total = fig(byMonth.get(item) ?? []);
-          return {
-            month: item,
-            name: monthLabel(item).slice(0, 3),
-            primary: total.primary,
-            secondary: total.secondary,
-            target: total.target,
-            secondaryTarget: total.secondaryTarget,
-          };
-        }),
-      );
+      const point = (item: string) => {
+        const total = fig(byMonth.get(item) ?? []);
+        return {
+          month: item,
+          name: monthLabel(item).slice(0, 3),
+          primary: total.primary,
+          secondary: total.secondary,
+          target: total.target,
+          secondaryTarget: total.secondaryTarget,
+        };
+      };
+      setTrend(months.map(point));
+      setGraph(graphMonths.map(point));
       setPriorTrend(
         prior.map((item) => {
           const total = fig(byMonth.get(item) ?? []);
@@ -507,6 +546,8 @@ export function PlaceDesk({
       )
       .sort((a, b) => b.primary + b.secondary - (a.primary + a.secondary));
   }, [salesProducts, priorProducts, brandTargets]);
+  const hqShown = named(hqBars, hqQuery);
+  const brandShown = named(brandBars, brandQuery);
   useEffect(() => {
     if (jumped.current || params.get('m') || !focus || !month) return;
     let live = true;
@@ -820,45 +861,69 @@ export function PlaceDesk({
         <SalesChartsSkeleton />
       ) : trend.some((point) => point.primary || point.secondary || point.target) ||
         hqBars.length > 0 ? (
-        <motion.div
-          className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.8fr)]"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ type: 'spring', bounce: 0.2, duration: 0.45 }}
-        >
-          <ChartBox
-            title={periodTitle(span, month)}
-            fileName={`sales-period-${period?.from ?? month}`}
-            items={trend.map((point, i) => ({
-              id: point.month,
-              name: point.name,
-              primary: point.primary,
-              secondary: point.secondary,
-              primaryTarget: point.target,
-              secondaryTarget: point.secondaryTarget,
-              priorPrimary: priorTrend[i]?.primary ?? 0,
-              priorSecondary: priorTrend[i]?.secondary ?? 0,
-            }))}
+        <>
+          <SalesGauges
+            primary={now.primary}
+            primaryTarget={now.target}
+            secondary={now.secondary}
+            secondaryTarget={now.secondaryTarget}
+          />
+          {graph.length > 1 && (
+            <ChartBox
+              title="Six months"
+              fileName={`sales-six-${month}`}
+              items={graph.map((point) => ({
+                id: point.month,
+                name: point.name,
+                primary: point.primary,
+                secondary: point.secondary,
+                primaryTarget: point.target,
+                secondaryTarget: point.secondaryTarget,
+              }))}
+            >
+              <SalesTrendChart trend={graph} linesOnly />
+            </ChartBox>
+          )}
+          <motion.div
+            className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.8fr)]"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: 'spring', bounce: 0.2, duration: 0.45 }}
           >
-            <SalesTrendChart trend={trend} onMonth={pickMonth} />
-          </ChartBox>
-          <ChartBox
-            title={`${periodTitle(span, addMonths(month, -12))} and ${periodTitle(span, month)}`}
-            fileName={`sales-compare-${month}`}
-            items={years.map((year, i) => ({
-              id: year.year,
-              name: year.year,
-              primary: year.primary,
-              secondary: year.secondary,
-              primaryTarget: 0,
-              secondaryTarget: 0,
-              priorPrimary: i === 1 ? years[0]?.primary : undefined,
-              priorSecondary: i === 1 ? years[0]?.secondary : undefined,
-            }))}
-          >
-            <YearCompareChart years={years} label="This period and last year" />
-          </ChartBox>
-        </motion.div>
+            <ChartBox
+              title={periodTitle(span, month)}
+              fileName={`sales-period-${period?.from ?? month}`}
+              items={trend.map((point, i) => ({
+                id: point.month,
+                name: point.name,
+                primary: point.primary,
+                secondary: point.secondary,
+                primaryTarget: point.target,
+                secondaryTarget: point.secondaryTarget,
+                priorPrimary: priorTrend[i]?.primary ?? 0,
+                priorSecondary: priorTrend[i]?.secondary ?? 0,
+              }))}
+            >
+              <SalesTrendChart trend={trend} onMonth={pickMonth} />
+            </ChartBox>
+            <ChartBox
+              title={`${periodTitle(span, addMonths(month, -12))} and ${periodTitle(span, month)}`}
+              fileName={`sales-compare-${month}`}
+              items={years.map((year, i) => ({
+                id: year.year,
+                name: year.year,
+                primary: year.primary,
+                secondary: year.secondary,
+                primaryTarget: 0,
+                secondaryTarget: 0,
+                priorPrimary: i === 1 ? years[0]?.primary : undefined,
+                priorSecondary: i === 1 ? years[0]?.secondary : undefined,
+              }))}
+            >
+              <YearCompareChart years={years} label="This period and last year" />
+            </ChartBox>
+          </motion.div>
+        </>
       ) : (
         !error && (
           <p className="py-8 text-sm text-muted-foreground">
@@ -873,10 +938,11 @@ export function PlaceDesk({
         <ChartBox
           title="HQ wise target vs primary and secondary"
           fileName={`sales-hq-${period?.from ?? month}`}
-          items={hqBars}
+          items={hqShown}
+          search={{ label: 'Search an HQ', value: hqQuery, onValueChange: setHqQuery }}
         >
           <LiquidColumns
-            items={hqBars}
+            items={hqShown}
             onOpen={(id) => {
               const place = hqBars.find((item) => item.id === id);
               if (place?.opens) open(id, 'forward');
@@ -905,9 +971,14 @@ export function PlaceDesk({
               <ChartBox
                 title="Brandwise target vs primary and secondary"
                 fileName={`sales-brand-${period?.from ?? month}`}
-                items={brandBars}
+                items={brandShown}
+                search={{
+                  label: 'Search a brand',
+                  value: brandQuery,
+                  onValueChange: setBrandQuery,
+                }}
               >
-                <LiquidColumns items={brandBars} />
+                <LiquidColumns items={brandShown} />
               </ChartBox>
             )}
           </>

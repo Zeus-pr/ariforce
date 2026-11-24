@@ -8,6 +8,7 @@ import { useRole } from '@/components/shell/role-context';
 import { monthLabel } from '@/lib/period';
 import { ChartCard, exportedAt, MonthSwitch, PerfTable, useMonth } from './perf-ui';
 import { breakdownFor, pick, usePerf, val } from './use-perf';
+import { CoverageRadar, CoverageRings } from './coverage-charts';
 import { coverageCols, COVERAGE_KPIS } from './coverage-kpis';
 import { DeskPageSkeleton } from '@/components/shell/page-skeletons';
 
@@ -39,6 +40,7 @@ export function CoverageView() {
   const first = by === 'byTerritory' ? 'Zone' : by === 'byUser' ? 'Team member' : 'You';
   const trend = (perf?.trend ?? []).map((t) => ({
     name: monthLabel(t.month).slice(0, 3),
+    month: t.month,
     coverage: val(t.row, 'coverage_pct'),
     frequency: val(t.row, 'frequency_compliance_pct'),
   }));
@@ -61,7 +63,33 @@ export function CoverageView() {
           .filter((m) => !!m)}
         error={perf?.error ?? null}
         loading={!perf}
+        sparklines={{
+          coverage_pct: {
+            values: trend.map((point) => point.coverage ?? 0),
+            color: 'var(--chart-1)',
+          },
+          frequency_compliance_pct: {
+            values: trend.map((point) => point.frequency ?? 0),
+            color: 'var(--chart-6)',
+          },
+        }}
       />
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <ChartCard title="This month">
+          <CoverageRings
+            coverage={val(perf?.head, 'coverage_pct')}
+            frequency={val(perf?.head, 'frequency_compliance_pct')}
+            missed={val(perf?.head, 'missed_doctor_pct')}
+          />
+        </ChartCard>
+        <ChartCard title="The shape of the month">
+          <CoverageRadar
+            coverage={val(perf?.head, 'coverage_pct')}
+            frequency={val(perf?.head, 'frequency_compliance_pct')}
+            missed={val(perf?.head, 'missed_doctor_pct')}
+          />
+        </ChartCard>
+      </div>
       <div className={by ? 'grid grid-cols-1 gap-5 lg:grid-cols-2' : 'grid grid-cols-1 gap-5'}>
         <ChartCard title="Coverage over six months">
           <CoverageTrendChart trend={trend} />
