@@ -1087,7 +1087,7 @@ export class ExpensesService implements OnModuleInit {
   }
 
   /** Attachment + its claim, if the caller may read that claim. */
-  private async attachment(tx: Tx, p: Principal, attId: string) {
+  private async attachment(tx: Tx, p: Principal, attId: string, directorRead = false) {
     const [row] = await tx
       .select({ a: expenseAttachments, claimId: expenseLines.claimId })
       .from(expenseAttachments)
@@ -1100,7 +1100,7 @@ export class ExpensesService implements OnModuleInit {
         ),
       );
     if (!row) throw new NotFoundException('Attachment not found');
-    const c = await this.claimRow(tx, p, row.claimId).catch(() => {
+    const c = await this.claimRow(tx, p, row.claimId, false, directorRead).catch(() => {
       throw new NotFoundException('Attachment not found');
     });
     return { a: row.a, c };
@@ -1175,7 +1175,7 @@ export class ExpensesService implements OnModuleInit {
   /** Owner, the approver chain (expenses:approve over the owner) or finance; audited. */
   downloadUrl(p: Principal, attId: string) {
     return this.tenant.run(p, async (tx) => {
-      const { a, c } = await this.attachment(tx, p, attId);
+      const { a, c } = await this.attachment(tx, p, attId, true);
       if (a.status !== 'confirmed') throw err(409, 'UPLOAD_NOT_CONFIRMED', 'Not confirmed yet');
       const ext = a.fileKey.split('.').pop();
       const res = await this.storage.downloadUrl(

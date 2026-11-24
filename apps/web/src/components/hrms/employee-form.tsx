@@ -191,7 +191,6 @@ function profileBody(d: Draft) {
     holidayList: empty(d.holidayList),
     defaultShift: empty(d.defaultShift),
     leaveApprover: empty(d.leaveApprover),
-    ctc: whole(d.ctc),
     salaryMode: empty(d.salaryMode),
     bankName: empty(d.bankName),
     bankAccount: empty(d.bankAccount),
@@ -300,7 +299,6 @@ const FIELDS: {
   { tab: 'attendance', key: 'holidayList', label: 'Holiday list', kind: 'text' },
   { tab: 'attendance', key: 'defaultShift', label: 'Default shift', kind: 'text' },
   { tab: 'attendance', key: 'leaveApprover', label: 'Leave approver', kind: 'text' },
-  { tab: 'salary', key: 'ctc', label: 'Cost to company (INR / year)', kind: 'text' },
   { tab: 'salary', key: 'salaryMode', label: 'Salary mode', kind: 'select', options: PAY },
   { tab: 'salary', key: 'bankName', label: 'Bank', kind: 'text' },
   { tab: 'salary', key: 'bankAccount', label: 'Account no.', kind: 'text' },
@@ -459,11 +457,6 @@ export function EmployeeForm({ personId }: { personId: string | null }) {
       setError(draft.role === 'business_manager' ? 'Pick a headquarters.' : 'Pick a place.');
       return;
     }
-    if (draft.ctc.trim() && whole(draft.ctc) == null) {
-      setTab('salary');
-      setError('Cost to company must be a whole number of rupees.');
-      return;
-    }
     if (draft.noticeDays.trim() && whole(draft.noticeDays) == null) {
       setTab('joining');
       setError('Notice days must be a whole number.');
@@ -612,6 +605,23 @@ export function EmployeeForm({ personId }: { personId: string | null }) {
         ))}
       </div>
 
+      {tab === 'salary' && (
+        <p className="text-sm text-muted-foreground">
+          Yearly cost to company is{' '}
+          {draft.ctc.trim()
+            ? Number(draft.ctc).toLocaleString('en-IN', {
+                style: 'currency',
+                currency: 'INR',
+                maximumFractionDigits: 0,
+              })
+            : 'not loaded'}
+          . Change the yearly cost, or the monthly lines, on{' '}
+          <Link href="/hr/salary" className="text-primary">
+            Salary
+          </Link>
+          . Saving this form does not change them.
+        </p>
+      )}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {FIELDS.filter((field) => field.tab === tab).map((field) => {
           const span =
