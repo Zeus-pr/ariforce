@@ -35,6 +35,8 @@ import {
 import { bandOf, sfcCategoryOf } from '@/lib/dcr/bands';
 import { thrownMessage } from '@/lib/dcr/errors';
 import { tpFutureMonthCutoffError } from '@/lib/tour-plans/cutoff';
+import { useRole } from '@/components/shell/role-context';
+import { roleLevel } from '@/lib/roles';
 import { ChoiceSelect } from '@/components/dcr/choice-select';
 import { MeetingFields, OfficeFields, RouteFacts, SfcPanel } from '@/components/dcr/dcr-sections';
 import { SearchSelect, type SelectOption } from '@/components/dcr/search-select';
@@ -221,6 +223,7 @@ function flowFromItem(date: string, item: TpItem | null): FlowState {
 }
 
 export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSaved }: Props) {
+  const rank = roleLevel(useRole().role);
   const [from, setFrom] = useState(date ?? '');
   const [to, setTo] = useState(date ?? '');
   const [state, setState] = useState<FlowState>(() => emptyFlow(date ?? ''));
@@ -244,7 +247,9 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showErrors, setShowErrors] = useState(false);
-  const dateWindowClosed = !!(date && tpFutureMonthCutoffError((item?.from ?? date).slice(0, 7)));
+  const dateWindowClosed = !!(
+    date && tpFutureMonthCutoffError((item?.from ?? date).slice(0, 7), rank)
+  );
   const mutable =
     !readOnly &&
     !dateWindowClosed &&
@@ -472,7 +477,7 @@ export function TourPlanItemEditor({ date, item, readOnly = false, onClose, onSa
       setError('Choose a valid date range.');
       return false;
     }
-    const cutoffError = tpFutureMonthCutoffError(from.slice(0, 7));
+    const cutoffError = tpFutureMonthCutoffError(from.slice(0, 7), rank);
     if (cutoffError) {
       setError(cutoffError);
       return false;
