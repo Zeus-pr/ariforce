@@ -12,6 +12,7 @@ import { PageTransition } from '@/components/animate-ui/components/page-transiti
 import { ScrollReset } from './scroll-reset';
 import { SiteHeader } from './site-header';
 import { ConfirmedSessionProvider } from './role-context';
+import { AribotProvider, AribotRail } from '@/components/bot/aribot-panel';
 
 function SignedOut() {
   const router = useRouter();
@@ -41,22 +42,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (session === null) return <SignedOut />;
   return (
     <ConfirmedSessionProvider value={session}>
-      <SidebarProvider className="flex h-dvh min-h-0 flex-col overflow-hidden [--header-height:calc(3.5rem+env(safe-area-inset-top))]">
-        <SiteHeader />
-        <div className="flex min-h-0 flex-1">
-          <AppSidebar />
-          <SidebarInset
-            id="af-main"
-            data-testid="app-main"
-            className="af-page af-scroll min-h-0 min-w-0 overflow-y-auto pb-[env(safe-area-inset-bottom)]"
-          >
-            <PageTransition effect="slide">
-              <ScrollReset />
-              <AuthGate>{children}</AuthGate>
-            </PageTransition>
-          </SidebarInset>
-        </div>
-      </SidebarProvider>
+      <AribotProvider>
+        <SidebarProvider className="flex h-dvh min-h-0 flex-col overflow-hidden [--header-height:calc(3.5rem+env(safe-area-inset-top))]">
+          <SiteHeader />
+          <div className="flex min-h-0 flex-1">
+            <AppSidebar />
+            <SidebarInset
+              id="af-main"
+              data-testid="app-main"
+              className="af-page af-scroll min-h-0 min-w-0 overflow-y-auto pb-[env(safe-area-inset-bottom)]"
+            >
+              <PageTransition effect="slide">
+                <ScrollReset />
+                <AuthGate>{children}</AuthGate>
+              </PageTransition>
+            </SidebarInset>
+            <AribotRail />
+          </div>
+        </SidebarProvider>
+      </AribotProvider>
     </ConfirmedSessionProvider>
   );
 }

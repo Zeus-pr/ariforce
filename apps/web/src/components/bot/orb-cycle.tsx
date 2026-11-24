@@ -1,50 +1,49 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { motion } from 'motion/react';
-import { Orb, type OrbOptions } from '@yogesharc/thinking-orbs';
+import { BotAvatar } from 'bot-avatars';
 
-/** One step at a time. Each step is a different orb, not the whole set at once. */
-const CHAIN = [
-  { state: 'reasoning', variant: 'twins', label: 'Reading the question' },
-  { state: 'searching', variant: 'lighthouse', label: 'Checking who you can see' },
-  { state: 'working', variant: 'gyro', label: 'Looking up the figures' },
-  { state: 'searching', variant: 'default', label: 'Opening this month' },
-  { state: 'compacting', variant: 'fuse', label: 'Putting the table together' },
-  { state: 'reasoning', variant: 'default', label: 'Writing the answer' },
-] as const satisfies readonly (OrbOptions & { label: string })[];
+/** One status at a time — bot + sentence, aligned like Claude / ChatGPT. */
+const STEPS = [
+  'Reading your question',
+  'Checking what you can see',
+  'Looking up the figures',
+  'Writing the answer',
+] as const;
 
-const STEP_MS = 420;
+const STEP_MS = 1400;
+const BOT_COLOR = '#14b8a6';
 
-export function ThinkingChain({ active }: { active: boolean }) {
-  const [shown, setShown] = useState(1);
+export function ThinkingStatus({ active }: { active: boolean }) {
+  const [step, setStep] = useState(0);
+
   useEffect(() => {
-    if (!active) return;
+    if (!active) {
+      setStep(0);
+      return;
+    }
     const id = window.setInterval(() => {
-      setShown((n) => Math.min(CHAIN.length, n + 1));
+      setStep((n) => (n + 1) % STEPS.length);
     }, STEP_MS);
     return () => window.clearInterval(id);
   }, [active]);
 
+  if (!active) return null;
+
   return (
-    <ol className="flex flex-col gap-1.5 py-1">
-      {CHAIN.slice(0, shown).map((step, index) => {
-        const current = active && index === shown - 1;
-        return (
-          <motion.li
-            key={step.label}
-            className="flex items-center gap-2.5"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <Orb {...step} size={18} label={step.label} className="text-primary shrink-0" />
-            <span className={current ? 'text-foreground text-sm' : 'text-muted-foreground text-sm'}>
-              {step.label}
-            </span>
-          </motion.li>
-        );
-      })}
-    </ol>
+    <div className="mb-3 flex items-center gap-2.5 px-2" aria-live="polite" aria-busy="true">
+      <BotAvatar
+        type="droid"
+        state="working"
+        size={22}
+        color={BOT_COLOR}
+        interactive={false}
+        aria-hidden
+        className="pointer-events-none shrink-0"
+      />
+      <span className="shimmer motion-reduce:animate-none text-muted-foreground inline-flex h-[22px] items-center text-sm leading-none">
+        {STEPS[step]}
+      </span>
+    </div>
   );
 }

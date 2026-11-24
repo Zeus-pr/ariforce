@@ -1,8 +1,16 @@
 import * as z from 'zod';
 
+export const BotTurn = z
+  .object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string().trim().min(1).max(2000),
+  })
+  .meta({ id: 'BotTurn' });
+
 export const BotAskRequest = z
   .object({
     message: z.string().trim().min(1).max(1000),
+    history: z.array(BotTurn).max(8).optional(),
   })
   .meta({ id: 'BotAskRequest' });
 

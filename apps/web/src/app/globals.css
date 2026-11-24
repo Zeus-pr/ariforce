@@ -149,42 +149,61 @@ dialog::backdrop {
 .af-liquid {
   animation: af-liquid 1.8s linear infinite;
 }
-@keyframes aribots-sheen {
-  0%,
-  58% {
-    background-position: 120% 0;
-  }
-  100% {
-    background-position: -20% 0;
-  }
+
+/* ARIBOT docked chat — Magic UI dots + teal-tinted composer */
+.aribot-chat {
+  height: 100%;
+  --composer-bg: rgb(255 255 255 / 0.92);
+  --composer-radius: 1.35rem;
+  --composer-padding: 10px;
 }
-.aribot-live {
-  border: 1px solid rgb(28 33 48 / 0.16);
-  background: linear-gradient(180deg, #fff 0%, #f4f1ea 100%);
-  box-shadow:
-    0 1px 0 rgb(255 255 255 / 0.9) inset,
-    0 8px 22px rgb(28 33 48 / 0.1);
+.aribot-chat .aui-thread-root {
+  background: transparent;
+  height: 100%;
+  min-height: 0;
 }
-.aribot-mark {
-  background-image: linear-gradient(
-    100deg,
-    #1c2130 0%,
-    #1c2130 40%,
-    #f7f4ee 50%,
-    #1c2130 60%,
-    #1c2130 100%
-  );
-  background-size: 220% 100%;
-  background-clip: text;
-  color: transparent;
-  animation: aribots-sheen 5.5s ease-in-out infinite;
+.aribot-chat [data-slot='aui_thread-viewport'] {
+  min-height: 0;
 }
+.aribot-chat .aui-thread-composer-dock {
+  overflow: visible;
+}
+.aribot-chat [data-slot='aui_composer-shell'] {
+  background: rgb(255 255 255 / 0.96);
+  backdrop-filter: blur(10px);
+}
+.aribot-chat .aui-composer-input {
+  min-height: 2.75rem;
+  font-size: 0.95rem;
+}
+.aribot-chat .aui-composer-input::placeholder {
+  color: rgb(15 23 42 / 0.38);
+}
+.aribot-chat .aui-user-message-content {
+  background: linear-gradient(180deg, #e7f8f5 0%, #d9f3ef 100%);
+  border: 1px solid rgb(20 184 166 / 0.18);
+  border-radius: 1.2rem 1.2rem 0.35rem 1.2rem;
+  padding: 0.7rem 1rem;
+}
+.aribot-chat [data-slot='aui_assistant-message-content'] {
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+.aribot-chat [data-slot='aui_assistant-message-footer'] {
+  opacity: 0.65;
+}
+.aribot-chat .aui-thread-viewport-footer {
+  background: transparent;
+}
+.aribot-chat .aui-composer-send {
+  background: #14b8a6;
+  color: white;
+}
+.aribot-chat .aui-composer-send:hover {
+  background: #0f9f8f;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .aribot-mark {
-    animation: none;
-    background-image: none;
-    color: #1c2130;
-  }
   .af-enter,
   .af-route,
   .af-fade,

@@ -160,7 +160,7 @@ export function toolSpecs(director: boolean): ToolSpec[] {
     {
       name: 'list_team',
       description:
-        'People on this asker’s reporting line, including the asker. Pass a name to narrow. A headquarters such as Suri is a place, not a person: use kpi_report with place. Never returns anyone outside the line.',
+        'Who is on this reporting line. Use this for names and roles, and to take a person id before a follow-up about that person. A headquarters such as Suri is not a person: use kpi_report with place. Never returns anyone outside the line.',
       parameters: {
         type: 'object',
         properties: { name: { type: 'string', description: 'Part of a person’s name' } },
@@ -170,7 +170,7 @@ export function toolSpecs(director: boolean): ToolSpec[] {
     {
       name: 'kpi_report',
       description:
-        'The figures for this line. Pass the kpis the question needs: coverage_pct, call_average, dcr_compliance_pct, tp_adherence_pct, pob_value, primary_sales_value, secondary_sales_value. rollup team is the line, byUser is one row per person, place is a headquarters. A general “how are we doing” passes the field measures and both sales figures.',
+        'Coverage, calls, DCR, tour-plan adherence, POB, and primary and secondary sales. Use this for “how are we doing”, a month, a quarter, or a headquarters. rollup team is the line total. byUser is one person at a time when they asked who is ahead or behind. place is a headquarters name, not a person. Do not use read_records for these figures.',
       parameters: {
         type: 'object',
         properties: {
@@ -189,7 +189,7 @@ export function toolSpecs(director: boolean): ToolSpec[] {
     {
       name: 'read_records',
       description:
-        'Anything else this account can already open: doctors, chemists, stockists, dcrs, tour_plans, leave, leave_balances, expenses, approvals, stock_statements, exceptions. Scoped to this person. A 403 means it is not on their account.',
+        'A named list this account can already open: doctors, chemists, stockists, dcrs, tour_plans, leave, leave_balances, expenses, approvals, stock_statements, exceptions, holidays, sfc. Not for coverage or sales — those are kpi_report. A 403 means it is not on their account.',
       parameters: {
         type: 'object',
         properties: {
@@ -220,7 +220,8 @@ export function toolSpecs(director: boolean): ToolSpec[] {
     },
     {
       name: 'product_kpis',
-      description: 'Detailing, samples and POB by product, for this line only.',
+      description:
+        'Which products were detailed, sampled, or booked as POB, for this line only. Not for company sales totals.',
       parameters: {
         type: 'object',
         properties: { month: period.month, userId: period.userId },
@@ -253,6 +254,27 @@ export function guardNarrative(
   return { narrative: 'I can’t answer that from AriForce.', refused: true };
 }
 
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/** A territory id is for the next tool call. It is not part of an answer. */
+export function scrubIds(text: string): string {
+  return text
+    .replace(UUID, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s+([,.:;])/g, '$1')
+    .trim();
+}
+
+/** The answer is sentences. A markdown table the model copied is dropped. */
+export function proseOnly(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('|'))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function narrativeFrom(content: string | null): string {
   const raw = (content ?? '').trim();
   const fenced = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -269,15 +291,21 @@ export async function runBot(input: {
   knowledge: string;
   scopeLine: string;
   message: string;
+  history?: { role: 'user' | 'assistant'; content: string }[];
   specs: ToolSpec[];
   call: (name: string, args: unknown) => Promise<ToolOutcome>;
   complete: (messages: ChatMsg[], tools: ToolSpec[] | null) => Promise<AssistantMsg>;
 }): Promise<{ narrative: string; blocks: BotTable[]; refused: boolean; toolNames: string[] }> {
+  const prior = (input.history ?? [])
+    .filter((turn) => turn.content.trim())
+    .slice(-8)
+    .map((turn) => ({ role: turn.role, content: turn.content.trim() }));
   const messages: ChatMsg[] = [
     {
       role: 'system',
-      content: `${input.knowledge}\n\n${input.scopeLine}\n\nDecide which tools to call. Read what they return, then answer in normal language. Lead with the result. When a target is present, say the actual, the target, and whether it is ahead or behind. If many rows matter, say the pattern instead of reciting every cell. A headquarters name such as Suri is a place on kpi_report, not a person. If a tool says the record is outside the team or not on this account, say only that. Never invent a number or a name. Reply with only {"narrative":"..."}.`,
+      content: `${input.knowledge}\n\n${input.scopeLine}\n\nCall the one tool that holds the answer. kpi_report for coverage, calls, DCR, tour plans, POB, and sales. product_kpis for products. list_team for who reports here. read_records only for a doctor, chemist, stockist, leave, expense, approval, or statement. Earlier turns are this same chat: a follow-up such as “and last month?” keeps the same subject and changes only the period. Answer in sentences. The narrative is prose only — never a markdown table, never an id, never every row. When a target is present, say the actual, the target, and whether it is ahead or behind. If many people matter, say the pattern and name only the few that stand out. A headquarters such as Suri is a place on kpi_report, not a person. If a tool says the record is outside the team or not on this account, say only that. Never invent a number or a name. Reply with only {"narrative":"..."}.`,
     },
+    ...prior,
     { role: 'user', content: input.message },
   ];
   const blocks: BotTable[] = [];
@@ -296,8 +324,7 @@ export async function runBot(input: {
         args = {};
       }
       const outcome = await input.call(call.function.name, args);
-      if (outcome.block) blocks.push(outcome.block);
-      const body = JSON.stringify(outcome.model).slice(0, 12_000);
+      const body = JSON.stringify(outcome.model).slice(0, 8_000);
       allowed.push(body);
       messages.push({ role: 'tool', tool_call_id: call.id, content: body });
     }
@@ -310,7 +337,7 @@ export async function runBot(input: {
   }
 
   const guarded = guardNarrative(
-    narrativeFrom(reply.content),
+    proseOnly(scrubIds(narrativeFrom(reply.content))),
     allowed.join('\n'),
     blocks.length > 0,
   );

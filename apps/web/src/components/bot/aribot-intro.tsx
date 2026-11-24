@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { Orb } from '@yogesharc/thinking-orbs';
+import { BotAvatar } from 'bot-avatars';
 import { Button } from '@ariforce/ui/components/button';
+import { DotPattern } from '@/components/ui/dot-pattern';
+
+const BOT_COLOR = '#14b8a6';
 
 const FEATURES = [
   {
@@ -13,7 +16,7 @@ const FEATURES = [
   },
   {
     title: 'Figures from AriForce',
-    body: 'Coverage, calls, tour plans, sales, and products come back as a table. A number that was not looked up is not shown.',
+    body: 'Coverage, calls, tour plans, and sales come from live AriForce data — not invented numbers.',
   },
   {
     title: 'Peers stay closed',
@@ -52,101 +55,82 @@ export function AribotIntro({ userId, onOpen }: { userId: string; onOpen: () => 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.25 }}
+          transition={{ duration: 0.2 }}
         >
           <button
             type="button"
             aria-label="Close introduction"
-            className="absolute inset-0 bg-[#12151c]/55"
+            className="absolute inset-0 bg-black/40"
             onClick={() => dismiss(false)}
           />
           <motion.div
             role="dialog"
             aria-labelledby="aribot-intro-title"
-            className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-[#161a22] text-[#f6f3ee] shadow-[0_30px_80px_rgba(18,21,28,0.45)]"
-            initial={{ opacity: 0, y: 28, scale: 0.96 }}
+            className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[#14b8a6]/20 bg-[#f4faf9] text-foreground shadow-[0_24px_64px_rgba(15,23,42,0.18)]"
+            initial={{ opacity: 0, y: 16, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.98 }}
-            transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+            exit={{ opacity: 0, y: 10, scale: 0.99 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
           >
-            <motion.div
-              aria-hidden
-              className="pointer-events-none absolute -top-24 -right-16 size-56 rounded-full bg-[#c4a574]/30 blur-3xl"
-              animate={{ scale: [1, 1.08, 1], opacity: [0.45, 0.7, 0.45] }}
-              transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+            <DotPattern
+              width={18}
+              height={18}
+              cr={1.15}
+              className="text-[#14b8a6]/35 [mask-image:radial-gradient(ellipse_at_top,white,transparent_85%)]"
             />
-            <div className="relative min-h-0 flex-1 overflow-y-auto px-7 pt-7 pb-5">
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.08 }}
-              >
-                <Orb
-                  state="reasoning"
-                  variant="twins"
-                  size={42}
-                  label="ARIBOT"
-                  className="text-[#f3e6d0]"
+            <div className="relative z-10 min-h-0 flex-1 overflow-y-auto px-6 pt-7 pb-4">
+              <div className="relative w-fit">
+                <div
+                  aria-hidden
+                  className="absolute -inset-4 rounded-full bg-[#14b8a6]/20 blur-2xl"
                 />
-              </motion.div>
-              <motion.p
-                className="mt-5 text-[11px] tracking-[0.22em] text-[#c4a574] uppercase"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.16 }}
-              >
+                <BotAvatar
+                  type="droid"
+                  state="default"
+                  size={52}
+                  color={BOT_COLOR}
+                  interactive={false}
+                  aria-hidden
+                  className="pointer-events-none relative"
+                />
+              </div>
+              <p className="mt-5 text-[11px] font-medium tracking-[0.2em] text-[#0f766e] uppercase">
                 New in AriForce
-              </motion.p>
-              <motion.h2
+              </p>
+              <h2
                 id="aribot-intro-title"
-                className="mt-2 text-3xl font-semibold tracking-tight"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.22 }}
+                className="mt-2 text-2xl font-semibold tracking-tight text-[#134e4a]"
               >
                 Meet ARIBOT
-              </motion.h2>
-              <motion.p
-                className="mt-2 text-sm leading-relaxed text-[#f6f3ee]/75"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 }}
-              >
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-[#0f766e]/80">
                 Ask a business question in plain language. The answer stays inside what you are
                 already allowed to see.
-              </motion.p>
-              <ul className="mt-5 flex flex-col gap-3">
-                {FEATURES.map((feature, i) => (
-                  <motion.li
+              </p>
+              <ul className="mt-5 flex flex-col gap-2.5">
+                {FEATURES.map((feature) => (
+                  <li
                     key={feature.title}
-                    className="rounded-2xl bg-white/[0.04] px-4 py-3"
-                    initial={{ opacity: 0, x: 16 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{
-                      delay: 0.38 + i * 0.08,
-                      type: 'spring',
-                      stiffness: 380,
-                      damping: 30,
-                    }}
+                    className="rounded-xl border border-[#14b8a6]/12 bg-white/80 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur-sm"
                   >
-                    <p className="text-sm font-medium">{feature.title}</p>
-                    <p className="mt-1 text-sm leading-relaxed text-[#f6f3ee]/65">{feature.body}</p>
-                  </motion.li>
+                    <p className="text-sm font-medium text-[#134e4a]">{feature.title}</p>
+                    <p className="mt-1 text-sm leading-relaxed text-[#0f766e]/75">{feature.body}</p>
+                  </li>
                 ))}
               </ul>
             </div>
-            <div className="relative flex shrink-0 items-center justify-end gap-2 border-t border-white/10 px-7 py-4">
+            <div className="relative z-10 flex shrink-0 items-center justify-end gap-2 border-t border-[#14b8a6]/15 bg-white/70 px-6 py-4 backdrop-blur-sm">
               <Button
                 type="button"
                 variant="ghost"
-                className="text-[#f6f3ee]/70 hover:bg-white/10 hover:text-[#f6f3ee]"
+                className="text-[#0f766e] hover:bg-[#14b8a6]/10 hover:text-[#0f766e]"
                 onClick={() => dismiss(false)}
               >
                 Not now
               </Button>
               <Button
                 type="button"
-                className="bg-[#f3e6d0] text-[#161a22] hover:bg-[#f3e6d0]/90"
+                className="bg-[#14b8a6] text-white hover:bg-[#0f9f8f]"
                 onClick={() => dismiss(true)}
               >
                 Open ARIBOT

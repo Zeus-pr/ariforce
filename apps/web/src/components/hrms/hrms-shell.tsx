@@ -35,6 +35,7 @@ import { meQuery } from '@/lib/query';
 import { homeFor } from '@/lib/nav';
 import { isSystemAdmin, type Role } from '@/lib/roles';
 import { SiteHeader } from '@/components/shell/site-header';
+import { AribotProvider, AribotRail } from '@/components/bot/aribot-panel';
 import { ConfirmedSessionProvider } from '@/components/shell/role-context';
 import { ScrollReset } from '@/components/shell/scroll-reset';
 
@@ -120,37 +121,40 @@ export function HrmsShell({ children }: { children: React.ReactNode }) {
 
   return (
     <ConfirmedSessionProvider value={session}>
-      <SidebarProvider className="flex h-dvh min-h-0 flex-col overflow-hidden [--header-height:calc(3.5rem+env(safe-area-inset-top))]">
-        <SiteHeader homeHref="/hr" showSearch={false} />
-        <div className="flex min-h-0 flex-1">
-          <HrNav path={path} />
-          <SidebarInset
-            id="af-main"
-            className="af-page af-scroll min-h-0 min-w-0 overflow-y-auto pb-[env(safe-area-inset-bottom)]"
-          >
-            <PageTransition effect="slide">
-              <ScrollReset />
-              {canOpenHrms(session.role) ? (
-                children
-              ) : (
-                <div className="mx-auto max-w-lg p-6">
-                  <h1 className="text-lg font-semibold">This account is for the field desk</h1>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    HR is open to HR, a director, or a system admin. Your sign-in can continue in
-                    Fieldforce.
-                  </p>
-                  <Link
-                    href={homeFor(session.role)}
-                    className="mt-4 inline-block text-sm font-medium text-primary"
-                  >
-                    Open Fieldforce
-                  </Link>
-                </div>
-              )}
-            </PageTransition>
-          </SidebarInset>
-        </div>
-      </SidebarProvider>
+      <AribotProvider>
+        <SidebarProvider className="flex h-dvh min-h-0 flex-col overflow-hidden [--header-height:calc(3.5rem+env(safe-area-inset-top))]">
+          <SiteHeader homeHref="/hr" showSearch={false} />
+          <div className="flex min-h-0 flex-1">
+            <HrNav path={path} />
+            <SidebarInset
+              id="af-main"
+              className="af-page af-scroll min-h-0 min-w-0 overflow-y-auto pb-[env(safe-area-inset-bottom)]"
+            >
+              <PageTransition effect="slide">
+                <ScrollReset />
+                {canOpenHrms(session.role) ? (
+                  children
+                ) : (
+                  <div className="mx-auto max-w-lg p-6">
+                    <h1 className="text-lg font-semibold">This account is for the field desk</h1>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      HR is open to HR, a director, or a system admin. Your sign-in can continue in
+                      Fieldforce.
+                    </p>
+                    <Link
+                      href={homeFor(session.role)}
+                      className="mt-4 inline-block text-sm font-medium text-primary"
+                    >
+                      Open Fieldforce
+                    </Link>
+                  </div>
+                )}
+              </PageTransition>
+            </SidebarInset>
+            <AribotRail />
+          </div>
+        </SidebarProvider>
+      </AribotProvider>
     </ConfirmedSessionProvider>
   );
 }

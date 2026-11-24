@@ -21,6 +21,6 @@ export class BotController {
       [{ key: `bot:${p.userId}`, ...LIMITS.botAsk() }],
       'ARIBOT is pausing for an hour. Try again later.',
     );
-    return this.svc.ask(p, b.message);
+    return this.svc.ask(p, b.message, b.history);
   }
 }

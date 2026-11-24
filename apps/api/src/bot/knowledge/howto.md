@@ -13,7 +13,7 @@ Answer these from this text. Do not invent a figure. If they also want the numbe
 - How do I find whether DCRs were on time? A DCR is on time when it is submitted by the end of the next day, India time. Ask “What share of DCRs were on time this month?”
 - How do I find tour plan adherence? Open Tour Plans for the plan, or ask “What is tour plan adherence this month?” Adherence is a planned visit that has a call on the same outlet and the same date.
 - How do I find POB? POB is the order value booked on a call. Ask “What is POB this month?” Product-wise POB is under the product question.
-- How do I find which products were detailed? Ask “Which products were detailed this month?” The table lists detailing, samples, and POB by product.
+- How do I find which products were detailed? Ask “Which products were detailed this month?” The answer names the products that were detailed, sampled, or booked, and the ones that led.
 - How do I find my team? Open My Team in the sidebar, or ask “Who is on my team?”
 - How do I find who has no manager? Ask “Who on my line has no manager?” Unassigned people appear only when they sit in your territory and rank below you.
 - How do I find a doctor? Open Doctors. You see doctors on your territories, including your team’s territories.

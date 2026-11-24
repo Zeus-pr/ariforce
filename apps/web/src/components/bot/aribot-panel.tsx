@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 import { BotAvatar } from 'bot-avatars';
-import { Orb } from '@yogesharc/thinking-orbs';
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
@@ -12,11 +12,16 @@ import {
 } from '@assistant-ui/react';
 import { Thread } from '@/components/assistant-ui/elements/thread.aui';
 import { Button } from '@ariforce/ui/components/button';
-import { Sheet, SheetContent, SheetTitle } from '@ariforce/ui/components/sheet';
+import { cn } from '@ariforce/ui/lib/utils';
+import { DotPattern } from '@/components/ui/dot-pattern';
 import { AribotIntro } from '@/components/bot/aribot-intro';
 import { API_URL } from '@/lib/api';
 import { roleLevel, type Role } from '@/lib/roles';
 import { useRole } from '@/components/shell/role-context';
+
+/** Sky teal — not navy. */
+const BOT_COLOR = '#14b8a6';
+const RAIL_WIDTH = '26rem';
 
 function canUseAribots(role: Role) {
   return roleLevel(role) >= 2 || role === 'system_admin' || role === 'distribution_head';
@@ -35,31 +40,24 @@ interface BotReply {
   message?: string;
 }
 
-const READY: { group: string; ask: string; director?: boolean }[] = [
-  { group: 'Team', ask: 'Who is on my team?' },
-  { group: 'Team', ask: 'Who on my line has no manager?' },
-  { group: 'Field', ask: "What is my team's coverage this month?" },
-  { group: 'Field', ask: 'What is frequency compliance this month?' },
-  { group: 'Field', ask: 'What share of doctors were missed this month?' },
-  { group: 'Field', ask: 'What is the call average this month?' },
-  { group: 'Field', ask: 'What is DCR compliance this month?' },
-  { group: 'Field', ask: 'What is tour plan adherence this month?' },
-  { group: 'Sales', ask: 'What is POB this month?' },
-  { group: 'Sales', ask: 'What is primary sales this month?' },
-  { group: 'Sales', ask: 'What is secondary sales this month?' },
-  { group: 'Products', ask: 'Which products were detailed this month?' },
-  { group: 'Products', ask: 'Which product has the highest POB this month?' },
-  { group: 'Company', ask: 'What is company coverage this month?', director: true },
-  { group: 'Company', ask: 'Which area has the lowest coverage?', director: true },
-  { group: 'Company', ask: 'What is company primary sales this month?', director: true },
-  { group: 'Company', ask: 'What is company secondary sales this month?', director: true },
-  { group: 'How to', ask: 'How do I find this month’s sales figures?' },
-  { group: 'How to', ask: 'How do I find this month’s coverage?' },
-  { group: 'How to', ask: 'How do I find my team?' },
-  { group: 'How to', ask: 'How do I file a DCR?' },
-  { group: 'How to', ask: 'How do I apply for leave?' },
-  { group: 'How to', ask: 'How do I submit an expense?' },
-];
+const SUGGESTIONS = [
+  'Who is on my team?',
+  'How is my team doing this month?',
+  'What is primary sales this month?',
+  'What is secondary sales this month?',
+  'What is DCR compliance this month?',
+  'How do I file a DCR?',
+] as const;
+
+const COMPANY_ASK = 'What is company coverage this month?';
+
+type AribotContextValue = {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  toggle: () => void;
+};
+
+const AribotContext = createContext<AribotContextValue | null>(null);
 
 function chatError(status: number): string {
   if (status === 401) return 'Your session has ended. Sign in again, then ask.';
@@ -71,26 +69,42 @@ function chatError(status: number): string {
   return 'ARIBOT could not answer that just now. Try again in a moment.';
 }
 
-function asMarkdown(reply: BotReply) {
-  const tables = (reply.blocks ?? []).map((block) => {
-    const head = `| ${block.columns.join(' | ')} |`;
-    const rule = `| ${block.columns.map(() => '---').join(' | ')} |`;
-    const rows = block.rows
-      .map((row) => `| ${row.map((cell) => cell.replace(/\|/g, '\\|')).join(' | ')} |`)
-      .join('\n');
-    return `**${block.title}**\n\n${head}\n${rule}\n${rows}`;
-  });
-  return [reply.narrative, ...tables].filter(Boolean).join('\n\n');
+function replyText(reply: BotReply) {
+  return (reply.narrative ?? '')
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('|'))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+async function* streamText(text: string, abortSignal: AbortSignal) {
+  const chunks = text.match(/\S+\s*|\s+/g) ?? [text];
+  let out = '';
+  for (const chunk of chunks) {
+    if (abortSignal.aborted) return;
+    out += chunk;
+    yield { content: [{ type: 'text' as const, text: out }] };
+    await new Promise((resolve) => window.setTimeout(resolve, 12));
+  }
+}
+
+function turnText(content: readonly { type: string; text?: string }[]) {
+  return content
+    .map((part) => (part.type === 'text' ? (part.text ?? '') : ''))
+    .join('')
+    .trim();
 }
 
 const adapter: ChatModelAdapter = {
   async *run({ messages, abortSignal }) {
-    const last = [...messages].reverse().find((message) => message.role === 'user');
-    const message =
-      last?.content
-        .map((part) => (part.type === 'text' ? part.text : ''))
-        .join('')
-        .trim() ?? '';
+    const turns = messages.flatMap((item) => {
+      if (item.role !== 'user' && item.role !== 'assistant') return [];
+      const content = turnText(item.content).slice(0, 2000);
+      return content ? [{ role: item.role, content }] : [];
+    });
+    const message = [...turns].reverse().find((turn) => turn.role === 'user')?.content ?? '';
+    const history = turns.slice(0, -1).slice(-8);
     if (abortSignal.aborted) return;
     let res: Response;
     try {
@@ -98,7 +112,7 @@ const adapter: ChatModelAdapter = {
         method: 'POST',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, history }),
         signal: abortSignal,
       });
     } catch (error) {
@@ -106,19 +120,21 @@ const adapter: ChatModelAdapter = {
       throw new Error(chatError(0), { cause: error });
     }
     const body = (await res.json().catch(() => null)) as BotReply | null;
-    if (!res.ok || !body?.narrative) throw new Error(chatError(res.status));
-    yield { content: [{ type: 'text', text: asMarkdown(body) }] };
+    if (!res.ok || !body) throw new Error(chatError(res.status));
+    const text = replyText(body);
+    if (!text) throw new Error(chatError(res.status));
+    yield* streamText(text, abortSignal);
   },
 };
 
-function AribotOrb() {
+function AribotMark({ size = 32 }: { size?: number }) {
   const running = useAuiState((s) => s.thread.isRunning);
   return (
     <BotAvatar
       type="droid"
       state={running ? 'working' : 'default'}
-      size={32}
-      color="#0b1f4d"
+      size={size}
+      color={BOT_COLOR}
       interactive={false}
       aria-hidden
       className="pointer-events-none shrink-0"
@@ -128,76 +144,119 @@ function AribotOrb() {
 
 function Welcome() {
   const { role } = useRole();
-  const companyWide = role === 'director' || role === 'distribution_head';
-  const asks = READY.filter((item) => !item.director || companyWide);
-  const groups = [...new Set(asks.map((item) => item.group))];
+  const companyWide =
+    role === 'director' || role === 'distribution_head' || role === 'system_admin';
+  const asks = companyWide ? [...SUGGESTIONS.slice(0, 5), COMPANY_ASK] : [...SUGGESTIONS];
+
   return (
-    <div className="mb-6 flex flex-col gap-1 px-2">
-      <Orb
-        state="reasoning"
-        variant="twins"
-        size={36}
-        label="ARIBOT"
-        className="text-primary mb-3"
-      />
-      <p className="animate-in fade-in slide-in-from-bottom-1 fill-mode-both text-2xl font-medium tracking-tight duration-200">
-        Ask about your team
+    <div className="relative z-10 mx-auto flex w-full max-w-lg flex-col items-center px-3 py-2 text-center">
+      <div className="relative">
+        <div aria-hidden className="absolute -inset-3 rounded-full bg-[#14b8a6]/15 blur-2xl" />
+        <AribotMark size={44} />
+      </div>
+      <p className="text-muted-foreground mt-3 max-w-sm text-sm leading-relaxed">
+        Ask about your team, coverage, sales, or how to use AriForce.
       </p>
-      <div className="mt-4 flex max-h-72 flex-col gap-3 overflow-y-auto">
-        {groups.map((group) => (
-          <div key={group}>
-            <p className="text-muted-foreground px-2 pb-1 text-[11px] tracking-[0.16em] uppercase">
-              {group}
-            </p>
-            {asks
-              .filter((item) => item.group === group)
-              .map((item) => (
-                <ThreadPrimitive.Suggestion key={item.ask} prompt={item.ask} send asChild>
-                  <button
-                    type="button"
-                    className="hover:bg-foreground/[0.03] w-full rounded-md px-2 py-1.5 text-left text-sm"
-                  >
-                    {item.ask}
-                  </button>
-                </ThreadPrimitive.Suggestion>
-              ))}
-          </div>
+      <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+        {asks.map((ask) => (
+          <ThreadPrimitive.Suggestion key={ask} prompt={ask} send asChild>
+            <button
+              type="button"
+              className="border-black/6 bg-white/90 text-foreground hover:border-[#14b8a6]/35 hover:bg-white rounded-full border px-4 py-2 text-sm shadow-[0_1px_2px_rgba(0,0,0,0.04)] backdrop-blur-sm transition-colors"
+            >
+              {ask}
+            </button>
+          </ThreadPrimitive.Suggestion>
         ))}
       </div>
     </div>
   );
 }
 
-export function AribotButton() {
+export function AribotProvider({ children }: { children: ReactNode }) {
   const { role, user } = useRole();
+  const allowed = canUseAribots(role);
   const runtime = useLocalRuntime(adapter);
   const [open, setOpen] = useState(false);
-  if (!canUseAribots(role)) return null;
+  const toggle = useCallback(() => setOpen((value) => !value), []);
+  const value = useMemo(() => ({ open, setOpen, toggle }), [open, toggle]);
+
+  if (!allowed) return children;
 
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <AribotIntro userId={user.id} onOpen={() => setOpen(true)} />
-      <Button
-        type="button"
-        variant="ghost"
-        className="aribot-live h-9 gap-2 rounded-full px-3"
-        aria-label="ARIBOT"
-        aria-expanded={open}
-        data-testid="aribot-open"
-        onClick={() => setOpen(true)}
+    <AribotContext.Provider value={value}>
+      <AssistantRuntimeProvider runtime={runtime}>
+        <AribotIntro userId={user.id} onOpen={() => setOpen(true)} />
+        {children}
+      </AssistantRuntimeProvider>
+    </AribotContext.Provider>
+  );
+}
+
+export function AribotButton() {
+  const ctx = useContext(AribotContext);
+  if (!ctx) return null;
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className={cn(
+        'size-10 rounded-full p-0',
+        ctx.open && 'bg-[#14b8a6]/12 ring-1 ring-[#14b8a6]/30',
+      )}
+      aria-label="Open ARIBOT"
+      aria-expanded={ctx.open}
+      data-testid="aribot-open"
+      onClick={ctx.toggle}
+    >
+      <AribotMark size={28} />
+    </Button>
+  );
+}
+
+export function AribotRail() {
+  const ctx = useContext(AribotContext);
+  if (!ctx) return null;
+
+  return (
+    <aside
+      data-state={ctx.open ? 'expanded' : 'collapsed'}
+      aria-hidden={!ctx.open}
+      className={cn(
+        'relative flex h-full min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-linear',
+        ctx.open ? 'border-border/70 border-l' : 'border-l-0',
+      )}
+      style={{ width: ctx.open ? RAIL_WIDTH : 0 }}
+    >
+      <div
+        className="aribot-chat relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#f4faf9]"
+        style={{ width: RAIL_WIDTH }}
       >
-        <AribotOrb />
-        <span className="aribot-mark text-[13px] font-semibold tracking-[0.22em]">ARIBOT</span>
-      </Button>
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent
-          side="right"
-          className="w-[min(100%,28rem)] gap-0 overflow-hidden p-0 sm:max-w-md"
-        >
-          <SheetTitle className="sr-only">ARIBOT</SheetTitle>
+        <DotPattern
+          width={18}
+          height={18}
+          cr={1.25}
+          className="text-[#14b8a6]/45 [mask-image:radial-gradient(ellipse_at_top,white,transparent_90%)]"
+        />
+        <div className="relative z-10 flex h-12 shrink-0 items-center justify-between px-4">
+          <p className="text-[15px] font-semibold tracking-[0.14em] text-[#0f766e]">ARIBOT</p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 rounded-full"
+            aria-label="Close ARIBOT"
+            onClick={() => ctx.setOpen(false)}
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
           <Thread components={{ Welcome }} />
-        </SheetContent>
-      </Sheet>
-    </AssistantRuntimeProvider>
+        </div>
+      </div>
+    </aside>
   );
 }

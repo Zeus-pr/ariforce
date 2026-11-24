@@ -73,20 +73,28 @@ function figure(value: number | null, unit: string) {
   return unit === 'percent' ? `${value}%` : String(value);
 }
 
-function asTable(
+function asFacts(
   title: string,
   columns: string[],
   rows: string[][],
   extra?: Record<string, unknown>,
 ): ToolOutcome {
-  const shown = rows.slice(0, 40);
+  const shown = rows.slice(0, 12);
+  const facts = shown.map((row) => {
+    const fact: Record<string, string> = {};
+    columns.forEach((column, index) => {
+      fact[column] = row[index] ?? '';
+    });
+    return fact;
+  });
   return {
-    block: shown.length ? { type: 'table', title, columns, rows: shown } : null,
+    block: null,
     model: {
       title,
-      columns,
-      rows: shown,
-      ...(rows.length > shown.length ? { note: `Showing 40 of ${rows.length}.` } : {}),
+      facts,
+      ...(rows.length > shown.length
+        ? { note: `${rows.length} rows. Say the pattern and only the few that matter.` }
+        : {}),
       ...extra,
     },
   };
@@ -175,11 +183,12 @@ export class BotTools {
       n.role ? ROLE_NAMES[n.role] : '',
       n.territories.map((t) => t.name).join(', '),
     ]);
-    return asTable('Team', columns, rows, {
+    return asFacts('Team', columns, rows, {
       people: shown.map((n) => ({
         id: n.id,
         name: n.name,
         role: n.role ? ROLE_NAMES[n.role] : '',
+        territory: n.territories.map((t) => t.name).join(', '),
         unassigned: n.depth < 0,
       })),
       ...(matched.length > shown.length ? { note: `Showing 40 of ${matched.length}.` } : {}),
@@ -255,7 +264,7 @@ export class BotTools {
         };
       const placeRow = choosePlace(found, place);
       if (!placeRow)
-        return asTable(
+        return asFacts(
           'Places',
           ['Place', 'Level'],
           found.slice(0, 40).map((row) => [row.name, row.level]),
@@ -275,7 +284,7 @@ export class BotTools {
     const scoped = only ? report.rows.filter((row) => row.territoryId === only) : report.rows;
     const table = kpiTable({ ...report, rows: scoped.length ? scoped : report.rows });
     if (!table.rows.length) return { model: { error: 'No figures for that month.' }, block: null };
-    return asTable(`KPIs ${report.from} to ${report.to}`, table.columns, table.rows);
+    return asFacts(`KPIs ${report.from} to ${report.to}`, table.columns, table.rows);
   }
 
   private async productsFor(
@@ -299,7 +308,7 @@ export class BotTools {
       String(r.pobQty),
       String(r.pobValue),
     ]);
-    return asTable(
+    return asFacts(
       `Products ${report.from} to ${report.to}`,
       ['Product', 'Detailed', 'First position', 'Share', 'Samples', 'POB qty', 'POB'],
       rows,

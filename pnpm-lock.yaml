@@ -159,9 +159,9 @@ importers:
       '@xyflow/react':
         specifier: ^13.0.2
         version: 13.0.2(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(immer@11.2.9)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1))
-      '@yogesharc/thinking-orbs':
-        specifier: ^0.1.2
-        version: 0.1.2(react@19.3.1)
+      border-beam:
+        specifier: ^1.4.1
+        version: 1.4.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       bot-avatars:
         specifier: ^0.2.2
         version: 0.2.2(react@19.3.1)
@@ -3511,14 +3511,6 @@ packages:
     resolution: {integrity: sha512-mOeG0ZIkEUY5V5XQS+LE3QKlJqL7gu5ukqxAniuDDpfxtkA4uagOmBiWKh3w59wZ5nBC7ojBcNrBukM3hUJBKg==}
     engines: {node: '>=20'}
 
-  '@yogesharc/thinking-orbs@0.1.2':
-    resolution: {integrity: sha512-RBUdEBdcIQEx+qO5vxT4OuvCG4zcKetXmSdL8uSKiOWqQx499td7N+LVEGMeYZI59VXxNVI88PzoMcIFzmhWTw==}
-    peerDependencies:
-      react: '>=18'
-    peerDependenciesMeta:
-      react:
-        optional: true
-
   accepts@2.0.0:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
     engines: {node: '>= 0.6'}
@@ -3795,6 +3787,12 @@ packages:
   body-parser@2.4.0:
     resolution: {integrity: sha512-Ifk1KcLrxaGt1occQagQNFNNOqRt1LFuehEnHHzB8Z6cRgIxRU1TBaiIsUiCdA+gy5PL7Y1IX31DNKkRmxtXjQ==}
     engines: {node: '>=18'}
+
+  border-beam@1.4.1:
+    resolution: {integrity: sha512-YyugmKjrhkg1PBC1ZKX7JvFo/zYzha6NXOq24VWrnvBYmDRvGCgFS9oxZoKJ+oS9Kn436l1etYGlAdGiWK+3ag==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
 
   bot-avatars@0.2.2:
     resolution: {integrity: sha512-EszpDsXfbO7SD3Jv/g8/7mt3I4EpN4WuDy6Uk3reuzIgU+dl4iKtk+fuIzGgfXjOraF1jQqUjaDOdcql1khXHQ==}
@@ -9887,10 +9885,6 @@ snapshots:
       d3-selection: 3.0.1
       d3-zoom: 3.0.1
 
-  '@yogesharc/thinking-orbs@0.1.2(react@19.3.1)':
-    optionalDependencies:
-      react: 19.3.1
-
   accepts@2.0.0:
     dependencies:
       mime-types: 3.0.2
@@ -10128,6 +10122,11 @@ snapshots:
       type-is: 2.1.0
     transitivePeerDependencies:
       - supports-color
+
+  border-beam@1.4.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
+    dependencies:
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
 
   bot-avatars@0.2.2(react@19.3.1):
     dependencies:

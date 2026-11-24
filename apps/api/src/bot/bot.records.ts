@@ -31,7 +31,8 @@ const KINDS = [
 
 type Kind = (typeof KINDS)[number];
 
-const HIDDEN = /email|phone|password|token|secret|auth/i;
+const HIDDEN = /email|phone|password|token|secret|auth|^(id|.*Id|.*Ids|path|version|uuid)$|At$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function indiaToday() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
@@ -53,7 +54,7 @@ function textOf(item: unknown): string | null {
     return null;
   }
   const text = String(item);
-  if (!text) return null;
+  if (!text || UUID.test(text)) return null;
   return text.length > 80 ? `${text.slice(0, 77)}...` : text;
 }
 
@@ -87,14 +88,21 @@ function table(title: string, data: unknown): ToolOutcome {
       (key) => !preferred.includes(key),
     ),
   ].slice(0, 6);
-  const body = rows.map((row) => keys.map((key) => row[key] ?? ''));
+  const facts = rows.slice(0, 12).map((row) => {
+    const fact: Record<string, string> = {};
+    for (const key of keys) if (row[key]) fact[key] = row[key];
+    return fact;
+  });
   return {
-    block: body.length ? { type: 'table', title, columns: keys, rows: body } : null,
+    block: null,
     model: {
       title,
-      columns: keys,
-      rows: body,
-      ...(body.length ? {} : { note: 'Nothing on this account matches.' }),
+      count: rows.length,
+      facts,
+      ...(rows.length ? {} : { note: 'Nothing on this account matches.' }),
+      ...(rows.length > facts.length
+        ? { note: `${rows.length} records. Say how many and name only the ones that matter.` }
+        : {}),
     },
   };
 }
