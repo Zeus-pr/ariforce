@@ -2,7 +2,9 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import {
   dcrDetailsKind,
   istDate,
+  ROLE_RANK,
   tpItemDates,
+  type RoleKey,
   type TourPlanItem,
   type TourPlanItemPlan,
   type TourPlanItemUpsert,
@@ -37,14 +39,51 @@ export interface TpItemQuery {
 }
 type Decision = { decision: 'approve' | 'reject'; comment?: string };
 
-/** Next calendar month only. It stays open through the last day of this month. */
-function assertTpWindow(from: string) {
-  const today = istDate();
+/** BM 20, ABM 22, RBM 24, ZBM and above 27. Closes at 11:59 pm IST that day. */
+function tpDeadlineDay(rank: number) {
+  if (rank === 1) return 20;
+  if (rank === 2) return 22;
+  if (rank === 3) return 24;
+  if (rank >= 4) return 27;
+  return null;
+}
+
+function salesRank(roles: readonly RoleKey[]) {
+  return roles.reduce((best, role) => Math.max(best, ROLE_RANK[role] ?? 0), 0);
+}
+
+function dayOrdinal(day: number) {
+  const teen = day % 100;
+  const suf =
+    teen >= 11 && teen <= 13
+      ? 'th'
+      : day % 10 === 1
+        ? 'st'
+        : day % 10 === 2
+          ? 'nd'
+          : day % 10 === 3
+            ? 'rd'
+            : 'th';
+  return `${day}${suf}`;
+}
+
+/** Next calendar month only, through 11:59 pm IST on the role's day. */
+function assertTpWindow(from: string, rank: number, now = new Date()) {
+  const today = istDate(now);
   const currentYm = today.slice(0, 7);
   const [y, m] = currentYm.split('-').map(Number);
   const nextYm = m! === 12 ? `${y! + 1}-01` : `${y}-${String(m! + 1).padStart(2, '0')}`;
   if (from.slice(0, 7) !== nextYm)
     throw err(422, 'TP_CUTOFF', 'Tour plans are only for the next calendar month');
+  const day = tpDeadlineDay(rank);
+  if (!day) return;
+  const end = new Date(`${currentYm}-${String(day).padStart(2, '0')}T23:59:59.999+05:30`);
+  if (now.getTime() > end.getTime())
+    throw err(
+      422,
+      'TP_CUTOFF',
+      `Tour plans are only for the next month, and that window closed at 11:59 pm on the ${dayOrdinal(day)}.`,
+    );
 }
 
 /**
@@ -299,6 +338,10 @@ export class TourPlanItemsService {
 
   upsert(p: Principal, b: TourPlanItemUpsert) {
     return this.tenant.run(p, async (tx) => {
+      const today = istDate();
+      const [y, m] = today.slice(0, 7).split('-').map(Number);
+      const nextYm = m! === 12 ? `${y! + 1}-01` : `${y}-${String(m! + 1).padStart(2, '0')}`;
+      if (b.from.slice(0, 7) === nextYm) assertTpWindow(b.from, salesRank(p.roles));
       await this.validatePlan(tx, p, b.plan);
       this.assertDayDates(b.from, b.to, b.plan);
       if (!b.id) {
@@ -353,7 +396,7 @@ export class TourPlanItemsService {
       const cur = await this.row(tx, p, id, true);
       this.own(p, cur);
       this.editable(cur);
-      assertTpWindow(cur.fromDate);
+      assertTpWindow(cur.fromDate, salesRank(p.roles));
       if (cur.fromDate < istDate())
         throw err(422, 'TP_IN_PAST', 'A tour plan must start today or later', {
           field: 'from',
