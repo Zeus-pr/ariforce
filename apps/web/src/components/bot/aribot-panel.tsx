@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { BotAvatar } from 'bot-avatars';
 import { Orb } from '@yogesharc/thinking-orbs';
 import {
   AssistantRuntimeProvider,
@@ -112,10 +113,16 @@ const adapter: ChatModelAdapter = {
 
 function AribotOrb() {
   const running = useAuiState((s) => s.thread.isRunning);
-  return running ? (
-    <Orb state="reasoning" variant="twins" size={22} label="ARIBOT" className="text-primary" />
-  ) : (
-    <Orb state="working" variant="gyro" size={22} label="ARIBOT" className="text-primary" />
+  return (
+    <BotAvatar
+      type="droid"
+      state={running ? 'working' : 'default'}
+      size={32}
+      color="#0b1f4d"
+      interactive={false}
+      aria-hidden
+      className="pointer-events-none shrink-0"
+    />
   );
 }
 
