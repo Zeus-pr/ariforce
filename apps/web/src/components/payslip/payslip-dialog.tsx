@@ -32,6 +32,9 @@ type Slip = {
   hra: number;
   special: number;
   gross: number;
+  expenseLabel: string;
+  expenseAmount: number;
+  earnings: number;
   professionalTax: number;
   esi: number;
   bonusDeduction: number;
@@ -283,6 +286,7 @@ export function PayslipDialog({
                     ['Basic', slip.fixedBasic, slip.basic],
                     ['HRA', slip.fixedHra, slip.hra],
                     ['Special allowance', slip.fixedSpecial, slip.special],
+                    [slip.expenseLabel, 0, slip.expenseAmount],
                   ] as const
                 ).map(([label, fixed, amount]) => (
                   <p
@@ -296,7 +300,7 @@ export function PayslipDialog({
                 ))}
                 <p className="grid grid-cols-[1fr_auto] gap-2 bg-foreground px-3 py-1.5 font-medium text-background">
                   <span>Total earnings</span>
-                  <span className="tabular-nums">{inr(slip.gross)}</span>
+                  <span className="tabular-nums">{inr(slip.earnings)}</span>
                 </p>
               </div>
               <div className="border-l">

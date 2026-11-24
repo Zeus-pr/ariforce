@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   companyHolidays,
   companies,
+  expenseClaims,
   geoCaptures,
   leavePolicies,
   leaveRequests,
@@ -10,7 +11,7 @@ import {
   users,
   type Tx,
 } from '@ariforce/db';
-import { and, desc, eq, isNull, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { TenantService } from '../common/tenant.service';
@@ -201,6 +202,39 @@ export class PayslipService {
     return structure;
   }
 
+  /** Expenses are paid with the next month's salary. A September slip carries August. */
+  private async priorExpenses(
+    tx: Tx,
+    userId: string,
+    year: number,
+    month: number,
+    gross: number,
+    deductions: number,
+  ) {
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const prev = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`;
+    const [claim] = await tx
+      .select({ total: expenseClaims.total })
+      .from(expenseClaims)
+      .where(
+        and(
+          eq(expenseClaims.userId, userId),
+          eq(expenseClaims.month, prev),
+          isNull(expenseClaims.deletedAt),
+          inArray(expenseClaims.status, ['approved', 'paid']),
+        ),
+      );
+    const expenseAmount = Math.round(Number(claim?.total ?? 0));
+    const earnings = gross + expenseAmount;
+    return {
+      expenseLabel: `Expenses ${MONTHS[prevMonth - 1]}`,
+      expenseAmount,
+      earnings,
+      net: earnings - deductions,
+    };
+  }
+
   private async build(tx: Tx, p: Principal, year: number, month: number, userId?: string) {
     if (month < 1 || month > 12) throw err(422, 'VALIDATION', 'Month must be 1 to 12');
     const id = this.target(p, userId);
@@ -332,6 +366,7 @@ export class PayslipService {
       hasStructure: !!structure,
       ctc: person.ctc,
       ...amounts,
+      ...(await this.priorExpenses(tx, id, year, month, amounts.gross, amounts.deductions)),
     };
     return slip;
   }

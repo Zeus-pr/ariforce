@@ -25,6 +25,9 @@ export type SlipPdf = {
   fixedHra: number;
   fixedSpecial: number;
   gross: number;
+  expenseLabel: string;
+  expenseAmount: number;
+  earnings: number;
   professionalTax: number;
   esi: number;
   bonusDeduction: number;
@@ -173,6 +176,7 @@ export function payslipPdf(s: SlipPdf): Promise<Buffer> {
       ['Basic', s.fixedBasic, s.basic],
       ['HRA', s.fixedHra, s.hra],
       ['Special Allowance', s.fixedSpecial, s.special],
+      [s.expenseLabel, 0, s.expenseAmount],
     ];
     const deductions: [string, number][] = [
       ['Professional tax', s.professionalTax],
@@ -200,7 +204,7 @@ export function payslipPdf(s: SlipPdf): Promise<Buffer> {
     doc.rect(left, y, width, 18).fill('#111827');
     doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(8);
     doc.text('TOTAL EARNINGS', left + 8, y + 5);
-    doc.text(money(s.gross), mid - 78, y + 5, { width: 70, align: 'right' });
+    doc.text(money(s.earnings), mid - 78, y + 5, { width: 70, align: 'right' });
     doc.text('TOTAL DEDUCTIONS', mid + 8, y + 5);
     doc.text(money(s.deductions), right - 78, y + 5, { width: 70, align: 'right' });
     y += 28;
