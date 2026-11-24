@@ -11,6 +11,7 @@ import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { adminMessage } from '@/lib/admin/messages';
+import { seatIsVacant } from '@/lib/people/seat';
 import { invalidateTerritories, useTerritories } from '@/lib/query';
 import { TreeFlow } from '@/components/flow/tree-flow';
 
@@ -42,6 +43,8 @@ type Person = {
   id: string;
   name: string;
   version: number;
+  status?: string | null;
+  hrStatus?: string | null;
   primaryRole: string | null;
   territoryIds: string[];
   territories: { id: string; name: string; level: string }[];
@@ -588,7 +591,12 @@ function PlaceDialog({
           <ul className="flex max-h-40 flex-col gap-1 overflow-auto">
             {(people ?? []).map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-2 text-sm">
-                <span>{p.name}</span>
+                <span className="flex flex-col">
+                  <span>{seatIsVacant(p) ? 'Vacant' : p.name}</span>
+                  {seatIsVacant(p) && (
+                    <span className="text-xs text-muted-foreground">{p.name} · Suspended</span>
+                  )}
+                </span>
                 <Button
                   type="button"
                   variant="ghost"

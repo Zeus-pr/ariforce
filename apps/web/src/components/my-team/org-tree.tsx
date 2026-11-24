@@ -240,7 +240,7 @@ export function OrgTree({
               >
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="font-medium" data-testid="node-name">
-                    <Highlight text={e.name} q={query} />
+                    <Highlight text={e.active ? e.name : 'Vacant'} q={query} />
                   </span>
                   <Badge variant="secondary" className="font-normal" title={e.role}>
                     {ROLE_SHORT[e.role]}
@@ -259,7 +259,7 @@ export function OrgTree({
                   </span>
                   {!e.active && (
                     <Badge variant="outline" className="font-normal">
-                      Inactive
+                      {e.name} · Inactive
                     </Badge>
                   )}
                   {c.length > 0 && (
