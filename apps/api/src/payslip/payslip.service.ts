@@ -18,7 +18,7 @@ import { err } from '../field/checkins.service';
 import { isAbsentDay, isSunday } from '../field/day-status';
 import { localDate } from '../field/field.util';
 import { allDates } from '../leave/leave.util';
-import { payslipAmounts } from './math';
+import { payslipAmounts, splitCtc } from './math';
 import { payslipPdf } from './pdf';
 
 function rupees(n: number, name: string) {
@@ -92,15 +92,17 @@ export class PayslipService {
     return this.tenant.run(p, async (tx) => {
       const person = await this.personRow(tx, userId);
       const structure = await this.structureRow(tx, userId, start);
+      const auto = person.ctc == null ? null : splitCtc(person.ctc);
       return {
         userId,
         ctc: person.ctc,
+        automatic: !structure && auto != null,
         effectiveMonth: structure ? String(structure.effectiveMonth).slice(0, 7) : null,
-        basicMonthly: structure?.basicMonthly ?? null,
-        hraMonthly: structure?.hraMonthly ?? null,
-        specialMonthly: structure?.specialMonthly ?? null,
-        professionalTaxMonthly: structure?.professionalTaxMonthly ?? null,
-        bonusDeductionMonthly: structure?.bonusDeductionMonthly ?? null,
+        basicMonthly: structure?.basicMonthly ?? auto?.basic ?? null,
+        hraMonthly: structure?.hraMonthly ?? auto?.hra ?? null,
+        specialMonthly: structure?.specialMonthly ?? auto?.special ?? null,
+        professionalTaxMonthly: structure?.professionalTaxMonthly ?? (auto ? 0 : null),
+        bonusDeductionMonthly: structure?.bonusDeductionMonthly ?? (auto ? 0 : null),
       };
     });
   }
@@ -116,7 +118,14 @@ export class PayslipService {
     const gross = (basicMonthly + hraMonthly + specialMonthly) * 12;
     if (gross > 100_000_000) throw err(422, 'VALIDATION', 'Yearly cost is above the limit');
     return this.tenant.run(p, async (tx) => {
-      await this.personRow(tx, b.userId);
+      const person = await this.personRow(tx, b.userId);
+      const auto = person.ctc == null ? null : splitCtc(person.ctc);
+      const unchanged =
+        auto != null &&
+        basicMonthly === auto.basic &&
+        hraMonthly === auto.hra &&
+        specialMonthly === auto.special;
+      const ctc = unchanged ? person.ctc! : gross;
       const [existing] = await tx
         .select({ id: salaryStructures.id })
         .from(salaryStructures)
@@ -151,8 +160,8 @@ export class PayslipService {
           bonusDeductionMonthly,
         });
       }
-      await tx.update(users).set({ ctc: gross }).where(eq(users.id, b.userId));
-      return { userId: b.userId, ctc: gross, effectiveMonth: month.slice(0, 7) };
+      await tx.update(users).set({ ctc }).where(eq(users.id, b.userId));
+      return { userId: b.userId, ctc, effectiveMonth: month.slice(0, 7) };
     });
   }
 
@@ -201,19 +210,10 @@ export class PayslipService {
 
     const from = `${year}-${String(month).padStart(2, '0')}-01`;
     const structure = await this.structureRow(tx, id, from);
-    if (!structure)
-      throw err(
-        409,
-        'NO_STRUCTURE',
-        'Save the salary structure before a payslip can be downloaded',
-        {
-          userId: id,
-        },
-      );
-
-    const basic = structure.basicMonthly;
-    const hra = structure.hraMonthly;
-    const special = structure.specialMonthly;
+    const auto = splitCtc(person.ctc);
+    const basic = structure?.basicMonthly ?? auto.basic;
+    const hra = structure?.hraMonthly ?? auto.hra;
+    const special = structure?.specialMonthly ?? auto.special;
     const [company] = await tx
       .select({ name: companies.name, timezone: companies.timezone })
       .from(companies)
@@ -304,8 +304,8 @@ export class PayslipService {
       basic,
       hra,
       special: Math.max(0, special),
-      professionalTax: structure.professionalTaxMonthly,
-      bonusDeduction: structure.bonusDeductionMonthly,
+      professionalTax: structure?.professionalTaxMonthly ?? 0,
+      bonusDeduction: structure?.bonusDeductionMonthly ?? 0,
       totalDays: dates.length,
       unpaidDays: lopDays + absentDays,
     });

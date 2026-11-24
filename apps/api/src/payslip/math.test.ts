@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { payslipAmounts, unpaidDays } from './math';
+import { payslipAmounts, splitCtc, unpaidDays } from './math';
 
 describe('payslip amounts', () => {
   it('keeps a full month at the structure amounts', () => {
@@ -31,6 +31,12 @@ describe('payslip amounts', () => {
     expect(slip.basic).toBe(9667);
     expect(slip.gross).toBe(19334);
     expect(slip.esi).toBe(145);
+  });
+
+  it('splits a yearly cost into basic, HRA and special allowance', () => {
+    expect(splitCtc(240000)).toEqual({ basic: 10000, hra: 4000, special: 6000 });
+    expect(splitCtc(1270000)).toEqual({ basic: 52917, hra: 21167, special: 31750 });
+    expect(splitCtc(350000)).toEqual({ basic: 14583, hra: 5833, special: 8750 });
   });
 
   it('counts loss of pay instead of absent on the same day', () => {

@@ -1,3 +1,12 @@
+/** Basic is half the yearly cost, HRA is 40% of basic, special allowance is the remaining 30%. */
+export function splitCtc(ctc: number) {
+  return {
+    basic: Math.round((ctc * 0.5) / 12),
+    hra: Math.round((ctc * 0.2) / 12),
+    special: Math.round((ctc * 0.3) / 12),
+  };
+}
+
 /** Full-month lines scaled by paid days. ESI is 0.75% of the earned gross, rounded to a rupee. */
 export function payslipAmounts(a: {
   basic: number;

@@ -11,6 +11,15 @@ type Person = { id: string; name: string; ctc: number | null };
 const inr = (n: number) =>
   n.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
+/** Half basic, 40% of that as HRA, and the remaining 30% as special allowance. */
+function standardSplit(ctc: number) {
+  return {
+    basic: Math.round((ctc * 0.5) / 12),
+    hra: Math.round((ctc * 0.2) / 12),
+    special: Math.round((ctc * 0.3) / 12),
+  };
+}
+
 export function SalaryRestructure() {
   const now = new Date();
   const [people, setPeople] = useState<Person[]>([]);
@@ -29,6 +38,7 @@ export function SalaryRestructure() {
   const [saving, setSaving] = useState(false);
   const [loadingStructure, setLoadingStructure] = useState(false);
   const [fromMonth, setFromMonth] = useState<string | null>(null);
+  const [automatic, setAutomatic] = useState(false);
 
   useEffect(() => {
     void allPages<{ id: string; name: string; ctc?: number | null }>((cursor) =>
@@ -43,42 +53,68 @@ export function SalaryRestructure() {
     });
   }, [notice]);
 
+  const selectedCtc = people.find((p) => p.id === userId)?.ctc ?? null;
+
   useEffect(() => {
     if (!userId) return;
     let live = true;
     setLoadingStructure(true);
     setError(null);
+    const fillStandard = () => {
+      if (selectedCtc == null) {
+        setBasic('');
+        setHra('');
+        setSpecial('');
+        setAutomatic(false);
+        return;
+      }
+      const split = standardSplit(selectedCtc);
+      setBasic(String(split.basic));
+      setHra(String(split.hra));
+      setSpecial(String(split.special));
+      setTax('0');
+      setBonus('0');
+      setFromMonth(null);
+      setAutomatic(true);
+    };
     const q = new URLSearchParams({ userId, month });
     void fetch(`${window.location.origin}/v1/payslips/structure?${q}`, {
       credentials: 'include',
     })
       .then(async (res) => {
-        const body = (await res.json()) as {
+        const body = (await res.json().catch(() => null)) as {
           message?: string;
+          automatic?: boolean;
           basicMonthly: number | null;
           hraMonthly: number | null;
           specialMonthly: number | null;
           professionalTaxMonthly: number | null;
           bonusDeductionMonthly: number | null;
           effectiveMonth: string | null;
-        };
+        } | null;
         if (!live) return;
-        if (!res.ok) {
-          setError(body.message || 'Could not load the structure.');
+        if (!res.ok || !body || body.basicMonthly == null) {
+          fillStandard();
+          if (!res.ok && selectedCtc == null)
+            setError(body?.message || 'Could not load the structure.');
           return;
         }
-        setBasic(body.basicMonthly == null ? '' : String(body.basicMonthly));
+        setBasic(String(body.basicMonthly));
         setHra(body.hraMonthly == null ? '' : String(body.hraMonthly));
         setSpecial(body.specialMonthly == null ? '' : String(body.specialMonthly));
         setTax(body.professionalTaxMonthly == null ? '0' : String(body.professionalTaxMonthly));
         setBonus(body.bonusDeductionMonthly == null ? '0' : String(body.bonusDeductionMonthly));
         setFromMonth(body.effectiveMonth);
+        setAutomatic(body.automatic === true);
+      })
+      .catch(() => {
+        if (live) fillStandard();
       })
       .finally(() => live && setLoadingStructure(false));
     return () => {
       live = false;
     };
-  }, [userId, month]);
+  }, [userId, month, selectedCtc]);
 
   const matches = people.filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()));
   const selected = people.find((p) => p.id === userId);
@@ -110,6 +146,7 @@ export function SalaryRestructure() {
       return;
     }
     setFromMonth(month);
+    setAutomatic(false);
     setNotice(`Saved. Yearly cost to company is ${inr(body.ctc ?? gross * 12)}.`);
   }
 
@@ -118,9 +155,8 @@ export function SalaryRestructure() {
       <div>
         <h1 className="text-lg font-semibold">Salary structure</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Basic, HRA and special allowance are the monthly gross. Their yearly total is the cost to
-          company. A payslip can be downloaded only after this is saved. A later month keeps the
-          earlier slip.
+          Basic, HRA and special allowance fill from the yearly cost. Change any of them and save
+          when a person should differ. A later month keeps the earlier slip.
         </p>
       </div>
       <label className="flex max-w-sm flex-col gap-1 text-sm">
@@ -161,9 +197,16 @@ export function SalaryRestructure() {
               .
             </p>
           )}
-          {!loadingStructure && fromMonth == null && (
+          {!loadingStructure && automatic && (
             <p className="sm:col-span-2 text-sm text-muted-foreground">
-              No structure yet. A payslip stays closed until this is saved.
+              Filled from the yearly cost: half is basic, 40% of basic is HRA, and the rest is
+              special allowance. Change a line and save to override it. Professional tax and the
+              bonus deduction stay at the amounts here.
+            </p>
+          )}
+          {!loadingStructure && !automatic && fromMonth == null && (
+            <p className="sm:col-span-2 text-sm text-muted-foreground">
+              No yearly cost is loaded, so a payslip stays closed.
             </p>
           )}
           <label className="flex flex-col gap-1 text-sm">
