@@ -4,6 +4,7 @@ import {
   choosePlace,
   guardNarrative,
   modelFor,
+  proseOnly,
   scrubIds,
   monthArg,
   periodArg,
@@ -120,12 +121,15 @@ describe('ARIBOT answers', () => {
     });
     expect(result.toolNames).toEqual(['kpi_report']);
     expect(result.narrative).toBe('Coverage is 81.2%.');
-    expect(result.blocks).toHaveLength(1);
+    expect(result.blocks).toHaveLength(0);
     expect(result.refused).toBe(false);
   });
 
   it('drops a database id and keeps the earlier turn', async () => {
     expect(scrubIds('Suri is 01a1e0b1-717b-775f-8d22-ef5c9f9731ce.')).toBe('Suri is.');
+    expect(proseOnly('Coverage is 18%.\n\n| Who | Coverage |\n| --- | --- |\n| A | 18% |')).toBe(
+      'Coverage is 18%.',
+    );
     let seen = '';
     await runBot({
       knowledge: 'Coverage is a share.',

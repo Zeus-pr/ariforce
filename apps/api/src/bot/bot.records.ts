@@ -88,16 +88,21 @@ function table(title: string, data: unknown): ToolOutcome {
       (key) => !preferred.includes(key),
     ),
   ].slice(0, 6);
-  const body = rows.map((row) => keys.map((key) => row[key] ?? ''));
+  const facts = rows.slice(0, 12).map((row) => {
+    const fact: Record<string, string> = {};
+    for (const key of keys) if (row[key]) fact[key] = row[key];
+    return fact;
+  });
   return {
     block: null,
     model: {
       title,
-      count: body.length,
-      columns: keys,
-      rows: body.slice(0, 20),
-      ...(body.length ? {} : { note: 'Nothing on this account matches.' }),
-      ...(body.length > 20 ? { note: `Showing 20 of ${body.length}.` } : {}),
+      count: rows.length,
+      facts,
+      ...(rows.length ? {} : { note: 'Nothing on this account matches.' }),
+      ...(rows.length > facts.length
+        ? { note: `${rows.length} records. Say how many and name only the ones that matter.` }
+        : {}),
     },
   };
 }

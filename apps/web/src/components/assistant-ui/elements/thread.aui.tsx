@@ -721,15 +721,7 @@ const AssistantMessage: FC = () => {
                   </div>
                 );
               case 'indicator':
-                return (
-                  <span
-                    data-slot="aui_assistant-message-indicator"
-                    className="animate-pulse font-sans"
-                    aria-label="Assistant is working"
-                  >
-                    {'●'}
-                  </span>
-                );
+                return null;
               default:
                 return null;
             }

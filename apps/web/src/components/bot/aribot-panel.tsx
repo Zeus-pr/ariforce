@@ -70,17 +70,12 @@ function chatError(status: number): string {
 }
 
 function replyText(reply: BotReply) {
-  const narrative = reply.narrative?.trim();
-  if (narrative) return narrative;
-  const tables = (reply.blocks ?? []).map((block) => {
-    const head = `| ${block.columns.join(' | ')} |`;
-    const rule = `| ${block.columns.map(() => '---').join(' | ')} |`;
-    const rows = block.rows
-      .map((row) => `| ${row.map((cell) => cell.replace(/\|/g, '\\|')).join(' | ')} |`)
-      .join('\n');
-    return `**${block.title}**\n\n${head}\n${rule}\n${rows}`;
-  });
-  return tables.join('\n\n');
+  return (reply.narrative ?? '')
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('|'))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 async function* streamText(text: string, abortSignal: AbortSignal) {
