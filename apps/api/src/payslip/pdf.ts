@@ -215,6 +215,16 @@ export function payslipPdf(s: SlipPdf): Promise<Buffer> {
       .fontSize(9)
       .fillColor('#374151')
       .text(`( ${rupeesInWords(s.net)} )`, left, y + 16);
+    if (existsSync(LOGO)) {
+      const markWidth = 460;
+      const markHeight = (markWidth * 320) / 480;
+      doc.save();
+      doc.opacity(0.08);
+      doc.image(LOGO, (doc.page.width - markWidth) / 2, (doc.page.height - markHeight) / 2, {
+        width: markWidth,
+      });
+      doc.restore();
+    }
     doc.end();
   });
 }
