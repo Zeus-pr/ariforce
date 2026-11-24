@@ -12,6 +12,7 @@ import {
 } from '@ariforce/ui/components/dialog';
 import { Input } from '@ariforce/ui/components/input';
 import { API_URL, api } from '@/lib/api';
+import { allPages } from '@/lib/paging';
 import type { Role } from '@/lib/roles';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -38,7 +39,6 @@ type Slip = {
   net: number;
   hasStructure: boolean;
   ctc: number;
-  employeeCode: string | null;
   joinedOn: string | null;
   department: string | null;
   branch: string | null;
@@ -87,10 +87,12 @@ export function PayslipDialog({
   useEffect(() => {
     if (!open || !hr) return;
     let live = true;
-    void api.GET('/v1/users', { params: { query: { limit: 100 } } }).then((r) => {
-      if (!live || r.error || !r.data) return;
+    void allPages<{ id: string; name: string }>((cursor) =>
+      api.GET('/v1/users', { params: { query: { limit: 100, cursor } } }),
+    ).then((r) => {
+      if (!live || !r.data) return;
       setPeople(
-        (r.data.items as { id: string; name: string }[])
+        r.data.items
           .map((p) => ({ id: p.id, name: p.name }))
           .sort((a, b) => a.name.localeCompare(b.name)),
       );

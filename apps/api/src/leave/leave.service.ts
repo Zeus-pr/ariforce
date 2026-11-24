@@ -456,6 +456,8 @@ export class LeaveService implements OnModuleInit {
   private readable(p: Principal): SQL {
     const parts: SQL[] = [];
     if (p.permissions.includes('leave:read')) parts.push(eq(leaveRequests.userId, p.userId));
+    // HR has no reporting line, so leave:read alone would show only their own requests.
+    if (p.roles.includes('hr') && p.permissions.includes('leave:read')) parts.push(sql`true`);
     if (p.permissions.includes('leave:approve'))
       parts.push(
         p.roles.includes('system_admin') || !p.teamUserIds

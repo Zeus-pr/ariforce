@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { api, toApiError } from '@/lib/api';
+import { allPages } from '@/lib/paging';
 
 type Claim = {
   id: string;
@@ -22,11 +23,15 @@ export function HrExpenses() {
   useEffect(() => {
     let live = true;
     void (async () => {
-      const team = await api.GET('/v1/expense-claims', {
-        params: { query: { scope: 'team', limit: 100 } },
-      });
+      const team = await allPages<Claim>((cursor) =>
+        api.GET('/v1/expense-claims', {
+          params: { query: { scope: 'team', limit: 100, cursor } },
+        }),
+      );
       const r = team.error
-        ? await api.GET('/v1/expense-claims', { params: { query: { limit: 100 } } })
+        ? await allPages<Claim>((cursor) =>
+            api.GET('/v1/expense-claims', { params: { query: { limit: 100, cursor } } }),
+          )
         : team;
       if (!live) return;
       if (r.error || !r.data) {
@@ -45,7 +50,8 @@ export function HrExpenses() {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-6">
       <h1 className="text-lg font-semibold">Expenses</h1>
       <p className="text-sm text-muted-foreground">
-        Month claims, including the allowance written when a DCR is submitted.
+        Approved and paid claims. A role that can approve also sees every claim in the reporting
+        line.
       </p>
       {error && (
         <p role="alert" className="text-sm text-destructive">

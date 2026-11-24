@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
 import { api } from '@/lib/api';
+import { allPages } from '@/lib/paging';
 
 type Person = { id: string; name: string; ctc: number | null };
 
@@ -26,17 +27,58 @@ export function SalaryRestructure() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loadingStructure, setLoadingStructure] = useState(false);
+  const [fromMonth, setFromMonth] = useState<string | null>(null);
 
   useEffect(() => {
-    void api.GET('/v1/users', { params: { query: { limit: 100 } } }).then((r) => {
-      if (r.error || !r.data) return;
+    void allPages<{ id: string; name: string; ctc?: number | null }>((cursor) =>
+      api.GET('/v1/users', { params: { query: { limit: 100, cursor } } }),
+    ).then((r) => {
+      if (!r.data) return;
       setPeople(
-        (r.data.items as Person[])
+        r.data.items
           .map((p) => ({ id: p.id, name: p.name, ctc: p.ctc ?? null }))
           .sort((a, b) => a.name.localeCompare(b.name)),
       );
     });
   }, [notice]);
+
+  useEffect(() => {
+    if (!userId) return;
+    let live = true;
+    setLoadingStructure(true);
+    setError(null);
+    const q = new URLSearchParams({ userId, month });
+    void fetch(`${window.location.origin}/v1/payslips/structure?${q}`, {
+      credentials: 'include',
+    })
+      .then(async (res) => {
+        const body = (await res.json()) as {
+          message?: string;
+          basicMonthly: number | null;
+          hraMonthly: number | null;
+          specialMonthly: number | null;
+          professionalTaxMonthly: number | null;
+          bonusDeductionMonthly: number | null;
+          effectiveMonth: string | null;
+        };
+        if (!live) return;
+        if (!res.ok) {
+          setError(body.message || 'Could not load the structure.');
+          return;
+        }
+        setBasic(body.basicMonthly == null ? '' : String(body.basicMonthly));
+        setHra(body.hraMonthly == null ? '' : String(body.hraMonthly));
+        setSpecial(body.specialMonthly == null ? '' : String(body.specialMonthly));
+        setTax(body.professionalTaxMonthly == null ? '0' : String(body.professionalTaxMonthly));
+        setBonus(body.bonusDeductionMonthly == null ? '0' : String(body.bonusDeductionMonthly));
+        setFromMonth(body.effectiveMonth);
+      })
+      .finally(() => live && setLoadingStructure(false));
+    return () => {
+      live = false;
+    };
+  }, [userId, month]);
 
   const matches = people.filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()));
   const selected = people.find((p) => p.id === userId);
@@ -67,6 +109,7 @@ export function SalaryRestructure() {
       setError(body.message || 'Could not save the structure.');
       return;
     }
+    setFromMonth(month);
     setNotice(`Saved. Yearly cost to company is ${inr(body.ctc ?? gross * 12)}.`);
   }
 
@@ -112,6 +155,17 @@ export function SalaryRestructure() {
           }}
         >
           <p className="sm:col-span-2 text-sm font-medium">{selected.name}</p>
+          {fromMonth && fromMonth !== month && (
+            <p className="sm:col-span-2 text-sm text-muted-foreground">
+              These amounts are the structure from {fromMonth}. Saving writes a new one from {month}
+              .
+            </p>
+          )}
+          {!loadingStructure && fromMonth == null && (
+            <p className="sm:col-span-2 text-sm text-muted-foreground">
+              No structure yet. A payslip stays closed until this is saved.
+            </p>
+          )}
           <label className="flex flex-col gap-1 text-sm">
             From month
             <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
@@ -150,7 +204,7 @@ export function SalaryRestructure() {
             </p>
           )}
           {notice && <p className="sm:col-span-2 text-sm">{notice}</p>}
-          <Button type="submit" disabled={saving || gross <= 0}>
+          <Button type="submit" disabled={saving || loadingStructure || gross <= 0}>
             {saving ? 'Saving…' : 'Save structure'}
           </Button>
         </form>

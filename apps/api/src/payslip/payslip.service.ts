@@ -15,11 +15,23 @@ import { v7 as uuidv7 } from 'uuid';
 import type { Principal } from '../auth/principal';
 import { TenantService } from '../common/tenant.service';
 import { err } from '../field/checkins.service';
-import { ABSENT_FROM, isAbsentDay, isSunday } from '../field/day-status';
+import { isAbsentDay, isSunday } from '../field/day-status';
 import { localDate } from '../field/field.util';
 import { allDates } from '../leave/leave.util';
 import { payslipAmounts } from './math';
 import { payslipPdf } from './pdf';
+
+function rupees(n: number, name: string) {
+  if (typeof n !== 'number' || !Number.isFinite(n) || n < 0 || n > 10_000_000)
+    throw err(422, 'VALIDATION', `${name} must be a rupee amount`);
+  return Math.round(n);
+}
+
+function monthStart(value: string) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])/.test(value))
+    throw err(422, 'VALIDATION', 'Month must be a calendar month');
+  return `${value.slice(0, 7)}-01`;
+}
 
 const MONTHS = [
   'January',
@@ -74,11 +86,37 @@ export class PayslipService {
     };
   }
 
+  readStructure(p: Principal, userId: string, month: string) {
+    if (!this.canManage(p)) throw err(403, 'FORBIDDEN', 'Only HR can read a salary structure');
+    const start = monthStart(month);
+    return this.tenant.run(p, async (tx) => {
+      const person = await this.personRow(tx, userId);
+      const structure = await this.structureRow(tx, userId, start);
+      return {
+        userId,
+        ctc: person.ctc,
+        effectiveMonth: structure ? String(structure.effectiveMonth).slice(0, 7) : null,
+        basicMonthly: structure?.basicMonthly ?? null,
+        hraMonthly: structure?.hraMonthly ?? null,
+        specialMonthly: structure?.specialMonthly ?? null,
+        professionalTaxMonthly: structure?.professionalTaxMonthly ?? null,
+        bonusDeductionMonthly: structure?.bonusDeductionMonthly ?? null,
+      };
+    });
+  }
+
   saveStructure(p: Principal, b: StructureInput) {
     if (!this.canManage(p)) throw err(403, 'FORBIDDEN', 'Only HR can change a salary structure');
+    const month = monthStart(b.effectiveMonth);
+    const basicMonthly = rupees(b.basicMonthly, 'Basic');
+    const hraMonthly = rupees(b.hraMonthly, 'HRA');
+    const specialMonthly = rupees(b.specialMonthly, 'Special allowance');
+    const professionalTaxMonthly = rupees(b.professionalTaxMonthly, 'Professional tax');
+    const bonusDeductionMonthly = rupees(b.bonusDeductionMonthly, 'Bonus deduction');
+    const gross = (basicMonthly + hraMonthly + specialMonthly) * 12;
+    if (gross > 100_000_000) throw err(422, 'VALIDATION', 'Yearly cost is above the limit');
     return this.tenant.run(p, async (tx) => {
-      const month = b.effectiveMonth.slice(0, 7) + '-01';
-      const gross = (b.basicMonthly + b.hraMonthly + b.specialMonthly) * 12;
+      await this.personRow(tx, b.userId);
       const [existing] = await tx
         .select({ id: salaryStructures.id })
         .from(salaryStructures)
@@ -93,11 +131,11 @@ export class PayslipService {
         await tx
           .update(salaryStructures)
           .set({
-            basicMonthly: b.basicMonthly,
-            hraMonthly: b.hraMonthly,
-            specialMonthly: b.specialMonthly,
-            professionalTaxMonthly: b.professionalTaxMonthly,
-            bonusDeductionMonthly: b.bonusDeductionMonthly,
+            basicMonthly,
+            hraMonthly,
+            specialMonthly,
+            professionalTaxMonthly,
+            bonusDeductionMonthly,
           })
           .where(eq(salaryStructures.id, existing.id));
       } else {
@@ -106,11 +144,11 @@ export class PayslipService {
           companyId: p.companyId,
           userId: b.userId,
           effectiveMonth: month,
-          basicMonthly: b.basicMonthly,
-          hraMonthly: b.hraMonthly,
-          specialMonthly: b.specialMonthly,
-          professionalTaxMonthly: b.professionalTaxMonthly,
-          bonusDeductionMonthly: b.bonusDeductionMonthly,
+          basicMonthly,
+          hraMonthly,
+          specialMonthly,
+          professionalTaxMonthly,
+          bonusDeductionMonthly,
         });
       }
       await tx.update(users).set({ ctc: gross }).where(eq(users.id, b.userId));
@@ -118,9 +156,7 @@ export class PayslipService {
     });
   }
 
-  private async build(tx: Tx, p: Principal, year: number, month: number, userId?: string) {
-    if (month < 1 || month > 12) throw err(422, 'VALIDATION', 'Month must be 1 to 12');
-    const id = this.target(p, userId);
+  private async personRow(tx: Tx, userId: string) {
     const [person] = await tx
       .select({
         id: users.id,
@@ -135,28 +171,49 @@ export class PayslipService {
         esiNumber: users.esiNumber,
       })
       .from(users)
-      .where(and(eq(users.id, id), isNull(users.deletedAt)));
+      .where(and(eq(users.id, userId), isNull(users.deletedAt)));
     if (!person) throw err(404, 'NOT_FOUND', 'Person not found');
-    if (person.ctc == null)
-      throw err(409, 'NO_CTC', 'Salary is not loaded for this person yet', { userId: id });
+    return person;
+  }
 
-    const from = `${year}-${String(month).padStart(2, '0')}-01`;
+  private async structureRow(tx: Tx, userId: string, from: string) {
     const [structure] = await tx
       .select()
       .from(salaryStructures)
       .where(
         and(
-          eq(salaryStructures.userId, id),
+          eq(salaryStructures.userId, userId),
           lte(salaryStructures.effectiveMonth, from),
           isNull(salaryStructures.deletedAt),
         ),
       )
       .orderBy(desc(salaryStructures.effectiveMonth))
       .limit(1);
+    return structure;
+  }
 
-    const basic = structure?.basicMonthly ?? 0;
-    const hra = structure?.hraMonthly ?? 0;
-    const special = structure?.specialMonthly ?? Math.round(person.ctc / 12) - basic - hra;
+  private async build(tx: Tx, p: Principal, year: number, month: number, userId?: string) {
+    if (month < 1 || month > 12) throw err(422, 'VALIDATION', 'Month must be 1 to 12');
+    const id = this.target(p, userId);
+    const person = await this.personRow(tx, id);
+    if (person.ctc == null)
+      throw err(409, 'NO_CTC', 'Salary is not loaded for this person yet', { userId: id });
+
+    const from = `${year}-${String(month).padStart(2, '0')}-01`;
+    const structure = await this.structureRow(tx, id, from);
+    if (!structure)
+      throw err(
+        409,
+        'NO_STRUCTURE',
+        'Save the salary structure before a payslip can be downloaded',
+        {
+          userId: id,
+        },
+      );
+
+    const basic = structure.basicMonthly;
+    const hra = structure.hraMonthly;
+    const special = structure.specialMonthly;
     const [company] = await tx
       .select({ name: companies.name, timezone: companies.timezone })
       .from(companies)
@@ -247,8 +304,8 @@ export class PayslipService {
       basic,
       hra,
       special: Math.max(0, special),
-      professionalTax: structure?.professionalTaxMonthly ?? 0,
-      bonusDeduction: structure?.bonusDeductionMonthly ?? 0,
+      professionalTax: structure.professionalTaxMonthly,
+      bonusDeduction: structure.bonusDeductionMonthly,
       totalDays: dates.length,
       unpaidDays: lopDays + absentDays,
     });
@@ -264,7 +321,7 @@ export class PayslipService {
       esiNumber: person.esiNumber,
       fixedBasic: basic,
       fixedHra: hra,
-      fixedSpecial: Math.max(0, special),
+      fixedSpecial: special,
       year,
       month,
       monthLabel: `${MONTHS[month - 1]} ${year}`,

@@ -34,6 +34,16 @@ export class PayslipController {
     return new StreamableFile(pdf);
   }
 
+  @Get('structure')
+  @RequirePermissions('users:write')
+  structure(
+    @CurrentPrincipal() p: Principal,
+    @Query('userId') userId: string,
+    @Query('month') month: string,
+  ) {
+    return this.payslips.readStructure(p, userId, month);
+  }
+
   @Put('structure')
   @RequirePermissions('users:write')
   save(@CurrentPrincipal() p: Principal, @Body() body: StructureInput) {
