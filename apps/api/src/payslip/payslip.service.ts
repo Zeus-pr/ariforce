@@ -57,6 +57,7 @@ export type StructureInput = {
   specialMonthly: number;
   professionalTaxMonthly: number;
   bonusDeductionMonthly: number;
+  ctc?: number;
 };
 
 @Injectable()
@@ -118,15 +119,24 @@ export class PayslipService {
     const bonusDeductionMonthly = rupees(b.bonusDeductionMonthly, 'Bonus deduction');
     const gross = (basicMonthly + hraMonthly + specialMonthly) * 12;
     if (gross > 100_000_000) throw err(422, 'VALIDATION', 'Yearly cost is above the limit');
+    const typed = b.ctc;
+    let ctc = gross;
+    if (
+      typeof typed === 'number' &&
+      Number.isInteger(typed) &&
+      typed >= 0 &&
+      typed <= 100_000_000
+    ) {
+      const split = splitCtc(typed);
+      if (
+        basicMonthly === split.basic &&
+        hraMonthly === split.hra &&
+        specialMonthly === split.special
+      )
+        ctc = typed;
+    }
     return this.tenant.run(p, async (tx) => {
-      const person = await this.personRow(tx, b.userId);
-      const auto = person.ctc == null ? null : splitCtc(person.ctc);
-      const unchanged =
-        auto != null &&
-        basicMonthly === auto.basic &&
-        hraMonthly === auto.hra &&
-        specialMonthly === auto.special;
-      const ctc = unchanged ? person.ctc! : gross;
+      await this.personRow(tx, b.userId);
       const [existing] = await tx
         .select({ id: salaryStructures.id })
         .from(salaryStructures)

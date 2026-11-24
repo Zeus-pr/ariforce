@@ -615,8 +615,7 @@ export function EmployeeForm({ personId }: { personId: string | null }) {
                 maximumFractionDigits: 0,
               })
             : 'not loaded'}
-          . Basic, HRA and special allowance fill from that figure. Change them, or the tax and
-          bonus deduction, on{' '}
+          . Change the yearly cost, or the monthly lines, on{' '}
           <Link href="/hr/salary" className="text-primary">
             Salary
           </Link>

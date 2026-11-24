@@ -30,6 +30,7 @@ export function SalaryRestructure() {
   const [special, setSpecial] = useState('');
   const [tax, setTax] = useState('0');
   const [bonus, setBonus] = useState('0');
+  const [yearly, setYearly] = useState('');
   const [month, setMonth] = useState(
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
   );
@@ -62,6 +63,7 @@ export function SalaryRestructure() {
     setError(null);
     const fillStandard = () => {
       if (selectedCtc == null) {
+        setYearly('');
         setBasic('');
         setHra('');
         setSpecial('');
@@ -69,6 +71,7 @@ export function SalaryRestructure() {
         return;
       }
       const split = standardSplit(selectedCtc);
+      setYearly(String(selectedCtc));
       setBasic(String(split.basic));
       setHra(String(split.hra));
       setSpecial(String(split.special));
@@ -85,6 +88,7 @@ export function SalaryRestructure() {
         const body = (await res.json().catch(() => null)) as {
           message?: string;
           automatic?: boolean;
+          ctc?: number | null;
           basicMonthly: number | null;
           hraMonthly: number | null;
           specialMonthly: number | null;
@@ -102,6 +106,14 @@ export function SalaryRestructure() {
         setBasic(String(body.basicMonthly));
         setHra(body.hraMonthly == null ? '' : String(body.hraMonthly));
         setSpecial(body.specialMonthly == null ? '' : String(body.specialMonthly));
+        setYearly(
+          body.ctc != null
+            ? String(body.ctc)
+            : String(
+                ((body.basicMonthly ?? 0) + (body.hraMonthly ?? 0) + (body.specialMonthly ?? 0)) *
+                  12,
+              ),
+        );
         setTax(body.professionalTaxMonthly == null ? '0' : String(body.professionalTaxMonthly));
         setBonus(body.bonusDeductionMonthly == null ? '0' : String(body.bonusDeductionMonthly));
         setFromMonth(body.effectiveMonth);
@@ -138,6 +150,7 @@ export function SalaryRestructure() {
         specialMonthly: Number(special) || 0,
         professionalTaxMonthly: Number(tax) || 0,
         bonusDeductionMonthly: Number(bonus) || 0,
+        ctc: yearly.trim() && Number.isInteger(Number(yearly)) ? Number(yearly) : gross * 12,
       }),
     });
     const body = (await res.json()) as { message?: string; ctc?: number };
@@ -148,6 +161,7 @@ export function SalaryRestructure() {
     }
     setFromMonth(month);
     setAutomatic(false);
+    if (body.ctc != null) setYearly(String(body.ctc));
     setNotice(`Saved. Yearly cost to company is ${inr(body.ctc ?? gross * 12)}.`);
   }
 
@@ -156,8 +170,8 @@ export function SalaryRestructure() {
       <div>
         <h1 className="text-lg font-semibold">Salary structure</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Basic, HRA and special allowance fill from the yearly cost. Change any of them and save
-          when a person should differ. A later month keeps the earlier slip.
+          Type a yearly cost and basic, HRA and special allowance fill from it. Change a monthly
+          line when that person should differ. A later month keeps the earlier slip.
         </p>
       </div>
       <label className="flex max-w-sm flex-col gap-1 text-sm">
@@ -211,23 +225,74 @@ export function SalaryRestructure() {
             </p>
           )}
           <label className="flex flex-col gap-1 text-sm">
+            Yearly cost to company
+            <Input
+              inputMode="numeric"
+              value={yearly}
+              onChange={(e) => {
+                const value = e.target.value;
+                setYearly(value);
+                const amount = Number(value);
+                if (!Number.isInteger(amount) || amount < 0) return;
+                const split = standardSplit(amount);
+                setBasic(String(split.basic));
+                setHra(String(split.hra));
+                setSpecial(String(split.special));
+              }}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
             From month
             <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
           </label>
           <label className="flex flex-col gap-1 text-sm">
             Basic, monthly
-            <Input inputMode="numeric" value={basic} onChange={(e) => setBasic(e.target.value)} />
+            <Input
+              inputMode="numeric"
+              value={basic}
+              onChange={(e) => {
+                setBasic(e.target.value);
+                setYearly(
+                  String(
+                    ((Number(e.target.value) || 0) + (Number(hra) || 0) + (Number(special) || 0)) *
+                      12,
+                  ),
+                );
+              }}
+            />
           </label>
           <label className="flex flex-col gap-1 text-sm">
             HRA, monthly
-            <Input inputMode="numeric" value={hra} onChange={(e) => setHra(e.target.value)} />
+            <Input
+              inputMode="numeric"
+              value={hra}
+              onChange={(e) => {
+                setHra(e.target.value);
+                setYearly(
+                  String(
+                    ((Number(basic) || 0) +
+                      (Number(e.target.value) || 0) +
+                      (Number(special) || 0)) *
+                      12,
+                  ),
+                );
+              }}
+            />
           </label>
           <label className="flex flex-col gap-1 text-sm">
             Special allowance, monthly
             <Input
               inputMode="numeric"
               value={special}
-              onChange={(e) => setSpecial(e.target.value)}
+              onChange={(e) => {
+                setSpecial(e.target.value);
+                setYearly(
+                  String(
+                    ((Number(basic) || 0) + (Number(hra) || 0) + (Number(e.target.value) || 0)) *
+                      12,
+                  ),
+                );
+              }}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -243,8 +308,8 @@ export function SalaryRestructure() {
             <Input readOnly tabIndex={-1} value={String(esi)} className="bg-muted" />
           </label>
           <p className="sm:col-span-2 text-sm text-muted-foreground">
-            Monthly gross {inr(gross)}. Yearly cost to company {inr(gross * 12)}. ESI is calculated
-            and is not edited. On a short month the slip uses 0.75% of the earned gross.
+            Monthly gross {inr(gross)}. ESI is calculated and is not edited. On a short month the
+            slip uses 0.75% of the earned gross.
           </p>
           {error && (
             <p role="alert" className="sm:col-span-2 text-sm text-destructive">
