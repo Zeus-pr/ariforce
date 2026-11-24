@@ -38,6 +38,15 @@ type Slip = {
   net: number;
   hasStructure: boolean;
   ctc: number;
+  employeeCode: string | null;
+  joinedOn: string | null;
+  department: string | null;
+  branch: string | null;
+  pfAccount: string | null;
+  esiNumber: string | null;
+  fixedBasic: number;
+  fixedHra: number;
+  fixedSpecial: number;
 };
 
 type Person = { id: string; name: string };
@@ -137,7 +146,7 @@ export function PayslipDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Payslip</DialogTitle>
           <DialogDescription>
@@ -218,65 +227,110 @@ export function PayslipDialog({
           </p>
         )}
         {slip && !loading && (
-          <article className="af-enter rounded-xl border bg-background p-5 shadow-sm">
-            <p className="text-xs tracking-wide text-muted-foreground uppercase">{slip.company}</p>
-            <h2 className="mt-1 text-lg font-semibold">{slip.name}</h2>
-            <p className="text-sm text-muted-foreground">
-              {slip.monthLabel}
-              {slip.designation ? ` · ${slip.designation}` : ''}
-              {slip.employeeCode ? ` · ${slip.employeeCode}` : ''}
-            </p>
-            <div className="mt-4">
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
+          <article className="af-enter overflow-hidden rounded-xl border bg-background shadow-sm">
+            <div className="flex items-center gap-3 border-b px-4 py-3">
+              <img src="/ariforce-logo.png" alt="" className="h-9 w-auto" />
+              <div>
+                <p className="text-sm font-semibold">{slip.company}</p>
+                <p className="text-xs text-muted-foreground">
+                  Pay slip for the period of {slip.monthLabel}
+                </p>
+              </div>
+            </div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 px-4 py-3 text-xs">
+              {(
+                [
+                  ['Name', slip.name],
+                  ['Employee ID', slip.employeeCode || '—'],
+                  ['Department', slip.department || '—'],
+                  ['Designation', slip.designation || '—'],
+                  ['Work location', slip.branch || '—'],
+                  ['ESI number', slip.esiNumber || '—'],
+                  ['Total days', String(slip.totalDays)],
+                  ['Paid days', String(slip.paidDays)],
+                  ['Unpaid days', String(slip.unpaidDays)],
+                ] as const
+              ).map(([label, value]) => (
+                <div key={label} className="flex gap-1">
+                  <dt className="text-muted-foreground">{label}</dt>
+                  <dd className="font-medium">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="px-4">
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full rounded-full bg-primary transition-[width] duration-700 ease-out"
                   style={{ width: `${paidWidth}%` }}
                 />
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {slip.paidDays} paid of {slip.totalDays} days · {slip.absentDays} absent ·{' '}
-                {slip.lopDays} loss of pay
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {slip.absentDays} absent · {slip.lopDays} loss of pay
               </p>
             </div>
-            <dl className="mt-4 grid grid-cols-2 gap-y-1 text-sm">
-              <dt>Basic</dt>
-              <dd className="text-right tabular-nums">{inr(slip.basic)}</dd>
-              <dt>HRA</dt>
-              <dd className="text-right tabular-nums">{inr(slip.hra)}</dd>
-              <dt>Special allowance</dt>
-              <dd className="text-right tabular-nums">{inr(slip.special)}</dd>
-              <dt className="font-medium">Gross</dt>
-              <dd className="text-right font-medium tabular-nums">{inr(slip.gross)}</dd>
-              <dt className="text-muted-foreground">Professional tax</dt>
-              <dd className="text-right text-muted-foreground tabular-nums">
-                {inr(slip.professionalTax)}
-              </dd>
-              <dt className="text-muted-foreground">ESI</dt>
-              <dd className="text-right text-muted-foreground tabular-nums">{inr(slip.esi)}</dd>
-              <dt className="text-muted-foreground">Annual bonus deduction</dt>
-              <dd className="text-right text-muted-foreground tabular-nums">
-                {inr(slip.bonusDeduction)}
-              </dd>
-            </dl>
-            <p className="mt-4 flex items-baseline justify-between border-t pt-3">
-              <span className="text-sm">Net salary</span>
+            <div className="mt-3 grid grid-cols-2 text-xs">
+              <div>
+                <p className="bg-foreground px-3 py-1.5 font-medium text-background">Earnings</p>
+                <p className="grid grid-cols-[1fr_auto_auto] gap-2 bg-muted px-3 py-1 text-muted-foreground">
+                  <span>Item</span>
+                  <span>Fixed</span>
+                  <span>Amount</span>
+                </p>
+                {(
+                  [
+                    ['Basic', slip.fixedBasic, slip.basic],
+                    ['HRA', slip.fixedHra, slip.hra],
+                    ['Special allowance', slip.fixedSpecial, slip.special],
+                  ] as const
+                ).map(([label, fixed, amount]) => (
+                  <p
+                    key={label}
+                    className="grid grid-cols-[1fr_auto_auto] gap-2 border-b px-3 py-1"
+                  >
+                    <span>{label}</span>
+                    <span className="tabular-nums">{inr(fixed)}</span>
+                    <span className="tabular-nums">{inr(amount)}</span>
+                  </p>
+                ))}
+                <p className="grid grid-cols-[1fr_auto] gap-2 bg-foreground px-3 py-1.5 font-medium text-background">
+                  <span>Total earnings</span>
+                  <span className="tabular-nums">{inr(slip.gross)}</span>
+                </p>
+              </div>
+              <div className="border-l">
+                <p className="bg-foreground px-3 py-1.5 font-medium text-background">Deductions</p>
+                <p className="grid grid-cols-[1fr_auto] gap-2 bg-muted px-3 py-1 text-muted-foreground">
+                  <span>Item</span>
+                  <span>Amount</span>
+                </p>
+                {(
+                  [
+                    ['Professional tax', slip.professionalTax],
+                    ['ESI', slip.esi],
+                    ['Annual bonus', slip.bonusDeduction],
+                  ] as const
+                ).map(([label, amount]) => (
+                  <p key={label} className="grid grid-cols-[1fr_auto] gap-2 border-b px-3 py-1">
+                    <span>{label}</span>
+                    <span className="tabular-nums">{inr(amount)}</span>
+                  </p>
+                ))}
+                <p className="grid grid-cols-[1fr_auto] gap-2 bg-foreground px-3 py-1.5 font-medium text-background">
+                  <span>Total deductions</span>
+                  <span className="tabular-nums">{inr(slip.deductions)}</span>
+                </p>
+              </div>
+            </div>
+            <p className="flex items-baseline justify-between px-4 py-3">
+              <span className="text-sm font-medium">Net earnings</span>
               <span className="text-xl font-semibold tabular-nums">{inr(slip.net)}</span>
             </p>
-            {!slip.hasStructure && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Only the yearly cost to company is loaded, so this month is shown as one gross
-                amount.
-              </p>
-            )}
-            <Button
-              type="button"
-              className="mt-4"
-              disabled={downloading}
-              onClick={() => void download()}
-            >
-              <Download />
-              {downloading ? 'Preparing…' : 'Download PDF'}
-            </Button>
+            <div className="px-4 pb-4">
+              <Button type="button" disabled={downloading} onClick={() => void download()}>
+                <Download />
+                {downloading ? 'Preparing…' : 'Download PDF'}
+              </Button>
+            </div>
           </article>
         )}
       </DialogContent>

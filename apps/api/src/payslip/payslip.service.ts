@@ -128,6 +128,11 @@ export class PayslipService {
         ctc: users.ctc,
         designation: users.designation,
         employeeCode: users.employeeCode,
+        joinedOn: users.joinedOn,
+        department: users.department,
+        branch: users.branch,
+        pfAccount: users.pfAccount,
+        esiNumber: users.esiNumber,
       })
       .from(users)
       .where(and(eq(users.id, id), isNull(users.deletedAt)));
@@ -248,10 +253,18 @@ export class PayslipService {
       unpaidDays: lopDays + absentDays,
     });
     const slip = {
-      company: company?.name ?? 'AriForce',
+      company: company?.name || 'ARIGHNA PHARMA PVT. LTD.',
       name: person.name,
       designation: person.designation,
       employeeCode: person.employeeCode,
+      joinedOn: person.joinedOn ? String(person.joinedOn).slice(0, 10) : null,
+      department: person.department,
+      branch: person.branch,
+      pfAccount: person.pfAccount,
+      esiNumber: person.esiNumber,
+      fixedBasic: basic,
+      fixedHra: hra,
+      fixedSpecial: Math.max(0, special),
       year,
       month,
       monthLabel: `${MONTHS[month - 1]} ${year}`,
