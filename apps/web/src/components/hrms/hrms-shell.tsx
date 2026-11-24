@@ -11,6 +11,7 @@ import {
   Map,
   ReceiptText,
   Users,
+  Wallet,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { PageTransition } from '@/components/animate-ui/components/page-transition';
@@ -50,6 +51,7 @@ const NAV = [
   { href: '/hr/employees', title: 'People', icon: Users, exact: false },
   { href: '/hr/expenses', title: 'Expenses', icon: ReceiptText, exact: false },
   { href: '/hr/leave', title: 'Leave', icon: CalendarOff, exact: false },
+  { href: '/hr/salary', title: 'Salary', icon: Wallet, exact: false },
   { href: '/hr/letters', title: 'Appointment letter', icon: FileText, exact: false },
   { href: '/hr/org', title: 'Organizational chart', icon: GitFork, exact: false },
   { href: '/hr/organization', title: 'Organization', icon: Map, exact: false },

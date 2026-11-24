@@ -4,7 +4,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { LogOut, Search } from 'lucide-react';
+import { LogOut, Receipt, Search } from 'lucide-react';
+import { PayslipDialog } from '@/components/payslip/payslip-dialog';
 import { Avatar, AvatarFallback } from '@ariforce/ui/components/avatar';
 import { Button } from '@ariforce/ui/components/button';
 import {
@@ -35,6 +36,7 @@ export function SiteHeader({
   const router = useRouter();
   const name = user?.name ?? '';
   const [searchOpen, setSearchOpen] = useState(false);
+  const [payslipOpen, setPayslipOpen] = useState(false);
   const [mac, setMac] = useState(true);
   useEffect(() => {
     setMac(/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent));
@@ -150,12 +152,17 @@ export function SiteHeader({
                 <span className="block truncate text-xs text-muted-foreground">{user?.email}</span>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setPayslipOpen(true)}>
+                <Receipt />
+                Payslip
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={onSignOut} data-testid="sign-out">
                 <LogOut />
                 Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <PayslipDialog open={payslipOpen} onOpenChange={setPayslipOpen} role={role} />
         </div>
       </div>
     </header>
