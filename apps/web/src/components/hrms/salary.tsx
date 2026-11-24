@@ -119,6 +119,7 @@ export function SalaryRestructure() {
   const matches = people.filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()));
   const selected = people.find((p) => p.id === userId);
   const gross = (Number(basic) || 0) + (Number(hra) || 0) + (Number(special) || 0);
+  const esi = Math.round(gross * 0.0075);
 
   async function save() {
     if (!userId) return;
@@ -200,8 +201,8 @@ export function SalaryRestructure() {
           {!loadingStructure && automatic && (
             <p className="sm:col-span-2 text-sm text-muted-foreground">
               Filled from the yearly cost: half is basic, 40% of basic is HRA, and the rest is
-              special allowance. Change a line and save to override it. Professional tax and the
-              bonus deduction stay at the amounts here.
+              special allowance. Professional tax and the bonus deduction are the saved monthly
+              amounts. ESI is 0.75% of this monthly gross.
             </p>
           )}
           {!loadingStructure && !automatic && fromMonth == null && (
@@ -237,9 +238,13 @@ export function SalaryRestructure() {
             Bonus deduction, monthly
             <Input inputMode="numeric" value={bonus} onChange={(e) => setBonus(e.target.value)} />
           </label>
+          <label className="flex flex-col gap-1 text-sm">
+            ESI, monthly
+            <Input readOnly tabIndex={-1} value={String(esi)} className="bg-muted" />
+          </label>
           <p className="sm:col-span-2 text-sm text-muted-foreground">
-            Monthly gross {inr(gross)}. Yearly cost to company {inr(gross * 12)}. ESI is 0.75% of
-            the earned gross on the slip.
+            Monthly gross {inr(gross)}. Yearly cost to company {inr(gross * 12)}. ESI is calculated
+            and is not edited. On a short month the slip uses 0.75% of the earned gross.
           </p>
           {error && (
             <p role="alert" className="sm:col-span-2 text-sm text-destructive">
