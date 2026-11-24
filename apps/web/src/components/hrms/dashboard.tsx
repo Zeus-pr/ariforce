@@ -1,19 +1,33 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import { axisProps, CHART, ChartFrame, ChartTooltip } from '@/components/charts/chart';
+import { Area } from '@/components/charts/area';
+import { AreaChart } from '@/components/charts/area-chart';
+import { Bar } from '@/components/charts/bar';
+import { BarChart } from '@/components/charts/bar-chart';
+import { BarXAxis } from '@/components/charts/bar-x-axis';
+import { ChartFrame, contributionColumns, monthDate, SERIES } from '@/components/charts/chart';
+import { Grid } from '@/components/charts/grid';
+import { HeatmapCells } from '@/components/charts/heatmap/heatmap-cells';
+import { HeatmapChart } from '@/components/charts/heatmap/heatmap-chart';
+import { HeatmapLegend } from '@/components/charts/heatmap/heatmap-legend';
+import { HeatmapTooltip } from '@/components/charts/heatmap/heatmap-tooltip';
+import { HeatmapXAxis } from '@/components/charts/heatmap/heatmap-x-axis';
+import { HeatmapYAxis } from '@/components/charts/heatmap/heatmap-y-axis';
+import { PieChart } from '@/components/charts/pie-chart';
+import { PieSlice } from '@/components/charts/pie-slice';
+import { RadialChart } from '@/components/charts/radial-chart';
+import { SankeyChart } from '@/components/charts/sankey/sankey-chart';
+import { SankeyLink } from '@/components/charts/sankey/sankey-link';
+import { SankeyNode } from '@/components/charts/sankey/sankey-node';
+import { SankeyTooltip } from '@/components/charts/sankey/sankey-tooltip';
+import { SunburstChart } from '@/components/charts/sunburst-chart';
+import { useSunburstStable } from '@/components/charts/sunburst-context';
+import type { SunburstNode } from '@/components/charts/sunburst-data';
+import { SunburstSegment } from '@/components/charts/sunburst-segment';
+import { ChartTooltip } from '@/components/charts/tooltip/chart-tooltip';
+import { XAxis } from '@/components/charts/x-axis';
+import { YAxis } from '@/components/charts/y-axis';
 import { listPeople, type Person } from '@/lib/people/adapter';
 import { roleLabel } from '@/lib/roles';
 import { useReducedMotion } from '@/lib/use-reduced-motion';
@@ -91,44 +105,48 @@ function Empty() {
 }
 
 function Donut({ title, data }: { title: string; data: { name: string; value: number }[] }) {
-  const reduced = useReducedMotion();
-  const total = data.reduce((n, d) => n + d.value, 0);
+  const slices = data.filter((item) => item.value > 0);
+  const total = slices.reduce((n, item) => n + item.value, 0);
   return (
     <section className="rounded-lg border bg-card p-4">
       <h2 className="text-sm font-medium">{title}</h2>
       {total === 0 ? (
         <Empty />
       ) : (
-        <div className="mt-2 grid items-center gap-2 sm:grid-cols-[1fr_auto]">
-          <ChartFrame height={200} label={title}>
-            <PieChart>
-              <ChartTooltip />
-              <Pie
-                data={data}
-                dataKey="value"
-                nameKey="name"
-                innerRadius={52}
-                outerRadius={78}
-                paddingAngle={2}
-                isAnimationActive={!reduced}
-                animationDuration={800}
-                animationEasing="ease-out"
-              >
-                {data.map((d, i) => (
-                  <Cell key={d.name} fill={CHART.series[i % CHART.series.length]} />
-                ))}
-              </Pie>
+        <div className="mt-2 grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <ChartFrame
+            height={200}
+            label={title}
+            rows={slices.map((item) => ({
+              name: item.name,
+              cells: [{ label: 'People', value: String(item.value) }],
+            }))}
+          >
+            <PieChart
+              className="h-full"
+              data={slices.map((item, index) => ({
+                label: item.name,
+                value: item.value,
+                color: SERIES[index % SERIES.length],
+              }))}
+              innerRadius={52}
+              padAngle={0.02}
+              cornerRadius={4}
+            >
+              {slices.map((item, index) => (
+                <PieSlice key={item.name} index={index} />
+              ))}
             </PieChart>
           </ChartFrame>
           <ul className="flex flex-col gap-1.5 text-xs">
-            {data.map((d, i) => (
-              <li key={d.name} className="flex items-center gap-2">
+            {slices.map((item, index) => (
+              <li key={item.name} className="flex items-center gap-2">
                 <span
                   className="size-2 shrink-0 rounded-full"
-                  style={{ background: CHART.series[i % CHART.series.length] }}
+                  style={{ background: SERIES[index % SERIES.length] }}
                 />
-                <span className="text-muted-foreground">{d.name}</span>
-                <span className="ml-auto tabular-nums">{d.value}</span>
+                <span className="text-muted-foreground">{item.name}</span>
+                <span className="ml-auto tabular-nums">{item.value}</span>
               </li>
             ))}
           </ul>
@@ -136,6 +154,58 @@ function Donut({ title, data }: { title: string; data: { name: string; value: nu
       )}
     </section>
   );
+}
+
+function SunburstArcs() {
+  const { arcs } = useSunburstStable();
+  return arcs.map((_, index) => <SunburstSegment key={index} index={index} />);
+}
+
+function peopleSunburst(people: Person[]): SunburstNode {
+  const departments = new Map<string, Map<string, number>>();
+  for (const person of people) {
+    const department = person.department?.trim() || 'No department';
+    const title =
+      person.designation?.trim() ||
+      roleLabel(person.primaryRole ?? person.roles[0]) ||
+      'Unassigned';
+    const titles = departments.get(department) ?? new Map<string, number>();
+    titles.set(title, (titles.get(title) ?? 0) + 1);
+    departments.set(department, titles);
+  }
+  return {
+    name: 'People',
+    children: [...departments].map(([name, titles]) => ({
+      name,
+      children: [...titles].map(([title, value]) => ({ name: title, value })),
+    })),
+  };
+}
+
+function peopleFlow(people: Person[]) {
+  const counts = new Map<string, number>();
+  for (const person of people) {
+    const department = person.department?.trim() || 'No department';
+    const status = person.hrStatus ?? person.status;
+    const key = `${department}\t${status}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
+  const departments: string[] = [];
+  const statuses: string[] = [];
+  for (const [key] of ranked) {
+    const [department, status] = key.split('\t');
+    if (department && !departments.includes(department)) departments.push(department);
+    if (status && !statuses.includes(status)) statuses.push(status);
+  }
+  const nodes = [...departments.map((name) => ({ name })), ...statuses.map((name) => ({ name }))];
+  const links = ranked.flatMap(([key, value]) => {
+    const [department, status] = key.split('\t');
+    const source = departments.indexOf(department ?? '');
+    const target = departments.length + statuses.indexOf(status ?? '');
+    return source < 0 || target < departments.length ? [] : [{ source, target, value }];
+  });
+  return { nodes, links };
 }
 
 export function HrDashboard() {
@@ -215,33 +285,41 @@ export function HrDashboard() {
             {trendEmpty ? (
               <Empty />
             ) : (
-              <ChartFrame height={240} label="Hires and exits by month" className="mt-2">
-                <LineChart data={trend} margin={{ top: 12, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid vertical={false} stroke="var(--color-border)" />
-                  <XAxis dataKey="name" {...axisProps} />
-                  <YAxis {...axisProps} width={28} allowDecimals={false} domain={[0, 'auto']} />
-                  <ChartTooltip />
-                  <Line
-                    type="monotone"
-                    dataKey="Hires"
-                    stroke={CHART.primary}
-                    strokeWidth={2}
-                    dot={false}
-                    isAnimationActive={!reduced}
-                    animationDuration={900}
-                    animationEasing="ease-out"
+              <ChartFrame
+                height={240}
+                label="Hires and exits by month"
+                className="mt-2"
+                rows={trend.map((month) => ({
+                  name: month.name,
+                  cells: [
+                    { label: 'Hires', value: String(month.Hires) },
+                    { label: 'Exits', value: String(month.Exits) },
+                  ],
+                }))}
+              >
+                <AreaChart
+                  data={trend.map((month, index) => ({
+                    date: monthDate(`${year}-${String(index + 1).padStart(2, '0')}`, month.name),
+                    Hires: month.Hires,
+                    Exits: month.Exits,
+                  }))}
+                  xDataKey="date"
+                  aspectRatio=""
+                  className="h-full"
+                  animationDuration={reduced ? 0 : 800}
+                >
+                  <Grid vertical={false} />
+                  <Area dataKey="Hires" fill={SERIES[5]} stroke={SERIES[5]} fadeEdges={false} />
+                  <Area dataKey="Exits" fill={SERIES[3]} stroke={SERIES[3]} fadeEdges={false} />
+                  <XAxis />
+                  <YAxis />
+                  <ChartTooltip
+                    rows={(point) => [
+                      { color: SERIES[5], label: 'Hires', value: Number(point.Hires ?? 0) },
+                      { color: SERIES[3], label: 'Exits', value: Number(point.Exits ?? 0) },
+                    ]}
                   />
-                  <Line
-                    type="monotone"
-                    dataKey="Exits"
-                    stroke={CHART.medium}
-                    strokeWidth={2}
-                    dot={false}
-                    isAnimationActive={!reduced}
-                    animationDuration={1100}
-                    animationEasing="ease-out"
-                  />
-                </LineChart>
+                </AreaChart>
               </ChartFrame>
             )}
           </section>
@@ -251,24 +329,101 @@ export function HrDashboard() {
             {ageEmpty ? (
               <Empty />
             ) : (
-              <ChartFrame height={240} label="Employees by age band" className="mt-2">
-                <BarChart data={ages} margin={{ top: 12, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid vertical={false} stroke="var(--color-border)" />
-                  <XAxis dataKey="name" {...axisProps} />
-                  <YAxis {...axisProps} width={28} allowDecimals={false} domain={[0, 'auto']} />
-                  <ChartTooltip />
-                  <Bar
-                    dataKey="value"
-                    name="Employees"
-                    fill={CHART.primary}
-                    radius={[6, 6, 0, 0]}
-                    isAnimationActive={!reduced}
-                    animationDuration={900}
-                    animationEasing="ease-out"
+              <ChartFrame
+                height={240}
+                label="Employees by age band"
+                className="mt-2"
+                rows={ages.map((band) => ({
+                  name: band.name,
+                  cells: [{ label: 'Employees', value: String(band.value) }],
+                }))}
+              >
+                <BarChart
+                  data={ages}
+                  xDataKey="name"
+                  aspectRatio=""
+                  className="h-full"
+                  animationDuration={reduced ? 0 : 700}
+                  margin={{ top: 12, right: 8, bottom: 28, left: 28 }}
+                >
+                  <Grid vertical={false} />
+                  <Bar dataKey="value" fill={SERIES[2]} />
+                  <BarXAxis showAllLabels />
+                  <ChartTooltip
+                    showDatePill={false}
+                    rows={(point) => [
+                      { color: SERIES[2], label: 'Employees', value: Number(point.value ?? 0) },
+                    ]}
                   />
                 </BarChart>
               </ChartFrame>
             )}
+          </section>
+
+          <section className="rounded-lg border bg-card p-4">
+            <h2 className="text-sm font-medium">Age bands around the year</h2>
+            <ChartFrame
+              height={280}
+              label="Employees by age band, around the circle"
+              className="mt-2"
+            >
+              <RadialChart
+                data={ages}
+                xDataKey="name"
+                series={[{ dataKey: 'value', label: 'Employees', color: SERIES[2] }]}
+                angleType="band"
+                trackNow={false}
+                className="h-full"
+              />
+            </ChartFrame>
+          </section>
+
+          {current.length > 0 && (
+            <section className="rounded-lg border bg-card p-4">
+              <h2 className="text-sm font-medium">Department and title</h2>
+              <ChartFrame height={320} label="Headcount by department and title" className="mt-2">
+                <SunburstChart data={peopleSunburst(current)} className="h-full">
+                  <SunburstArcs />
+                </SunburstChart>
+              </ChartFrame>
+            </section>
+          )}
+
+          {peopleFlow(current).links.length > 0 && (
+            <section className="rounded-lg border bg-card p-4">
+              <h2 className="text-sm font-medium">Where people sit</h2>
+              <ChartFrame height={320} label="Headcount from department to status" className="mt-2">
+                <SankeyChart data={peopleFlow(current)} className="h-full" aspectRatio="">
+                  <SankeyLink />
+                  <SankeyNode />
+                  <SankeyTooltip />
+                </SankeyChart>
+              </ChartFrame>
+            </section>
+          )}
+
+          <section className="rounded-lg border bg-card p-4">
+            <h2 className="text-sm font-medium">Joining days, {year}</h2>
+            <div className="mt-2">
+              <ChartFrame label={`Days people joined in ${year}`}>
+                <HeatmapChart
+                  data={contributionColumns(
+                    current.flatMap((person) =>
+                      person.joinedOn?.startsWith(String(year)) ? [person.joinedOn] : [],
+                    ),
+                    new Date(year, 0, 1),
+                    new Date(year, 11, 31),
+                  )}
+                  layout="fluid"
+                >
+                  <HeatmapCells />
+                  <HeatmapXAxis />
+                  <HeatmapYAxis />
+                  <HeatmapLegend />
+                  <HeatmapTooltip />
+                </HeatmapChart>
+              </ChartFrame>
+            </div>
           </section>
 
           <div className="grid gap-3 lg:grid-cols-2">

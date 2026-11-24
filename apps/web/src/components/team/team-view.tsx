@@ -20,6 +20,7 @@ import {
 } from '@ariforce/ui/components/table';
 import { cn } from '@ariforce/ui/lib/utils';
 import { KpiCards } from '@/components/dashboard/kpi-cards';
+import { TeamCoverageChart } from '@/components/team/team-charts';
 import { formatKpi, HEADLINE, KPI_META, TEAM_COLUMNS } from '@/components/dashboard/kpi-meta';
 import { ExportMenu } from '@/components/export/export-menu';
 import { useMonth } from '@/components/performance/perf-ui';
@@ -358,6 +359,16 @@ export function TeamView() {
               </p>
             ) : (
               <LayoutGroup>
+                <div className="min-w-0 border-b px-2 py-3">
+                  <TeamCoverageChart
+                    chart={ranked.map((row) => ({
+                      name: row.label,
+                      value: valueOf(row, 'call_average') ?? 0,
+                    }))}
+                    label="Doctor call average"
+                    percent={false}
+                  />
+                </div>
                 <ol>
                   {ranked.map((r) => {
                     const call = valueOf(r, 'call_average');
@@ -401,18 +412,20 @@ export function TeamView() {
                           <div className="col-span-2 flex flex-col gap-1.5">
                             <div className="h-2 overflow-hidden rounded-full bg-muted">
                               <div
-                                className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:transition-none"
+                                className="h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none"
                                 style={{
                                   width: `${call == null ? 0 : Math.max(0, Math.min(100, (call / CALL_FULL) * 100))}%`,
+                                  background: 'var(--chart-1)',
                                 }}
                               />
                             </div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                               <span className="h-1 w-16 overflow-hidden rounded-full bg-muted">
                                 <span
-                                  className="block h-full rounded-full bg-foreground/45 transition-[width] duration-500 ease-out motion-reduce:transition-none"
+                                  className="block h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none"
                                   style={{
                                     width: `${coverage == null ? 0 : Math.max(0, Math.min(100, coverage))}%`,
+                                    background: 'var(--chart-6)',
                                   }}
                                 />
                               </span>

@@ -17,7 +17,7 @@ for (const [route, table, chart] of [
     const n = await page.getByTestId(table).getByTestId('perf-row').count();
     check(role === 'business_manager' ? n === 1 : n >= 1, `${route} ${role}: ${n} breakdown rows`);
     check((await page.getByTestId('kpi-card').count()) >= 4, `${route} ${role}: KPI cards`);
-    await page.locator(`[role=img][aria-label="${chart}"] .recharts-surface`).first().waitFor();
+    await page.locator(`[role=img][aria-label="${chart}"] svg`).first().waitFor();
     check(true, `${route} ${role}: trend chart`);
     check(
       (await page.getByTestId('sample-badge').count()) >= 1,

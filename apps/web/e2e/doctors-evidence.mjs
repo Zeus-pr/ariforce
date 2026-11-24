@@ -45,10 +45,7 @@ for (const view of ['desktop', 'mobile']) {
     (await page.locator('[data-testid=d360-products] li').count()) > 0,
     'products detailed listed',
   );
-  await page
-    .locator('[role=img][aria-label="Visits per month"] .recharts-bar-rectangle')
-    .first()
-    .waitFor();
+  await page.locator('[role=img][aria-label="Visits per month"] svg').first().waitFor();
   check(true, 'visits chart renders');
   await noBannedWords(page, `doctor 360 ${view}`);
   if (view === 'mobile') await noOverflow(page, 'doctor 360 mobile');
