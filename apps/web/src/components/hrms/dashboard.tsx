@@ -16,15 +16,6 @@ import { HeatmapXAxis } from '@/components/charts/heatmap/heatmap-x-axis';
 import { HeatmapYAxis } from '@/components/charts/heatmap/heatmap-y-axis';
 import { PieChart } from '@/components/charts/pie-chart';
 import { PieSlice } from '@/components/charts/pie-slice';
-import { RadialChart } from '@/components/charts/radial-chart';
-import { SankeyChart } from '@/components/charts/sankey/sankey-chart';
-import { SankeyLink } from '@/components/charts/sankey/sankey-link';
-import { SankeyNode } from '@/components/charts/sankey/sankey-node';
-import { SankeyTooltip } from '@/components/charts/sankey/sankey-tooltip';
-import { SunburstChart } from '@/components/charts/sunburst-chart';
-import { useSunburstStable } from '@/components/charts/sunburst-context';
-import type { SunburstNode } from '@/components/charts/sunburst-data';
-import { SunburstSegment } from '@/components/charts/sunburst-segment';
 import { ChartTooltip } from '@/components/charts/tooltip/chart-tooltip';
 import { XAxis } from '@/components/charts/x-axis';
 import { YAxis } from '@/components/charts/y-axis';
@@ -93,119 +84,53 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function Empty() {
-  return (
-    <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-      <span className="flex size-9 items-center justify-center rounded-full bg-muted text-xs">
-        —
-      </span>
-      No data yet
-    </div>
-  );
-}
-
 function Donut({ title, data }: { title: string; data: { name: string; value: number }[] }) {
   const slices = data.filter((item) => item.value > 0);
   const total = slices.reduce((n, item) => n + item.value, 0);
+  if (total === 0) return null;
   return (
     <section className="rounded-lg border bg-card p-4">
       <h2 className="text-sm font-medium">{title}</h2>
-      {total === 0 ? (
-        <Empty />
-      ) : (
-        <div className="mt-2 grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-          <ChartFrame
-            height={200}
-            label={title}
-            rows={slices.map((item) => ({
-              name: item.name,
-              cells: [{ label: 'People', value: String(item.value) }],
+      <div className="mt-2 grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <ChartFrame
+          height={200}
+          label={title}
+          rows={slices.map((item) => ({
+            name: item.name,
+            cells: [{ label: 'People', value: String(item.value) }],
+          }))}
+        >
+          <PieChart
+            className="h-full"
+            data={slices.map((item, index) => ({
+              label: item.name,
+              value: item.value,
+              color: SERIES[index % SERIES.length],
             }))}
+            innerRadius={52}
+            padAngle={0.02}
+            cornerRadius={4}
           >
-            <PieChart
-              className="h-full"
-              data={slices.map((item, index) => ({
-                label: item.name,
-                value: item.value,
-                color: SERIES[index % SERIES.length],
-              }))}
-              innerRadius={52}
-              padAngle={0.02}
-              cornerRadius={4}
-            >
-              {slices.map((item, index) => (
-                <PieSlice key={item.name} index={index} />
-              ))}
-            </PieChart>
-          </ChartFrame>
-          <ul className="flex flex-col gap-1.5 text-xs">
             {slices.map((item, index) => (
-              <li key={item.name} className="flex items-center gap-2">
-                <span
-                  className="size-2 shrink-0 rounded-full"
-                  style={{ background: SERIES[index % SERIES.length] }}
-                />
-                <span className="text-muted-foreground">{item.name}</span>
-                <span className="ml-auto tabular-nums">{item.value}</span>
-              </li>
+              <PieSlice key={item.name} index={index} />
             ))}
-          </ul>
-        </div>
-      )}
+          </PieChart>
+        </ChartFrame>
+        <ul className="flex flex-col gap-1.5 text-xs">
+          {slices.map((item, index) => (
+            <li key={item.name} className="flex items-center gap-2">
+              <span
+                className="size-2 shrink-0 rounded-full"
+                style={{ background: SERIES[index % SERIES.length] }}
+              />
+              <span className="text-muted-foreground">{item.name}</span>
+              <span className="ml-auto tabular-nums">{item.value}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
-}
-
-function SunburstArcs() {
-  const { arcs } = useSunburstStable();
-  return arcs.map((_, index) => <SunburstSegment key={index} index={index} />);
-}
-
-function peopleSunburst(people: Person[]): SunburstNode {
-  const departments = new Map<string, Map<string, number>>();
-  for (const person of people) {
-    const department = person.department?.trim() || 'No department';
-    const title =
-      person.designation?.trim() ||
-      roleLabel(person.primaryRole ?? person.roles[0]) ||
-      'Unassigned';
-    const titles = departments.get(department) ?? new Map<string, number>();
-    titles.set(title, (titles.get(title) ?? 0) + 1);
-    departments.set(department, titles);
-  }
-  return {
-    name: 'People',
-    children: [...departments].map(([name, titles]) => ({
-      name,
-      children: [...titles].map(([title, value]) => ({ name: title, value })),
-    })),
-  };
-}
-
-function peopleFlow(people: Person[]) {
-  const counts = new Map<string, number>();
-  for (const person of people) {
-    const department = person.department?.trim() || 'No department';
-    const status = person.hrStatus ?? person.status;
-    const key = `${department}\t${status}`;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
-  const departments: string[] = [];
-  const statuses: string[] = [];
-  for (const [key] of ranked) {
-    const [department, status] = key.split('\t');
-    if (department && !departments.includes(department)) departments.push(department);
-    if (status && !statuses.includes(status)) statuses.push(status);
-  }
-  const nodes = [...departments.map((name) => ({ name })), ...statuses.map((name) => ({ name }))];
-  const links = ranked.flatMap(([key, value]) => {
-    const [department, status] = key.split('\t');
-    const source = departments.indexOf(department ?? '');
-    const target = departments.length + statuses.indexOf(status ?? '');
-    return source < 0 || target < departments.length ? [] : [{ source, target, value }];
-  });
-  return { nodes, links };
 }
 
 export function HrDashboard() {
@@ -279,12 +204,10 @@ export function HrDashboard() {
             <Stat label="Employees Relieving (This Quarter)" value={relievingQuarter} />
           </div>
 
-          <section className="rounded-lg border bg-card p-4">
-            <h2 className="text-sm font-medium">Hiring vs Attrition Count</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">{year}</p>
-            {trendEmpty ? (
-              <Empty />
-            ) : (
+          {!trendEmpty && (
+            <section className="rounded-lg border bg-card p-4">
+              <h2 className="text-sm font-medium">Hiring vs Attrition Count</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">{year}</p>
               <ChartFrame
                 height={240}
                 label="Hires and exits by month"
@@ -321,14 +244,12 @@ export function HrDashboard() {
                   />
                 </AreaChart>
               </ChartFrame>
-            )}
-          </section>
+            </section>
+          )}
 
-          <section className="rounded-lg border bg-card p-4">
-            <h2 className="text-sm font-medium">Employees by Age</h2>
-            {ageEmpty ? (
-              <Empty />
-            ) : (
+          {!ageEmpty && (
+            <section className="rounded-lg border bg-card p-4">
+              <h2 className="text-sm font-medium">Employees by Age</h2>
               <ChartFrame
                 height={240}
                 label="Employees by age band"
@@ -357,74 +278,34 @@ export function HrDashboard() {
                   />
                 </BarChart>
               </ChartFrame>
-            )}
-          </section>
-
-          <section className="rounded-lg border bg-card p-4">
-            <h2 className="text-sm font-medium">Age bands around the year</h2>
-            <ChartFrame
-              height={280}
-              label="Employees by age band, around the circle"
-              className="mt-2"
-            >
-              <RadialChart
-                data={ages}
-                xDataKey="name"
-                series={[{ dataKey: 'value', label: 'Employees', color: SERIES[2] }]}
-                angleType="band"
-                trackNow={false}
-                className="h-full"
-              />
-            </ChartFrame>
-          </section>
-
-          {current.length > 0 && (
-            <section className="rounded-lg border bg-card p-4">
-              <h2 className="text-sm font-medium">Department and title</h2>
-              <ChartFrame height={320} label="Headcount by department and title" className="mt-2">
-                <SunburstChart data={peopleSunburst(current)} className="h-full">
-                  <SunburstArcs />
-                </SunburstChart>
-              </ChartFrame>
             </section>
           )}
 
-          {peopleFlow(current).links.length > 0 && (
+          {current.some((person) => person.joinedOn?.startsWith(String(year))) && (
             <section className="rounded-lg border bg-card p-4">
-              <h2 className="text-sm font-medium">Where people sit</h2>
-              <ChartFrame height={320} label="Headcount from department to status" className="mt-2">
-                <SankeyChart data={peopleFlow(current)} className="h-full" aspectRatio="">
-                  <SankeyLink />
-                  <SankeyNode />
-                  <SankeyTooltip />
-                </SankeyChart>
-              </ChartFrame>
+              <h2 className="text-sm font-medium">Joining days, {year}</h2>
+              <div className="mt-2">
+                <ChartFrame label={`Days people joined in ${year}`}>
+                  <HeatmapChart
+                    data={contributionColumns(
+                      current.flatMap((person) =>
+                        person.joinedOn?.startsWith(String(year)) ? [person.joinedOn] : [],
+                      ),
+                      new Date(year, 0, 1),
+                      new Date(year, 11, 31),
+                    )}
+                    layout="fluid"
+                  >
+                    <HeatmapCells />
+                    <HeatmapXAxis />
+                    <HeatmapYAxis />
+                    <HeatmapLegend />
+                    <HeatmapTooltip />
+                  </HeatmapChart>
+                </ChartFrame>
+              </div>
             </section>
           )}
-
-          <section className="rounded-lg border bg-card p-4">
-            <h2 className="text-sm font-medium">Joining days, {year}</h2>
-            <div className="mt-2">
-              <ChartFrame label={`Days people joined in ${year}`}>
-                <HeatmapChart
-                  data={contributionColumns(
-                    current.flatMap((person) =>
-                      person.joinedOn?.startsWith(String(year)) ? [person.joinedOn] : [],
-                    ),
-                    new Date(year, 0, 1),
-                    new Date(year, 11, 31),
-                  )}
-                  layout="fluid"
-                >
-                  <HeatmapCells />
-                  <HeatmapXAxis />
-                  <HeatmapYAxis />
-                  <HeatmapLegend />
-                  <HeatmapTooltip />
-                </HeatmapChart>
-              </ChartFrame>
-            </div>
-          </section>
 
           <div className="grid gap-3 lg:grid-cols-2">
             <Donut
@@ -439,10 +320,6 @@ export function HrDashboard() {
             <Donut title="Employees by Type" data={tally(current, (p) => p.employmentType ?? '')} />
             <Donut title="Employees by Grade" data={tally(current, (p) => p.grade ?? '')} />
             <Donut title="Employees by Branch" data={tally(current, (p) => p.branch ?? '')} />
-            <Donut
-              title="Designation Wise Employee Count"
-              data={tally(current, (p) => p.designation ?? '')}
-            />
             <Donut
               title="Department Wise Employee Count"
               data={tally(current, (p) => p.department ?? '')}
