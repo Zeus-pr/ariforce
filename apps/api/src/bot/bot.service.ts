@@ -67,7 +67,11 @@ export class BotService {
     private readonly tenant: TenantService,
   ) {}
 
-  async ask(p: Principal, message: string) {
+  async ask(
+    p: Principal,
+    message: string,
+    history?: { role: 'user' | 'assistant'; content: string }[],
+  ) {
     const audience = botAudience(p.roles);
     if (audience === 'none')
       throw err(
@@ -86,6 +90,7 @@ export class BotService {
         ? `Today is ${today} (India). A month named without a year is the latest one that is not after today. Asker: ${askerRoleLabel(p.roles)}. Scope: the whole company.`
         : `Today is ${today} (India). A month named without a year is the latest one that is not after today. Asker: ${askerRoleLabel(p.roles)}. Scope: their reporting line only.`,
       message,
+      history,
       specs: toolSpecs(companyWide),
       call: (name, args) => this.tools.call(p, companyWide, name, args),
       complete: (messages, tools) => completeGrok(key, model, messages, tools),

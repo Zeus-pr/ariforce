@@ -21633,10 +21633,38 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 1000
+          },
+          "history": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BotTurn"
+            }
           }
         },
         "required": [
           "message"
+        ]
+      },
+      "BotTurn": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "role",
+          "content"
         ]
       },
       "GeofenceSettings": {

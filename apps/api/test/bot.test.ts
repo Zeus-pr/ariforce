@@ -4,6 +4,7 @@ import {
   choosePlace,
   guardNarrative,
   modelFor,
+  scrubIds,
   monthArg,
   periodArg,
   runBot,
@@ -121,5 +122,24 @@ describe('ARIBOT answers', () => {
     expect(result.narrative).toBe('Coverage is 81.2%.');
     expect(result.blocks).toHaveLength(1);
     expect(result.refused).toBe(false);
+  });
+
+  it('drops a database id and keeps the earlier turn', async () => {
+    expect(scrubIds('Suri is 01a1e0b1-717b-775f-8d22-ef5c9f9731ce.')).toBe('Suri is.');
+    let seen = '';
+    await runBot({
+      knowledge: 'Coverage is a share.',
+      scopeLine: 'Scope: their reporting line only.',
+      message: 'And last month?',
+      history: [{ role: 'user', content: 'What is coverage?' }],
+      specs: [],
+      call: async () => ({ model: {}, block: null }),
+      complete: async (messages) => {
+        seen = messages.map((item) => item.content).join('\n');
+        return { content: '{"narrative":"Same as before."}' };
+      },
+    });
+    expect(seen).toContain('What is coverage?');
+    expect(seen).toContain('And last month?');
   });
 });

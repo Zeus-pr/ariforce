@@ -253,6 +253,17 @@ export function guardNarrative(
   return { narrative: 'I can’t answer that from AriForce.', refused: true };
 }
 
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/** A territory id is for the next tool call. It is not part of an answer. */
+export function scrubIds(text: string): string {
+  return text
+    .replace(UUID, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s+([,.:;])/g, '$1')
+    .trim();
+}
+
 function narrativeFrom(content: string | null): string {
   const raw = (content ?? '').trim();
   const fenced = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -269,15 +280,21 @@ export async function runBot(input: {
   knowledge: string;
   scopeLine: string;
   message: string;
+  history?: { role: 'user' | 'assistant'; content: string }[];
   specs: ToolSpec[];
   call: (name: string, args: unknown) => Promise<ToolOutcome>;
   complete: (messages: ChatMsg[], tools: ToolSpec[] | null) => Promise<AssistantMsg>;
 }): Promise<{ narrative: string; blocks: BotTable[]; refused: boolean; toolNames: string[] }> {
+  const prior = (input.history ?? [])
+    .filter((turn) => turn.content.trim())
+    .slice(-8)
+    .map((turn) => ({ role: turn.role, content: turn.content.trim() }));
   const messages: ChatMsg[] = [
     {
       role: 'system',
-      content: `${input.knowledge}\n\n${input.scopeLine}\n\nDecide which tools to call. Read what they return, then answer in normal language. Lead with the result. When a target is present, say the actual, the target, and whether it is ahead or behind. If many rows matter, say the pattern instead of reciting every cell. A headquarters name such as Suri is a place on kpi_report, not a person. If a tool says the record is outside the team or not on this account, say only that. Never invent a number or a name. Reply with only {"narrative":"..."}.`,
+      content: `${input.knowledge}\n\n${input.scopeLine}\n\nDecide which tools to call. Read what they return, then answer the way a colleague would: the result first, in plain language. Earlier turns are this same chat — use them, and do not ask again for something already said. When a target is present, say the actual, the target, and whether it is ahead or behind. If many rows matter, say the pattern and name only the few that matter. Do not paste a table, a list of ids, or a database field. An id is only for the next tool call. A headquarters name such as Suri is a place on kpi_report, not a person. If a tool says the record is outside the team or not on this account, say only that. Never invent a number or a name. Reply with only {"narrative":"..."}.`,
     },
+    ...prior,
     { role: 'user', content: input.message },
   ];
   const blocks: BotTable[] = [];
@@ -310,7 +327,7 @@ export async function runBot(input: {
   }
 
   const guarded = guardNarrative(
-    narrativeFrom(reply.content),
+    scrubIds(narrativeFrom(reply.content)),
     allowed.join('\n'),
     blocks.length > 0,
   );

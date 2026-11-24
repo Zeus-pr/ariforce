@@ -180,6 +180,7 @@ export class BotTools {
         id: n.id,
         name: n.name,
         role: n.role ? ROLE_NAMES[n.role] : '',
+        territory: n.territories.map((t) => t.name).join(', '),
         unassigned: n.depth < 0,
       })),
       ...(matched.length > shown.length ? { note: `Showing 40 of ${matched.length}.` } : {}),

@@ -3679,6 +3679,12 @@ export interface components {
       | 'growth_vs_ly_pct';
     BotAskRequest: {
       message: string;
+      history?: components['schemas']['BotTurn'][];
+    };
+    BotTurn: {
+      /** @enum {string} */
+      role: 'user' | 'assistant';
+      content: string;
     };
     GeofenceSettings: {
       /** @description Default visit geofence radius (#24) */

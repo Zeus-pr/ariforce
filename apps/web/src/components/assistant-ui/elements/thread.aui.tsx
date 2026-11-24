@@ -4,7 +4,7 @@ import { UserMessageAttachments } from '@/components/assistant-ui/elements/attac
 import { File, getFileHref } from '@/components/assistant-ui/elements/file';
 import { ThreadFollowupSuggestions } from '@/components/assistant-ui/elements/follow-up-suggestions.aui';
 import { Image } from '@/components/assistant-ui/elements/image';
-import { ThinkingChain } from '@/components/bot/orb-cycle';
+import { ThinkingStatus } from '@/components/bot/orb-cycle';
 import { MarkdownText } from '@/components/assistant-ui/elements/markdown-text';
 import {
   Reasoning,
@@ -20,6 +20,7 @@ import {
   ToolGroupTrigger,
 } from '@/components/assistant-ui/elements/tool-group.aui';
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button';
+import { BorderBeam } from 'border-beam';
 import { Button } from '@ariforce/ui/components/button';
 import { Skeleton } from '@ariforce/ui/components/skeleton';
 import { cn } from '@ariforce/ui/lib/utils';
@@ -202,7 +203,7 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({ isEmpty, aut
 
   return (
     <ThreadPrimitive.Root
-      className="aui-root aui-thread-root bg-background @container flex h-full flex-col"
+      className="aui-root aui-thread-root bg-background @container flex h-full min-h-0 flex-col"
       style={{
         ['--thread-max-width' as string]: '44rem',
         ['--composer-bg' as string]: 'color-mix(in oklab, var(--color-muted) 30%, transparent)',
@@ -213,12 +214,12 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({ isEmpty, aut
       <ThreadPrimitive.Viewport
         turnAnchor="top"
         data-slot="aui_thread-viewport"
-        className="relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll scroll-smooth"
+        className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-smooth"
       >
         <div
           className={cn(
-            'mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-4 pt-4',
-            isEmpty && 'justify-center',
+            'mx-auto flex w-full max-w-(--thread-max-width) flex-col px-4 pt-4 pb-6',
+            isEmpty && 'min-h-full justify-center',
           )}
         >
           <AuiIf condition={isNewChatView}>
@@ -230,25 +231,23 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({ isEmpty, aut
 
           <ThreadLoadEarlier />
 
-          <div data-slot="aui_message-group" className="mb-14 flex flex-col gap-y-6 empty:hidden">
+          <div data-slot="aui_message-group" className="flex flex-col gap-y-6 empty:hidden">
             <ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
           </div>
 
-          <ThreadPrimitive.ViewportFooter
-            className={cn(
-              'aui-thread-viewport-footer bg-background flex flex-col gap-4 overflow-visible pb-4 md:pb-6',
-              !isEmpty && 'sticky bottom-0 mt-auto rounded-t-(--composer-radius)',
-            )}
-          >
+          <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer relative flex flex-col">
             <ThreadScrollToBottom />
             <ThreadFollowupSuggestions />
-            <Composer autoFocus={autoFocus} />
-            <AuiIf condition={(s) => isNewChatView(s) && s.composer.isEmpty}>
-              <ThreadSuggestions />
-            </AuiIf>
           </ThreadPrimitive.ViewportFooter>
         </div>
       </ThreadPrimitive.Viewport>
+
+      <div className="aui-thread-composer-dock relative z-20 mx-auto w-full max-w-(--thread-max-width) shrink-0 px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <Composer autoFocus={autoFocus} />
+        <AuiIf condition={(s) => isNewChatView(s) && s.composer.isEmpty}>
+          <ThreadSuggestions />
+        </AuiIf>
+      </div>
     </ThreadPrimitive.Root>
   );
 };
@@ -481,20 +480,29 @@ const ThreadSuggestionItem: FC = () => {
 const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
-      <div
-        data-slot="aui_composer-shell"
-        className="border-foreground/10 focus-within:border-foreground/25 flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color]"
+      <BorderBeam
+        theme="light"
+        colorVariant="forest"
+        size="md"
+        borderRadius={22}
+        strength={0.9}
+        className="w-full"
       >
-        <ComposerPrimitive.Input
-          placeholder="Send a message..."
-          className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6 outline-none"
-          rows={1}
-          autoFocus={autoFocus}
-          enterKeyHint="send"
-          aria-label="Message input"
-        />
-        <ComposerAction />
-      </div>
+        <div
+          data-slot="aui_composer-shell"
+          className="flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border border-[#14b8a6]/25 bg-(--composer-bg) p-(--composer-padding)"
+        >
+          <ComposerPrimitive.Input
+            placeholder="Ask ARIBOT anything..."
+            className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6 outline-none"
+            rows={1}
+            autoFocus={autoFocus}
+            enterKeyHint="send"
+            aria-label="Message input"
+          />
+          <ComposerAction />
+        </div>
+      </BorderBeam>
     </ComposerPrimitive.Root>
   );
 };
@@ -645,7 +653,12 @@ const AssistantMessage: FC = () => {
   } = useContext(ThreadComponentsContext);
   const groupBy = TaskGroupComponent ? taskAwareGroupBy : messageGroupBy;
 
-  const running = useAuiState((s) => s.message.status?.type === 'running');
+  const thinking = useAuiState((s) => {
+    if (s.message.status?.type !== 'running') return false;
+    return !s.message.content.some(
+      (part) => part.type === 'text' && 'text' in part && Boolean(part.text),
+    );
+  });
   const ACTION_BAR_PT = 'pt-1.5';
   // Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
   const ACTION_BAR_HEIGHT = `min-h-7.5 ${ACTION_BAR_PT}`;
@@ -660,7 +673,7 @@ const AssistantMessage: FC = () => {
         data-slot="aui_assistant-message-content"
         className="text-foreground px-2 leading-relaxed wrap-break-word"
       >
-        {running ? <ThinkingChain active /> : null}
+        <ThinkingStatus active={thinking} />
         <MessagePrimitive.GroupedParts groupBy={groupBy}>
           {({ part, children }) => {
             switch (part.type) {
