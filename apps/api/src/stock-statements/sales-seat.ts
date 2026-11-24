@@ -7,7 +7,7 @@ export type SeatHolder = {
   hrStatus: string | null;
 };
 
-function holdsSeat(holder: SeatHolder) {
+export function holdsSeat(holder: { status: string; hrStatus: string | null }) {
   if (holder.status !== 'active') return false;
   const hr = (holder.hrStatus ?? '').trim().toLowerCase();
   return hr !== 'left' && hr !== 'inactive' && hr !== 'suspended';
