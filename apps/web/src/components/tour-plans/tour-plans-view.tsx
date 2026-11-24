@@ -40,7 +40,7 @@ import { PersonPicker } from '@/components/team/person-picker';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { approvalDecisionMessage, saveMessage } from '@/lib/leave/model';
 import { thrownMessage } from '@/lib/dcr/errors';
-import { isApprover } from '@/lib/roles';
+import { isApprover, roleLevel } from '@/lib/roles';
 import { ApprovalReview } from '@/components/approvals/approval-review';
 import { RejectDialog } from '@/components/approvals/reject-dialog';
 import { RejectionNote } from '@/components/approvals/rejection-note';
@@ -126,18 +126,20 @@ const noop = () => () => {};
 const UNPLANNED = 'unplanned';
 
 export function TourPlansView() {
+  const { role } = useRole();
+  const rank = roleLevel(role);
   const current = useSyncExternalStore(noop, thisMonthIST, () => null);
   if (!current) return <WorkPageSkeleton />;
   // Default to the open next-month window; if closed, still land on next month (read-only).
-  const initial = tpOpenMonth() ?? nextYmOf(current);
+  const initial = tpOpenMonth(rank) ?? nextYmOf(current);
   return (
     <LookupsProvider>
-      <Planner initialMonth={initial} />
+      <Planner initialMonth={initial} rank={rank} />
     </LookupsProvider>
   );
 }
 
-function Planner({ initialMonth }: { initialMonth: string }) {
+function Planner({ initialMonth, rank }: { initialMonth: string; rank: number }) {
   const { role, user } = useRole();
   const { byId } = useLookups();
   const [month, setMonth] = useState(initialMonth);
@@ -306,9 +308,9 @@ function Planner({ initialMonth }: { initialMonth: string }) {
         };
   const today = c.todayIST;
   const required = useMemo(() => new Set(c.requiredDates), [c.requiredDates]);
-  const monthBlocked = tpMonthNotPlannable(month);
-  const monthBlockReason = tpFutureMonthCutoffError(month);
-  const openMonth = tpOpenMonth();
+  const monthBlocked = tpMonthNotPlannable(month, rank);
+  const monthBlockReason = tpFutureMonthCutoffError(month, rank);
+  const openMonth = tpOpenMonth(rank);
   // Fill helper targets: unplanned working days (weekly offs and, this month, past days skipped).
   const missing = dates.filter((d) => required.has(d) && !byDate.get(d)?.entries.length);
   // Submit needs at least one planned day; full coverage is not required.
@@ -576,7 +578,8 @@ function Planner({ initialMonth }: { initialMonth: string }) {
                 {!other && (
                   <p className="text-sm text-muted-foreground">
                     {monthBlocked
-                      ? 'You can browse other months, but only the next calendar month can be planned (until the 22nd at 12:00 AM IST).'
+                      ? (monthBlockReason ??
+                        'You can browse other months. Only the next calendar month can be planned, until 11:59 pm on your deadline day.')
                       : 'Start from your standard tour plan, or copy last month and adjust.'}
                   </p>
                 )}
