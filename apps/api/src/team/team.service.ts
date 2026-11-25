@@ -1,4 +1,5 @@
 import { MailService } from '../mail/mail.service';
+import { listedName } from './listed-name';
 import { authContextWrite } from '../auth/auth-context-cache';
 import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
 import { revokeUserSessions } from '../auth/revoke';
@@ -130,6 +131,7 @@ export type Person = {
   dateOfBirth: string | null;
   managerId: string | null;
   status: 'invited' | 'active' | 'suspended';
+  hrStatus: string | null;
   hasLogin: boolean;
   version: number;
   roles: RoleKey[];
@@ -204,6 +206,7 @@ export class TeamService {
           dateOfBirth: u.dateOfBirth,
           managerId: u.managerId,
           status: u.status as Person['status'], // pending/rejected filtered out above
+          hrStatus: u.hrStatus,
           hasLogin: !!u.authUserId,
           version: u.version,
           roles: r,
@@ -267,7 +270,7 @@ export class TeamService {
       const top = [...u.roles].sort((a, b) => ROLE_RANK[b] - ROLE_RANK[a])[0] ?? null;
       return {
         id: u.id,
-        name: u.name,
+        name: listedName(u.name, u.status, u.hrStatus),
         role: top,
         roles: u.roles,
         designation: u.designation,

@@ -1,4 +1,5 @@
 import { approvedLeaveDays } from '../leave/leave.util';
+import { listedName } from '../team/listed-name';
 import { ABSENT_FROM, isAbsentDay, isSunday } from './day-status';
 import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
 import {
@@ -396,7 +397,7 @@ export class UsersController {
         const at = seen.find((x) => x.a === u.authUserId)?.at;
         return {
           id: u.id,
-          name: u.name,
+          name: listedName(u.name, u.status, u.hrStatus),
           email: u.email,
           employeeCode: u.employeeCode,
           phone: u.phone,
