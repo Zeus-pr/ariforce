@@ -23,6 +23,7 @@ import { HomeModule } from './home/home.module';
 import { ProductPricesModule } from './product-prices/product-prices.module';
 import { PayslipModule } from './payslip/payslip.module';
 import { BotModule } from './bot/bot.module';
+import { ReportsModule } from './reports/reports.module';
 import { MeController } from './me/me.controller';
 import { OpenApiController } from './openapi/openapi.controller';
 
@@ -50,6 +51,7 @@ import { OpenApiController } from './openapi/openapi.controller';
     StockStatementsModule,
     AuditLogModule,
     BotModule,
+    ReportsModule,
   ],
   controllers: [HealthController, OpenApiController, MeController],
   providers: [WorkTypesCheck],

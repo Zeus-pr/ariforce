@@ -971,6 +971,33 @@ function buildDocument(): OpenApiDocument {
           },
         }),
       },
+      '/v1/reports/master-excel': {
+        get: op({
+          tags: ['KPIs'],
+          operationId: 'downloadMasterExcel',
+          summary:
+            'Master Excel for the caller’s team. Month is required. headquartersId keeps one headquarters. userId keeps that person on their headquarters sheet, with its territories. Not both.',
+          requestParams: {
+            query: z.object({
+              month: Month,
+              headquartersId: Id.optional(),
+              userId: Id.optional(),
+            }),
+          },
+          responses: {
+            '200': {
+              description: 'Workbook (content-disposition: attachment)',
+              content: {
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
+                  schema: z.string().meta({ format: 'binary' }),
+                },
+              },
+            },
+            '403': err('Missing reports:read'),
+            '422': err('MONTH_IN_FUTURE or an invalid month'),
+          },
+        }),
+      },
       '/v1/kpis': {
         get: op({
           tags: ['KPIs'],
