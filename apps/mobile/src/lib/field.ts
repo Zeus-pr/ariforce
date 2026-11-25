@@ -519,8 +519,12 @@ export async function requireOnDuty(): Promise<void> {
  * while they are under that doctor's cap (default 1). At the cap, a far check-in is refused.
  * A chemist or stockist who already has a pin is refused when they are outside it.
  */
-export async function visitCheckIn(outletKind: OutletKind, outletId: string): Promise<string> {
-  await requireOnDuty();
+export async function visitCheckIn(
+  outletKind: OutletKind,
+  outletId: string,
+  opts?: { pastDay?: boolean },
+): Promise<string> {
+  if (!opts?.pastDay) await requireOnDuty();
   const [deviceId, fix] = await Promise.all([ensureFieldReady(), getFix()]);
   const locks = await listOutletLocations(outletKind, outletId);
   let addedChamber = false;
@@ -602,8 +606,10 @@ export async function visitCheckIn(outletKind: OutletKind, outletId: string): Pr
 }
 
 /** GPS proof body for opening Presentation (attach to draft call). */
-export async function capturePresentation(): Promise<PresentationCaptureDraft> {
-  await requireOnDuty();
+export async function capturePresentation(opts?: {
+  pastDay?: boolean;
+}): Promise<PresentationCaptureDraft> {
+  if (!opts?.pastDay) await requireOnDuty();
   const [deviceId, fix] = await Promise.all([ensureFieldReady(), getFix()]);
   return {
     ...captureBody(fix, deviceId),

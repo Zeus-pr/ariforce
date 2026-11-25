@@ -23,6 +23,7 @@ import {
   visitCheckIn,
   CheckInCancelled,
 } from '@/lib/field';
+import { todayIST } from '@/lib/dcr/dates';
 import { KIND_LABEL, type CallDraft, type PobDraft } from '@/lib/dcr/model';
 import { formatINR } from '@/lib/money';
 import { colors, radius, spacing, touch } from '@/theme';
@@ -39,6 +40,7 @@ import { Presentation } from './presentation';
 export function CallEditor({
   call,
   index,
+  day,
   readOnly,
   errors,
   products,
@@ -51,6 +53,8 @@ export function CallEditor({
 }: {
   call: CallDraft;
   index: number;
+  /** DCR date. A past day is filed without today's punch-in. */
+  day: string;
   readOnly: boolean;
   errors: string[];
   products: ProductOpt[];
@@ -70,11 +74,12 @@ export function CallEditor({
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
   const isProd = (e: string) => /product|presentation|order|POB|check.?in/i.test(e);
   const checkedIn = !!call.checkInId;
+  const pastDay = day < todayIST();
 
   // Re-check when returning from Home punch — don't keep a stale "Punch in first".
   useFocusEffect(
     useCallback(() => {
-      if (readOnly || !call.outletId || checkedIn) return;
+      if (pastDay || readOnly || !call.outletId || checkedIn) return;
       let live = true;
       void isOnDuty()
         .then((v) => {
@@ -86,12 +91,12 @@ export function CallEditor({
       return () => {
         live = false;
       };
-    }, [readOnly, call.outletId, checkedIn]),
+    }, [pastDay, readOnly, call.outletId, checkedIn]),
   );
 
   const onCheckIn = async () => {
     if (readOnly || checkedIn || !call.outletId || checkingIn) return;
-    if (onDuty === false) {
+    if (!pastDay && onDuty === false) {
       Alert.alert('Punch in first', 'Punch in on Home before checking in at a call.');
       return;
     }
@@ -119,7 +124,7 @@ export function CallEditor({
     }
     setCheckingIn(true);
     try {
-      const checkInId = await visitCheckIn(kind, outletId);
+      const checkInId = await visitCheckIn(kind, outletId, { pastDay });
       onChange({ checkInId });
       setOnDuty(true);
     } catch (e) {
@@ -163,7 +168,7 @@ export function CallEditor({
         error={errors.find((e) => !isProd(e))}
       />
       {call.outletId ? (
-        onDuty === false && !checkedIn ? (
+        !pastDay && onDuty === false && !checkedIn ? (
           <Button
             label="Punch in first"
             variant="secondary"
@@ -190,6 +195,7 @@ export function CallEditor({
           products={products}
           detail={detail}
           readOnly={readOnly}
+          pastDay={pastDay}
           error={errors.find(isProd)}
           onChange={onChange}
           onPresented={onPresented}
@@ -249,6 +255,7 @@ function DoctorProducts({
   products,
   detail,
   readOnly,
+  pastDay,
   error,
   onChange,
   onPresented,
@@ -258,6 +265,7 @@ function DoctorProducts({
   products: ProductOpt[];
   detail?: readonly DcrDetailProduct[] | null;
   readOnly: boolean;
+  pastDay: boolean;
   error?: string;
   onChange: (p: Partial<CallDraft>) => void;
   onPresented: () => void;
@@ -304,7 +312,7 @@ function DoctorProducts({
     if (readOnly) return;
     setOpeningPres(true);
     try {
-      const presentationCapture = await capturePresentation();
+      const presentationCapture = await capturePresentation({ pastDay });
       const presentationOpenedAt = new Date().toISOString();
       onChange({
         presentationOpened: true,
