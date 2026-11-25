@@ -1,4 +1,4 @@
-import { HttpException, Injectable } from '@nestjs/common';
+import { HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { ROLE_NAMES, calendarWorkingDates, type RoleKey } from '@ariforce/contracts';
 import type { Tx } from '@ariforce/db';
 import { sql, type SQL } from 'drizzle-orm';
@@ -63,7 +63,7 @@ type MonthRow = {
 export class MasterExcelService {
   constructor(private readonly tenant: TenantService) {}
 
-  file(p: Principal, month: string) {
+  file(p: Principal, month: string, scope: { headquartersId?: string; userId?: string }) {
     return this.tenant.run(p, async (tx) => {
       const settings = await companySettings(tx, p);
       const today = localDate(new Date(), settings.timezone);
@@ -73,6 +73,11 @@ export class MasterExcelService {
       if (from > today)
         throw new HttpException(
           { code: 'MONTH_IN_FUTURE', message: 'Choose a month that has already started.' },
+          422,
+        );
+      if (scope.headquartersId && scope.userId)
+        throw new HttpException(
+          { code: 'VALIDATION', message: 'Choose a headquarters or a person.' },
           422,
         );
       const upto = to < today ? to : today;
@@ -90,7 +95,7 @@ export class MasterExcelService {
              order by u.name`,
       );
       const userIds = people.map((u) => u.id);
-      const scope = p.scopePaths
+      const placeScope = p.scopePaths
         ? sql`and (${sql.join(
             p.scopePaths.map(
               (path) => sql`(t.path::text = ${path} or starts_with(t.path::text, ${path} || '.'))`,
@@ -108,7 +113,7 @@ export class MasterExcelService {
         tx,
         sql`select t.id, t.name, t.path::text as path, t.level::text as level, t.parent_id
               from territories t
-             where t.deleted_at is null ${scope}
+             where t.deleted_at is null ${placeScope}
              order by t.name`,
       );
       const tree: Place[] = places.map((row) => ({
@@ -172,12 +177,14 @@ export class MasterExcelService {
         }));
         const place = sales.ofPaths([hq.path]);
         return {
+          id: hq.id,
           name: hq.name,
           people: lines,
           patches: patchLines,
           total: applySales(sumPeople(lines), place),
         };
       });
+      const chosen = this.narrow(sheets, scope, sales, pathsByUser, tree);
 
       const [company] = await read<{ name: string }>(
         tx,
@@ -203,10 +210,35 @@ export class MasterExcelService {
         monthLabel,
         monthKey: month,
         generatedAt,
-        sheets,
+        sheets: chosen,
       };
       return masterXlsx(file);
     });
+  }
+
+  private narrow(
+    sheets: HqSheet[],
+    scope: { headquartersId?: string; userId?: string },
+    sales: { ofPaths(paths: string[]): PlaceSales },
+    pathsByUser: Map<string, string[]>,
+    tree: Place[],
+  ): HqSheet[] {
+    if (scope.headquartersId) {
+      const hit = sheets.filter((sheet) => sheet.id === scope.headquartersId);
+      if (!hit.length) throw new NotFoundException('Headquarters not found');
+      return hit;
+    }
+    if (scope.userId) {
+      const hit = sheets.find((sheet) =>
+        sheet.people.some((person) => person.userId === scope.userId),
+      );
+      if (!hit) throw new NotFoundException('This person is not posted to a headquarters');
+      const people = hit.people.filter((person) => person.userId === scope.userId);
+      const hq = tree.find((place) => place.id === hit.id);
+      const place = sales.ofPaths(pathsByUser.get(scope.userId) ?? (hq ? [hq.path] : []));
+      return [{ ...hit, people, total: applySales(sumPeople(people), place) }];
+    }
+    return sheets;
   }
 
   private person(user: UserRow, stat: Stat | undefined, sales: PlaceSales): PersonLine {
@@ -215,6 +247,7 @@ export class MasterExcelService {
       user.role && user.role in ROLE_NAMES ? ROLE_NAMES[user.role as RoleKey] : (user.role ?? '');
     const figures = applySales(stat?.figures ?? blankFigures(), sales);
     return {
+      userId: user.id,
       name: seated ? user.name : 'Vacant',
       code: user.employee_code ?? '',
       role,

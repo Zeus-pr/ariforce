@@ -262,7 +262,26 @@ export function TeamView() {
               </Link>
             </Button>
           )}
-          <MasterExcelButton month={month} />
+          <MasterExcelButton
+            month={month}
+            headquarters={(tree ?? [])
+              .filter((place) => place.level === 'headquarter' && !place.deletedAt)
+              .map((place) => ({ id: place.id, name: place.name }))
+              .sort((a, b) => a.name.localeCompare(b.name))}
+            focusHeadquartersId={
+              userId
+                ? null
+                : (() => {
+                    let current = t ? byId.get(t) : undefined;
+                    while (current) {
+                      if (current.level === 'headquarter') return current.id;
+                      current = current.parentId ? byId.get(current.parentId) : undefined;
+                    }
+                    return null;
+                  })()
+            }
+            focusUserId={userId}
+          />
           <ExportMenu spec={spec} disabled={!rows} />
         </div>
       </div>

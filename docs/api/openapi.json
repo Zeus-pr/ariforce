@@ -6418,7 +6418,7 @@
           "KPIs"
         ],
         "operationId": "downloadMasterExcel",
-        "summary": "Master Excel for the caller’s team: one sheet per headquarters, territories under each",
+        "summary": "Master Excel for the caller’s team. Month is required. headquartersId keeps one headquarters. userId keeps that person on their headquarters sheet, with its territories. Not both.",
         "parameters": [
           {
             "in": "query",
@@ -6431,6 +6431,28 @@
             },
             "required": true,
             "description": "Month (YYYY-MM)"
+          },
+          {
+            "in": "query",
+            "name": "headquartersId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          {
+            "in": "query",
+            "name": "userId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
           }
         ],
         "responses": {

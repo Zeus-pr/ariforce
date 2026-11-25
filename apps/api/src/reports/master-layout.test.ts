@@ -27,6 +27,7 @@ function person(name: string, visits: number): PersonLine {
   figures.workingDays = 10;
   figures.msl = 4;
   return {
+    userId: name,
     name,
     code: '',
     role: '',
@@ -81,6 +82,7 @@ describe('master excel layout', () => {
       generatedAt: '25 Nov 2026, 4:00 pm',
       sheets: [
         {
+          id: 'hq',
           name: 'Kolkata',
           people: [person('Mina', 12)],
           patches: [{ name: 'North', figures }],

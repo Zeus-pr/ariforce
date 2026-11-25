@@ -39,6 +39,7 @@ export type Figures = {
 };
 
 export type PersonLine = {
+  userId: string;
   name: string;
   code: string;
   role: string;
@@ -59,6 +60,7 @@ export type PatchLine = {
 };
 
 export type HqSheet = {
+  id: string;
   name: string;
   people: PersonLine[];
   patches: PatchLine[];

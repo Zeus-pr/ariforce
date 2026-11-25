@@ -905,7 +905,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Master Excel for the caller’s team: one sheet per headquarters, territories under each */
+    /** Master Excel for the caller’s team. Month is required. headquartersId keeps one headquarters. userId keeps that person on their headquarters sheet, with its territories. Not both. */
     get: operations['downloadMasterExcel'];
     put?: never;
     post?: never;
@@ -14132,6 +14132,8 @@ export interface operations {
       query: {
         /** @description Month (YYYY-MM) */
         month: string;
+        headquartersId?: string;
+        userId?: string;
       };
       header?: never;
       path?: never;

@@ -976,8 +976,14 @@ function buildDocument(): OpenApiDocument {
           tags: ['KPIs'],
           operationId: 'downloadMasterExcel',
           summary:
-            'Master Excel for the caller’s team: one sheet per headquarters, territories under each',
-          requestParams: { query: z.object({ month: Month }) },
+            'Master Excel for the caller’s team. Month is required. headquartersId keeps one headquarters. userId keeps that person on their headquarters sheet, with its territories. Not both.',
+          requestParams: {
+            query: z.object({
+              month: Month,
+              headquartersId: Id.optional(),
+              userId: Id.optional(),
+            }),
+          },
           responses: {
             '200': {
               description: 'Workbook (content-disposition: attachment)',
