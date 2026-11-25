@@ -283,11 +283,13 @@ export class MasterExcelService {
       user_id: string;
       unique_doctors: string;
       unique_chemists: string;
+      stockist_visits: string;
     }>(
       tx,
       sql`select r.user_id,
                  count(distinct c.outlet_id) filter (where c.outlet_kind = 'doctor')::text as unique_doctors,
-                 count(distinct c.outlet_id) filter (where c.outlet_kind = 'chemist')::text as unique_chemists
+                 count(distinct c.outlet_id) filter (where c.outlet_kind = 'chemist')::text as unique_chemists,
+                 count(*) filter (where c.outlet_kind = 'stockist')::text as stockist_visits
             from dcrs r
             join dcr_calls c on c.dcr_id = r.id and c.deleted_at is null
            where r.deleted_at is null and r.status in ('submitted', 'approved')
@@ -372,6 +374,7 @@ export class MasterExcelService {
       const s = by(row.user_id);
       s.figures.uniqueDoctors = num(row.unique_doctors);
       s.figures.uniqueChemists = num(row.unique_chemists);
+      s.figures.stockistVisits = num(row.stockist_visits);
     }
     for (const row of work) {
       const s = by(row.user_id);
@@ -450,6 +453,7 @@ export class MasterExcelService {
         'uniqueChemists',
         'doctorVisits',
         'chemistVisits',
+        'stockistVisits',
         'pob',
       ] as const)
         if (s.figures[key] == null) s.figures[key] = 0;
@@ -539,6 +543,14 @@ export class MasterExcelService {
                where r.deleted_at is null and r.status in ('submitted', 'approved')
                  and r.date between ${from}::date and ${upto}::date
                  and r.user_id = any(${who})
+              union all
+              select coalesce(st.local_territory_id, st.territory_id), 'stockist', c.outlet_id, r.date
+                from dcrs r
+                join dcr_calls c on c.dcr_id = r.id and c.deleted_at is null and c.outlet_kind = 'stockist'
+                join stockists st on st.id = c.outlet_id
+               where r.deleted_at is null and r.status in ('submitted', 'approved')
+                 and r.date between ${from}::date and ${upto}::date
+                 and r.user_id = any(${who})
             ) calls
            group by patch, kind`,
     );
@@ -583,10 +595,12 @@ export class MasterExcelService {
         figures.doctorVisits = num(row.visits);
         figures.uniqueDoctors = num(row.uniques);
         days.doctor = num(row.days);
-      } else {
+      } else if (row.kind === 'chemist') {
         figures.chemistVisits = num(row.visits);
         figures.uniqueChemists = num(row.uniques);
         days.chemist = num(row.days);
+      } else {
+        figures.stockistVisits = num(row.visits);
       }
       daysByPatch.set(row.patch, days);
     }
