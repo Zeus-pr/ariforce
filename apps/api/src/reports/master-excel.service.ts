@@ -55,6 +55,7 @@ type MonthRow = {
   dcr_on_time_days: string;
   msl_size: string;
   unique_doctors_seen: string;
+  frequency_met_doctors: string;
   pob_value: string;
 };
 
@@ -124,9 +125,32 @@ export class MasterExcelService {
                  where user_id = any(${ids(userIds)})`,
           )
         : [];
+      const byPlace = new Map(tree.map((place) => [place.id, place]));
+      const hqOf = (territoryId: string) => {
+        let cur = byPlace.get(territoryId);
+        const seen = new Set<string>();
+        while (cur && !seen.has(cur.id)) {
+          if (cur.level === 'headquarter') return cur.id;
+          seen.add(cur.id);
+          cur = cur.parentId ? byPlace.get(cur.parentId) : undefined;
+        }
+        return null;
+      };
       const onHq = new Map<string, string[]>();
-      for (const row of posted)
-        onHq.set(row.territory_id, [...(onHq.get(row.territory_id) ?? []), row.user_id]);
+      const pathsByUser = new Map<string, string[]>();
+      for (const row of posted) {
+        const place = byPlace.get(row.territory_id);
+        if (place) {
+          const paths = pathsByUser.get(row.user_id) ?? [];
+          paths.push(place.path);
+          pathsByUser.set(row.user_id, paths);
+        }
+        const hqId = hqOf(row.territory_id);
+        if (!hqId) continue;
+        const list = onHq.get(hqId) ?? [];
+        if (!list.includes(row.user_id)) list.push(row.user_id);
+        onHq.set(hqId, list);
+      }
 
       const stats = await this.stats(tx, userIds, from, upto, `${month}-01`, settings.timezone);
       const sales = await this.sales(tx, tree, `${month}-01`);
@@ -139,7 +163,9 @@ export class MasterExcelService {
           .map((id) => byUser.get(id))
           .filter((u): u is UserRow => !!u)
           .sort((a, b) => a.name.localeCompare(b.name))
-          .map((u) => this.person(u, stats.get(u.id), sales.ofPaths([hq.path])));
+          .map((u) =>
+            this.person(u, stats.get(u.id), sales.ofPaths(pathsByUser.get(u.id) ?? [hq.path])),
+          );
         const patchLines = patchesOf(tree, hq).map((patch) => ({
           name: patch.name,
           figures: patches.get(patch.id) ?? blankFigures(),
@@ -197,6 +223,7 @@ export class MasterExcelService {
       submittedDays: stat?.submittedDays ?? 0,
       onTimeDays: stat?.onTimeDays ?? 0,
       mslSeen: stat?.mslSeen ?? 0,
+      frequencyMet: stat?.frequencyMet ?? 0,
     };
   }
 
@@ -215,7 +242,7 @@ export class MasterExcelService {
       tx,
       sql`select user_id, field_days::text, doctor_calls::text, chemist_calls::text,
                  dcr_submitted_days::text, dcr_on_time_days::text, msl_size::text,
-                 unique_doctors_seen::text, pob_value::text
+                 unique_doctors_seen::text, frequency_met_doctors::text, pob_value::text
             from kpi_user_month
            where month = ${month}::date and user_id = any(${who})`,
     );
@@ -297,7 +324,9 @@ export class MasterExcelService {
       s.figures.chemistAverage = avg(num(row.chemist_calls), num(row.field_days));
       s.figures.msl = num(row.msl_size);
       s.mslSeen = num(row.unique_doctors_seen);
+      s.frequencyMet = num(row.frequency_met_doctors);
       s.figures.coverage = pct(s.mslSeen, s.figures.msl ?? 0);
+      s.figures.frequency = pct(s.frequencyMet, s.figures.msl ?? 0);
       s.figures.missed =
         (s.figures.msl ?? 0)
           ? pct(Math.max(0, (s.figures.msl ?? 0) - s.mslSeen), s.figures.msl ?? 0)
@@ -374,6 +403,23 @@ export class MasterExcelService {
       const planned = plan.get(id);
       s.figures.tpAdherence = planned ? pct(num(planned.met), num(planned.planned)) : null;
       if (s.figures.fieldDays == null) s.figures.fieldDays = 0;
+      for (const key of [
+        'cl',
+        'sl',
+        'el',
+        'lop',
+        'otherLeave',
+        'campDays',
+        'meetingDays',
+        'trainingDays',
+        'otherDays',
+        'uniqueDoctors',
+        'uniqueChemists',
+        'doctorVisits',
+        'chemistVisits',
+        'pob',
+      ] as const)
+        if (s.figures[key] == null) s.figures[key] = 0;
     }
     return out;
   }
@@ -432,6 +478,7 @@ export class MasterExcelService {
     const patchIds = new Set(places.filter((p) => p.level === 'territory').map((p) => p.id));
     if (!userIds.length || !patchIds.size) return out;
     const who = ids(userIds);
+    const daysByPatch = new Map<string, { doctor: number; chemist: number }>();
     const calls = await read<{
       patch: string;
       kind: string;
@@ -471,29 +518,44 @@ export class MasterExcelService {
     );
     const pob = await read<{ patch: string; value: string }>(
       tx,
-      sql`select coalesce(doc.local_territory_id, doc.territory_id) as patch, coalesce(sum(p.value), 0)::text as value
-            from dcrs r
-            join dcr_calls c on c.dcr_id = r.id and c.deleted_at is null and c.outlet_kind = 'doctor'
-            join dcr_call_products p on p.call_id = c.id and p.deleted_at is null and p.kind = 'pob'
-            join doctors doc on doc.id = c.outlet_id
-           where r.deleted_at is null and r.status in ('submitted', 'approved')
-             and r.date between ${from}::date and ${upto}::date
-             and r.user_id = any(${who})
-           group by 1`,
+      sql`select patch, coalesce(sum(value), 0)::text as value
+            from (
+              select coalesce(doc.local_territory_id, doc.territory_id) as patch, p.value
+                from dcrs r
+                join dcr_calls c on c.dcr_id = r.id and c.deleted_at is null and c.outlet_kind = 'doctor'
+                join dcr_call_products p on p.call_id = c.id and p.deleted_at is null and p.kind = 'pob'
+                join doctors doc on doc.id = c.outlet_id
+               where r.deleted_at is null and r.status in ('submitted', 'approved')
+                 and r.date between ${from}::date and ${upto}::date
+                 and r.user_id = any(${who})
+              union all
+              select coalesce(ch.local_territory_id, ch.territory_id), p.value
+                from dcrs r
+                join dcr_calls c on c.dcr_id = r.id and c.deleted_at is null and c.outlet_kind = 'chemist'
+                join dcr_call_products p on p.call_id = c.id and p.deleted_at is null and p.kind = 'pob'
+                join chemists ch on ch.id = c.outlet_id
+               where r.deleted_at is null and r.status in ('submitted', 'approved')
+                 and r.date between ${from}::date and ${upto}::date
+                 and r.user_id = any(${who})
+            ) lines
+           group by patch`,
     );
     const sales = await this.sales(tx, places, from.slice(0, 7) + '-01');
     for (const id of patchIds) out.set(id, blankFigures());
     for (const row of calls) {
       if (!patchIds.has(row.patch)) continue;
       const figures = out.get(row.patch)!;
+      const days = daysByPatch.get(row.patch) ?? { doctor: 0, chemist: 0 };
       if (row.kind === 'doctor') {
         figures.doctorVisits = num(row.visits);
         figures.uniqueDoctors = num(row.uniques);
-        figures.fieldDays = num(row.days);
+        days.doctor = num(row.days);
       } else {
         figures.chemistVisits = num(row.visits);
         figures.uniqueChemists = num(row.uniques);
+        days.chemist = num(row.days);
       }
+      daysByPatch.set(row.patch, days);
     }
     for (const row of listed) {
       if (!patchIds.has(row.patch)) continue;
@@ -511,8 +573,10 @@ export class MasterExcelService {
     for (const [id, figures] of out) {
       const place = places.find((p) => p.id === id);
       if (!place) continue;
-      figures.callAverage = avg(figures.doctorVisits ?? 0, figures.fieldDays ?? 0);
-      figures.chemistAverage = avg(figures.chemistVisits ?? 0, figures.fieldDays ?? 0);
+      const days = daysByPatch.get(id);
+      figures.fieldDays = days?.doctor ?? figures.fieldDays;
+      figures.callAverage = avg(figures.doctorVisits ?? 0, days?.doctor ?? 0);
+      figures.chemistAverage = avg(figures.chemistVisits ?? 0, days?.chemist ?? 0);
       Object.assign(figures, applySales(figures, sales.ofPaths([place.path])));
     }
     return out;
@@ -532,10 +596,11 @@ type Stat = {
   submittedDays: number;
   onTimeDays: number;
   mslSeen: number;
+  frequencyMet: number;
 };
 
 function emptyStat(): Stat {
-  return { figures: blankFigures(), submittedDays: 0, onTimeDays: 0, mslSeen: 0 };
+  return { figures: blankFigures(), submittedDays: 0, onTimeDays: 0, mslSeen: 0, frequencyMet: 0 };
 }
 
 function num(v: string | number | null | undefined) {

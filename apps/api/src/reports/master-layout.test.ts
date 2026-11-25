@@ -35,6 +35,7 @@ function person(name: string, visits: number): PersonLine {
     submittedDays: 8,
     onTimeDays: 6,
     mslSeen: 3,
+    frequencyMet: 2,
   };
 }
 

@@ -19,6 +19,7 @@ export type Figures = {
   doctorVisits: number | null;
   callAverage: number | null;
   coverage: number | null;
+  frequency: number | null;
   missed: number | null;
   uniqueChemists: number | null;
   chemistVisits: number | null;
@@ -48,6 +49,8 @@ export type PersonLine = {
   onTimeDays: number;
   /** Must-see doctors actually met. Coverage uses this, not every doctor called on. */
   mslSeen: number;
+  /** Must-see doctors seen as often as required. */
+  frequencyMet: number;
 };
 
 export type PatchLine = {
@@ -90,6 +93,7 @@ export const FIGURE_KEYS = [
   'doctorVisits',
   'callAverage',
   'coverage',
+  'frequency',
   'missed',
   'uniqueChemists',
   'chemistVisits',
@@ -138,6 +142,12 @@ export function sumPeople(rows: PersonLine[]): Figures {
   const seen = knownMsl.reduce((n, r) => n + r.mslSeen, 0);
   out.msl = knownMsl.length ? msl : null;
   out.coverage = knownMsl.length ? pct(seen, msl) : null;
+  out.frequency = knownMsl.length
+    ? pct(
+        rows.reduce((n, r) => n + r.frequencyMet, 0),
+        msl,
+      )
+    : null;
   out.missed = knownMsl.length && msl ? pct(Math.max(0, msl - seen), msl) : null;
   const submitted = rows.reduce((n, r) => n + r.submittedDays, 0);
   const onTime = rows.reduce((n, r) => n + r.onTimeDays, 0);

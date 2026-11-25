@@ -71,10 +71,13 @@ export function MasterExcelButton({ month }: { month: string }) {
       }
       const blob = await res.blob();
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(blob);
+      a.href = url;
       a.download = `master-excel-${chosen}.xlsx`;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(a.href);
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       setOpen(false);
     } catch {
       setError('Could not build the workbook. Try again.');
@@ -126,7 +129,11 @@ export function MasterExcelButton({ month }: { month: string }) {
               <select
                 className="h-9 rounded-md border bg-card px-2"
                 value={year}
-                onChange={(e) => setYear(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setYear(next);
+                  if (`${next}-${mon}` > now) setMon(now.slice(5, 7));
+                }}
                 data-testid="master-excel-year"
               >
                 {years.map((item) => (

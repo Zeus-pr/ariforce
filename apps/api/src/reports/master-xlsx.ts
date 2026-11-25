@@ -40,6 +40,7 @@ const COLS: { header: string; key: keyof Figures; width: number; kind: Kind; ban
   { header: 'Doctor visits', key: 'doctorVisits', width: 15, kind: 'count', band: 'Doctors' },
   { header: 'Call average', key: 'callAverage', width: 14, kind: 'avg', band: 'Doctors' },
   { header: 'Coverage', key: 'coverage', width: 12, kind: 'pct', band: 'Doctors' },
+  { header: 'Frequency', key: 'frequency', width: 12, kind: 'pct', band: 'Doctors' },
   { header: 'Missed doctors', key: 'missed', width: 16, kind: 'pct', band: 'Doctors' },
   { header: 'Unique chemists', key: 'uniqueChemists', width: 16, kind: 'count', band: 'Chemists' },
   { header: 'Chemist visits', key: 'chemistVisits', width: 15, kind: 'count', band: 'Chemists' },
@@ -83,6 +84,17 @@ const WHO = [
   { header: 'Manager', width: 22 },
 ];
 
+const BAND_HEAD: Record<string, string> = {
+  Who: 'FFE7EEF2',
+  Days: SAND,
+  Leave: AMBER,
+  Work: GREEN,
+  Doctors: BLUE,
+  Chemists: 'FFE5F4F2',
+  Targets: GOLD,
+  Discipline: 'FFE8EEF2',
+};
+
 const BAND_FILL: Record<string, string> = {
   Who: NAVY,
   Days: 'FF8A7355',
@@ -98,7 +110,7 @@ const NUM: Record<Kind, string> = {
   day: '0.0',
   count: '#,##0',
   avg: '0.00',
-  pct: '0.0',
+  pct: '0.0"%"',
   inr: '₹#,##0',
 };
 
@@ -133,10 +145,11 @@ function writeFigures(row: ExcelJS.Row, figures: Figures, base: string, bold: bo
     const v = figures[col.key];
     cell.value = v == null ? null : v;
     if (v != null) cell.numFmt = NUM[col.kind];
+    const growthTone = col.key === 'growth' && v != null ? (v < 0 ? ROSE : GREEN) : null;
     const tone =
       (col.key === 'primaryAchievement' || col.key === 'secondaryAchievement'
         ? achievementFill(v)
-        : null) ??
+        : growthTone) ??
       ((col.key === 'absent' || col.key === 'lop') && v != null && v > 0 ? ROSE : base);
     paint(cell, tone, INK, bold);
     cell.alignment = { vertical: 'middle', horizontal: 'right' };
@@ -225,9 +238,9 @@ function writeHq(wb: ExcelJS.Workbook, file: MasterFile, hq: HqSheet, tab: strin
   headers.forEach((col, i) => {
     const cell = head.getCell(i + 1);
     cell.value = col.header;
-    paint(cell, 'FFF7F4EF', INK, true);
+    paint(cell, BAND_HEAD[col.band] ?? SAND, INK, true);
+    cell.alignment = { vertical: 'bottom', horizontal: 'center', wrapText: true };
   });
-  ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: LAST } };
 
   let r = 5;
   r = sectionRow(ws, r, 'People', SAND);
@@ -238,7 +251,9 @@ function writeHq(wb: ExcelJS.Workbook, file: MasterFile, hq: HqSheet, tab: strin
     for (let c = 2; c <= LAST; c++) paint(row.getCell(c), WHITE);
     r += 1;
   } else {
-    for (const person of hq.people) r = personRow(ws, r, person, WHITE);
+    hq.people.forEach((person, i) => {
+      r = personRow(ws, r, person, i % 2 ? 'FFFBF9F6' : WHITE);
+    });
   }
   for (const patch of hq.patches) {
     r = sectionRow(ws, r, patch.name, BLUE);
@@ -246,12 +261,13 @@ function writeHq(wb: ExcelJS.Workbook, file: MasterFile, hq: HqSheet, tab: strin
     row.height = 18;
     row.getCell(1).value = patch.name;
     paint(row.getCell(1), WHITE, INK, false);
-    for (let c = 2; c <= WHO.length; c++) paint(row.getCell(c), WHITE);
+    row.getCell(3).value = 'Territory';
+    paint(row.getCell(3), WHITE, MUTED, false);
+    for (const c of [2, 4]) paint(row.getCell(c), WHITE);
     writeFigures(row, patch.figures, WHITE, false);
     r += 1;
   }
   totalRow(ws, r, hq.total);
-  ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: r, column: LAST } };
 }
 
 function writeCover(wb: ExcelJS.Workbook, file: MasterFile, tabs: Map<string, string>) {
@@ -312,7 +328,8 @@ function writeCover(wb: ExcelJS.Workbook, file: MasterFile, tabs: Map<string, st
     values.forEach((v, c) => {
       const cell = row.getCell(c + 1);
       cell.value = v;
-      if (c === 5 && v != null) cell.numFmt = '0.0';
+      if (c >= 2 && c <= 4 && typeof v === 'number') cell.numFmt = '#,##0';
+      if (c === 5 && v != null) cell.numFmt = '0.0"%"';
       paint(cell, i % 2 ? SAND : WHITE, INK, false);
     });
     const open = row.getCell(7);
@@ -348,6 +365,10 @@ function writeDefinitions(wb: ExcelJS.Workbook) {
     ],
     ['Unique doctors', 'Each doctor counted once, whether or not they are on the must-see list.'],
     ['Coverage', 'Must-see doctors met at least once, divided by the must-see list.'],
+    [
+      'Frequency',
+      'Must-see doctors seen as often as their grade requires, divided by the must-see list.',
+    ],
     ['Chemist visits', 'Every chemist call, including repeat visits.'],
     ['Unique chemists', 'Each chemist counted once.'],
     ['Call average', 'Doctor visits divided by field days.'],
