@@ -51,6 +51,7 @@ const COLS: { header: string; key: keyof Figures; width: number; kind: Kind; ban
     kind: 'avg',
     band: 'Chemists',
   },
+  { header: 'Stockist visits', key: 'stockistVisits', width: 16, kind: 'count', band: 'Stockists' },
   { header: 'MSL size', key: 'msl', width: 12, kind: 'count', band: 'Targets' },
   { header: 'Primary target', key: 'primaryTarget', width: 16, kind: 'inr', band: 'Targets' },
   { header: 'Primary sales', key: 'primarySales', width: 16, kind: 'inr', band: 'Targets' },
@@ -91,6 +92,7 @@ const BAND_HEAD: Record<string, string> = {
   Work: GREEN,
   Doctors: BLUE,
   Chemists: 'FFE5F4F2',
+  Stockists: 'FFF3E8F6',
   Targets: GOLD,
   Discipline: 'FFE8EEF2',
 };
@@ -102,6 +104,7 @@ const BAND_FILL: Record<string, string> = {
   Work: 'FF2F6F4E',
   Doctors: 'FF1F4E79',
   Chemists: 'FF1F6F6A',
+  Stockists: 'FF6A3E6A',
   Targets: 'FF8A6A2F',
   Discipline: 'FF3E5160',
 };
@@ -370,6 +373,7 @@ function writeDefinitions(wb: ExcelJS.Workbook) {
       'Must-see doctors seen as often as their grade requires, divided by the must-see list.',
     ],
     ['Chemist visits', 'Every chemist call, including repeat visits.'],
+    ['Stockist visits', 'Every stockist call, including repeat visits.'],
     ['Unique chemists', 'Each chemist counted once.'],
     ['Call average', 'Doctor visits divided by field days.'],
     ['Field days', 'Days of field work. A day shared with other work counts as half.'],
