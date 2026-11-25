@@ -6,7 +6,10 @@ import { SelectSheet } from '@/components/masters/select-sheet';
 import { TextField } from '@/components/text-field';
 import { SkeletonCard } from '@/components/skeleton';
 import { apiFetch } from '@/lib/api';
-import { saveMessage, thrownMessage } from '@/lib/dcr/errors';
+import { todayIST } from '@/lib/dcr/dates';
+import { thrownMessage } from '@/lib/dcr/errors';
+import { leaveMessage } from '@/lib/leave';
+import { fetchMeToday } from '@/lib/me-today';
 import { colors, spacing } from '@/theme';
 
 type LeaveReq = {
@@ -81,6 +84,17 @@ export function LeaveFields({
     setBusy(true);
     setApplyError(null);
     try {
+      if (date === todayIST()) {
+        try {
+          const me = await fetchMeToday();
+          if (me.punch.status === 'in' || me.punch.status === 'out') {
+            setApplyError('You already punched in today, so leave stays closed.');
+            return;
+          }
+        } catch {
+          // The server still refuses a leave that covers a punched-in day.
+        }
+      }
       const created = await apiFetch<LeaveReq>('/v1/leave/requests', {
         method: 'POST',
         body: {
@@ -95,7 +109,7 @@ export function LeaveFields({
       onChange(created.id);
       setApplying(false);
     } catch (e) {
-      setApplyError(saveMessage(e));
+      setApplyError(leaveMessage(e));
     } finally {
       setBusy(false);
     }

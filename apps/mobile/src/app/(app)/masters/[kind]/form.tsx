@@ -10,10 +10,11 @@ import { KeyboardAwareScrollView } from '@/components/scroll';
 import { TextField } from '@/components/text-field';
 import { Skeleton, SkeletonForm } from '@/components/skeleton';
 import { useBottomSpace } from '@/components/floating-tab-bar';
-import { ApiError } from '@/lib/api';
+import { ApiError, apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import {
   APPROVAL_LABEL,
+  aripCode,
   duplicateCheck,
   isMasterKind,
   MASTERS,
@@ -76,6 +77,8 @@ function MasterForm({ kind, row }: { kind: MasterKind; row: MasterRow | null }) 
   const bottom = useBottomSpace();
   const lk = useLookups();
   const [values, setValues] = useState<Values>(() => valuesFrom(kind, row));
+  const [code, setCode] = useState(() => aripCode(row));
+  const outletKind = kind === 'doctors' ? 'doctor' : kind === 'chemists' ? 'chemist' : 'stockist';
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [picking, setPicking] = useState<FieldDef | null>(null);
@@ -109,7 +112,14 @@ function MasterForm({ kind, row }: { kind: MasterKind; row: MasterRow | null }) 
   }, [dupCheck, dupName, dupPin, dupReg]);
 
   const set = (key: string, v: string | null) => {
-    setValues((s) => ({ ...s, [key]: v }));
+    setValues((s) => {
+      const next = { ...s, [key]: v };
+      if (key === 'territoryId' && s.localTerritoryId) {
+        const town = lk.territories.find((t) => t.id === s.localTerritoryId);
+        if (!town || town.parentId !== v) next.localTerritoryId = null;
+      }
+      return next;
+    });
     if (errors[key]) setErrors(({ [key]: _, ...rest }) => rest);
   };
 
@@ -122,7 +132,7 @@ function MasterForm({ kind, row }: { kind: MasterKind; row: MasterRow | null }) 
       return;
     }
     save.mutate(
-      { values, allowPossibleDuplicate },
+      { values, allowPossibleDuplicate, code: row ? undefined : code },
       {
         onSuccess: (saved) => {
           const pending =
@@ -179,9 +189,23 @@ function MasterForm({ kind, row }: { kind: MasterKind; row: MasterRow | null }) 
         bottomOffset={spacing.xl}
       >
         <AppText variant="small">{row ? row.name : 'Fields marked * are required.'}</AppText>
+        <TextField label="ARIP code" value={code} editable={false} placeholder="ARIDOC000001" />
+        {!row ? (
+          <Button
+            label="Generate code"
+            variant="secondary"
+            onPress={() => {
+              void apiFetch<{ code: string }>('/v1/outlet-codes/next', {
+                query: { kind: outletKind },
+              })
+                .then((r) => setCode(r.code))
+                .catch((err: unknown) => setFormError(saveErrorMessage(err)));
+            }}
+          />
+        ) : null}
         {cfg.fields.map((f) => {
           const label = `${f.label}${f.required ? ' *' : ''}`;
-          const options = optionsFor(f.type, lk);
+          const options = optionsFor(f.type, lk, values.territoryId);
           if (options) {
             const v = values[f.key] ?? null;
             const text = v
@@ -232,7 +256,13 @@ function MasterForm({ kind, row }: { kind: MasterKind; row: MasterRow | null }) 
               error={errors[f.key]}
               placeholder={f.placeholder}
               keyboardType={
-                f.type === 'tel' ? 'phone-pad' : f.type === 'pincode' ? 'number-pad' : 'default'
+                f.type === 'tel'
+                  ? 'phone-pad'
+                  : f.type === 'pincode'
+                    ? 'number-pad'
+                    : f.type === 'email'
+                      ? 'email-address'
+                      : 'default'
               }
               autoCapitalize={
                 f.key === 'gstin' || f.key === 'drugLicenseNo'
@@ -319,7 +349,7 @@ function MasterForm({ kind, row }: { kind: MasterKind; row: MasterRow | null }) 
       <SelectSheet
         visible={!!picking}
         title={picking?.label ?? ''}
-        options={picking ? (optionsFor(picking.type, lk) ?? []) : []}
+        options={picking ? (optionsFor(picking.type, lk, values.territoryId) ?? []) : []}
         value={picking ? (values[picking.key] ?? null) : null}
         noneLabel={picking && !picking.required ? 'None' : undefined}
         onPick={(v) => picking && set(picking.key, v)}

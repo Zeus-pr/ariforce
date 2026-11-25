@@ -13,3 +13,5 @@ expo-env.d.ts
 *.mobileprovision
 # Local env (EXPO_PUBLIC_API_URL overrides)
 .env*.local
+# Local APKs from earlier builds. EAS uploads everything git does not ignore.
+*.apk

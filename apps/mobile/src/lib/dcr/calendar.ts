@@ -141,6 +141,20 @@ export function dcrPillsByDate(
   return map;
 }
 
+export const ABSENT_FROM = '2026-11-23';
+
+/** Deep-red Absent pills for finished empty days. A day that already has a report stays as that report. */
+export function withAbsentDays(pills: Map<string, DayPill[]>, dates: string[]): Map<string, DayPill[]> {
+  const map = new Map(pills);
+  for (const date of dates) {
+    if (date < ABSENT_FROM) continue;
+    const list = map.get(date) ?? [];
+    if (list.length) continue;
+    map.set(date, [{ date, label: 'Absent', status: 'absent', itemId: `absent:${date}` }]);
+  }
+  return map;
+}
+
 export function groupDcrs(rows: { d: Dcr; review: Review }[]) {
   const approved: typeof rows = [];
   const pending: typeof rows = [];

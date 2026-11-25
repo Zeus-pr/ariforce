@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-imports -- the one place the raw scroll views are wrapped */
-import type { ComponentProps } from 'react';
+import { forwardRef, type ComponentProps, type ElementRef } from 'react';
 import { FlatList, ScrollView as RNScrollView, SectionList } from 'react-native';
 import { KeyboardAwareScrollView as RNKeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
@@ -18,9 +18,12 @@ const NO_BARS = {
   alwaysBounceVertical: false,
 } as const;
 
-export function ScrollView(props: ComponentProps<typeof RNScrollView>) {
-  return <RNScrollView {...NO_BARS} {...props} />;
-}
+export const ScrollView = forwardRef<
+  ElementRef<typeof RNScrollView>,
+  ComponentProps<typeof RNScrollView>
+>(function ScrollView(props, ref) {
+  return <RNScrollView ref={ref} {...NO_BARS} {...props} />;
+});
 
 export function KeyboardAwareScrollView(props: ComponentProps<typeof RNKeyboardAwareScrollView>) {
   return <RNKeyboardAwareScrollView {...NO_BARS} {...props} />;

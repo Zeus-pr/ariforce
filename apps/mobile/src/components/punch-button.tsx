@@ -1,28 +1,33 @@
 import * as Haptics from 'expo-haptics';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
   interpolate,
+  runOnJS,
+  useAnimatedReaction,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withRepeat,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import { AppText } from './app-text';
 import { Icon } from './icon';
-import { colors, radius, spacing } from '@/theme';
+import { colors, motion, radius, spacing } from '@/theme';
 
 const DEPTH = 6; // height of the 3D edge, dp
 const FACE_H = 56;
+/** Hold this long before punch fires — stops accidental taps. */
+const HOLD_MS = 700;
 
 /**
  * Chunky 3D "pushable" button. Emerald = Punch In, red = Punch Out.
  *
- * Loading (GPS wait): face stays pressed; GPS icon breathes; two soft sonar rings expand
- * from the icon; full-width indeterminate track runs under the label. No spinner (app rule).
+ * Hold ~700 ms to commit (progress bar fills). Loading (GPS wait): face stays pressed;
+ * GPS icon breathes; sonar rings + indeterminate track. No spinner (app rule).
  */
 export function PunchButton({
   punchedIn,
@@ -38,16 +43,38 @@ export function PunchButton({
   const reduced = useReducedMotion();
   const sink = useSharedValue(0);
   const wave = useSharedValue(0);
+  const hold = useSharedValue(0);
   const faceW = useSharedValue(0);
+  const settle = useSharedValue(1);
+  const seenDuty = useRef(false);
+  const holding = useRef(false);
+  const fired = useRef(false);
+  const onPressRef = useRef(onPress);
+  onPressRef.current = onPress;
+  const [holdingUi, setHoldingUi] = useState(false);
+
   const tone = punchedIn
     ? { face: colors.punchOut, edge: colors.punchOutEdge }
     : { face: colors.punchIn, edge: colors.punchInEdge };
   const idleLabel = punchedIn ? 'Punch Out' : 'Punch In';
-  const label = loading ? 'Locating…' : idleLabel;
+  const label = loading
+    ? 'Locating…'
+    : holdingUi
+      ? punchedIn
+        ? 'Keep holding…'
+        : 'Keep holding…'
+      : punchedIn
+        ? 'Hold to Punch Out'
+        : 'Hold to Punch In';
   const inactive = !!(disabled || loading);
 
   useEffect(() => {
     if (loading) {
+      holding.current = false;
+      fired.current = false;
+      setHoldingUi(false);
+      cancelAnimation(hold);
+      hold.value = 0;
       sink.value = withTiming(1, { duration: reduced ? 0 : 100 });
       if (!reduced) {
         wave.value = 0;
@@ -61,10 +88,44 @@ export function PunchButton({
     }
     cancelAnimation(wave);
     wave.value = 0;
-    sink.value = reduced ? 0 : withTiming(0, { duration: 140 });
-  }, [loading, reduced, sink, wave]);
+    if (!holding.current) sink.value = reduced ? 0 : withTiming(0, { duration: 140 });
+  }, [loading, reduced, sink, wave, hold]);
 
-  const faceStyle = useAnimatedStyle(() => ({ transform: [{ translateY: sink.value * DEPTH }] }));
+  // One-shot settle after a real duty flip (skip first paint / hydrate).
+  useEffect(() => {
+    if (!seenDuty.current) {
+      seenDuty.current = true;
+      return;
+    }
+    if (loading || reduced) return;
+    settle.value = withSequence(
+      withTiming(1.035, { duration: motion.press, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: motion.fast, easing: motion.easeOut }),
+    );
+  }, [punchedIn, loading, reduced, settle]);
+
+  const afterRelease = useRef<(() => void) | null>(null);
+
+  const commitHold = () => {
+    if (!holding.current || fired.current || inactive) return;
+    fired.current = true;
+    holding.current = false;
+    setHoldingUi(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    // Wait until the finger is up. An alert opened during the hold is dropped on iOS.
+    afterRelease.current = () => onPressRef.current();
+  };
+
+  useAnimatedReaction(
+    () => hold.value,
+    (v, prev) => {
+      if (v >= 1 && (prev ?? 0) < 1) runOnJS(commitHold)();
+    },
+  );
+
+  const faceStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sink.value * DEPTH }, { scale: settle.value }],
+  }));
 
   const ringA = useAnimatedStyle(() => {
     const t = wave.value;
@@ -86,32 +147,67 @@ export function PunchButton({
   });
   const trackFill = useAnimatedStyle(() => {
     const w = Math.max(faceW.value, 1);
-    const thumb = Math.max(56, w * 0.28);
+    if (loading) {
+      const thumb = Math.max(56, w * 0.28);
+      return {
+        width: thumb,
+        transform: [{ translateX: interpolate(wave.value, [0, 1], [-thumb, w]) }],
+      };
+    }
     return {
-      width: thumb,
-      transform: [{ translateX: interpolate(wave.value, [0, 1], [-thumb, w]) }],
+      width: interpolate(hold.value, [0, 1], [0, w]),
+      transform: [{ translateX: 0 }],
     };
   });
 
-  const press = (down: boolean) => {
+  const startHold = () => {
     if (inactive) return;
-    sink.value = reduced ? (down ? 1 : 0) : withTiming(down ? 1 : 0, { duration: down ? 60 : 140 });
+    holding.current = true;
+    fired.current = false;
+    setHoldingUi(true);
+    sink.value = reduced ? 1 : withTiming(1, { duration: 60 });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    hold.value = 0;
+    hold.value = withTiming(1, {
+      duration: reduced ? 0 : HOLD_MS,
+      easing: Easing.linear,
+    });
+    if (reduced) commitHold();
   };
+
+  const cancelHold = () => {
+    if (fired.current) {
+      sink.value = reduced ? 0 : withTiming(0, { duration: 140 });
+      const action = afterRelease.current;
+      afterRelease.current = null;
+      if (action) setTimeout(action, 40);
+      return;
+    }
+    holding.current = false;
+    setHoldingUi(false);
+    cancelAnimation(hold);
+    hold.value = withTiming(0, { duration: reduced ? 0 : 120 });
+    sink.value = reduced ? 0 : withTiming(0, { duration: 140 });
+  };
+
+  const showTrack = loading || holdingUi;
 
   return (
     <Pressable
       disabled={inactive}
-      onPressIn={() => {
-        press(true);
-        if (!inactive) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-      }}
-      onPressOut={() => press(false)}
-      onPress={onPress}
+      onPressIn={startHold}
+      onPressOut={cancelHold}
+      // Action is hold-complete only — ignore tap.
+      onPress={() => {}}
       accessibilityRole="button"
       accessibilityLabel={idleLabel}
       accessibilityState={{ disabled: inactive, busy: !!loading }}
       accessibilityHint={
-        loading ? 'Getting your location' : punchedIn ? 'Ends your shift' : 'Starts your shift'
+        loading
+          ? 'Getting your location'
+          : punchedIn
+            ? 'Hold to end your shift'
+            : 'Hold to start your shift'
       }
       style={disabled && !loading ? styles.dim : undefined}
     >
@@ -144,10 +240,12 @@ export function PunchButton({
               {label}
             </AppText>
           </View>
-          {loading ? (
+          {showTrack ? (
             <View style={styles.track} accessibilityElementsHidden>
-              {!reduced ? (
-                <Animated.View style={[styles.trackThumb, trackFill]} />
+              {!reduced || holdingUi ? (
+                <Animated.View
+                  style={[styles.trackThumb, loading ? undefined : styles.holdFill, trackFill]}
+                />
               ) : (
                 <View style={[styles.trackThumb, styles.trackThumbStatic]} />
               )}
@@ -207,7 +305,6 @@ const styles = StyleSheet.create({
     height: FACE_H / 2,
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
-  /** Full-bleed indeterminate track under the label — always spans the button. */
   track: {
     position: 'absolute',
     left: 0,
@@ -221,9 +318,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     bottom: 0,
+    left: 0,
     backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: 2,
   },
+  holdFill: { borderRadius: 0 },
   trackThumbStatic: { left: '30%', width: '40%', opacity: 0.75 },
   label: { color: colors.onNavy, fontSize: 18, letterSpacing: 0.3 },
   dim: { opacity: 0.55 },

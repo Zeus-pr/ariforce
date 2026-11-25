@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/app-text';
 import { Button } from '@/components/button';
 import { Icon } from '@/components/icon';
+import { LocatingButton } from '@/components/locating-button';
 import { TextField } from '@/components/text-field';
 import { formatHHmmLabel } from '@/lib/clock12';
 import type { CustomerScope } from '@/lib/dcr/api';
@@ -13,7 +15,15 @@ import {
   type DcrDetailProduct,
   type ProductOpt,
 } from '@/lib/dcr/adapter';
-import { capturePresentation, fieldErrorMessage, isOnDuty, visitCheckIn } from '@/lib/field';
+import {
+  capturePresentation,
+  fieldErrorMessage,
+  isOnDuty,
+  outletNeedsFirstLock,
+  visitCheckIn,
+  CheckInCancelled,
+} from '@/lib/field';
+import { todayIST } from '@/lib/dcr/dates';
 import { KIND_LABEL, type CallDraft, type PobDraft } from '@/lib/dcr/model';
 import { formatINR } from '@/lib/money';
 import { colors, radius, spacing, touch } from '@/theme';
@@ -30,6 +40,7 @@ import { Presentation } from './presentation';
 export function CallEditor({
   call,
   index,
+  day,
   readOnly,
   errors,
   products,
@@ -42,6 +53,8 @@ export function CallEditor({
 }: {
   call: CallDraft;
   index: number;
+  /** DCR date. A past day is filed without today's punch-in. */
+  day: string;
   readOnly: boolean;
   errors: string[];
   products: ProductOpt[];
@@ -61,34 +74,61 @@ export function CallEditor({
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
   const isProd = (e: string) => /product|presentation|order|POB|check.?in/i.test(e);
   const checkedIn = !!call.checkInId;
+  const pastDay = day < todayIST();
 
-  useEffect(() => {
-    if (readOnly || !call.outletId || checkedIn) return;
-    let live = true;
-    void isOnDuty()
-      .then((v) => {
-        if (live) setOnDuty(v);
-      })
-      .catch(() => {
-        if (live) setOnDuty(null);
-      });
-    return () => {
-      live = false;
-    };
-  }, [readOnly, call.outletId, checkedIn]);
+  // Re-check when returning from Home punch — don't keep a stale "Punch in first".
+  useFocusEffect(
+    useCallback(() => {
+      if (pastDay || readOnly || !call.outletId || checkedIn) return;
+      let live = true;
+      void isOnDuty()
+        .then((v) => {
+          if (live) setOnDuty(v);
+        })
+        .catch(() => {
+          if (live) setOnDuty(null);
+        });
+      return () => {
+        live = false;
+      };
+    }, [pastDay, readOnly, call.outletId, checkedIn]),
+  );
 
   const onCheckIn = async () => {
     if (readOnly || checkedIn || !call.outletId || checkingIn) return;
-    if (onDuty === false) {
+    if (!pastDay && onDuty === false) {
       Alert.alert('Punch in first', 'Punch in on Home before checking in at a call.');
+      return;
+    }
+    const outletId = call.outletId;
+    const kind = call.kind;
+    try {
+      if (await outletNeedsFirstLock(kind, outletId)) {
+        const go = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            'First check-in — lock location?',
+            kind === 'doctor'
+              ? 'This saves a GPS pin for this doctor. Checking in at another chamber later can lock that place too.'
+              : `This sets the GPS pin for this ${KIND_LABEL[kind].toLowerCase()}. Later check-ins and Presentation must be near this spot.`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Lock & check in', onPress: () => resolve(true) },
+            ],
+          );
+        });
+        if (!go) return;
+      }
+    } catch (e) {
+      Alert.alert('Check-in failed', fieldErrorMessage(e));
       return;
     }
     setCheckingIn(true);
     try {
-      const checkInId = await visitCheckIn(call.kind, call.outletId);
+      const checkInId = await visitCheckIn(kind, outletId, { pastDay });
       onChange({ checkInId });
       setOnDuty(true);
     } catch (e) {
+      if (e instanceof CheckInCancelled) return;
       Alert.alert('Check-in failed', fieldErrorMessage(e));
       void isOnDuty()
         .then(setOnDuty)
@@ -109,7 +149,7 @@ export function CallEditor({
             {call.time ? `Visited ${formatHHmmLabel(call.time)}` : 'Time is recorded when saved'}
           </AppText>
         </View>
-        {!readOnly ? (
+        {!readOnly && !checkedIn ? (
           <Pressable
             onPress={onRemove}
             accessibilityRole="button"
@@ -124,19 +164,29 @@ export function CallEditor({
         label={label}
         value={call.outletName || undefined}
         placeholder={`Choose ${label.toLowerCase()}`}
-        onPress={readOnly ? undefined : () => setPick(true)}
+        onPress={readOnly || checkedIn ? undefined : () => setPick(true)}
         error={errors.find((e) => !isProd(e))}
       />
       {call.outletId ? (
-        <Button
-          label={checkedIn ? 'Checked in' : onDuty === false ? 'Punch in first' : 'Check in'}
-          variant={checkedIn ? 'success' : onDuty === false ? 'secondary' : 'primary'}
-          disabled={readOnly || checkedIn}
-          loading={checkingIn}
-          loadingLabel="Getting location…"
-          onPress={() => void onCheckIn()}
-          style={styles.presBtn}
-        />
+        !pastDay && onDuty === false && !checkedIn ? (
+          <Button
+            label="Punch in first"
+            variant="secondary"
+            disabled
+            onPress={() => {}}
+            style={styles.presBtn}
+          />
+        ) : (
+          <LocatingButton
+            label={checkedIn ? 'Checked in' : 'Check in'}
+            locatingLabel="Locating…"
+            done={checkedIn}
+            disabled={readOnly || checkedIn}
+            loading={checkingIn}
+            onPress={() => void onCheckIn()}
+            style={styles.presBtn}
+          />
+        )
       ) : null}
       {call.kind === 'doctor' ? (
         <DoctorProducts
@@ -145,6 +195,7 @@ export function CallEditor({
           products={products}
           detail={detail}
           readOnly={readOnly}
+          pastDay={pastDay}
           error={errors.find(isProd)}
           onChange={onChange}
           onPresented={onPresented}
@@ -204,6 +255,7 @@ function DoctorProducts({
   products,
   detail,
   readOnly,
+  pastDay,
   error,
   onChange,
   onPresented,
@@ -213,6 +265,7 @@ function DoctorProducts({
   products: ProductOpt[];
   detail?: readonly DcrDetailProduct[] | null;
   readOnly: boolean;
+  pastDay: boolean;
   error?: string;
   onChange: (p: Partial<CallDraft>) => void;
   onPresented: () => void;
@@ -259,7 +312,7 @@ function DoctorProducts({
     if (readOnly) return;
     setOpeningPres(true);
     try {
-      const presentationCapture = await capturePresentation();
+      const presentationCapture = await capturePresentation({ pastDay });
       const presentationOpenedAt = new Date().toISOString();
       onChange({
         presentationOpened: true,

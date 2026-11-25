@@ -62,12 +62,20 @@ export function isLive(): Promise<boolean> {
 }
 
 export type TpStatus = 'draft' | 'pending' | 'approved' | 'rejected';
-export type TpPlan = {
+type TpPlanCore = {
   workTypeId: string;
   territoryIds: string[];
   workWithUserIds: string[];
   sfcRoutes: { hqTerritoryId: string; sfcRouteId: string }[];
   details: DcrDetails | null;
+};
+/** Second plan on the same day. */
+export type TpSection = TpPlanCore;
+/** One day inside a month item. The month is still one approval. */
+export type TpDayPlan = TpPlanCore & { date: string; sections?: TpSection[] };
+export type TpPlan = TpPlanCore & {
+  sections?: TpSection[];
+  days?: TpDayPlan[];
 };
 export type TpItem = {
   id: string;
@@ -87,6 +95,23 @@ export type TpItem = {
   createdAt?: string;
   decidedBy?: string | null;
   filedDates?: string[];
+  /** Fares of the stored routes, from the filer's chart. Absent until the API sends them. */
+  routeFacts?: TpRouteFact[];
+};
+
+export type TpRouteFact = {
+  id: string;
+  hqTerritoryId: string;
+  fromPlace: string;
+  toPlace: string;
+  oneWayKm: number;
+  bothWayKm: number;
+  oneWayAmount: number | null;
+  bothWayAmount: number | null;
+  actualFare: boolean;
+  travelMode: string | null;
+  category: string | null;
+  da: number | null;
 };
 
 /** options.tourPlanDrafts[] (DcrTourPlanDraft = TourPlanItem + these dates). */
@@ -121,8 +146,7 @@ const TP_ERRORS: Record<string, string> = {
   TP_IN_PAST: 'A tour plan must start today or later. Change the From date.',
   TP_OVERLAP: 'These dates overlap another tour plan that is pending or approved.',
   TP_LOCKED: 'This tour plan is pending or approved and can no longer be changed.',
-  TP_CUTOFF:
-    'Tour plans for that month closed after the 22nd of the previous month at 12:10 AM IST.',
+  TP_CUTOFF: 'Tour plans are for the next month only.',
   VERSION_CONFLICT: 'This tour plan changed on another device. Go back and open it again.',
   REJECTION_REASON_REQUIRED: 'Give a reason to reject.',
   CONFLICT: 'This tour plan is no longer waiting for approval.',
@@ -147,12 +171,11 @@ function nextYmOf(ym: string) {
 }
 
 /**
- * Tour plans are for the **next** calendar month only (never current/past).
- * Window closes on the 22nd of the current month at 12:10 AM IST.
- * Example on 1 Nov: December is open until 22 Nov 12:10 AM IST; November is blocked.
+ * Tour plans are for the **next** calendar month only (never current, past, or later).
+ * The month stays open through the last day of this month. After that it closes.
  * Returns an error string when not allowed; null when OK.
  */
-export function tpFutureMonthCutoffError(from: string, now = new Date()): string | null {
+export function tpFutureMonthCutoffError(from: string, _now = new Date()): string | null {
   const planYm = from.slice(0, 7);
   const currentYm = todayIST().slice(0, 7);
   const nextYm = nextYmOf(currentYm);
@@ -165,10 +188,7 @@ export function tpFutureMonthCutoffError(from: string, now = new Date()): string
     return `Tour plans are for the next month only — ${planLabel} is not open (current month is ${currLabel}).`;
   if (planYm !== nextYm)
     return `Only ${MONTH_NAMES[Number(nextYm.slice(5, 7)) - 1]} ${nextYm.slice(0, 4)} can be planned now.`;
-
-  const cutoff = new Date(`${currentYm}-22T00:10:00+05:30`);
-  if (now.getTime() < cutoff.getTime()) return null;
-  return `Tour plans for ${planLabel} closed after 22 ${currLabel} at 12:10 AM IST.`;
+  return null;
 }
 
 /** First day of the next month when the TP window is still open; otherwise null. */
@@ -242,16 +262,30 @@ export function addDays(date: string, n: number) {
 
 const key = ['tp'] as const;
 
+export async function allTpItems(
+  signal: AbortSignal,
+  query: { mine?: 'true'; status?: string },
+): Promise<TpItem[]> {
+  const items: TpItem[] = [];
+  let cursor: string | undefined;
+  for (let pageNo = 0; pageNo < 50; pageNo++) {
+    const page = await apiFetch<{ items: TpItem[]; nextCursor?: string | null }>(
+      '/v1/tour-plans/items',
+      { signal, query: { ...query, limit: 100, ...(cursor ? { cursor } : {}) } },
+    );
+    items.push(...(page.items ?? []));
+    if (!page.nextCursor) return items;
+    cursor = page.nextCursor;
+  }
+  return items;
+}
+
 export function useMyTps(myId: string | undefined) {
   return useQuery({
     queryKey: [...key, 'mine', myId],
     enabled: !!myId,
     queryFn: async ({ signal }) => {
-      if (await isLive())
-        return apiFetch<{ items: TpItem[] }>('/v1/tour-plans/items', {
-          signal,
-          query: { mine: 'true', limit: 100 },
-        }).then((r) => r.items);
+      if (await isLive()) return allTpItems(signal, { mine: 'true' });
       // TODO: switch to the real endpoint (GET /v1/tour-plans/items?mine=true).
       const all = await mockListTps();
       return all
@@ -280,11 +314,12 @@ export function useTpQueue(myId: string | undefined, enabled: boolean) {
     queryKey: [...key, 'queue', myId],
     enabled: enabled && !!myId,
     queryFn: async ({ signal }) => {
-      if (await isLive())
-        return apiFetch<{ items: TpItem[] }>('/v1/tour-plans/items', {
-          signal,
-          query: { status: 'pending', limit: 100 },
-        }).then((r) => r.items.filter((t) => t.userId !== myId));
+      if (await isLive()) {
+        const items = await allTpItems(signal, { status: 'pending' });
+        return items.filter(
+          (t) => t.userId !== myId && (t as { canDecide?: boolean }).canDecide !== false,
+        );
+      }
       const all = await mockListTps();
       return all
         .filter((t) => t.status === 'pending' && t.userId !== myId)
@@ -344,6 +379,48 @@ export function useSaveTp() {
         return apiFetch<TpItem>(`/v1/tour-plans/items/${saved.id}/submit`, { method: 'POST' });
       return mockPutTp({ ...saved, status: 'pending', submittedAt: new Date().toISOString() });
     },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: key }),
+  });
+}
+
+/** One item for the whole month, then one submit. Day drafts are removed only after that succeeds. */
+export async function submitMonthTourPlan(input: {
+  from: string;
+  to: string;
+  plan: TpPlan;
+  user: { id: string; name: string };
+  draftIds: string[];
+}): Promise<TpItem> {
+  const saved = await saveTp({
+    from: input.from,
+    to: input.to,
+    plan: input.plan,
+    user: input.user,
+  });
+  try {
+    const sent = (await isLive())
+      ? await apiFetch<TpItem>(`/v1/tour-plans/items/${saved.id}/submit`, { method: 'POST' })
+      : await mockPutTp({ ...saved, status: 'pending', submittedAt: new Date().toISOString() });
+    for (const id of input.draftIds) {
+      if (id === saved.id) continue;
+      if (await isLive()) await apiFetch<void>(`/v1/tour-plans/items/${id}`, { method: 'DELETE' });
+      else await mockDeleteTp(id);
+    }
+    return sent;
+  } catch (e) {
+    if (await isLive())
+      await apiFetch<void>(`/v1/tour-plans/items/${saved.id}`, { method: 'DELETE' }).catch(
+        () => undefined,
+      );
+    else await mockDeleteTp(saved.id);
+    throw e;
+  }
+}
+
+export function useSubmitMonthTp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: submitMonthTourPlan,
     onSuccess: () => void qc.invalidateQueries({ queryKey: key }),
   });
 }

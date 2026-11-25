@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics';
+import { Watermark } from './watermark';
 import { useFocusEffect, type Tabs as TabsType } from 'expo-router';
 import {
   createContext,
@@ -82,9 +83,16 @@ export function TabScene({ children }: { children: ReactNode }) {
       if (Target) setTarget?.(ref);
     }, [Target, setTarget]),
   );
-  if (!Target) return <View style={styles.scene}>{children}</View>;
+  if (!Target)
+    return (
+      <View style={styles.scene}>
+        <Watermark />
+        {children}
+      </View>
+    );
   return (
     <Target ref={ref} style={styles.scene}>
+      <Watermark />
       {children}
     </Target>
   );

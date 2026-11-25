@@ -87,7 +87,7 @@ export function BrandSplash({
         },
       ]}
       accessible
-      accessibilityLabel="AriForce, Field Force CRM, Arighna Pharma. Loading"
+      accessibilityLabel="AriForce, Field Force CRM, ARIGHNA PHARMA PVT. LTD. Loading"
     >
       <View style={[StyleSheet.absoluteFill, styles.center]}>
         <Image
@@ -108,7 +108,7 @@ export function BrandSplash({
               Field Force CRM
             </AppText>
             <AppText variant="company" style={styles.company}>
-              Arighna Pharma
+              ARIGHNA PHARMA PVT. LTD.
             </AppText>
           </Animated.View>
           <Animated.View entering={FadeIn.duration(motion.base).delay(120)} style={styles.loader}>

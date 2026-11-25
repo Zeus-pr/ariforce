@@ -1,23 +1,18 @@
 import { Image } from 'expo-image';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Modal,
-  PanResponder,
-  Pressable,
-  StyleSheet,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { useCallback, useEffect, useRef, useState, type ElementRef } from 'react';
+import { Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { ScrollView } from '@/components/scroll';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from '@/components/app-text';
 import { Icon } from '@/components/icon';
 import { doctorProductLabel, type ProductOpt } from '@/lib/dcr/adapter';
 import { getScreenOrientation, lockLandscape, lockPortrait } from '@/lib/orientation';
+import { nextSlide } from '@/lib/presentation-swipe';
 import { colors, radius, spacing, touch } from '@/theme';
 
 /**
  * Full-screen product presentation for a doctor call: one product per page, in the order picked,
- * swiped horizontally (FlatList paging), page dots and a close button. A product without an image
+ * swiped horizontally, with arrow buttons as well. A product without an image
  * gets a name-only slide.
  */
 export function Presentation({
@@ -34,6 +29,7 @@ export function Presentation({
   const [box, setBox] = useState({ w: win.width, h: win.height });
   const insets = useSafeAreaInsets();
   const [page, setPage] = useState(0);
+  const scroller = useRef<ElementRef<typeof ScrollView>>(null);
   const [landscape, setLandscape] = useState(false);
   // Hidden when this binary has no expo-screen-orientation (built before it was added).
   const canRotate = getScreenOrientation() != null;
@@ -76,26 +72,14 @@ export function Presentation({
   const height = turn ? box.w : box.h;
   const topInset = turn ? spacing.md : insets.top;
 
-  const current = products[Math.min(page, Math.max(0, products.length - 1))];
   const count = products.length;
-  // Swipe left/right to change slide. When the content is turned 90°, its x axis is the screen's y.
-  const swipe = useRef({ turn, count });
-  swipe.current = { turn, count };
-  const pan = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponderCapture: (_, g) => {
-          const d = swipe.current.turn ? g.dy : g.dx;
-          const o = swipe.current.turn ? g.dx : g.dy;
-          return Math.abs(d) > 10 && Math.abs(d) > Math.abs(o);
-        },
-        onPanResponderRelease: (_, g) => {
-          const d = swipe.current.turn ? g.dy : g.dx;
-          if (Math.abs(d) < 40) return;
-          setPage((p) => Math.max(0, Math.min(swipe.current.count - 1, p + (d < 0 ? 1 : -1))));
-        },
-      }),
-    [],
+  const goTo = useCallback(
+    (next: number) => {
+      const clamped = Math.max(0, Math.min(Math.max(count - 1, 0), next));
+      setPage(clamped);
+      scroller.current?.scrollTo({ x: clamped * width, animated: true });
+    },
+    [count, width],
   );
 
   return (
@@ -124,40 +108,52 @@ export function Presentation({
             transform: turn ? [{ rotate: '90deg' }] : [],
           }}
         >
-          {/* A plain view, not a scroll view: iOS 26 blurs scroll views' edges under the system bars. */}
-          <View style={{ width, height }} collapsable={false} {...pan.panHandlers}>
-            {current ? (
+          <ScrollView
+            ref={scroller}
+            horizontal
+            pagingEnabled
+            bounces={count > 1}
+            directionalLockEnabled
+            showsHorizontalScrollIndicator={false}
+            contentInsetAdjustmentBehavior="never"
+            style={{ width, height }}
+            onMomentumScrollEnd={(e) => {
+              const i = Math.round(e.nativeEvent.contentOffset.x / Math.max(width, 1));
+              setPage(Math.max(0, Math.min(Math.max(count - 1, 0), i)));
+            }}
+          >
+            {products.map((product, i) => (
               <View
+                key={product.id}
                 style={[styles.slide, { width, height }]}
                 accessible
-                accessibilityLabel={`${doctorProductLabel(current)}, product ${page + 1} of ${products.length}`}
+                accessibilityLabel={`${doctorProductLabel(product)}, product ${i + 1} of ${products.length}`}
               >
-                {current.imageUrl ? (
+                {product.imageUrl ? (
                   <Image
-                    key={current.id}
                     pointerEvents="none"
-                    source={{ uri: current.imageUrl }}
+                    source={{ uri: product.imageUrl }}
                     style={styles.image}
                     contentFit="contain"
                     contentPosition="center"
                     allowDownscaling={false}
-                    priority="high"
+                    priority={i === page ? 'high' : 'low'}
                     transition={120}
                   />
                 ) : (
                   <View style={styles.nameOnly}>
                     <AppText variant="display" style={styles.bigName}>
-                      {doctorProductLabel(current)}
+                      {doctorProductLabel(product)}
                     </AppText>
                   </View>
                 )}
               </View>
-            ) : null}
-          </View>
+            ))}
+          </ScrollView>
 
           {count > 1 && page > 0 ? (
             <Pressable
-              onPress={() => setPage((p) => Math.max(0, p - 1))}
+              onPress={() => goTo(nextSlide(page, count, -1))}
               accessibilityRole="button"
               accessibilityLabel="Previous product"
               style={({ pressed }) => [styles.nav, styles.navLeft, pressed && styles.closePressed]}
@@ -167,7 +163,7 @@ export function Presentation({
           ) : null}
           {count > 1 && page < count - 1 ? (
             <Pressable
-              onPress={() => setPage((p) => Math.min(count - 1, p + 1))}
+              onPress={() => goTo(nextSlide(page, count, 1))}
               accessibilityRole="button"
               accessibilityLabel="Next product"
               style={({ pressed }) => [styles.nav, styles.navRight, pressed && styles.closePressed]}

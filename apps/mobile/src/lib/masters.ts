@@ -41,7 +41,17 @@ export const isMasterKind = (k: unknown): k is MasterKind =>
 export type FieldDef = {
   key: string;
   label: string;
-  type: 'text' | 'territory' | 'specialty' | 'category' | 'tel' | 'pincode';
+  type:
+    | 'text'
+    | 'territory'
+    | 'hq'
+    | 'town'
+    | 'specialty'
+    | 'category'
+    | 'tel'
+    | 'pincode'
+    | 'date'
+    | 'email';
   required?: boolean;
   /** Contract max length (zod .max). */
   max?: number;
@@ -49,12 +59,20 @@ export type FieldDef = {
 };
 
 const address: FieldDef[] = [
-  { key: 'phone', label: 'Phone', type: 'tel', max: 20 },
+  { key: 'phone', label: 'Phone', type: 'tel', max: 35 },
   { key: 'addressLine', label: 'Address', type: 'text', max: 300 },
   { key: 'city', label: 'City', type: 'text', max: 80 },
   { key: 'state', label: 'State', type: 'text', max: 80 },
   { key: 'pincode', label: 'PIN code', type: 'pincode' },
 ];
+
+const hq: FieldDef = { key: 'territoryId', label: 'HQ', type: 'hq', required: true };
+const town: FieldDef = {
+  key: 'localTerritoryId',
+  label: 'Territory',
+  type: 'town',
+  required: true,
+};
 
 const trade: FieldDef[] = [
   { key: 'name', label: 'Name', type: 'text', required: true, max: 160 },
@@ -74,7 +92,8 @@ export const MASTERS: Record<
     path: '/v1/doctors',
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true, max: 160 },
-      { key: 'territoryId', label: 'Territory', type: 'territory', required: true },
+      hq,
+      town,
       {
         key: 'qualification',
         label: 'Qualification',
@@ -85,10 +104,18 @@ export const MASTERS: Record<
       { key: 'specialtyId', label: 'Specialty', type: 'specialty' },
       { key: 'categoryId', label: 'Category', type: 'category' },
       { key: 'registrationNo', label: 'Registration no.', type: 'text', max: 40 },
+      { key: 'dateOfBirth', label: 'Date of birth', type: 'date', placeholder: 'YYYY-MM-DD' },
+      { key: 'anniversary', label: 'Anniversary', type: 'date', placeholder: 'YYYY-MM-DD' },
+      { key: 'email', label: 'Email', type: 'email', max: 160, placeholder: 'name@clinic.com' },
       ...address,
     ],
   },
-  chemists: { title: 'Chemists', singular: 'chemist', path: '/v1/chemists', fields: trade },
+  chemists: {
+    title: 'Chemists',
+    singular: 'chemist',
+    path: '/v1/chemists',
+    fields: [trade[0]!, hq, town, ...trade.slice(2)],
+  },
   stockists: { title: 'Stockists', singular: 'stockist', path: '/v1/stockists', fields: trade },
 };
 
@@ -116,6 +143,11 @@ export function blankRecord(kind: MasterKind): Values {
   return out;
 }
 
+export function aripCode(row: object | null | undefined) {
+  const code = row && 'code' in row ? (row as { code?: unknown }).code : undefined;
+  return typeof code === 'string' ? code : '';
+}
+
 export function valuesFrom(kind: MasterKind, row: MasterRow | null): Values {
   const base = blankRecord(kind);
   if (row)
@@ -125,6 +157,15 @@ export function valuesFrom(kind: MasterKind, row: MasterRow | null): Values {
 }
 
 const PIN = /^[1-9][0-9]{5}$/;
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function realDay(s: string) {
+  if (!ISO_DAY.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number) as [number, number, number];
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
 
 /** Contract rules with the website's messages (record-sheet.tsx save()). */
 export function validate(kind: MasterKind, values: Values): Record<string, string> {
@@ -134,6 +175,10 @@ export function validate(kind: MasterKind, values: Values): Record<string, strin
     if (f.required && !String(v ?? '').trim()) errs[f.key] = 'Required.';
     else if (f.type === 'pincode' && v != null && !PIN.test(v))
       errs[f.key] = 'Use a 6-digit PIN code.';
+    else if (f.type === 'date' && v != null && !realDay(v))
+      errs[f.key] = 'Use a real date (YYYY-MM-DD).';
+    else if (f.type === 'email' && v != null && (v.length > 160 || !EMAIL.test(v)))
+      errs[f.key] = 'Enter a valid email.';
     else if (f.max && v != null && v.length > f.max)
       errs[f.key] = `Too long: at most ${f.max} characters.`;
   }
@@ -192,18 +237,28 @@ export function useLookups(): Lookups {
 export type Option = { value: string; label: string; hint?: string };
 
 /** Select options per field type (web field-input.tsx). */
-export function optionsFor(type: FieldDef['type'], lk: Lookups): Option[] | null {
-  const o = optionsUnsorted(type, lk);
+export function optionsFor(
+  type: FieldDef['type'],
+  lk: Lookups,
+  hqId?: string | null,
+): Option[] | null {
+  const o = optionsUnsorted(type, lk, hqId);
   return o && sortByLabel(o);
 }
 
-function optionsUnsorted(type: FieldDef['type'], lk: Lookups): Option[] | null {
-  if (type === 'territory')
-    return lk.territories.map((t) => ({
-      value: t.id,
-      label: `${t.name} (${t.code})`,
-      hint: t.level,
-    }));
+function optionsUnsorted(
+  type: FieldDef['type'],
+  lk: Lookups,
+  hqId?: string | null,
+): Option[] | null {
+  const place = (rows: Territory[]) =>
+    rows.map((t) => ({ value: t.id, label: `${t.name} (${t.code})`, hint: t.level }));
+  if (type === 'hq') return place(lk.territories.filter((t) => t.level === 'headquarter'));
+  if (type === 'town')
+    return place(
+      lk.territories.filter((t) => t.level === 'territory' && (!hqId || t.parentId === hqId)),
+    );
+  if (type === 'territory') return place(lk.territories);
   if (type === 'specialty') return lk.specialties.map((s) => ({ value: s.id, label: s.name }));
   if (type === 'category')
     return lk.categories.map((c) => ({
@@ -215,7 +270,9 @@ function optionsUnsorted(type: FieldDef['type'], lk: Lookups): Option[] | null {
 
 // ---------- list / detail ----------
 
-export type ListFilters = Partial<Record<'territoryId' | 'specialtyId' | 'categoryId', string>>;
+export type ListFilters = Partial<Record<'territoryId' | 'specialtyId' | 'categoryId', string>> & {
+  locked?: 'true' | 'false';
+};
 
 export function useMasterList(kind: MasterKind, q: string, filters: ListFilters) {
   return useInfiniteQuery({
@@ -230,6 +287,7 @@ export function useMasterList(kind: MasterKind, q: string, filters: ListFilters)
           cursor: pageParam,
           q: q.trim() || undefined,
           includeTotal: 'true',
+          ...(filters.locked ? { locked: filters.locked } : {}),
           ...Object.fromEntries(FILTERS[kind].map((k) => [k, filters[k]])),
         },
       });
@@ -255,9 +313,11 @@ export function useSaveMaster(kind: MasterKind, row: MasterRow | null) {
     mutationFn: async ({
       values,
       allowPossibleDuplicate,
+      code,
     }: {
       values: Values;
       allowPossibleDuplicate?: boolean;
+      code?: string;
     }) => {
       const path = MASTERS[kind].path;
       if (row)
@@ -271,6 +331,7 @@ export function useSaveMaster(kind: MasterKind, row: MasterRow | null) {
         body: {
           ...values,
           location: null,
+          ...(code ? { code } : {}),
           ...(allowPossibleDuplicate ? { allowPossibleDuplicate: true } : {}),
         },
       });

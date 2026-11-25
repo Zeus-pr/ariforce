@@ -1,57 +1,129 @@
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '../app-text';
-import { Card } from '../card';
+import { cardStyles } from '../card';
+import { PressableScale } from '../pressable-scale';
 import { SkeletonList } from '../skeleton';
 import type { Attention } from '@/lib/home-attention';
-import { colors, fonts, radius, spacing } from '@/theme';
+import { colors, fonts, spacing } from '@/theme';
 
-/** Stitch "Needs Attention" rows with compact CTA. */
+const VISIBLE = 6;
+
+type Tile = {
+  id: string;
+  label: string;
+  count: number;
+  detail: string;
+  href: Attention['href'];
+};
+
+const BUCKETS: {
+  id: string;
+  label: string;
+  many: Attention['href'];
+  take: (item: Attention) => boolean;
+}[] = [
+  {
+    id: 'dcr',
+    label: 'DCRs',
+    many: '/dcr',
+    take: (item) => item.id.startsWith('dcr-') || item.title.startsWith('DCR'),
+  },
+  {
+    id: 'tp',
+    label: 'Tour plans',
+    many: '/tour-plan',
+    take: (item) => item.id.startsWith('tp-') || item.title.startsWith('Tour plan'),
+  },
+  {
+    id: 'exp',
+    label: 'Expenses',
+    many: '/expenses',
+    take: (item) => item.id.startsWith('exp-'),
+  },
+  {
+    id: 'unlock',
+    label: 'Unlocks',
+    many: '/approvals',
+    take: (item) => item.id === 'unlock',
+  },
+];
+
+/** One tile per kind of work. Approvals stay on the Waiting for you card. */
+function tilesOf(items: Attention[]): Tile[] {
+  const used = new Set<string>();
+  const tiles: Tile[] = [];
+  for (const bucket of BUCKETS) {
+    const rows = items.filter((item) => bucket.take(item));
+    if (!rows.length) continue;
+    rows.forEach((row) => used.add(row.id));
+    const top = rows[0]!;
+    tiles.push({
+      id: bucket.id,
+      label: bucket.label,
+      count: rows.length,
+      detail: rows.length === 1 ? top.detail : top.title,
+      href: rows.length === 1 ? top.href : bucket.many,
+    });
+  }
+  return tiles;
+}
+
+/** Needs attention as a short grid. More than six opens the rest in place. */
 export function AttentionList({ items, pending }: { items: Attention[]; pending: boolean }) {
   const router = useRouter();
+  const [showAll, setShowAll] = useState(false);
+  const tiles = tilesOf(items);
+  const visible = showAll ? tiles : tiles.slice(0, VISIBLE);
+  const more = tiles.length - VISIBLE;
+
   return (
     <View style={styles.wrap}>
       <View style={styles.head}>
         <AppText variant="chip" style={styles.section}>
           NEEDS ATTENTION
         </AppText>
-        {!pending ? (
-          <AppText variant="small" style={styles.count}>
-            ({items.length})
-          </AppText>
+        {more > 0 ? (
+          <Pressable
+            onPress={() => setShowAll((v) => !v)}
+            accessibilityRole="button"
+            hitSlop={spacing.md}
+          >
+            <AppText variant="label" style={styles.more}>
+              {showAll ? 'Show less' : 'View all'}
+            </AppText>
+          </Pressable>
         ) : null}
       </View>
       {pending ? (
         <SkeletonList count={2} />
-      ) : !items.length ? (
-        <Card style={styles.empty}>
+      ) : !tiles.length ? (
+        <View style={[cardStyles.card, styles.empty]}>
           <AppText variant="bodyMuted">You’re all caught up.</AppText>
-        </Card>
+        </View>
       ) : (
-        <Card style={styles.card}>
-          {items.map((item, i) => (
-            <View key={item.id} style={[styles.row, i < items.length - 1 && styles.divider]}>
-              <View style={styles.copy}>
-                <AppText variant="chip" style={styles.eyebrow} numberOfLines={1}>
-                  {item.title}
-                </AppText>
-                <AppText variant="small" style={styles.detail} numberOfLines={2}>
-                  {item.detail}
-                </AppText>
-              </View>
-              <Pressable
-                onPress={() => router.push(item.href)}
-                accessibilityRole="button"
-                accessibilityLabel={`Open ${item.title}`}
-                style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
-              >
-                <AppText variant="chip" style={styles.ctaText}>
-                  Review
-                </AppText>
-              </Pressable>
-            </View>
+        <View style={styles.grid}>
+          {visible.map((tile) => (
+            <PressableScale
+              key={tile.id}
+              onPress={() => router.push(tile.href)}
+              accessibilityLabel={`${tile.count} ${tile.label}. ${tile.detail}`}
+              containerStyle={styles.cell}
+              style={[cardStyles.card, styles.tile]}
+              pressedStyle={styles.pressed}
+              scaleTo={0.98}
+            >
+              <AppText variant="count">{tile.count}</AppText>
+              <AppText variant="label" numberOfLines={1}>
+                {tile.label}
+              </AppText>
+              <AppText variant="small" numberOfLines={2}>
+                {tile.detail}
+              </AppText>
+            </PressableScale>
           ))}
-        </Card>
+        </View>
       )}
     </View>
   );
@@ -62,7 +134,7 @@ const styles = StyleSheet.create({
   head: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.xs,
   },
   section: {
@@ -70,26 +142,10 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     letterSpacing: 0.6,
   },
-  count: { color: colors.muted, fontFamily: fonts.semibold },
+  more: { color: colors.tealDeep },
   empty: { padding: spacing.lg },
-  card: { paddingVertical: 0, overflow: 'hidden' },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    padding: spacing.md,
-  },
-  divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator },
-  copy: { flex: 1, minWidth: 0, gap: 2 },
-  eyebrow: { color: colors.ink, fontFamily: fonts.bold, textTransform: 'uppercase' },
-  detail: { color: colors.muted },
-  cta: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.sm,
-    backgroundColor: colors.ground,
-    marginTop: 2,
-  },
-  ctaPressed: { backgroundColor: colors.separator },
-  ctaText: { color: colors.ink, fontFamily: fonts.semibold },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  cell: { flexGrow: 1, flexBasis: '46%' },
+  tile: { padding: spacing.lg, gap: 2, minHeight: 108 },
+  pressed: { backgroundColor: colors.ground },
 });

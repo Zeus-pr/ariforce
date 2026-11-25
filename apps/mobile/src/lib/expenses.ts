@@ -196,7 +196,7 @@ export function useClaim(id: string | undefined) {
   });
 }
 
-/** Team claims waiting for approval (web expenses-view, scope team). */
+/** Submitted claims whose current approval step is this person (`canDecide`). */
 export function useClaimQueue(myId: string | undefined, enabled: boolean) {
   return useQuery({
     queryKey: [...key, 'queue', myId],
@@ -205,7 +205,28 @@ export function useClaimQueue(myId: string | undefined, enabled: boolean) {
       apiFetch<{ items: ClaimSummary[] }>('/v1/expense-claims', {
         signal,
         query: { status: 'submitted' },
-      }).then((r) => r.items.filter((c) => c.userId !== myId)),
+      }).then((r) => r.items.filter((c) => c.userId !== myId && c.canDecide)),
+  });
+}
+
+/** Manager approve / reject from the approvals inbox (same route as claim detail). */
+export function useDecideExpenseClaim() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      decision,
+      comment,
+    }: {
+      id: string;
+      decision: 'approve' | 'reject';
+      comment?: string;
+    }) =>
+      apiFetch<Claim>(`/v1/expense-claims/${id}/decision`, {
+        method: 'POST',
+        body: { decision, ...(comment ? { comment } : {}) },
+      }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: key }),
   });
 }
 

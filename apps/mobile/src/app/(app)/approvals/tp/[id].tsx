@@ -8,7 +8,7 @@ import { AppText } from '@/components/app-text';
 import { Card } from '@/components/card';
 import { Chip } from '@/components/chip';
 import { useBottomSpace } from '@/components/floating-tab-bar';
-import { ScrollView } from '@/components/scroll';
+import { KeyboardAwareScrollView as ScrollView } from '@/components/scroll';
 import { SkeletonDetail } from '@/components/skeleton';
 import { useAuth } from '@/lib/auth-context';
 import { useTeamNames } from '@/lib/dcr/adapter';
@@ -26,7 +26,8 @@ import {
   useDecideTp,
   useTp,
 } from '@/lib/tp/adapter';
-import { layout, spacing } from '@/theme';
+import { stretchesOf } from '@/lib/tp/month';
+import { colors, layout, spacing } from '@/theme';
 
 /** One team tour plan, read-only, with approve / reject. */
 export default function ReviewTpScreen() {
@@ -68,15 +69,11 @@ function Review({ id }: { id: string }) {
       </View>
     );
 
-  const wt = normaliseWorkTypes(optionsQ.data?.workTypes ?? []).find(
-    (w) => w.id === t.plan.workTypeId,
-  );
-  const band = wt?.band ? BAND_LABEL[bandOf(wt.band)!] : null;
+  const types = normaliseWorkTypes(optionsQ.data?.workTypes ?? []);
   const days = datesOf(t.from, t.to).length;
-  const det = t.plan.details;
   const who = t.userName || namesQ.data?.get(t.userId) || 'Team member';
   const what = `${who}'s tour plan for ${rangeLabel(t.from, t.to)}`;
-  const people = t.plan.workWithUserIds.map((u) => namesQ.data?.get(u) ?? 'Colleague');
+  const stretches = stretchesOf(t);
 
   return (
     <View style={styles.flex}>
@@ -111,31 +108,60 @@ function Review({ id }: { id: string }) {
           ) : null}
         </Card>
 
-        <Card style={styles.pad}>
-          <AppText variant="label">Work on</AppText>
-          <AppText variant="body">
-            {[wt?.name ?? 'Work type', band].filter(Boolean).join(' · ')}
-          </AppText>
-          {t.plan.territoryIds.length ? (
-            <>
-              <AppText variant="label">Territories</AppText>
-              <AppText variant="body">
-                {t.plan.territoryIds.map((x) => placeName.get(x) ?? 'Territory').join(', ')}
+        {stretches.map((stretch) => {
+          const blocks = [stretch.plan, ...(stretch.plan.sections ?? [])];
+          return (
+            <Card key={`${stretch.from}-${stretch.to}`} style={styles.section}>
+              <AppText variant="section">
+                {rangeLabel(stretch.from, stretch.to)}
               </AppText>
-            </>
-          ) : null}
-          {wt?.band ? (
-            <>
-              <AppText variant="label">Work with</AppText>
-              <AppText variant="body">{people.length ? people.join(', ') : 'Alone'}</AppText>
-            </>
-          ) : null}
-          {det && 'title' in det ? <AppText variant="body">{det.title}</AppText> : null}
-          {det && 'description' in det ? <AppText variant="body">{det.description}</AppText> : null}
-          <DetailsTime details={det} />
-        </Card>
-
-        <TpSfcReview item={t} />
+              {blocks.map((section, index) => {
+                const wt = types.find((w) => w.id === section.workTypeId);
+                const band = wt?.band ? BAND_LABEL[bandOf(wt.band)!] : null;
+                const people = section.workWithUserIds.map(
+                  (u) => namesQ.data?.get(u) ?? 'Colleague',
+                );
+                const det = section.details;
+                return (
+                  <View key={`${section.workTypeId}-${index}`} style={styles.block}>
+                    <AppText variant="label">
+                      {blocks.length > 1 ? `Plan ${index + 1} · ` : ''}
+                      {wt?.name ?? 'Work type'}
+                      {band ? ` · ${band}` : ''}
+                    </AppText>
+                    {section.territoryIds.length ? (
+                      <Fact
+                        label="Territories"
+                        value={section.territoryIds
+                          .map((x) => placeName.get(x) ?? 'Territory')
+                          .join(', ')}
+                      />
+                    ) : null}
+                    {wt?.band ? (
+                      <Fact
+                        label="Worked with"
+                        value={people.length ? people.join(', ') : 'Alone'}
+                      />
+                    ) : null}
+                    {det && 'title' in det ? <AppText variant="body">{det.title}</AppText> : null}
+                    {det && 'description' in det ? (
+                      <AppText variant="body">{det.description}</AppText>
+                    ) : null}
+                    <DetailsTime details={det} />
+                    <TpSfcReview
+                      item={t}
+                      workTypeId={section.workTypeId}
+                      territoryIds={section.territoryIds}
+                      sfcRoutes={section.sfcRoutes}
+                      filerFacts={t.routeFacts ?? []}
+                      embedded
+                    />
+                  </View>
+                );
+              })}
+            </Card>
+          );
+        })}
 
         {t.status === 'pending' ? (
           <Card style={styles.pad}>
@@ -164,9 +190,26 @@ function Review({ id }: { id: string }) {
   );
 }
 
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.fact}>
+      <AppText variant="small">{label}</AppText>
+      <AppText variant="body">{value}</AppText>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { paddingHorizontal: layout.gutter, paddingTop: spacing.sm, gap: spacing.md },
   pad: { padding: spacing.lg, gap: spacing.sm },
+  section: {
+    padding: spacing.lg,
+    gap: spacing.md,
+    borderWidth: 1.5,
+    borderColor: colors.teal,
+  },
+  block: { gap: spacing.sm },
+  fact: { gap: spacing.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
 });

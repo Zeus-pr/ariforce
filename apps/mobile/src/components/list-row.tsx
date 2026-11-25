@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import * as Haptics from 'expo-haptics';
+import { StyleSheet, View } from 'react-native';
 import { AppText } from './app-text';
 import { Icon, type IconName } from './icon';
+import { PressableScale } from './pressable-scale';
 import { TintedIcon } from './tinted-icon';
 import { colors, sizes, spacing, type Tone } from '@/theme';
 
@@ -20,7 +20,7 @@ type Props = {
 
 /**
  * One row inside a grouped card. Every row is the same height (sizes.row) and shows one line of
- * title and one of subtitle, so rows never differ by content. Tappable rows get a pressed fill.
+ * title and one of subtitle, so rows never differ by content. Tappable rows get press scale + fill.
  */
 export function ListRow({
   title,
@@ -63,17 +63,15 @@ export function ListRow({
   }
 
   return (
-    <Pressable
-      onPress={() => {
-        Haptics.selectionAsync().catch(() => {});
-        onPress();
-      }}
-      accessibilityRole="button"
+    <PressableScale
+      onPress={onPress}
       accessibilityLabel={accessibilityLabel ?? (subtitle ? `${title}, ${subtitle}` : title)}
-      style={({ pressed }) => [styles.row, divider && styles.divider, pressed && styles.pressed]}
+      containerStyle={divider ? styles.divider : undefined}
+      style={styles.row}
+      pressedStyle={styles.pressed}
     >
       {body}
-    </Pressable>
+    </PressableScale>
   );
 }
 

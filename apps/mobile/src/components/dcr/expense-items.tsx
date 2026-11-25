@@ -13,7 +13,7 @@ import {
   type DcrExpenseItem,
 } from '@/lib/dcr/v2-adapter';
 import { CATEGORY_LABEL } from '@/lib/expenses';
-import { colors, spacing } from '@/theme';
+import { colors, radius, spacing } from '@/theme';
 import { dcrStyles, Field } from './field';
 
 const inr = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -25,7 +25,7 @@ const newItem = (): DcrExpenseItem => ({
   note: '',
 });
 
-/** Optional, collapsed by default: category + amount + note rows. */
+/** One full-width expense: category, amount, then note. Same boxes as the rest of the day form. */
 export function ExpenseItems({
   value,
   readOnly,
@@ -35,7 +35,6 @@ export function ExpenseItems({
   readOnly: boolean;
   onChange: (v: DcrExpenseItem[]) => void;
 }) {
-  const [open, setOpen] = useState(value.length > 0);
   const [pickFor, setPickFor] = useState<string | null>(null);
   const ok = sendableExpenses(value);
   const total = ok.reduce((a, i) => a + expenseAmount(i.amount)!, 0);
@@ -43,74 +42,56 @@ export function ExpenseItems({
     onChange(value.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   return (
     <View style={dcrStyles.section}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        onPress={() => setOpen((o) => !o)}
-        style={styles.head}
-      >
-        <AppText variant="label" style={styles.flex}>
-          Expenses{ok.length ? ` · ${inr(total)}` : ''}
-        </AppText>
-        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={20} color={colors.navy} />
-      </Pressable>
-      {open ? (
-        <>
-          {value.map((i) => (
-            <View key={i.id} style={styles.item}>
-              <View style={styles.row}>
-                <View style={styles.flex}>
-                  <Field
-                    label="Category"
-                    value={i.category ? CATEGORY_LABEL[i.category] : undefined}
-                    placeholder="Choose"
-                    onPress={readOnly ? undefined : () => setPickFor(i.id)}
-                  />
-                </View>
-                <View style={styles.flex}>
-                  <TextField
-                    label="Amount (₹)"
-                    value={i.amount}
-                    onChangeText={(amount) => set(i.id, { amount: amount.replace(/[^\d.]/g, '') })}
-                    keyboardType="decimal-pad"
-                    editable={!readOnly}
-                    error={i.amount && !expenseAmount(i.amount) ? 'Enter an amount.' : undefined}
-                    maxLength={10}
-                  />
-                </View>
-                {readOnly ? null : (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Remove expense"
-                    onPress={() => onChange(value.filter((x) => x.id !== i.id))}
-                    hitSlop={8}
-                    style={styles.remove}
-                  >
-                    <Icon name="trash-can-outline" size={20} color={colors.muted} />
-                  </Pressable>
-                )}
-              </View>
-              <TextField
-                label="Note (optional)"
-                value={i.note}
-                onChangeText={(note) => set(i.id, { note })}
-                editable={!readOnly}
-                maxLength={300}
-              />
-            </View>
-          ))}
+      <AppText variant="label">Expenses{ok.length ? ` · ${inr(total)}` : ''}</AppText>
+      {value.map((i, index) => (
+        <View key={i.id} style={styles.item}>
+          <Field
+            label={value.length > 1 ? `Category ${index + 1}` : 'Category'}
+            value={i.category ? CATEGORY_LABEL[i.category] : undefined}
+            placeholder="Choose"
+            onPress={readOnly ? undefined : () => setPickFor(i.id)}
+          />
+          <TextField
+            label="Amount (₹)"
+            value={i.amount}
+            onChangeText={(amount) => set(i.id, { amount: amount.replace(/[^\d.]/g, '') })}
+            keyboardType="decimal-pad"
+            editable={!readOnly}
+            error={i.amount && !expenseAmount(i.amount) ? 'Enter an amount.' : undefined}
+            maxLength={10}
+          />
+          <TextField
+            label="Note (optional)"
+            value={i.note}
+            onChangeText={(note) => set(i.id, { note })}
+            editable={!readOnly}
+            maxLength={300}
+          />
           {readOnly ? null : (
             <Pressable
               accessibilityRole="button"
-              onPress={() => onChange([...value, newItem()])}
-              style={styles.add}
+              accessibilityLabel="Remove expense"
+              onPress={() => onChange(value.filter((x) => x.id !== i.id))}
+              style={styles.remove}
             >
-              <Icon name="plus" size={18} color={colors.navy} />
-              <AppText variant="action">Add expense</AppText>
+              <Icon name="trash-can-outline" size={18} color={colors.danger} />
+              <AppText variant="action" style={styles.removeText}>
+                Remove
+              </AppText>
             </Pressable>
           )}
-        </>
-      ) : null}
+        </View>
+      ))}
+      {readOnly ? null : (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => onChange([...value, newItem()])}
+          style={styles.add}
+        >
+          <Icon name="plus" size={18} color={colors.navy} />
+          <AppText variant="action">Add expense</AppText>
+        </Pressable>
+      )}
       <SelectSheet
         visible={!!pickFor}
         title="Category"
@@ -144,12 +125,32 @@ export function DcrExpenseChip({ dcr }: { dcr: object }) {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  head: { flexDirection: 'row', alignItems: 'center' },
-  item: { gap: spacing.sm },
-  row: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
-  remove: { paddingTop: spacing.xl },
-  add: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  item: { gap: spacing.md },
+  remove: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    minHeight: 52,
+    borderRadius: radius.md,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: colors.separator,
+    backgroundColor: colors.surface,
+  },
+  removeText: { color: colors.danger },
+  add: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    minHeight: 52,
+    borderRadius: radius.md,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: colors.separator,
+    backgroundColor: colors.surface,
+  },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',

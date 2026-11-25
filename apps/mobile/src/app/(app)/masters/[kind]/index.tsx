@@ -1,6 +1,7 @@
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PullToRefresh } from '@/components/refresh';
 import { AppText } from '@/components/app-text';
@@ -16,6 +17,7 @@ import { FEATURES } from '@/lib/features';
 import {
   APPROVAL_LABEL,
   FILTERS,
+  aripCode,
   isMasterKind,
   isPlaceholderName,
   MASTERS,
@@ -29,14 +31,46 @@ import {
 import { canWriteMasters } from '@/lib/roles';
 import { colors, layout, radius, shadows, spacing, touch } from '@/theme';
 
-const FILTER_LABEL = { territoryId: 'Territory', specialtyId: 'Specialty', categoryId: 'Category' };
+const DOCTOR_LOCKS = 5;
+
+function lockLabel(kind: MasterKind, count: number) {
+  if (kind === 'doctors') {
+    const n = Math.min(count, DOCTOR_LOCKS);
+    return `${n} of ${DOCTOR_LOCKS} locations locked`;
+  }
+  return count > 0 ? 'Location locked' : 'Location not locked';
+}
+
+/** Doctors show five pins. A chemist or stockist shows the one pin. A green tick is a locked pin. */
+function LockMarks({ kind, count }: { kind: MasterKind; count: number }) {
+  const slots = kind === 'doctors' ? DOCTOR_LOCKS : 1;
+  const locked = Math.min(count, slots);
+  return (
+    <View
+      style={[styles.marks, { width: slots * 14 + (slots - 1) * 3 }]}
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+    >
+      {Array.from({ length: slots }, (_, i) => (
+        <Icon
+          key={i}
+          name={i < locked ? 'check-circle' : 'circle-outline'}
+          size={14}
+          color={i < locked ? colors.success : colors.subtle}
+        />
+      ))}
+    </View>
+  );
+}
+
+const FILTER_LABEL = { territoryId: 'HQ', specialtyId: 'Specialty', categoryId: 'Category' };
 const ALL_LABEL = {
-  territoryId: 'All territories',
+  territoryId: 'All HQs',
   specialtyId: 'All specialties',
   categoryId: 'All categories',
 };
 const FILTER_TYPE = {
-  territoryId: 'territory',
+  territoryId: 'hq',
   specialtyId: 'specialty',
   categoryId: 'category',
 } as const;
@@ -70,7 +104,8 @@ function MasterList({ kind }: { kind: MasterKind }) {
   const [search, setSearch] = useState('');
   const q = useDebounced(search, 300);
   const [filters, setFilters] = useState<ListFilters>({});
-  const [picking, setPicking] = useState<keyof ListFilters | null>(null);
+  const [picking, setPicking] = useState<'territoryId' | 'specialtyId' | 'categoryId' | null>(null);
+  const [pickLocked, setPickLocked] = useState(false);
   const list = useMasterList(kind, q, filters);
 
   const rows = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? [], [list.data]);
@@ -79,11 +114,17 @@ function MasterList({ kind }: { kind: MasterKind }) {
 
   const subtitle = (r: MasterRow) => {
     const name = (id: string | null | undefined) => (id ? lk.byId.get(id) : undefined);
+    const town = 'localTerritoryId' in r ? name(r.localTerritoryId) : undefined;
     const parts =
       kind === 'doctors' && 'specialtyId' in r
-        ? [name(r.specialtyId), name(r.territoryId), r.city]
-        : [name(r.territoryId), r.city, r.phone];
+        ? [aripCode(r), name(r.specialtyId), town, name(r.territoryId), r.city]
+        : [aripCode(r), town, name(r.territoryId), r.city, r.phone];
     return parts.filter(Boolean).join(' · ') || '—';
+  };
+
+  const lockCount = (r: MasterRow) => {
+    const n = (r as { activeLockCount?: unknown }).activeLockCount;
+    return typeof n === 'number' && n > 0 ? n : 0;
   };
 
   const tag = (r: MasterRow) => {
@@ -104,7 +145,7 @@ function MasterList({ kind }: { kind: MasterKind }) {
   const pickingType = picking ? FILTER_TYPE[picking] : null;
 
   return (
-    <View style={styles.flex}>
+    <KeyboardAvoidingView behavior="padding" style={styles.flex}>
       <Stack.Screen options={{ title: cfg.title }} />
       <View style={styles.top}>
         <SearchBox
@@ -139,6 +180,35 @@ function MasterList({ kind }: { kind: MasterKind }) {
               </Pressable>
             );
           })}
+          <Pressable
+            onPress={() => setPickLocked(true)}
+            accessibilityRole="button"
+            accessibilityLabel={
+              filters.locked === 'true'
+                ? 'Location filter: locked'
+                : filters.locked === 'false'
+                  ? 'Location filter: not yet locked'
+                  : 'Location filter'
+            }
+            style={[styles.filter, filters.locked && styles.filterOn]}
+          >
+            <AppText
+              variant="action"
+              numberOfLines={1}
+              style={[styles.filterText, filters.locked && styles.filterTextOn]}
+            >
+              {filters.locked === 'true'
+                ? 'Locked'
+                : filters.locked === 'false'
+                  ? 'Not yet locked'
+                  : 'Location'}
+            </AppText>
+            <Icon
+              name="chevron-down"
+              size={18}
+              color={filters.locked ? colors.onNavy : colors.muted}
+            />
+          </Pressable>
         </ScrollView>
         {typeof total === 'number' ? (
           <AppText variant="small">
@@ -171,7 +241,13 @@ function MasterList({ kind }: { kind: MasterKind }) {
                 subtitle={subtitle(item)}
                 icon={FEATURES[kind].icon}
                 tone={FEATURES[kind].tone}
-                trailing={tag(item)}
+                trailing={
+                  <View style={styles.trail}>
+                    {tag(item)}
+                    <LockMarks kind={kind} count={lockCount(item)} />
+                  </View>
+                }
+                accessibilityLabel={`${item.name}. ${lockLabel(kind, lockCount(item))}`}
                 divider={index < rows.length - 1}
                 onPress={() =>
                   router.push({ pathname: '/masters/[kind]/[id]', params: { kind, id: item.id } })
@@ -232,7 +308,24 @@ function MasterList({ kind }: { kind: MasterKind }) {
         onPick={(v) => picking && setFilters((f) => ({ ...f, [picking]: v ?? undefined }))}
         onClose={() => setPicking(null)}
       />
-    </View>
+      <SelectSheet
+        visible={pickLocked}
+        title="Location"
+        options={[
+          { value: 'true', label: 'Locked' },
+          { value: 'false', label: 'Not yet locked' },
+        ]}
+        value={filters.locked ?? null}
+        noneLabel="All"
+        onPick={(v) =>
+          setFilters((f) => ({
+            ...f,
+            locked: v === 'true' || v === 'false' ? v : undefined,
+          }))
+        }
+        onClose={() => setPickLocked(false)}
+      />
+    </KeyboardAvoidingView>
   );
 }
 
@@ -256,6 +349,14 @@ const styles = StyleSheet.create({
   filterOn: { backgroundColor: colors.navy, borderColor: colors.navy },
   filterText: { color: colors.ink, flexShrink: 1 },
   filterTextOn: { color: colors.onNavy },
+  trail: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  marks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 3,
+    flexShrink: 0,
+  },
   listContent: { paddingHorizontal: layout.gutter, paddingTop: spacing.md, flexGrow: 1 },
   item: { backgroundColor: colors.surface, overflow: 'hidden' },
   first: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg },

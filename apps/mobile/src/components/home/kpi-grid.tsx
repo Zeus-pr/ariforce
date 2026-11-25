@@ -2,7 +2,8 @@ import type { KpiKey } from '@ariforce/contracts';
 import { StyleSheet, View } from 'react-native';
 import { AppText } from '../app-text';
 import { Card } from '../card';
-import type { Kpi } from '@/mocks/home';
+import { SkeletonList } from '../skeleton';
+import type { HomeKpiCard } from '@/lib/home-kpis';
 import { colors, fonts, layout, radius, spacing } from '@/theme';
 
 function pairs<T>(items: T[]): T[][] {
@@ -18,9 +19,36 @@ const SHORT: Partial<Record<KpiKey, string>> = {
   dcr_on_time_pct: 'DCR On-Time',
 };
 
-/** Stitch KPI Analytics 2×2 cards (MTD). */
-export function KpiGrid({ kpis }: { kpis: Kpi[] }) {
-  if (kpis.length === 0) return null;
+/** This month's live KPI cards. */
+export function KpiGrid({
+  cards,
+  pending,
+  error,
+}: {
+  cards: HomeKpiCard[];
+  pending: boolean;
+  error: boolean;
+}) {
+  if (pending) {
+    return (
+      <View style={styles.wrap}>
+        <AppText variant="chip" style={styles.section}>
+          KPI ANALYTICS
+        </AppText>
+        <SkeletonList count={2} />
+      </View>
+    );
+  }
+  if (error) {
+    return (
+      <Card style={styles.error}>
+        <AppText variant="bodyMuted">
+          Could not load this month’s figures. Pull to try again.
+        </AppText>
+      </Card>
+    );
+  }
+  if (cards.length === 0) return null;
   return (
     <View style={styles.wrap}>
       <View style={styles.head}>
@@ -32,7 +60,7 @@ export function KpiGrid({ kpis }: { kpis: Kpi[] }) {
         </AppText>
       </View>
       <View style={styles.grid}>
-        {pairs(kpis).map((row) => (
+        {pairs(cards).map((row) => (
           <View key={row.map((k) => k.key).join('-')} style={styles.row}>
             {row.map((k) => (
               <KpiCard key={k.key} kpi={k} />
@@ -45,24 +73,24 @@ export function KpiGrid({ kpis }: { kpis: Kpi[] }) {
   );
 }
 
-function KpiCard({ kpi: k }: { kpi: Kpi }) {
-  const pct = Math.round(Math.min(1, Math.max(0, k.progress)) * 100);
+function KpiCard({ kpi: k }: { kpi: HomeKpiCard }) {
+  const pct = k.progress == null ? null : Math.round(k.progress * 100);
   const label = SHORT[k.key] ?? k.label;
   return (
     <Card
       style={[styles.cell, styles.card]}
       accessible
-      accessibilityLabel={`${label}: ${k.value}. ${k.target}. ${pct}% of target.`}
+      accessibilityLabel={
+        pct == null
+          ? `${label}: ${k.value}. ${k.target}.`
+          : `${label}: ${k.value}. ${k.target}. ${pct}%.`
+      }
     >
       <View style={styles.top}>
         <AppText variant="chip" style={styles.label} numberOfLines={1}>
           {label}
         </AppText>
-        {k.delta ? (
-          <AppText variant="chip" style={styles.delta}>
-            {k.delta}
-          </AppText>
-        ) : (
+        {pct == null ? null : (
           <AppText variant="chip" style={styles.pct}>
             {pct}%
           </AppText>
@@ -94,6 +122,7 @@ const styles = StyleSheet.create({
   meta: { color: colors.subtle },
   grid: { gap: layout.inner },
   row: { flexDirection: 'row', gap: layout.inner },
+  error: { padding: spacing.lg },
   cell: { flex: 1 },
   card: {
     height: 102,

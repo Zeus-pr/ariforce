@@ -1,21 +1,14 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '../app-text';
-import { Card } from '../card';
 import { Icon } from '../icon';
+import { StatusPicker, useStatusKey } from '../status-picker';
+import { WeekDeck } from '../week-deck';
 import { rangeLabel, type TpItem } from '@/lib/tp/adapter';
+import { onePress } from '@/lib/one-press';
 import { colors, fonts, spacing } from '@/theme';
 
-function Section({
-  title,
-  count,
-  children,
-}: {
-  title: string;
-  count: number;
-  children: ReactNode;
-}) {
-  if (!count) return null;
+function Section({ title, count, children }: { title: string; count: number; children: ReactNode }) {
   return (
     <View style={styles.section}>
       <View style={styles.head}>
@@ -24,7 +17,7 @@ function Section({
           {count} {count === 1 ? 'Day' : 'Days'}
         </AppText>
       </View>
-      <Card style={styles.card}>{children}</Card>
+      {count ? children : <AppText variant="small">Nothing in this list.</AppText>}
     </View>
   );
 }
@@ -48,7 +41,7 @@ function Row({
 }) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={onePress(onPress)}
       accessibilityRole="button"
       accessibilityLabel={`Tour plan ${rangeLabel(item.from, item.to)}`}
       style={({ pressed }) => [styles.row, divider && styles.divider, pressed && styles.pressed]}
@@ -94,6 +87,8 @@ export function StatusSections({
   drafts,
   labelOf,
   onOpen,
+  focusDate,
+  onPickDate,
 }: {
   approved: TpItem[];
   pending: TpItem[];
@@ -101,64 +96,105 @@ export function StatusSections({
   drafts: TpItem[];
   labelOf: (t: TpItem) => string;
   onOpen: (id: string) => void;
+  focusDate?: string | null;
+  onPickDate?: (date: string) => void;
 }) {
+  const { live, value, setChosen } = useStatusKey(
+    [
+      { key: 'drafts', label: 'Draft', count: drafts.length },
+      { key: 'approved', label: 'Approved', count: approved.length },
+      { key: 'rejected', label: 'Rejected', count: rejected.length },
+      { key: 'pending', label: 'Pending', count: pending.length },
+    ],
+    true,
+  );
+
   return (
     <View style={styles.wrap}>
-      <Section title="Approved Tour Plans" count={approved.length}>
-        {approved.map((t, i) => (
-          <Row
-            key={t.id}
-            item={t}
-            subtitle={labelOf(t)}
-            trailing={t.userName || undefined}
-            onPress={() => onOpen(t.id)}
-            divider={i < approved.length - 1}
+      <StatusPicker options={live} value={value} onChange={setChosen} />
+      {value === 'approved' ? (
+        <Section title="Approved Tour Plans" count={approved.length}>
+          <WeekDeck
+            items={approved}
+            dateOf={(t) => t.from}
+            focusDate={focusDate}
+            onPickDate={onPickDate}
+            renderItem={(t, i, count) => (
+              <Row
+                item={t}
+                subtitle={labelOf(t)}
+                trailing={t.userName || undefined}
+                onPress={() => onOpen(t.id)}
+                divider={i < count - 1}
+              />
+            )}
           />
-        ))}
-      </Section>
-      <Section title="Pending Approval" count={pending.length}>
-        {pending.map((t, i) => (
-          <Row
-            key={t.id}
-            item={t}
-            subtitle={labelOf(t)}
-            trailing={t.submittedAt ? 'Awaiting Sign-off' : 'In Review'}
-            onPress={() => onOpen(t.id)}
-            divider={i < pending.length - 1}
+        </Section>
+      ) : null}
+      {value === 'pending' ? (
+        <Section title="Pending Approval" count={pending.length}>
+          <WeekDeck
+            items={pending}
+            dateOf={(t) => t.from}
+            focusDate={focusDate}
+            onPickDate={onPickDate}
+            renderItem={(t, i, count) => (
+              <Row
+                item={t}
+                subtitle={labelOf(t)}
+                trailing={t.submittedAt ? 'Awaiting Sign-off' : 'In Review'}
+                onPress={() => onOpen(t.id)}
+                divider={i < count - 1}
+              />
+            )}
           />
-        ))}
-      </Section>
-      <Section title="Rejected / Needs Resubmission" count={rejected.length}>
-        {rejected.map((t, i) => (
-          <Row
-            key={t.id}
-            item={t}
-            subtitle={labelOf(t)}
-            onPress={() => onOpen(t.id)}
-            feedback={t.rejectionReason}
-            resubmit
-            divider={i < rejected.length - 1}
+        </Section>
+      ) : null}
+      {value === 'rejected' ? (
+        <Section title="Rejected / Needs Resubmission" count={rejected.length}>
+          <WeekDeck
+            items={rejected}
+            dateOf={(t) => t.from}
+            focusDate={focusDate}
+            onPickDate={onPickDate}
+            renderItem={(t, i, count) => (
+              <Row
+                item={t}
+                subtitle={labelOf(t)}
+                onPress={() => onOpen(t.id)}
+                feedback={t.rejectionReason}
+                resubmit
+                divider={i < count - 1}
+              />
+            )}
           />
-        ))}
-      </Section>
-      <Section title="Drafts" count={drafts.length}>
-        {drafts.map((t, i) => (
-          <Row
-            key={t.id}
-            item={t}
-            subtitle={labelOf(t)}
-            trailing="Not submitted"
-            onPress={() => onOpen(t.id)}
-            divider={i < drafts.length - 1}
+        </Section>
+      ) : null}
+      {value === 'drafts' ? (
+        <Section title="Drafts" count={drafts.length}>
+          <WeekDeck
+            items={drafts}
+            dateOf={(t) => t.from}
+            focusDate={focusDate}
+            onPickDate={onPickDate}
+            renderItem={(t, i, count) => (
+              <Row
+                item={t}
+                subtitle={labelOf(t)}
+                trailing="Not submitted"
+                onPress={() => onOpen(t.id)}
+                divider={i < count - 1}
+              />
+            )}
           />
-        ))}
-      </Section>
+        </Section>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: spacing.xl, paddingTop: spacing.lg },
+  wrap: { gap: spacing.md, paddingTop: spacing.sm },
   section: { gap: spacing.sm },
   head: {
     flexDirection: 'row',
@@ -168,7 +204,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.separator,
   },
-  card: { paddingVertical: 0, overflow: 'hidden' },
   row: { padding: spacing.md, gap: 4 },
   pressed: { backgroundColor: colors.ground },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator },

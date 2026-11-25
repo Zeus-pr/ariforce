@@ -108,8 +108,8 @@ export function MonthCalendar({
       </View>
 
       <View style={styles.weekRow}>
-        {WEEKDAYS.map((d, i) => (
-          <AppText key={d} variant="chip" style={[styles.weekday, i === 1 && styles.weekdayAccent]}>
+        {WEEKDAYS.map((d) => (
+          <AppText key={d} variant="chip" style={styles.weekday}>
             {d}
           </AppText>
         ))}
@@ -225,7 +225,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semibold,
     fontSize: 11,
   },
-  weekdayAccent: { color: colors.canopy, fontFamily: fonts.bold },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
