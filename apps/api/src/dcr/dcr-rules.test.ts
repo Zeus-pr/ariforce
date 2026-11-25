@@ -49,6 +49,14 @@ describe('dcr rules', () => {
         ],
       ),
     ).toEqual(['yesterday']);
+    expect(
+      foreignDayCheckInIds(
+        '2026-11-10',
+        [{ checkInId: 'today' }],
+        [{ id: 'today', day: '2026-11-11' }],
+        ['2026-11-11'],
+      ),
+    ).toEqual([]);
   });
   it('needs a visit check-in on every call at submit', () => {
     expect(

@@ -626,11 +626,14 @@ export class DcrService {
         );
       });
       if (wrong.length) bad.checkInIds = wrong.map((c) => c.checkInId!);
-      const tz = (await companySettings(tx, p)).timezone;
+      const settings = await companySettings(tx, p);
+      const today = localDate(new Date(), settings.timezone);
+      const open = await this.lockInfo(tx, settings, p.userId, date);
       const otherDay = foreignDayCheckInIds(
         date,
         ci.map((c) => ({ checkInId: c.checkInId })),
-        caps.map((g) => ({ id: g.id, day: localDate(g.capturedAt, tz) })),
+        caps.map((g) => ({ id: g.id, day: localDate(g.capturedAt, settings.timezone) })),
+        open.unlockedUntil && date < today ? [today] : [],
       );
       if (otherDay.length) bad.checkInIds = [...new Set([...(bad.checkInIds ?? []), ...otherDay])];
       // Multi-draft (0045): a check-in counts as used only by a live submitted report; other
@@ -848,6 +851,8 @@ export class DcrService {
         ),
       );
     const s = await companySettings(tx, p);
+    const open = await this.lockInfo(tx, s, p.userId, date);
+    const filingUnlockedPast = !!open.unlockedUntil && date < localDate(new Date(), s.timezone);
     const existing = keep.length
       ? await tx
           .select({
@@ -925,19 +930,21 @@ export class DcrService {
           });
 
         const day = localDate(new Date(cap.capturedAt), s.timezone);
-        const punched = await tx
-          .select({ id: geoCaptures.id })
-          .from(geoCaptures)
-          .where(
-            and(
-              eq(geoCaptures.userId, p.userId),
-              eq(geoCaptures.kind, 'punch_in'),
-              sql`${capDate(s.timezone)} = ${day}::date`,
-            ),
-          )
-          .limit(1);
-        if (!punched.length)
-          throw err(422, 'NOT_PUNCHED_IN', 'Punch in before opening Presentation');
+        if (!filingUnlockedPast) {
+          const punched = await tx
+            .select({ id: geoCaptures.id })
+            .from(geoCaptures)
+            .where(
+              and(
+                eq(geoCaptures.userId, p.userId),
+                eq(geoCaptures.kind, 'punch_in'),
+                sql`${capDate(s.timezone)} = ${day}::date`,
+              ),
+            )
+            .limit(1);
+          if (!punched.length)
+            throw err(422, 'NOT_PUNCHED_IN', 'Punch in before opening Presentation');
+        }
 
         if (cap.isMock && s.blockMockLocation)
           throw err(422, 'MOCK_LOCATION', 'Mock location is not allowed');
