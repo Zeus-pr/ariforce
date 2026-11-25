@@ -24,6 +24,7 @@ export type Figures = {
   uniqueChemists: number | null;
   chemistVisits: number | null;
   chemistAverage: number | null;
+  stockistVisits: number | null;
   msl: number | null;
   primaryTarget: number | null;
   primarySales: number | null;
@@ -100,6 +101,7 @@ export const FIGURE_KEYS = [
   'uniqueChemists',
   'chemistVisits',
   'chemistAverage',
+  'stockistVisits',
   'msl',
   'primaryTarget',
   'primarySales',
