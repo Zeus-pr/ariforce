@@ -40,12 +40,15 @@ export function foreignDayCheckInIds(
   dcrDate: string,
   calls: { checkInId?: string | null }[],
   captures: { id: string; day: string }[],
+  /** Extra days that count, e.g. today while a past DCR is unlocked. */
+  also: readonly string[] = [],
 ): string[] {
+  const allowed = new Set([dcrDate, ...also]);
   const dayOf = new Map(captures.map((c) => [c.id, c.day]));
   return calls.flatMap((c) => {
     if (!c.checkInId) return [];
     const day = dayOf.get(c.checkInId);
-    return day && day !== dcrDate ? [c.checkInId] : [];
+    return day && !allowed.has(day) ? [c.checkInId] : [];
   });
 }
 

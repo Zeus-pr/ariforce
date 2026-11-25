@@ -249,51 +249,51 @@ export class CheckInsService {
       // Default: one punch_in / day, and nothing after punch_out.
       // FIELD_RELAX_PUNCH_SEQUENCE=1 (temp testing): allow re-punch-in after punch-out / multiple punch-ins.
       const relaxSequence = process.env.FIELD_RELAX_PUNCH_SEQUENCE === '1';
+      const yesterdayStillOpen = async () => {
+        const yesterday = addDays(day, -1);
+        if (yesterday < ABSENT_FROM) return false;
+        const prior = await tx
+          .select({ kind: geoCaptures.kind })
+          .from(geoCaptures)
+          .where(
+            and(eq(geoCaptures.userId, p.userId), sql`${capDate(s.timezone)} = ${yesterday}::date`),
+          );
+        const [filed] = await tx
+          .select({ id: dcrs.id })
+          .from(dcrs)
+          .where(
+            and(
+              eq(dcrs.userId, p.userId),
+              eq(dcrs.date, yesterday),
+              isNull(dcrs.deletedAt),
+              inArray(dcrs.status, ['submitted', 'approved']),
+            ),
+          )
+          .limit(1);
+        return blocksNextPunchIn({
+          punchedIn: prior.some((r) => r.kind === 'punch_in'),
+          submitted: !!filed,
+        });
+      };
       if (!relaxSequence && b.kind === 'punch_in' && has('punch_in'))
         throw err(409, 'SEQUENCE', 'Already punched in today');
-      if (b.kind !== 'punch_in' && !has('punch_in')) throw err(409, 'SEQUENCE', 'Punch in first');
+      // A visit while yesterday's worked DCR is still open does not need today's punch.
+      // Punch-in itself stays closed until that DCR is submitted.
+      if (b.kind !== 'punch_in' && !has('punch_in')) {
+        const filingYesterday = b.kind === 'visit' && (await yesterdayStillOpen());
+        if (!filingYesterday) throw err(409, 'SEQUENCE', 'Punch in first');
+      }
       if (!relaxSequence && has('punch_out'))
         throw err(409, 'SEQUENCE', 'Already punched out today');
       if (b.kind === 'punch_in' && (await leaveBlocksWork(tx, p.userId, day)))
         throw err(422, 'LEAVE_DAY_BLOCKED', 'Leave covers this day, so punch in stays closed');
-      if (b.kind === 'punch_in') {
-        const yesterday = addDays(day, -1);
-        if (yesterday >= ABSENT_FROM) {
-          const prior = await tx
-            .select({ kind: geoCaptures.kind })
-            .from(geoCaptures)
-            .where(
-              and(
-                eq(geoCaptures.userId, p.userId),
-                sql`${capDate(s.timezone)} = ${yesterday}::date`,
-              ),
-            );
-          const [filed] = await tx
-            .select({ id: dcrs.id })
-            .from(dcrs)
-            .where(
-              and(
-                eq(dcrs.userId, p.userId),
-                eq(dcrs.date, yesterday),
-                isNull(dcrs.deletedAt),
-                inArray(dcrs.status, ['submitted', 'approved']),
-              ),
-            )
-            .limit(1);
-          if (
-            blocksNextPunchIn({
-              punchedIn: prior.some((r) => r.kind === 'punch_in'),
-              submitted: !!filed,
-            })
-          )
-            throw err(
-              409,
-              'PREVIOUS_DCR_UNSUBMITTED',
-              'Submit an unlock request for yesterday’s DCR, then submit that DCR, before punching in.',
-              { date: yesterday },
-            );
-        }
-      }
+      if (b.kind === 'punch_in' && (await yesterdayStillOpen()))
+        throw err(
+          409,
+          'PREVIOUS_DCR_UNSUBMITTED',
+          'Submit an unlock request for yesterday’s DCR, then submit that DCR, before punching in.',
+          { date: addDays(day, -1) },
+        );
 
       if (b.kind === 'punch_out') {
         const [dcr] = await tx
