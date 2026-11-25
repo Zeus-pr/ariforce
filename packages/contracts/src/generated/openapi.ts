@@ -898,6 +898,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/reports/master-excel': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Master Excel for the caller’s team: one sheet per headquarters, territories under each */
+    get: operations['downloadMasterExcel'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/kpis': {
     parameters: {
       query?: never;
@@ -14100,6 +14117,56 @@ export interface operations {
         };
       };
       /** @description Validation failed; LOW_ACCURACY, MOCK_LOCATION, or OUT_OF_FENCE. A chemist or stockist with a locked pin is refused outside that pin */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  downloadMasterExcel: {
+    parameters: {
+      query: {
+        /** @description Month (YYYY-MM) */
+        month: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Workbook (content-disposition: attachment) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': string;
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Missing reports:read */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description MONTH_IN_FUTURE or an invalid month */
       422: {
         headers: {
           [name: string]: unknown;

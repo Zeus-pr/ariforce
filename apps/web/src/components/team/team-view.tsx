@@ -23,6 +23,7 @@ import { KpiCards } from '@/components/dashboard/kpi-cards';
 import { TeamCoverageChart } from '@/components/team/team-charts';
 import { formatKpi, HEADLINE, KPI_META, TEAM_COLUMNS } from '@/components/dashboard/kpi-meta';
 import { ExportMenu } from '@/components/export/export-menu';
+import { MasterExcelButton } from '@/components/team/master-excel';
 import { useMonth } from '@/components/performance/perf-ui';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { api, apiReady, toApiError } from '@/lib/api';
@@ -261,6 +262,7 @@ export function TeamView() {
               </Link>
             </Button>
           )}
+          <MasterExcelButton month={month} />
           <ExportMenu spec={spec} disabled={!rows} />
         </div>
       </div>
