@@ -30,7 +30,7 @@ import { adminMessage } from '@/lib/admin/messages';
 import { seatIsVacant } from '@/lib/people/seat';
 import { allPages } from '@/lib/paging';
 import { invalidateTerritories, useTerritories } from '@/lib/query';
-import { ROLE_LABEL, type Role } from '@/lib/roles';
+import { ROLE_LABEL, roleLevel, type Role } from '@/lib/roles';
 
 const NEXT: Partial<Record<TerritoryLevel, TerritoryLevel>> = {
   national: 'zone',
@@ -46,12 +46,6 @@ const LABEL: Record<TerritoryLevel, string> = {
   area: 'ABM HQ',
   headquarter: 'BM HQ',
   territory: 'Territory',
-};
-const LEVEL_ROLE: Partial<Record<TerritoryLevel, RoleKey>> = {
-  zone: 'zonal_business_manager',
-  region: 'regional_business_manager',
-  area: 'area_business_manager',
-  headquarter: 'business_manager',
 };
 const STATE_ROLES: { role: RoleKey; label: string }[] = [
   { role: 'zonal_business_manager', label: 'Add ZBM' },
@@ -112,16 +106,24 @@ function roleText(role: string | null) {
   return '';
 }
 
-/** The person who holds this place. A suspended or left person does not. */
+function rankOf(role: string | null) {
+  return role && role in ROLE_LABEL ? roleLevel(role as Role) : 0;
+}
+
+/** Everyone assigned to this place. An active person is listed before an invited one. */
+function peopleOn(place: Territory, people: readonly Person[]): Person[] {
+  return people
+    .filter((p) => onPlace(p, place.id))
+    .sort(
+      (a, b) =>
+        Number(b.status === 'active') - Number(a.status === 'active') ||
+        rankOf(b.primaryRole) - rankOf(a.primaryRole) ||
+        a.name.localeCompare(b.name),
+    );
+}
+
 function seatOf(place: Territory, people: readonly Person[]): Person | null {
-  const holders = people.filter((p) => onPlace(p, place.id) && !seatIsVacant(p));
-  const primary = holders.filter((p) => p.territories?.[0]?.id === place.id);
-  const role = LEVEL_ROLE[place.level];
-  const matched = (primary.length ? primary : holders).filter(
-    (p) => role && p.primaryRole === role,
-  );
-  const pool = matched.length ? matched : primary.length ? primary : holders;
-  return [...pool].sort(byName)[0] ?? null;
+  return peopleOn(place, people).find((p) => !seatIsVacant(p)) ?? null;
 }
 
 function kidsOf(places: readonly Territory[]) {
@@ -213,8 +215,7 @@ export function OrganizationScreen() {
     const ids = new Set<string>();
     const matches = (place: Territory) => {
       if (place.name.toLowerCase().includes(needle)) return true;
-      const person = seatOf(place, people);
-      return !!person && person.name.toLowerCase().includes(needle);
+      return peopleOn(place, people).some((p) => p.name.toLowerCase().includes(needle));
     };
     for (const place of live) {
       if (!matches(place)) continue;
@@ -298,7 +299,7 @@ export function OrganizationScreen() {
       : nextLevel
         ? `Add ${levelLabel(nextLevel)}`
         : '';
-  const seat = selected ? seatOf(selected, people) : null;
+  const assigned = selected ? peopleOn(selected, people) : [];
   const childList = selected ? (children.get(selected.id) ?? []) : [];
   const shownKids = childList.slice(0, 3);
   const moreKids = childList.length - shownKids.length;
@@ -329,7 +330,7 @@ export function OrganizationScreen() {
           {terrs.isError && <p className="px-2 text-sm text-destructive">Could not load places.</p>}
           <ul>
             {rows.map(({ place, depth }) => {
-              const person = seatOf(place, people);
+              const assignedHere = peopleOn(place, people);
               const kids = children.get(place.id) ?? [];
               const open = needle || !!openIds?.has(place.id);
               return (
@@ -365,9 +366,12 @@ export function OrganizationScreen() {
                           {levelLabel(place.level)}
                         </span>
                       )}
-                      {place.level !== 'territory' && place.level !== 'national' && (
-                        <span className="ml-auto truncate text-xs text-slate-500">
-                          {person ? person.name : 'Vacant'}
+                      {(assignedHere.length > 0 ||
+                        (place.level !== 'territory' && place.level !== 'national')) && (
+                        <span className="ml-auto text-right text-xs text-slate-500">
+                          {assignedHere.length
+                            ? assignedHere.map((p) => p.name).join(', ')
+                            : 'Vacant'}
                         </span>
                       )}
                     </button>
@@ -417,16 +421,8 @@ export function OrganizationScreen() {
                 </div>
               </div>
               <div className="text-sm">
-                <div className="text-slate-500">Person</div>
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="font-semibold text-[#0F2A4A]">
-                      {seat ? seat.name : 'Vacant'}
-                    </div>
-                    {seat && (
-                      <div className="text-xs text-slate-500">{roleText(seat.primaryRole)}</div>
-                    )}
-                  </div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-slate-500">People</div>
                   <button
                     type="button"
                     className="text-sm font-medium text-[#0C8498]"
@@ -435,6 +431,17 @@ export function OrganizationScreen() {
                     Change
                   </button>
                 </div>
+                {assigned.length === 0 && (
+                  <div className="font-semibold text-[#0F2A4A]">Vacant</div>
+                )}
+                <ul className="mt-1 flex flex-col gap-1">
+                  {assigned.map((person) => (
+                    <li key={person.id}>
+                      <div className="font-semibold text-[#0F2A4A]">{person.name}</div>
+                      <div className="text-xs text-slate-500">{roleText(person.primaryRole)}</div>
+                    </li>
+                  ))}
+                </ul>
               </div>
               <div className="text-sm">
                 <div className="text-slate-500">Children</div>
@@ -600,7 +607,7 @@ function chartLayout(places: readonly Territory[], people: readonly Person[]) {
     left += widthOf(root.id) + GX;
   }
   const nodes: ChartNode[] = shown.map((place) => {
-    const person = seatOf(place, people);
+    const names = peopleOn(place, people).map((p) => p.name);
     const n = (patches.get(place.id) ?? []).filter((c) => c.level === 'territory').length;
     return {
       id: place.id,
@@ -609,7 +616,7 @@ function chartLayout(places: readonly Territory[], people: readonly Person[]) {
       data: {
         title: place.name,
         subtitle: levelLabel(place.level),
-        person: person ? person.name : 'Vacant',
+        person: names.length ? names.join(', ') : 'Vacant',
         extra: n > 0 ? `${n} territories` : '',
       },
       draggable: false,
