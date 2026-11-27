@@ -122,7 +122,7 @@ export class TerritoryAdminService {
     if (oldPath === newPath) return;
     await tx.execute(sql`
       update territories
-      set path = ${newPath} || substring(path from ${oldPath.length + 1})
+      set path = ${newPath} || substring(path from ${oldPath.length + 1}::int)
       where id <> ${id}::uuid
         and (path = ${oldPath} or starts_with(path, ${oldPath} || '.'))`);
   }

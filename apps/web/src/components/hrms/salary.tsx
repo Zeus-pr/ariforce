@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@ariforce/ui/components/button';
 import { Input } from '@ariforce/ui/components/input';
-import { api } from '@/lib/api';
+import { API_URL, api } from '@/lib/api';
 import { allPages } from '@/lib/paging';
 
 type Person = { id: string; name: string; ctc: number | null };
@@ -81,12 +81,13 @@ export function SalaryRestructure() {
       setAutomatic(true);
     };
     const q = new URLSearchParams({ userId, month });
-    void fetch(`${window.location.origin}/v1/payslips/structure?${q}`, {
+    void fetch(`${API_URL}/v1/payslips/structure?${q}`, {
       credentials: 'include',
     })
       .then(async (res) => {
         const body = (await res.json().catch(() => null)) as {
           message?: string;
+          error?: { message?: string };
           automatic?: boolean;
           ctc?: number | null;
           basicMonthly: number | null;
@@ -100,7 +101,7 @@ export function SalaryRestructure() {
         if (!res.ok || !body || body.basicMonthly == null) {
           fillStandard();
           if (!res.ok && selectedCtc == null)
-            setError(body?.message || 'Could not load the structure.');
+            setError(body?.error?.message || body?.message || 'Could not load the structure.');
           return;
         }
         setBasic(String(body.basicMonthly));
@@ -138,7 +139,7 @@ export function SalaryRestructure() {
     setSaving(true);
     setError(null);
     setNotice(null);
-    const res = await fetch(`${window.location.origin}/v1/payslips/structure`, {
+    const res = await fetch(`${API_URL}/v1/payslips/structure`, {
       method: 'PUT',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
@@ -153,10 +154,14 @@ export function SalaryRestructure() {
         ctc: yearly.trim() && Number.isInteger(Number(yearly)) ? Number(yearly) : gross * 12,
       }),
     });
-    const body = (await res.json()) as { message?: string; ctc?: number };
+    const body = (await res.json().catch(() => null)) as {
+      message?: string;
+      error?: { message?: string };
+      ctc?: number;
+    } | null;
     setSaving(false);
-    if (!res.ok) {
-      setError(body.message || 'Could not save the structure.');
+    if (!res.ok || !body) {
+      setError(body?.error?.message || body?.message || 'Could not save the structure.');
       return;
     }
     setFromMonth(month);
