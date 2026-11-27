@@ -178,11 +178,7 @@ export function OrganizationScreen() {
 
   useEffect(() => {
     if (openIds || !live.length) return;
-    setOpenIds(
-      new Set(
-        live.filter((t) => t.level !== 'headquarter' && t.level !== 'territory').map((t) => t.id),
-      ),
-    );
+    setOpenIds(new Set());
   }, [live, openIds]);
 
   useEffect(() => {
