@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Background,
-  BackgroundVariant,
   Handle,
   Position,
   ReactFlow,
@@ -15,7 +13,15 @@ import {
   type NodeProps,
 } from '@xyflow/react';
 import { toPng } from 'html-to-image';
-import { Download, Lock } from 'lucide-react';
+import {
+  Building2,
+  Download,
+  House,
+  Landmark,
+  Lock,
+  Map as MapIcon,
+  UserRound,
+} from 'lucide-react';
 import {
   TERRITORY_LEVELS,
   type RoleKey,
@@ -550,17 +556,38 @@ function ChartDialog({
   );
 }
 
-type ChartData = { title: string; subtitle: string; person: string; extra: string };
+type ChartData = {
+  title: string;
+  subtitle: string;
+  person: string;
+  extra: string;
+  level: TerritoryLevel;
+};
 type ChartNode = Node<ChartData, 'place'>;
 
+const LEVEL_ICON: Record<TerritoryLevel, typeof House> = {
+  national: Landmark,
+  zone: MapIcon,
+  region: House,
+  area: Building2,
+  headquarter: UserRound,
+  territory: MapIcon,
+};
+
 function ChartCard({ data }: NodeProps<ChartNode>) {
+  const Icon = LEVEL_ICON[data.level];
   return (
-    <div className="w-[200px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-center shadow-sm">
+    <div className="flex w-[232px] items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left shadow-sm">
       <Handle type="target" position={Position.Top} className="opacity-0" />
-      <div className="text-[10px] font-semibold tracking-wide text-[#0C8498]">{data.subtitle}</div>
-      <div className="truncate text-sm font-semibold text-[#0F2A4A]">{data.title}</div>
-      <div className="truncate text-xs text-slate-500">{data.person}</div>
-      {data.extra && <div className="truncate text-[10px] text-slate-400">{data.extra}</div>}
+      <Icon className="size-7 shrink-0 text-[#0C8498]" strokeWidth={1.5} aria-hidden />
+      <div className="min-w-0">
+        <div className="truncate text-sm font-semibold text-[#0F2A4A]">{data.title}</div>
+        <div className="truncate text-[11px] text-slate-500">{data.subtitle}</div>
+        <div className="truncate text-xs text-slate-600" title={data.person}>
+          {data.person}
+        </div>
+        {data.extra && <div className="truncate text-[11px] text-slate-400">{data.extra}</div>}
+      </div>
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
     </div>
   );
@@ -572,8 +599,8 @@ function chartLayout(places: readonly Territory[], people: readonly Person[]) {
   const shown = places.filter((p) => p.level !== 'territory');
   const kids = kidsOf(shown);
   const patches = kidsOf(places);
-  const W = 220;
-  const H = 84;
+  const W = 248;
+  const H = 96;
   const GX = 28;
   const GY = 64;
   const widthOf = (id: string): number => {
@@ -600,7 +627,14 @@ function chartLayout(places: readonly Territory[], people: readonly Person[]) {
   }
   const nodes: ChartNode[] = shown.map((place) => {
     const names = peopleOn(place, people).map((p) => p.name);
-    const n = (patches.get(place.id) ?? []).filter((c) => c.level === 'territory').length;
+    const hqCount = (kids.get(place.id) ?? []).filter((c) => c.level === 'headquarter').length;
+    const patchCount = (patches.get(place.id) ?? []).filter((c) => c.level === 'territory').length;
+    const extra =
+      place.level === 'area' && hqCount > 0
+        ? `${hqCount} BM HQ${hqCount === 1 ? '' : 's'}`
+        : place.level === 'headquarter' && patchCount > 0
+          ? `${patchCount} territor${patchCount === 1 ? 'y' : 'ies'}`
+          : '';
     return {
       id: place.id,
       type: 'place',
@@ -609,7 +643,8 @@ function chartLayout(places: readonly Territory[], people: readonly Person[]) {
         title: place.name,
         subtitle: levelLabel(place.level),
         person: names.length ? names.join(', ') : 'Vacant',
-        extra: n > 0 ? `${n} territories` : '',
+        extra,
+        level: place.level,
       },
       draggable: false,
       connectable: false,
@@ -623,8 +658,8 @@ function chartLayout(places: readonly Territory[], people: readonly Person[]) {
         id: `${place.id}-${child.id}`,
         source: place.id,
         target: child.id,
-        type: 'smoothstep',
-        style: { stroke: '#94a3b8', strokeWidth: 1.5 },
+        type: 'step',
+        style: { stroke: '#64748b', strokeWidth: 1.25 },
       });
     }
   }
@@ -678,15 +713,13 @@ function ChartBody({
 
   return (
     <>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-[#0F2A4A]">Organization tree</h2>
-          <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-[#0F2A4A]">Organization tree</h2>
+        <div className="flex items-center gap-3">
+          <p className="flex items-center gap-1 text-xs text-slate-500">
             <Lock className="size-3" aria-hidden />
             View only, cannot move or edit
           </p>
-        </div>
-        <div className="flex items-center gap-2">
           <Button
             type="button"
             variant="outline"
@@ -701,7 +734,7 @@ function ChartBody({
           </Button>
         </div>
       </div>
-      <div ref={box} className="min-h-0 flex-1 overflow-hidden rounded-lg border bg-[#F8FAFC]">
+      <div ref={box} className="min-h-0 flex-1 overflow-hidden rounded-lg border bg-white">
         <ReactFlow
           nodes={laid.nodes}
           edges={laid.edges}
@@ -716,9 +749,7 @@ function ChartBody({
           minZoom={0.05}
           maxZoom={1.5}
           proOptions={{ hideAttribution: true }}
-        >
-          <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#cbd5e1" />
-        </ReactFlow>
+        />
       </div>
       <p className="text-center text-xs text-slate-500">
         Picture only. Changes are made in the tree.
