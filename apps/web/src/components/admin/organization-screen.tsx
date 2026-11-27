@@ -27,7 +27,6 @@ import { Input } from '@ariforce/ui/components/input';
 import '@xyflow/react/dist/style.css';
 import { api, apiReady, toApiError } from '@/lib/api';
 import { adminMessage } from '@/lib/admin/messages';
-import { seatIsVacant } from '@/lib/people/seat';
 import { allPages } from '@/lib/paging';
 import { invalidateTerritories, useTerritories } from '@/lib/query';
 import { ROLE_LABEL, roleLevel, type Role } from '@/lib/roles';
@@ -122,10 +121,6 @@ function peopleOn(place: Territory, people: readonly Person[]): Person[] {
     );
 }
 
-function seatOf(place: Territory, people: readonly Person[]): Person | null {
-  return peopleOn(place, people).find((p) => !seatIsVacant(p)) ?? null;
-}
-
 function kidsOf(places: readonly Territory[]) {
   const map = new Map<string, Territory[]>();
   for (const place of places) {
@@ -185,8 +180,9 @@ export function OrganizationScreen() {
     let live = true;
     void (async () => {
       await apiReady();
-      const r = await allPages((cursor) =>
-        api.GET('/v1/users', { params: { query: { limit: 100, cursor } } }),
+      const r = await allPages(
+        (cursor) => api.GET('/v1/users', { params: { query: { limit: 100, cursor } } }),
+        100,
       );
       if (!live) return;
       if (r.error) {
@@ -761,9 +757,7 @@ function PlaceDialog({
   const [personName, setPersonName] = useState('');
   const [find, setFind] = useState('');
   const [found, setFound] = useState<Person[]>([]);
-  const holders = people.filter((p) => onPlace(p, node.id));
-  const seat = seatOf(node, people);
-  const [choice, setChoice] = useState(seat?.id ?? 'vacant');
+  const holders = peopleOn(node, people);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -831,38 +825,32 @@ function PlaceDialog({
     setFound((r.data?.items ?? []) as Person[]);
   }
 
-  async function saveSeat() {
+  async function addPerson(person: Person) {
+    if (onPlace(person, node.id)) return;
     setBusy(true);
-    const chosen =
-      choice === 'vacant'
-        ? null
-        : (found.find((p) => p.id === choice) ?? people.find((p) => p.id === choice) ?? null);
-    for (const person of holders) {
-      if (chosen && person.id === chosen.id) continue;
-      const ids = person.territoryIds.filter((id) => id !== node.id);
-      const r = await api.PATCH('/v1/employees/{id}', {
-        params: { path: { id: person.id } },
-        body: { version: person.version, territoryIds: ids },
-      });
-      if (r.error) {
-        setBusy(false);
-        return onError(r);
-      }
-    }
-    if (chosen && !onPlace(chosen, node.id)) {
-      const ids = chosen.territoryIds.includes(node.id)
-        ? chosen.territoryIds
-        : [...chosen.territoryIds, node.id];
-      const r = await api.PATCH('/v1/employees/{id}', {
-        params: { path: { id: chosen.id } },
-        body: { version: chosen.version, territoryIds: ids },
-      });
-      if (r.error) {
-        setBusy(false);
-        return onError(r);
-      }
-    }
+    const ids = person.territoryIds.includes(node.id)
+      ? person.territoryIds
+      : [...person.territoryIds, node.id];
+    const r = await api.PATCH('/v1/employees/{id}', {
+      params: { path: { id: person.id } },
+      body: { version: person.version, territoryIds: ids },
+    });
     setBusy(false);
+    if (r.error) return onError(r);
+    setFind('');
+    setFound([]);
+    await onSaved();
+  }
+
+  async function removePerson(person: Person) {
+    setBusy(true);
+    const ids = person.territoryIds.filter((id) => id !== node.id);
+    const r = await api.PATCH('/v1/employees/{id}', {
+      params: { path: { id: person.id } },
+      body: { version: person.version, territoryIds: ids },
+    });
+    setBusy(false);
+    if (r.error) return onError(r);
     await onSaved();
   }
 
@@ -882,7 +870,7 @@ function PlaceDialog({
   }
 
   const adding = NEXT[node.level];
-  const hits = found.filter((p) => p.id !== seat?.id);
+  const hits = found.filter((p) => !onPlace(p, node.id));
 
   return (
     <dialog
@@ -967,67 +955,64 @@ function PlaceDialog({
         </form>
       )}
       {dialog.kind === 'person' && (
-        <form
-          className="flex flex-col gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void saveSeat();
-          }}
-        >
+        <div className="flex flex-col gap-3">
           <div>
-            <h2 className="text-base font-semibold text-[#0F2A4A]">Person on {node.name}</h2>
-            <p className="text-sm text-slate-500">{levelLabel(node.level)} seat</p>
+            <h2 className="text-base font-semibold text-[#0F2A4A]">People on {node.name}</h2>
+            <p className="text-sm text-slate-500">{levelLabel(node.level)}</p>
           </div>
+          <ul className="flex max-h-40 flex-col gap-1 overflow-auto">
+            {holders.map((person) => (
+              <li key={person.id} className="flex items-center justify-between gap-2 text-sm">
+                <span>
+                  <span className="block font-medium text-[#0F2A4A]">{person.name}</span>
+                  <span className="block text-xs text-slate-500">
+                    {roleText(person.primaryRole)}
+                  </span>
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void removePerson(person)}
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+            {holders.length === 0 && (
+              <li className="text-sm text-muted-foreground">Nobody is assigned here.</li>
+            )}
+          </ul>
           <Input
             aria-label="Find a person"
             placeholder="Find a person"
             value={find}
             onChange={(e) => void searchPeople(e.target.value)}
           />
-          <div className="flex flex-col gap-1">
-            {seat && (
-              <SeatChoice
-                checked={choice === seat.id}
-                title={seat.name}
-                detail={roleText(seat.primaryRole)}
-                onPick={() => setChoice(seat.id)}
-              />
-            )}
-            {hits.map((p) => (
-              <SeatChoice
-                key={p.id}
-                checked={choice === p.id}
-                title={p.name}
-                detail={roleText(p.primaryRole)}
-                onPick={() => setChoice(p.id)}
-              />
-            ))}
-            <SeatChoice
-              checked={choice === 'vacant'}
-              title="Vacant"
-              detail="Leave this seat empty"
-              onPick={() => setChoice('vacant')}
-            />
-          </div>
-          {holders.filter((p) => !seat || p.id !== seat.id).length > 0 && (
-            <p className="text-xs text-slate-500">
-              Also on this place:{' '}
-              {holders
-                .filter((p) => !seat || p.id !== seat.id)
-                .map((p) => p.name)
-                .join(', ')}
-              . Save keeps only the person you pick.
-            </p>
+          {hits.length > 0 && (
+            <ul className="rounded-md border">
+              {hits.map((person) => (
+                <li key={person.id}>
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                    disabled={busy}
+                    onClick={() => void addPerson(person)}
+                  >
+                    {person.name}
+                    {roleText(person.primaryRole) ? ` · ${roleText(person.primaryRole)}` : ''}
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end">
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={busy}>
-              Save
+              Done
             </Button>
           </div>
-        </form>
+        </div>
       )}
       {dialog.kind === 'retire' && (
         <div className="flex flex-col gap-3">
@@ -1084,31 +1069,5 @@ function PlaceDialog({
         </form>
       )}
     </dialog>
-  );
-}
-
-function SeatChoice({
-  checked,
-  title,
-  detail,
-  onPick,
-}: {
-  checked: boolean;
-  title: string;
-  detail: string;
-  onPick: () => void;
-}) {
-  return (
-    <label
-      className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm ${
-        checked ? 'bg-[#E8F6F9]' : ''
-      }`}
-    >
-      <input type="radio" checked={checked} onChange={onPick} />
-      <span>
-        <span className="block font-medium text-[#0F2A4A]">{title}</span>
-        {detail && <span className="block text-xs text-slate-500">{detail}</span>}
-      </span>
-    </label>
   );
 }
