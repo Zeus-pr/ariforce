@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { productBrand, type Territory, type TerritoryLevel } from '@ariforce/contracts';
 import { Button } from '@ariforce/ui/components/button';
+import { Combobox } from '@ariforce/ui/components/combobox';
+import { Input } from '@ariforce/ui/components/input';
 import { can } from '@/components/exceptions/model';
 import { useRole } from '@/components/shell/role-context';
 import { api, apiReady, toApiError } from '@/lib/api';
@@ -104,6 +106,14 @@ function hqsUnder(root: Territory, children: Map<string, Territory[]>): Territor
   };
   walk(root.id);
   return out.sort(byName);
+}
+
+function hitPlace(place: Territory, needle: string, people: readonly Person[]) {
+  return (
+    place.name.toLowerCase().includes(needle) ||
+    place.code.toLowerCase().includes(needle) ||
+    namesOn(place.id, people).toLowerCase().includes(needle)
+  );
 }
 
 function namesOn(id: string, people: readonly Person[]) {
@@ -216,6 +226,7 @@ export function SetTargetsScreen() {
   const children = useMemo(() => kidsOf(places), [places]);
   const rootId = places.find((place) => !place.parentId)?.id ?? null;
   const [year, setYear] = useState(() => new Date().getFullYear());
+  const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<'months' | 'brands'>('months');
@@ -342,9 +353,41 @@ export function SetTargetsScreen() {
     }
     return [...names.values()].sort((a, b) => a.localeCompare(b));
   }, [products.data]);
+  const brandHints = useMemo(() => {
+    const lists = new Map<string, string[]>();
+    for (const product of products.data ?? []) {
+      if (product.deletedAt) continue;
+      const brand = productBrand(product);
+      const list = lists.get(brand) ?? [];
+      if (!list.includes(product.name)) list.push(product.name);
+      lists.set(brand, list);
+    }
+    return new Map([...lists].map(([brand, list]) => [brand, list.join(', ')]));
+  }, [products.data]);
 
   const selected = places.find((place) => place.id === selectedId) ?? null;
+  const needle = query.trim().toLowerCase();
+  const matchIds = useMemo(() => {
+    if (!needle) return null;
+    const byId = new Map(places.map((place) => [place.id, place]));
+    const ids = new Set<string>();
+    for (const place of places) {
+      if (!hitPlace(place, needle, people)) continue;
+      let id: string | null = place.id;
+      const seen = new Set<string>();
+      while (id && !seen.has(id)) {
+        seen.add(id);
+        ids.add(id);
+        id = byId.get(id)?.parentId ?? null;
+      }
+    }
+    return ids;
+  }, [needle, people, places]);
   const hqRows = selected ? hqsUnder(selected, children) : [];
+  const visibleHqs =
+    !needle || (selected != null && hitPlace(selected, needle, people))
+      ? hqRows
+      : hqRows.filter((row) => hitPlace(row, needle, people));
   const onHq = selected?.level === 'headquarter';
   const dirty = saveOps(year, saved, sheet, ids).length > 0;
 
@@ -513,7 +556,17 @@ export function SetTargetsScreen() {
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)]">
         <section className="min-h-0 overflow-auto rounded-xl border bg-white p-3">
           <h2 className="px-2 pb-2 text-sm font-semibold text-[#0F2A4A]">Places</h2>
+          <Input
+            aria-label="Find a place"
+            placeholder="Find a place, HQ, or person"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="mb-2 bg-white"
+          />
           {terrs.isPending && <p className="px-2 text-sm text-muted-foreground">Loading places.</p>}
+          {needle && matchIds?.size === 0 && (
+            <p className="px-2 text-sm text-muted-foreground">No place matches.</p>
+          )}
           <ul>
             <PlaceRows
               places={places}
@@ -521,6 +574,7 @@ export function SetTargetsScreen() {
               parentId={null}
               depth={0}
               openIds={openIds}
+              matchIds={matchIds}
               selectedId={selectedId}
               people={people}
               onToggle={(id) =>
@@ -545,7 +599,7 @@ export function SetTargetsScreen() {
             <HqSheet
               place={selected}
               year={year}
-              rows={hqRows}
+              rows={visibleHqs}
               people={people}
               sheet={sheet}
               disabled={busy}
@@ -573,6 +627,8 @@ export function SetTargetsScreen() {
               year={year}
               tab={tab}
               brands={brands}
+              brandHints={brandHints}
+              query={needle}
               known={brandsFor(selected.id, sheet, lastYear, brands)}
               sheet={sheet}
               disabled={busy}
@@ -641,6 +697,7 @@ function PlaceRows({
   parentId,
   depth,
   openIds,
+  matchIds,
   selectedId,
   people,
   onToggle,
@@ -651,17 +708,20 @@ function PlaceRows({
   parentId: string | null;
   depth: number;
   openIds: Set<string>;
+  matchIds: Set<string> | null;
   selectedId: string | null;
   people: Person[];
   onToggle: (id: string) => void;
   onSelect: (id: string) => void;
 }) {
-  const rows = parentId
-    ? (childrenOf.get(parentId) ?? [])
-    : places.filter((place) => !place.parentId).sort(byName);
+  const rows = (
+    parentId
+      ? (childrenOf.get(parentId) ?? [])
+      : places.filter((place) => !place.parentId).sort(byName)
+  ).filter((place) => !matchIds || matchIds.has(place.id));
   return rows.map((place) => {
     const kids = childrenOf.get(place.id) ?? [];
-    const open = openIds.has(place.id);
+    const open = matchIds != null || openIds.has(place.id);
     const who = namesOn(place.id, people);
     return (
       <li key={place.id}>
@@ -705,6 +765,7 @@ function PlaceRows({
               parentId={place.id}
               depth={depth + 1}
               openIds={openIds}
+              matchIds={matchIds}
               selectedId={selectedId}
               people={people}
               onToggle={onToggle}
@@ -783,7 +844,7 @@ function HqSheet({
         twelve months.
       </p>
       {rows.length === 0 && (
-        <p className="mt-4 text-sm text-muted-foreground">No headquarters under this place.</p>
+        <p className="mt-4 text-sm text-muted-foreground">No headquarters to show.</p>
       )}
       {rows.length > 0 && (
         <table className="mt-4 w-full text-sm">
@@ -841,6 +902,8 @@ function MonthSheet({
   year,
   tab,
   brands,
+  brandHints,
+  query,
   known,
   sheet,
   disabled,
@@ -855,6 +918,8 @@ function MonthSheet({
   year: number;
   tab: 'months' | 'brands';
   brands: string[];
+  brandHints: Map<string, string>;
+  query: string;
   known: string[];
   sheet: Sheet;
   disabled: boolean;
@@ -933,6 +998,8 @@ function MonthSheet({
           year={year}
           known={known}
           catalog={brands}
+          hints={brandHints}
+          query={query}
           sheet={sheet}
           disabled={disabled}
           faintOf={faintOf}
@@ -1048,6 +1115,8 @@ function BrandTable({
   year,
   known,
   catalog,
+  hints,
+  query,
   sheet,
   disabled,
   faintOf,
@@ -1058,14 +1127,23 @@ function BrandTable({
   year: number;
   known: string[];
   catalog: string[];
+  hints: Map<string, string>;
+  query: string;
   sheet: Sheet;
   disabled: boolean;
   faintOf: (territoryId: string, brand: string, kind: Kind, index: number) => number | null;
   onBrandYear: (brand: string, kind: Kind, total: number | null) => void;
 }) {
   const [added, setAdded] = useState<string[]>([]);
-  const rows = [...new Set([...known, ...added])].sort((a, b) => a.localeCompare(b));
-  const remaining = catalog.filter((brand) => !rows.includes(brand));
+  const rows = [...new Set([...known, ...added])]
+    .filter(
+      (brand) =>
+        !query ||
+        brand.toLowerCase().includes(query) ||
+        (hints.get(brand) ?? '').toLowerCase().includes(query),
+    )
+    .sort((a, b) => a.localeCompare(b));
+  const remaining = catalog.filter((brand) => !known.includes(brand) && !added.includes(brand));
   return (
     <div className="mt-4">
       <table className="w-full text-sm">
@@ -1104,26 +1182,26 @@ function BrandTable({
         </tbody>
       </table>
       {remaining.length > 0 && (
-        <label className="mt-3 flex flex-col gap-1 text-xs text-slate-500">
-          Add a brand
-          <select
+        <div className="mt-3 max-w-xs">
+          <Combobox
             aria-label="Add a brand"
-            className="h-9 max-w-xs rounded-md border bg-white px-2 text-sm text-[#0F2A4A]"
-            value=""
+            placeholder="Add a brand"
+            searchPlaceholder="Search a brand or product"
+            emptyText="No brand matches."
             disabled={disabled}
-            onChange={(event) => {
-              const brand = event.target.value;
-              if (brand) setAdded((current) => [...current, brand]);
+            options={remaining.map((brand) => ({
+              value: brand,
+              label: brand,
+              hint: hints.get(brand) ?? null,
+            }))}
+            value={[]}
+            onValueChange={(ids) => {
+              const brand = ids.at(-1);
+              if (brand)
+                setAdded((current) => (current.includes(brand) ? current : [...current, brand]));
             }}
-          >
-            <option value="">Choose a brand</option>
-            {remaining.map((brand) => (
-              <option key={brand} value={brand}>
-                {brand}
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+        </div>
       )}
     </div>
   );
