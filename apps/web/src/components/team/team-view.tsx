@@ -23,7 +23,7 @@ import { KpiCards } from '@/components/dashboard/kpi-cards';
 import { TeamCoverageChart } from '@/components/team/team-charts';
 import { formatKpi, HEADLINE, KPI_META, TEAM_COLUMNS } from '@/components/dashboard/kpi-meta';
 import { ExportMenu } from '@/components/export/export-menu';
-import { MasterExcelButton } from '@/components/team/master-excel';
+import { MasterExcelButton, VisitBreakdownButton } from '@/components/team/master-excel';
 import { useMonth } from '@/components/performance/perf-ui';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { api, apiReady, toApiError } from '@/lib/api';
@@ -214,6 +214,22 @@ export function TeamView() {
     fileName: `ariforce-team-${(node?.code ?? 'all').toLowerCase()}-${month}`,
   });
 
+  const headquarters = (tree ?? [])
+    .filter((place) => place.level === 'headquarter' && !place.deletedAt)
+    .map((place) => ({ id: place.id, name: place.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  let focusHeadquartersId: string | null = null;
+  if (!userId) {
+    let current = t ? byId.get(t) : undefined;
+    while (current) {
+      if (current.level === 'headquarter') {
+        focusHeadquartersId = current.id;
+        break;
+      }
+      current = current.parentId ? byId.get(current.parentId) : undefined;
+    }
+  }
+
   if (!month || !tree) return <DeskPageSkeleton embedded />;
 
   return (
@@ -264,22 +280,14 @@ export function TeamView() {
           )}
           <MasterExcelButton
             month={month}
-            headquarters={(tree ?? [])
-              .filter((place) => place.level === 'headquarter' && !place.deletedAt)
-              .map((place) => ({ id: place.id, name: place.name }))
-              .sort((a, b) => a.name.localeCompare(b.name))}
-            focusHeadquartersId={
-              userId
-                ? null
-                : (() => {
-                    let current = t ? byId.get(t) : undefined;
-                    while (current) {
-                      if (current.level === 'headquarter') return current.id;
-                      current = current.parentId ? byId.get(current.parentId) : undefined;
-                    }
-                    return null;
-                  })()
-            }
+            headquarters={headquarters}
+            focusHeadquartersId={focusHeadquartersId}
+            focusUserId={userId}
+          />
+          <VisitBreakdownButton
+            month={month}
+            headquarters={headquarters}
+            focusHeadquartersId={focusHeadquartersId}
             focusUserId={userId}
           />
           <ExportMenu spec={spec} disabled={!rows} />

@@ -915,6 +915,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/reports/visit-breakdown': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Doctor and chemist visit workbook for the caller’s team. Month is required. headquartersId keeps one headquarters. userId keeps that person’s visits. Not both. */
+    get: operations['downloadVisitBreakdown'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/kpis': {
     parameters: {
       query?: never;
@@ -14134,6 +14151,58 @@ export interface operations {
     };
   };
   downloadMasterExcel: {
+    parameters: {
+      query: {
+        /** @description Month (YYYY-MM) */
+        month: string;
+        headquartersId?: string;
+        userId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Workbook (content-disposition: attachment) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': string;
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Missing reports:read */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description MONTH_IN_FUTURE or an invalid month */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  downloadVisitBreakdown: {
     parameters: {
       query: {
         /** @description Month (YYYY-MM) */
