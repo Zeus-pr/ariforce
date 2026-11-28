@@ -153,21 +153,17 @@ describe.skipIf(!OWNER || !APP)('DCR redesign flow (real API)', () => {
     expect(lean.workTypes).toEqual(full.workTypes);
   });
 
-  it('sfc-match returns one entry per HQ, band-filtered', async () => {
+  it('sfc-match returns the person chart once, band-filtered', async () => {
     const r = await http()
       .get(`/v1/dcrs/sfc-match?date=${today}&workTypeId=${wt.FIELD_HQ}&territoryIds=${T.hq},${hq2}`)
       .set(as());
     expect(r.status).toBe(200);
     const m = DcrSfcMatch.parse(r.body);
-    expect(m.hqs).toHaveLength(2);
-    const a = m.hqs.find((x) => x.hqTerritoryId === T.hq)!;
-    const b = m.hqs.find((x) => x.hqTerritoryId === hq2)!;
+    expect(m.hqs).toHaveLength(1);
     const own = [r1, r2, r3].sort();
-    expect(a.candidates.map((c) => c.id).sort()).toEqual(own);
-    expect(b.candidates.map((c) => c.id).sort()).toEqual(own);
-    expect(a.candidates.every((c) => c.source === 'own')).toBe(true);
-    expect(a.autoSelectedId).toBeNull();
-    expect(b.autoSelectedId).toBeNull();
+    expect(m.hqs[0]!.candidates.map((c) => c.id).sort()).toEqual(own);
+    expect(m.hqs[0]!.candidates.every((c) => c.source === 'own')).toBe(true);
+    expect(m.hqs[0]!.autoSelectedId).toBeNull();
   });
 
   it('Meeting rejects sfcRoutes', async () => {

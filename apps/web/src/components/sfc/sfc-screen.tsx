@@ -18,12 +18,8 @@ import {
   asFailure,
   getSettings,
   saveRate,
-  getSheet,
-  listEmployees,
-  listHqs,
   listPeople,
   type SfcEmployee,
-  type SfcHq,
 } from '@/lib/sfc/adapter';
 import { roleLabel } from '@/lib/roles';
 import { useRole } from '@/components/shell/role-context';
@@ -38,12 +34,6 @@ export function SfcScreen() {
   const [rateVersion, setRateVersion] = useState<number | null>(null);
   const { role } = useRole();
   const mayRate = can(role, 'settings:write');
-  const [hqs, setHqs] = useState<SfcHq[] | null>(null);
-  const [hqQ, setHqQ] = useState('');
-  const [hq, setHq] = useState<SfcHq | null>(null);
-  // The HQ list folds to one line once an HQ is picked; Change opens it again.
-  const [hqOpen, setHqOpen] = useState(true);
-  const [emps, setEmps] = useState<SfcEmployee[] | null>(null);
   const [people, setPeople] = useState<SfcEmployee[] | null>(null);
   const [personQ, setPersonQ] = useState('');
   const [emp, setEmp] = useState<SfcEmployee | null>(null);
@@ -56,12 +46,6 @@ export function SfcScreen() {
       setRate(s.ratePerKm);
       setRateVersion(s.version);
     });
-    listHqs()
-      .then(setHqs)
-      .catch((e) => {
-        setHqs([]);
-        setErr(asFailure(e).message);
-      });
     listPeople()
       .then(setPeople)
       .catch((e) => {
@@ -83,67 +67,24 @@ export function SfcScreen() {
   /** Run `go` now, or after the user agrees to drop unsaved rows. */
   const guard = (go: () => void) => (dirty ? setPending(() => go) : go());
 
-  const pickHq = (h: SfcHq) =>
-    guard(() => {
-      setHq(h);
-      setHqOpen(false);
-      setEmp(null);
-      setEmps(null);
-      setDirty(false);
-      listEmployees(h.id)
-        .then(setEmps)
-        .catch((e) => {
-          setEmps([]);
-          setErr(asFailure(e).message);
-        });
-    });
-  const pickEmp = (e: SfcEmployee) =>
-    guard(() => {
-      setDirty(false);
-      setEmp(e);
-    });
-  const openFromSearch = (e: SfcEmployee) => {
+  const pickPerson = (e: SfcEmployee) => {
     if (!e.canEdit) return;
     guard(() => {
+      if (!e.hqId) {
+        setErr('This person has no headquarters, so a chart cannot be saved.');
+        return;
+      }
       setDirty(false);
-      void getSheet(e.id)
-        .then((sheet) => {
-          const hqId = sheet.hqId ?? e.hqId;
-          if (!hqId) {
-            setErr('This person has no headquarters, so a chart cannot be saved.');
-            return;
-          }
-          const known = (hqs ?? []).find((h) => h.id === hqId);
-          setHq(
-            known ?? { id: hqId, name: 'Headquarters', code: null, areaId: null, areaName: null },
-          );
-          setHqOpen(false);
-          setEmp({ ...e, hqId });
-          setPersonQ('');
-          setErr(null);
-        })
-        .catch((err) => setErr(asFailure(err).message));
+      setEmp(e);
+      setErr(null);
     });
   };
   const found = useMemo(() => {
     const q = personQ.trim().toLowerCase();
-    if (!q) return [];
     return (people ?? []).filter((p) =>
       `${p.name} ${p.employeeCode ?? ''}`.toLowerCase().includes(q),
     );
   }, [people, personQ]);
-
-  const groups = useMemo(() => {
-    const q = hqQ.trim().toLowerCase();
-    const m = new Map<string, { area: string; items: SfcHq[] }>();
-    for (const h of hqs ?? []) {
-      if (q && !`${h.name} ${h.code ?? ''} ${h.areaName ?? ''}`.toLowerCase().includes(q)) continue;
-      const g = m.get(h.areaId ?? '') ?? { area: h.areaName ?? 'Other HQs', items: [] };
-      g.items.push(h);
-      m.set(h.areaId ?? '', g);
-    }
-    return [...m.values()];
-  }, [hqs, hqQ]);
   const onDirty = useCallback((d: boolean) => setDirty(d), []);
 
   return (
@@ -168,7 +109,7 @@ export function SfcScreen() {
         </p>
       )}
       <section className={step} data-testid="sfc-search">
-        <h2 className={stepTitle}>Find a person</h2>
+        <h2 className={stepTitle}>Person</h2>
         <Input
           aria-label="Search people"
           placeholder="Search by name or employee code"
@@ -177,138 +118,26 @@ export function SfcScreen() {
           data-testid="sfc-person-search"
           autoComplete="off"
         />
-        {personQ.trim() ? (
-          <ul className="max-h-64 divide-y overflow-y-auto rounded-md border">
-            {people === null ? (
-              <li className="p-3 text-sm text-muted-foreground">Loading…</li>
-            ) : found.length === 0 ? (
-              <li className="p-3 text-sm text-muted-foreground" data-testid="sfc-person-none">
-                No one matches.
-              </li>
-            ) : (
-              found.map((e) =>
-                e.canEdit ? (
-                  <li key={e.id}>
-                    <button
-                      type="button"
-                      onClick={() => openFromSearch(e)}
-                      className="flex w-full justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-muted/60"
-                      data-testid="sfc-person"
-                    >
-                      <span>{e.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {[e.employeeCode, roleLabel(e.role)].filter(Boolean).join(' · ')}
-                      </span>
-                    </button>
-                  </li>
-                ) : (
-                  <li
-                    key={e.id}
-                    className="bg-muted/40 px-3 py-2 text-muted-foreground"
-                    data-testid="sfc-person-locked"
-                  >
-                    <div className="flex justify-between gap-2 text-sm">
-                      <span>{e.name}</span>
-                      <span className="text-xs">
-                        {[e.employeeCode, roleLabel(e.role)].filter(Boolean).join(' · ')}
-                      </span>
-                    </div>
-                    <p className="text-xs">You can’t edit this person’s SFC.</p>
-                  </li>
-                ),
-              )
-            )}
-          </ul>
-        ) : null}
-      </section>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <section className={step} data-testid="sfc-step-hq">
-          <h2 className={stepTitle}>1. HQ</h2>
-          {hq && !hqOpen ? (
-            <p className="text-sm" data-testid="sfc-hq-picked">
-              HQ: <span className="font-medium">{hq.name}</span>
-              <span className="text-muted-foreground"> · </span>
-              <button
-                type="button"
-                className="text-primary underline-offset-4 hover:underline"
-                onClick={() => setHqOpen(true)}
-                data-testid="sfc-hq-change"
-              >
-                Change
-              </button>
-            </p>
+        <ul className="max-h-80 divide-y overflow-y-auto rounded-md border">
+          {people === null ? (
+            <li className="p-3 text-sm text-muted-foreground">Loading…</li>
+          ) : found.length === 0 ? (
+            <li className="p-3 text-sm text-muted-foreground" data-testid="sfc-person-none">
+              No one matches.
+            </li>
           ) : (
-            <>
-              <Input
-                aria-label="Search HQs"
-                placeholder="Search HQ or area"
-                value={hqQ}
-                onChange={(e) => setHqQ(e.target.value)}
-                data-testid="sfc-hq-search"
-                autoComplete="off"
-              />
-              <div className="max-h-64 overflow-y-auto rounded-md border">
-                {hqs === null ? (
-                  <p className="p-3 text-sm text-muted-foreground">Loading…</p>
-                ) : groups.length === 0 ? (
-                  <p className="p-3 text-sm text-muted-foreground" data-testid="sfc-hq-none">
-                    No HQ matches.
-                  </p>
-                ) : (
-                  groups.map((g) => (
-                    <div key={g.area} data-testid="sfc-area">
-                      <p
-                        className="bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground"
-                        data-testid="sfc-area-name"
-                      >
-                        {g.area}
-                      </p>
-                      {g.items.map((h) => (
-                        <button
-                          key={h.id}
-                          type="button"
-                          onClick={() => pickHq(h)}
-                          aria-pressed={hq?.id === h.id}
-                          className={cn(
-                            'flex w-full justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-muted/60',
-                            hq?.id === h.id && 'bg-primary/10 font-medium',
-                          )}
-                          data-testid="sfc-hq-option"
-                        >
-                          <span>{h.name}</span>
-                          <span className="text-xs text-muted-foreground">{h.code}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </section>
-        <section className={step} data-testid="sfc-step-emp">
-          <h2 className={stepTitle}>2. Employee{hq ? ` at ${hq.name}` : ''}</h2>
-          {!hq ? (
-            <p className="text-sm text-muted-foreground">Pick an HQ first.</p>
-          ) : emps === null ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : emps.length === 0 ? (
-            <p className="text-sm text-muted-foreground" data-testid="sfc-emp-none">
-              No one under you at this HQ.
-            </p>
-          ) : (
-            <ul className="divide-y rounded-md border">
-              {emps.map((e) => (
+            found.map((e) =>
+              e.canEdit ? (
                 <li key={e.id}>
                   <button
                     type="button"
-                    onClick={() => pickEmp(e)}
+                    onClick={() => pickPerson(e)}
                     aria-pressed={emp?.id === e.id}
                     className={cn(
                       'flex w-full justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-muted/60',
                       emp?.id === e.id && 'bg-primary/10 font-medium',
                     )}
-                    data-testid="sfc-emp"
+                    data-testid="sfc-person"
                   >
                     <span>{e.name}</span>
                     <span className="text-xs text-muted-foreground">
@@ -316,16 +145,30 @@ export function SfcScreen() {
                     </span>
                   </button>
                 </li>
-              ))}
-            </ul>
+              ) : (
+                <li
+                  key={e.id}
+                  className="bg-muted/40 px-3 py-2 text-muted-foreground"
+                  data-testid="sfc-person-locked"
+                >
+                  <div className="flex justify-between gap-2 text-sm">
+                    <span>{e.name}</span>
+                    <span className="text-xs">
+                      {[e.employeeCode, roleLabel(e.role)].filter(Boolean).join(' · ')}
+                    </span>
+                  </div>
+                  <p className="text-xs">You can’t edit this person’s SFC.</p>
+                </li>
+              ),
+            )
           )}
-        </section>
-      </div>
+        </ul>
+      </section>
 
-      {emp && hq && (
+      {emp && emp.hqId && (
         <section className="flex flex-col gap-3" data-testid="sfc-step-table">
           <h2 className="text-base font-semibold" data-testid="sfc-who">
-            3. {emp.name}, {hq.name}
+            {emp.name}
           </h2>
           <Tabs defaultValue="tada">
             <TabsList>
@@ -337,7 +180,7 @@ export function SfcScreen() {
               <SfcTable
                 key={emp.id}
                 userId={emp.id}
-                hqId={hq.id}
+                hqId={emp.hqId}
                 name={emp.name}
                 rate={rate}
                 editable={emp.canEdit}

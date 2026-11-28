@@ -36,4 +36,35 @@ describe('resolveSfcCandidates (one chart per person)', () => {
     const hqOnly = route({ category: 'hq' });
     expect(resolveSfcCandidates([hqOnly], ME, 'ex_hq')).toEqual([]);
   });
+
+  it('lists one journey once when it was filed under two headquarters', () => {
+    const suri = route({
+      hqTerritoryId: 'suri',
+      fromPlace: 'Burdwan',
+      toPlace: 'Sial Bolpur',
+      oneWayKm: 10,
+      bothWayAmount: 59,
+      da: 150,
+    });
+    const bmch = route({
+      hqTerritoryId: 'burdwan-bmch',
+      fromPlace: 'BURDWAN',
+      toPlace: 'sial-bolpur',
+      oneWayKm: '10.00',
+      bothWayAmount: '59.00',
+      da: '150',
+      sortOrder: 2,
+    });
+    const differentFare = route({
+      hqTerritoryId: 'burdwan-bmch',
+      fromPlace: 'Burdwan',
+      toPlace: 'Sial Bolpur',
+      oneWayKm: 12,
+      bothWayAmount: 80,
+      da: 150,
+      sortOrder: 3,
+    });
+    const out = resolveSfcCandidates([bmch, differentFare, suri], ME, 'ex_hq');
+    expect(ids(out)).toEqual([suri.id, differentFare.id]);
+  });
 });

@@ -239,33 +239,40 @@ export class DcrFlowService {
     return resolveSfcCandidates(rows, userId, band);
   }
 
-  /** Routes chosen for the day's territories, taken from that one chart. */
-  private selectRoutes(
-    chart: RouteRow[],
-    hqs: Hq[],
-    chosen: { hqTerritoryId: string; sfcRouteId: string }[],
-  ) {
+  /**
+   * The routes the person actually picked from their own chart.
+   * The headquarters worked that day does not add another copy.
+   */
+  private selectRoutes(chart: RouteRow[], chosen: { sfcRouteId: string }[]) {
     const routes: RouteRow[] = [];
     const seen = new Set<string>();
-    const none: string[] = [];
-    const many: { hqTerritoryId: string; candidates: number }[] = [];
     const take = (row: RouteRow) => {
       if (seen.has(row.id)) return;
       seen.add(row.id);
       routes.push(row);
     };
-    for (const h of hqs) {
-      const picks = chosen.filter((c) => c.hqTerritoryId === h.id);
-      if (picks.length) {
-        for (const pick of picks) {
-          const row = chart.find((r) => r.id === pick.sfcRouteId);
-          if (row) take(row);
-        }
-      } else if (chart.length === 1) take(chart[0]!);
-      else if (!chart.length) none.push(h.id);
-      else many.push({ hqTerritoryId: h.id, candidates: chart.length });
+    const ids = [...new Set(chosen.map((c) => c.sfcRouteId))];
+    if (ids.length) {
+      for (const id of ids) {
+        const row = chart.find((r) => r.id === id);
+        if (row) take(row);
+      }
+      return {
+        routes,
+        none: [] as string[],
+        many: [] as { hqTerritoryId: string; candidates: number }[],
+      };
     }
-    return { routes, none, many };
+    if (chart.length === 1) {
+      take(chart[0]!);
+      return { routes, none: [], many: [] };
+    }
+    if (!chart.length) return { routes, none: ['chart'], many: [] };
+    return {
+      routes,
+      none: [],
+      many: [{ hqTerritoryId: chart[0]!.hqTerritoryId, candidates: chart.length }],
+    };
   }
 
   /**
@@ -500,20 +507,22 @@ export class DcrFlowService {
         throw err(503, 'SFC_UNAVAILABLE', 'SFC lookup failed; retry');
       }
       const listed = rows.map(candidate);
+      const anchor = hqs[0]!;
       const out = {
         band,
-        hqs: hqs.map((h) => ({
-          hqTerritoryId: h.id,
-          hqName: h.name,
-          candidates: listed,
-          autoSelectedId: listed.length === 1 ? listed[0]!.id : null,
-        })),
+        hqs: [
+          {
+            hqTerritoryId: anchor.id,
+            hqName: 'Your routes',
+            candidates: listed,
+            autoSelectedId: listed.length === 1 ? listed[0]!.id : null,
+          },
+        ],
       };
-      const missingHqIds = out.hqs.filter((h) => !h.candidates.length).map((h) => h.hqTerritoryId);
-      if (missingHqIds.length)
-        throw err(404, 'SFC_NO_MATCH', 'No SFC route for some HQ of the day', {
+      if (!listed.length)
+        throw err(404, 'SFC_NO_MATCH', 'No SFC route on your chart for this band', {
           ...out,
-          missingHqIds,
+          missingHqIds: [anchor.id],
         });
       return out;
     });
@@ -524,18 +533,12 @@ export class DcrFlowService {
     tx: Tx,
     p: Principal,
     choices: { hqTerritoryId: string; sfcRouteId: string }[],
-    hqs: Hq[],
     band: DcrBand | null,
   ) {
     if (!choices.length) return;
     if (!band)
       throw err(422, 'VALIDATION', 'SFC applies to field work types only (Meeting never)', {
         field: 'sfcRoutes',
-      });
-    const foreignHq = choices.filter((c) => !hqs.some((h) => h.id === c.hqTerritoryId));
-    if (foreignHq.length)
-      throw err(422, 'SFC_MISMATCH', 'Route HQ is not an HQ of the chosen territories', {
-        hqTerritoryIds: foreignHq.map((c) => c.hqTerritoryId),
       });
     const ok = await this.chart(tx, p.userId, band);
     const bad = choices.filter((c) => !ok.some((r) => r.id === c.sfcRouteId));
@@ -723,7 +726,7 @@ export class DcrFlowService {
         this.checkDetailsKind(wt, part.details);
         const hqs = await this.resolveHqs(tx, p, part.territoryIds);
         await this.checkWorkWith(tx, p, part.workWithUserIds);
-        await this.checkChoices(tx, p, part.sfcRoutes ?? [], hqs, band);
+        await this.checkChoices(tx, p, part.sfcRoutes ?? [], band);
         prepared.push({ wt, band, hqs, part, details: normaliseDetails(part.details) });
       }
       const head = prepared[0]!;
@@ -918,7 +921,7 @@ export class DcrFlowService {
         this.dcr.assertCheckIns(section.calls);
         if (presentationRequired(p.roles)) this.dcr.assertPresentations(section.calls);
       }
-      const hqs = await this.resolveHqs(tx, p, cur.territoryIds);
+      await this.resolveHqs(tx, p, cur.territoryIds);
       await this.checkWorkWith(tx, p, cur.workWithUserIds);
       await this.details(tx, p, wt, cur);
       await this.dcr.validateCalls(
@@ -938,13 +941,11 @@ export class DcrFlowService {
       // TP feature: changes from the approved tour plan no longer need a deviation reason
       // (deviationReason stays optional and is stored as given).
 
-      const chosen = band
-        ? dto.sfcRoutes.filter((r) => hqs.some((h) => h.id === r.hqTerritoryId))
-        : [];
-      await this.checkChoices(tx, p, chosen, hqs, band);
+      const chosen = band ? dto.sfcRoutes : [];
+      await this.checkChoices(tx, p, chosen, band);
       const routes: RouteRow[] = [];
       if (band) {
-        const picked = this.selectRoutes(await this.chart(tx, p.userId, band), hqs, chosen);
+        const picked = this.selectRoutes(await this.chart(tx, p.userId, band), chosen);
         routes.push(...picked.routes);
         if (picked.none.length)
           throw err(422, 'SFC_NO_MATCH', 'No SFC route on your chart for this band', {
@@ -952,7 +953,7 @@ export class DcrFlowService {
             band,
           });
         if (picked.many.length)
-          throw err(422, 'SFC_ROUTE_REQUIRED', 'Choose at least one SFC route for each HQ', {
+          throw err(422, 'SFC_ROUTE_REQUIRED', 'Choose the SFC route you travelled', {
             hqs: picked.many,
           });
       }
@@ -993,17 +994,12 @@ export class DcrFlowService {
       }
       for (const [index, section] of sections.entries()) {
         if (index === 0 || !section.band) continue;
-        const secHqs = await this.resolveHqs(tx, p, section.territoryIds);
         const secChosen = section.sfcRoutes.map((r) => ({
           hqTerritoryId: r.hqTerritoryId,
           sfcRouteId: r.sfcRouteId,
         }));
-        await this.checkChoices(tx, p, secChosen, secHqs, section.band);
-        const picked = this.selectRoutes(
-          await this.chart(tx, p.userId, section.band),
-          secHqs,
-          secChosen,
-        );
+        await this.checkChoices(tx, p, secChosen, section.band);
+        const picked = this.selectRoutes(await this.chart(tx, p.userId, section.band), secChosen);
         if (picked.none.length)
           throw err(422, 'SFC_NO_MATCH', 'No SFC route on your chart for this band', {
             hqTerritoryIds: picked.none,
@@ -1011,7 +1007,7 @@ export class DcrFlowService {
             section: index,
           });
         if (picked.many.length)
-          throw err(422, 'SFC_ROUTE_REQUIRED', 'Choose at least one SFC route for each HQ', {
+          throw err(422, 'SFC_ROUTE_REQUIRED', 'Choose the SFC route you travelled', {
             hqs: picked.many,
             section: index,
           });

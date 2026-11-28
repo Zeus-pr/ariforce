@@ -8,8 +8,7 @@ export default function Page() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">SFC</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Standard fare chart for each person in your team. Pick an HQ, then a person, then edit
-          their TA/DA routes.
+          Each person’s fare chart. Pick a person, then edit their TA/DA routes.
         </p>
       </div>
       <SfcScreen />

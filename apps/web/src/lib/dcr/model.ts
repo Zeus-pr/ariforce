@@ -350,9 +350,8 @@ export function problems(s: FlowState): { key: string; text: string }[] {
     else if (s.sfc.state === 'error')
       add('sfc', 'SFC could not be loaded. Retry before submitting.');
     else if (s.sfc.state === 'ok') {
-      for (const h of s.sfc.hqs)
-        if (!(s.routeChoice[h.hqTerritoryId] ?? h.autoSelectedId))
-          add('sfc', `Pick the SFC route for ${h.hqName}.`);
+      const picked = s.sfc.hqs.some((h) => s.routeChoice[h.hqTerritoryId] ?? h.autoSelectedId);
+      if (!picked) add('sfc', 'Pick the SFC route you travelled.');
       if (b !== 'camp') {
         if (!s.calls.length) add('calls', 'Add at least one Doctor, Chemist or Stockist call.');
         s.calls.forEach((c, i) => {
