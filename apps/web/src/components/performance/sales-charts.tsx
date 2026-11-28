@@ -66,10 +66,7 @@ export function SalesGauges({
     <div className="grid gap-4 sm:grid-cols-2">
       {gauges.map((gauge) => {
         return (
-          <section
-            key={gauge.label}
-            className="rounded-xl border bg-card p-4 shadow-xs"
-          >
+          <section key={gauge.label} className="rounded-xl border bg-card p-4 shadow-xs">
             <ChartFrame label={`${gauge.label} ${gauge.pct}% of target`}>
               <Gauge
                 value={Math.max(0, Math.min(100, gauge.pct))}
