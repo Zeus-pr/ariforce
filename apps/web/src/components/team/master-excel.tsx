@@ -36,18 +36,61 @@ function thisMonth() {
 }
 
 type Choice = 'all' | 'hq' | 'person';
+type Workbook = 'master' | 'visits';
 
-export function MasterExcelButton({
-  month,
-  headquarters,
-  focusHeadquartersId,
-  focusUserId,
-}: {
+const COPY = {
+  master: {
+    label: 'Master Excel',
+    title: 'Master Excel',
+    description:
+      'All headquarters, one headquarters, or one person. A person stays on their headquarters sheet, with its territories.',
+    path: '/v1/reports/master-excel',
+    file: 'master-excel',
+    test: 'master-excel',
+  },
+  visits: {
+    label: 'Doc / chem visit breakdown',
+    title: 'Doc / chem visit breakdown',
+    description:
+      'Who was seen this month, how many times, and on which dates. Each headquarters is its own sheet.',
+    path: '/v1/reports/visit-breakdown',
+    file: 'doc-chem-visits',
+    test: 'visit-breakdown',
+  },
+} as const;
+
+export function MasterExcelButton(props: {
   month: string;
   headquarters: { id: string; name: string }[];
   focusHeadquartersId: string | null;
   focusUserId: string | null;
 }) {
+  return <WorkbookButton {...props} workbook="master" />;
+}
+
+export function VisitBreakdownButton(props: {
+  month: string;
+  headquarters: { id: string; name: string }[];
+  focusHeadquartersId: string | null;
+  focusUserId: string | null;
+}) {
+  return <WorkbookButton {...props} workbook="visits" />;
+}
+
+function WorkbookButton({
+  month,
+  headquarters,
+  focusHeadquartersId,
+  focusUserId,
+  workbook,
+}: {
+  month: string;
+  headquarters: { id: string; name: string }[];
+  focusHeadquartersId: string | null;
+  focusUserId: string | null;
+  workbook: Workbook;
+}) {
+  const copy = COPY[workbook];
   const [open, setOpen] = useState(false);
   const [year, setYear] = useState(month.slice(0, 4));
   const [mon, setMon] = useState(month.slice(5, 7));
@@ -103,7 +146,7 @@ export function MasterExcelButton({
     if (choice === 'hq' && hqId) query.set('headquartersId', hqId);
     if (choice === 'person' && personId) query.set('userId', personId);
     try {
-      const res = await fetch(`${API_URL}/v1/reports/master-excel?${query}`, {
+      const res = await fetch(`${API_URL}${copy.path}?${query}`, {
         credentials: 'include',
       });
       if (!res.ok) {
@@ -118,7 +161,7 @@ export function MasterExcelButton({
       const a = document.createElement('a');
       const url = URL.createObjectURL(blob);
       a.href = url;
-      a.download = `master-excel-${chosen}.xlsx`;
+      a.download = `${copy.file}-${chosen}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -138,18 +181,15 @@ export function MasterExcelButton({
         size="sm"
         variant="outline"
         onClick={openDialog}
-        data-testid="master-excel"
+        data-testid={copy.test}
       >
-        Master Excel
+        {copy.label}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent data-testid="master-excel-dialog">
+        <DialogContent data-testid={`${copy.test}-dialog`}>
           <DialogHeader>
-            <DialogTitle>Master Excel</DialogTitle>
-            <DialogDescription>
-              All headquarters, one headquarters, or one person. A person stays on their
-              headquarters sheet, with its territories.
-            </DialogDescription>
+            <DialogTitle>{copy.title}</DialogTitle>
+            <DialogDescription>{copy.description}</DialogDescription>
           </DialogHeader>
           <label className="flex flex-col gap-1 text-sm">
             Who
@@ -157,7 +197,7 @@ export function MasterExcelButton({
               className="h-9 rounded-md border bg-card px-2"
               value={choice}
               onChange={(e) => setChoice(e.target.value as Choice)}
-              data-testid="master-excel-who"
+              data-testid={`${copy.test}-who`}
             >
               <option value="all">All headquarters</option>
               <option value="hq">One headquarters</option>
@@ -171,7 +211,7 @@ export function MasterExcelButton({
                 className="h-9 rounded-md border bg-card px-2"
                 value={hqId}
                 onChange={(e) => setHqId(e.target.value)}
-                data-testid="master-excel-hq"
+                data-testid={`${copy.test}-hq`}
               >
                 {headquarters.map((hq) => (
                   <option key={hq.id} value={hq.id}>
@@ -188,7 +228,7 @@ export function MasterExcelButton({
                 className="h-9 rounded-md border bg-card px-2"
                 value={personId}
                 onChange={(e) => setPersonId(e.target.value)}
-                data-testid="master-excel-person"
+                data-testid={`${copy.test}-person`}
               >
                 <option value="">Choose a person</option>
                 {people.map((person) => (
@@ -206,7 +246,7 @@ export function MasterExcelButton({
                 className="h-9 rounded-md border bg-card px-2"
                 value={mon}
                 onChange={(e) => setMon(e.target.value)}
-                data-testid="master-excel-month"
+                data-testid={`${copy.test}-month`}
               >
                 {MONTHS.map((name, i) => {
                   const value = String(i + 1).padStart(2, '0');
@@ -228,7 +268,7 @@ export function MasterExcelButton({
                   setYear(next);
                   if (`${next}-${mon}` > now) setMon(now.slice(5, 7));
                 }}
-                data-testid="master-excel-year"
+                data-testid={`${copy.test}-year`}
               >
                 {years.map((item) => (
                   <option key={item} value={item}>
@@ -245,7 +285,7 @@ export function MasterExcelButton({
               busy || future || (choice === 'hq' && !hqId) || (choice === 'person' && !personId)
             }
             onClick={() => void download()}
-            data-testid="master-excel-download"
+            data-testid={`${copy.test}-download`}
           >
             {busy && <LoaderCircle className="animate-spin" aria-hidden />}
             Download

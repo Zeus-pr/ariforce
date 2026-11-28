@@ -915,6 +915,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/reports/visit-breakdown': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Doctor and chemist visit workbook for the caller’s team. Month is required. headquartersId keeps one headquarters. userId keeps that person’s visits. Not both. */
+    get: operations['downloadVisitBreakdown'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/kpis': {
     parameters: {
       query?: never;
@@ -4209,6 +4226,8 @@ export interface components {
       sfcRoutes?: components['schemas']['DcrSfcRouteChoice'][];
       details?: components['schemas']['DcrDetails'] | null;
       deviationReason?: string | null;
+      /** @description Day remarks, separate from each visit. Null clears it. Omit to keep the saved remarks (older clients) */
+      remarks?: string | null;
       /** @description The approved TourPlanItem this day is filed from. The date must lie in its from..to and it must be yours and approved, else 422 VALIDATION (details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date in the range may be drafted (submit still opens on the day). Omitted: the server links the approved item covering the date, if any. No deviation reason is ever required */
       tourPlanItemId?: string | null;
       calls?: components['schemas']['DcrCallInput'][];
@@ -6788,6 +6807,8 @@ export interface components {
       tourPlanItemId?: string | null;
       /** @description Required when worked differs from the approved TP (#22) */
       deviationReason: string | null;
+      /** @description Day remarks, separate from each visit. Null when blank. Absent on older responses */
+      remarks?: string | null;
       /**
        * @description draft/submitted show 'locked' after the day-lock cut-off (#23). approved/rejected (manager review) always show as such.
        * @enum {string}
@@ -7433,6 +7454,8 @@ export interface components {
       tourPlanItemId?: string | null;
       /** @description Required when worked differs from the approved TP (#22) */
       deviationReason: string | null;
+      /** @description Day remarks, separate from each visit. Null when blank. Absent on older responses */
+      remarks?: string | null;
       /**
        * @description draft/submitted show 'locked' after the day-lock cut-off (#23). approved/rejected (manager review) always show as such.
        * @enum {string}
@@ -14128,6 +14151,58 @@ export interface operations {
     };
   };
   downloadMasterExcel: {
+    parameters: {
+      query: {
+        /** @description Month (YYYY-MM) */
+        month: string;
+        headquartersId?: string;
+        userId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Workbook (content-disposition: attachment) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': string;
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Missing reports:read */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description MONTH_IN_FUTURE or an invalid month */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  downloadVisitBreakdown: {
     parameters: {
       query: {
         /** @description Month (YYYY-MM) */

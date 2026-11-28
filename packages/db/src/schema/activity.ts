@@ -176,6 +176,8 @@ export const dcrs = pgTable(
     status: docStatus('status').notNull().default('draft'),
     /** Reason when the day deviates from the approved TP. */
     deviationReason: text('deviation_reason'),
+    /** Day remarks. Separate from the remarks on each doctor, chemist, or stockist visit. */
+    remarks: text('remarks'),
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
     /** Field day band (0043): hq | ex_hq | outstation; null for non-field days. */
     band: text('band', { enum: ['hq', 'ex_hq', 'outstation'] }),

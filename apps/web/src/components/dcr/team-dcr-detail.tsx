@@ -108,6 +108,12 @@ export function DcrReportBody({
             d.userId !== user?.id &&
             can(role, 'dcr:review') && <ReviewBar id={d.id} onDone={() => void q.refetch()} />}
           <ReportFacts d={d} nameOf={nameOf} />
+          {d.remarks ? (
+            <section className="flex flex-col gap-1" data-testid="dcr-day-remarks">
+              <h2 className="text-sm font-medium">Remarks</h2>
+              <p className="rounded-xl border bg-card px-4 py-3 text-sm break-words">{d.remarks}</p>
+            </section>
+          ) : null}
           <WorkDone d={d} />
           <DcrExpenses
             rows={draftsOf(expensesOf(d))}

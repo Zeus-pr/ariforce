@@ -302,6 +302,10 @@ export const DcrDraftPut = z
       .meta({ description: 'One per HQ of the day (field only). Omit to keep the saved choices' }),
     details: DcrDetails.nullable().optional(),
     deviationReason: z.string().max(500).nullable().optional(),
+    remarks: z.string().trim().max(1000).nullable().optional().meta({
+      description:
+        'Day remarks, separate from each visit. Null clears it. Omit to keep the saved remarks (older clients)',
+    }),
     tourPlanItemId: Id.nullable().optional().meta({
       description:
         'The approved TourPlanItem this day is filed from. The date must lie in its from..to and it must be yours and approved, else 422 VALIDATION (details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date in the range may be drafted (submit still opens on the day). Omitted: the server links the approved item covering the date, if any. No deviation reason is ever required',

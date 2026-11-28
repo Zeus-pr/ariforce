@@ -151,6 +151,7 @@ const fresh = (date: string): FlowState => ({
   office: emptyOffice(),
   leaveRequestId: '',
   deviationReason: '',
+  remarks: '',
   expenses: [],
   expensesSent: false,
 });
@@ -395,6 +396,7 @@ function Flow({
           };
         if (det?.kind === 'leave') next.leaveRequestId = det.leaveRequestId;
         next.deviationReason = d.deviationReason ?? '';
+        next.remarks = d.remarks ?? '';
         setAskDeviation(!!d.deviationReason);
       } else setAskDeviation(false);
       setS(next);
@@ -1339,6 +1341,29 @@ function Flow({
             onChange={(id) => update({ leaveRequestId: id })}
             readOnly={readOnly}
             errors={errorsFor('leave')}
+          />
+        </Step>
+      )}
+
+      {s.workOn && (!readOnly || s.remarks.trim()) && (
+        <Step
+          title="Remarks"
+          hint="For the whole day. Each visit keeps its own remarks."
+          testId="dcr-step-remarks"
+        >
+          <Label htmlFor="dcr-remarks" className="sr-only">
+            Remarks
+          </Label>
+          <textarea
+            id="dcr-remarks"
+            value={s.remarks}
+            maxLength={1000}
+            rows={3}
+            disabled={readOnly}
+            onChange={(e) => update({ remarks: e.target.value })}
+            placeholder="Anything else about this day"
+            className="w-full rounded-md border bg-card px-3 py-2 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm"
+            data-testid="dcr-remarks"
           />
         </Step>
       )}

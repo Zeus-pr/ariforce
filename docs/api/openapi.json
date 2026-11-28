@@ -6500,6 +6500,99 @@
         }
       }
     },
+    "/v1/reports/visit-breakdown": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "KPIs"
+        ],
+        "operationId": "downloadVisitBreakdown",
+        "summary": "Doctor and chemist visit workbook for the caller’s team. Month is required. headquartersId keeps one headquarters. userId keeps that person’s visits. Not both.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "month",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "description": "Month (YYYY-MM)",
+              "example": "2026-11"
+            },
+            "required": true,
+            "description": "Month (YYYY-MM)"
+          },
+          {
+            "in": "query",
+            "name": "headquartersId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          },
+          {
+            "in": "query",
+            "name": "userId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workbook (content-disposition: attachment)",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing reports:read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "MONTH_IN_FUTURE or an invalid month",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/kpis": {
       "get": {
         "security": [
@@ -23342,6 +23435,18 @@
               }
             ]
           },
+          "remarks": {
+            "description": "Day remarks, separate from each visit. Null clears it. Omit to keep the saved remarks (older clients)",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tourPlanItemId": {
             "description": "The approved TourPlanItem this day is filed from. The date must lie in its from..to and it must be yours and approved, else 422 VALIDATION (details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date in the range may be drafted (submit still opens on the day). Omitted: the server links the approved item covering the date, if any. No deviation reason is ever required",
             "anyOf": [
@@ -32886,6 +32991,18 @@
             ],
             "description": "Required when worked differs from the approved TP (#22)"
           },
+          "remarks": {
+            "description": "Day remarks, separate from each visit. Null when blank. Absent on older responses",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -34984,6 +35101,18 @@
               }
             ],
             "description": "Required when worked differs from the approved TP (#22)"
+          },
+          "remarks": {
+            "description": "Day remarks, separate from each visit. Null when blank. Absent on older responses",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "type": "string",

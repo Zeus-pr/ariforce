@@ -321,6 +321,7 @@ export class DcrService {
         tourPlanId: r.tourPlanId,
         tourPlanItemId: r.tourPlanItemId ?? null,
         deviationReason: r.deviationReason,
+        remarks: r.remarks,
         status:
           r.status === 'approved' || r.status === 'rejected' || r.status === 'submitted'
             ? r.status
