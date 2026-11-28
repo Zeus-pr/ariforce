@@ -320,20 +320,29 @@ export class StockStatementsService implements OnModuleInit {
       }
       const found = await tx
         .select({
-          month: stockStatements.month,
-          hq: territories.name,
+          hq: sql<string>`max(${territories.name})`,
           hqPath: territories.path,
-          stockist: stockists.name,
           productId: stockStatementLines.productId,
-          lineName: stockStatementLines.productName,
-          catalogName: products.name,
-          catalogBrand: products.brand,
-          purchaseQty: stockStatementLines.purchaseQty,
-          secondaryQty: stockStatementLines.secondaryQty,
-          frsQty: stockStatementLines.frsQty,
-          freeQty: stockStatementLines.freeQty,
-          openingQty: stockStatementLines.openingQty,
-          pts: stockStatementLines.pts,
+          lineName: sql<string | null>`max(${stockStatementLines.productName})`,
+          catalogName: sql<string | null>`max(${products.name})`,
+          catalogBrand: sql<string | null>`max(${products.brand})`,
+          purchaseQty: sql<number>`coalesce(sum(${stockStatementLines.purchaseQty}), 0)::int`,
+          secondaryQty: sql<number>`coalesce(sum(${stockStatementLines.secondaryQty}), 0)::int`,
+          primaryValue: sql<string>`coalesce(sum(round(${stockStatementLines.purchaseQty} * coalesce(${stockStatementLines.pts}, 0), 2)), 0)`,
+          secondaryValue: sql<string>`coalesce(sum(round((${stockStatementLines.secondaryQty} - ${stockStatementLines.frsQty}) * coalesce(${stockStatementLines.pts}, 0), 2)), 0)`,
+          closingQty: sql<number>`coalesce(sum(case
+              when ${stockStatementLines.openingQty} is not null
+                or ${stockStatementLines.purchaseQty} <> 0
+                or ${stockStatementLines.freeQty} <> 0
+                or ${stockStatementLines.secondaryQty} <> 0
+                or ${stockStatementLines.frsQty} <> 0
+              then coalesce(${stockStatementLines.openingQty}, 0)
+                + ${stockStatementLines.purchaseQty}
+                + ${stockStatementLines.freeQty}
+                - ${stockStatementLines.secondaryQty}
+                - ${stockStatementLines.frsQty}
+              else 0
+            end), 0)::int`,
         })
         .from(stockStatements)
         .innerJoin(stockists, eq(stockists.id, stockStatements.stockistId))
@@ -352,10 +361,12 @@ export class StockStatementsService implements OnModuleInit {
             eq(stockStatements.status, 'approved'),
             gte(stockStatements.month, `${q.from}-01`),
             lte(stockStatements.month, `${q.to}-01`),
+            sql`(${stockStatementLines.purchaseQty} <> 0 or ${stockStatementLines.secondaryQty} <> 0 or ${stockStatementLines.frsQty} <> 0)`,
             scope,
             under,
           ),
-        );
+        )
+        .groupBy(territories.path, stockStatementLines.productId);
       const named = await tx
         .select({ name: territories.name, path: territories.path, level: territories.level })
         .from(territories)
@@ -407,7 +418,6 @@ export class StockStatementsService implements OnModuleInit {
         secondaryValue: number;
         closingQty: number;
       };
-      const lines = [];
       const peopleOut = new Map<
         string,
         {
@@ -418,40 +428,16 @@ export class StockStatementsService implements OnModuleInit {
         }
       >();
       for (const row of found) {
-        const pts = row.pts == null ? null : Number(row.pts);
-        const figured = figureLine({
-          openingQty: row.openingQty,
-          purchaseQty: row.purchaseQty,
-          freeQty: row.freeQty,
-          secondaryQty: row.secondaryQty,
-          frsQty: row.frsQty,
-          pts,
-        });
-        const primaryValue = figured.purchaseValue ?? 0;
-        const secondaryValue = (figured.secondaryValue ?? 0) - (figured.frsValue ?? 0);
-        const closingQty = figured.closingQty ?? 0;
-        if (row.purchaseQty === 0 && row.secondaryQty === 0 && row.frsQty === 0) continue;
+        const primaryValue = Number(row.primaryValue);
+        const secondaryValue = Number(row.secondaryValue);
+        const closingQty = Number(row.closingQty);
         const name = row.lineName || row.catalogName || 'Product';
         const brand = productBrand({ name, brand: row.catalogBrand });
-        const month = String(row.month).slice(0, 7);
         const headquarters = hqName(row.hqPath) || row.hq;
         const seat = salesSeat(holders, row.hqPath);
         const owners = seat.vacant
           ? [{ userId: uuidv5(seat.path, VACANT_SEAT), name: 'Vacant' }]
           : seat.people;
-        lines.push({
-          month,
-          headquarters,
-          stockist: row.stockist,
-          person: owners.map((owner) => owner.name).join(', ') || null,
-          product: name,
-          brand,
-          primaryQty: row.purchaseQty,
-          primaryValue,
-          secondaryQty: row.secondaryQty,
-          secondaryValue,
-          closingQty,
-        });
         for (const owner of owners) {
           const person = peopleOut.get(owner.userId) ?? {
             userId: owner.userId,
@@ -531,7 +517,12 @@ export class StockStatementsService implements OnModuleInit {
           products: [...person.products.values()].sort(byValue),
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
-      return { products: productsList, people, brandTargets: [...brandTargets.values()], lines };
+      return {
+        products: productsList,
+        people,
+        brandTargets: [...brandTargets.values()],
+        lines: [],
+      };
     });
   }
 

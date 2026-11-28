@@ -6830,6 +6830,100 @@
         }
       }
     },
+    "/v1/kpis/sales-places": {
+      "get": {
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "KPIs"
+        ],
+        "operationId": "getSalesPlaces",
+        "summary": "Primary and secondary sales for each place, for up to 48 months, in one call. Same scope as GET /v1/kpis byTerritory.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "territoryId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUIDv7 identifier",
+              "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+            },
+            "required": true,
+            "description": "UUIDv7 identifier"
+          },
+          {
+            "in": "query",
+            "name": "territoryLevel",
+            "schema": {
+              "$ref": "#/components/schemas/TerritoryLevel"
+            }
+          },
+          {
+            "in": "query",
+            "name": "months",
+            "schema": {
+              "minItems": 1,
+              "maxItems": 48,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "description": "Month (YYYY-MM)",
+                "example": "2026-11"
+              }
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesPlaces"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing reports:read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/kpis/products": {
       "get": {
         "security": [
@@ -31561,6 +31655,85 @@
           "title",
           "columns",
           "rows"
+        ],
+        "additionalProperties": false
+      },
+      "SalesPlaces": {
+        "type": "object",
+        "properties": {
+          "places": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SalesPlace"
+            }
+          }
+        },
+        "required": [
+          "places"
+        ],
+        "additionalProperties": false
+      },
+      "SalesPlace": {
+        "type": "object",
+        "properties": {
+          "territoryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUIDv7 identifier",
+            "example": "0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70"
+          },
+          "label": {
+            "type": "string"
+          },
+          "months": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SalesPlaceMonth"
+            }
+          }
+        },
+        "required": [
+          "territoryId",
+          "label",
+          "months"
+        ],
+        "additionalProperties": false
+      },
+      "SalesPlaceMonth": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "description": "Month (YYYY-MM)",
+            "example": "2026-11"
+          },
+          "primary": {
+            "type": "number"
+          },
+          "primaryTarget": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "secondary": {
+            "type": "number"
+          },
+          "secondaryTarget": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "month",
+          "primary",
+          "primaryTarget",
+          "secondary",
+          "secondaryTarget"
         ],
         "additionalProperties": false
       },

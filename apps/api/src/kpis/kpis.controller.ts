@@ -1,5 +1,5 @@
 import { Controller, ForbiddenException, Get, Query } from '@nestjs/common';
-import { KpiQuery } from '@ariforce/contracts';
+import { KpiQuery, SalesPlacesQuery } from '@ariforce/contracts';
 import type * as z from 'zod';
 import { CurrentPrincipal } from '../auth/decorators';
 import type { Principal } from '../auth/principal';
@@ -40,6 +40,25 @@ export class KpisController {
   ) {
     canReadKpis(p, q);
     return this.svc.report(p, q);
+  }
+
+  @Get('sales-places')
+  salesPlaces(
+    @CurrentPrincipal() p: Principal,
+    @Query(new ZodPipe(SalesPlacesQuery)) q: z.output<typeof SalesPlacesQuery>,
+  ) {
+    canReadKpis(p, {
+      rollup: 'byTerritory',
+      territoryId: q.territoryId,
+      territoryLevel: q.territoryLevel,
+      kpis: [
+        'primary_sales_value',
+        'primary_achievement_pct',
+        'secondary_sales_value',
+        'secondary_achievement_pct',
+      ],
+    });
+    return this.svc.salesPlaces(p, q);
   }
 
   @Get('products')

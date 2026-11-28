@@ -23,9 +23,6 @@ import {
 import { SalesChartsSkeleton, SalesSkeleton } from './sales-skeleton';
 import { MonthSwitch, inr, useMonth } from './perf-ui';
 
-const KPIS =
-  'primary_sales_value,primary_achievement_pct,secondary_sales_value,secondary_achievement_pct';
-
 const LEVEL: Record<TerritoryLevel, string> = {
   national: 'Country',
   zone: 'State',
@@ -276,21 +273,53 @@ async function brandTargetsOf(from: string, to: string, ids: Set<string>) {
   return [...totals.values()];
 }
 
-async function placesOf(month: string, territoryId: string, territoryLevel?: TerritoryLevel) {
+function salesRow(
+  territoryId: string,
+  label: string,
+  point: {
+    primary: number;
+    primaryTarget: number | null;
+    secondary: number;
+    secondaryTarget: number | null;
+  },
+): Row {
+  const metric = (kpi: Row['metrics'][number]['kpi'], value: number, target: number | null) => ({
+    kpi,
+    value,
+    numerator: value,
+    denominator: null,
+    unit: 'inr' as const,
+    target,
+  });
+  return {
+    userId: null,
+    territoryId,
+    label,
+    workingDays: 0,
+    metrics: [
+      metric('primary_sales_value', point.primary, point.primaryTarget),
+      metric('secondary_sales_value', point.secondary, point.secondaryTarget),
+    ],
+  };
+}
+
+/** Every month in one call. The old page fired one heavy KPI request per month. */
+async function salesByMonth(months: string[], territoryId: string) {
   await apiReady();
-  const r = await api.GET('/v1/kpis', {
+  const unique = [...new Set(months)];
+  const r = await api.GET('/v1/kpis/sales-places', {
     params: {
-      query: {
-        month,
-        rollup: 'byTerritory',
-        territoryId,
-        kpis: KPIS,
-        ...(territoryLevel ? { territoryLevel } : {}),
-      } as never,
+      query: { territoryId, territoryLevel: 'headquarter', months: unique },
     },
   });
   if (r.error) throw new Error(toApiError(r).message);
-  return r.data?.rows ?? [];
+  const byMonth = new Map<string, Row[]>(unique.map((month) => [month, []]));
+  for (const place of r.data?.places ?? []) {
+    for (const point of place.months) {
+      byMonth.get(point.month)?.push(salesRow(place.territoryId, place.label, point));
+    }
+  }
+  return byMonth;
 }
 
 function turn(direction: 'forward' | 'back', update: () => void) {
@@ -411,9 +440,8 @@ export function PlaceDesk({
     const prior = months.map((item) => addMonths(item, -12));
     const all = [...new Set([...months, ...prior, ...graphMonths])];
     void (async () => {
-      const packs = await Promise.all(all.map((item) => placesOf(item, focus.id, 'headquarter')));
+      const byMonth = await salesByMonth(all, focus.id);
       if (!live) return;
-      const byMonth = new Map(all.map((item, i) => [item, packs[i] ?? []]));
       setRows(byMonth.get(months.at(-1) ?? month) ?? []);
       const currentHq = sumHq(
         months.map((item) => byMonth.get(item) ?? []),
@@ -552,12 +580,12 @@ export function PlaceDesk({
     if (jumped.current || params.get('m') || !focus || !month) return;
     let live = true;
     const look = Array.from({ length: 12 }, (_, i) => addMonths(month, i - 11));
-    void Promise.all(look.map((item) => placesOf(item, focus.id, 'headquarter')))
-      .then((packs) => {
+    void salesByMonth(look, focus.id)
+      .then((byMonth) => {
         if (!live || jumped.current) return;
         jumped.current = true;
         for (let i = look.length - 1; i >= 0; i--) {
-          const total = fig(packs[i] ?? []);
+          const total = fig(byMonth.get(look[i]!) ?? []);
           if ((total.primary || total.secondary) && look[i] !== month) {
             pickMonth(look[i]!);
             return;
