@@ -34,6 +34,35 @@ export const KpiRollup = z.enum(['self', 'team', 'byUser', 'byTerritory', 'compa
 const csv = <T extends z.ZodType>(item: T) =>
   z.preprocess((v) => (typeof v === 'string' ? v.split(',').filter(Boolean) : v), z.array(item));
 
+/** Headquarters (or one level) sales for several months, one query. */
+export const SalesPlacesQuery = z
+  .object({
+    territoryId: Id,
+    territoryLevel: TerritoryLevel.optional(),
+    months: z.preprocess(
+      (v) => (typeof v === 'string' ? v.split(',').filter(Boolean) : v),
+      z.array(Month).min(1).max(48),
+    ),
+  })
+  .meta({ id: 'SalesPlacesQuery' });
+export const SalesPlaceMonth = z
+  .object({
+    month: Month,
+    primary: z.number(),
+    primaryTarget: z.number().nullable(),
+    secondary: z.number(),
+    secondaryTarget: z.number().nullable(),
+  })
+  .meta({ id: 'SalesPlaceMonth' });
+export const SalesPlace = z
+  .object({
+    territoryId: Id,
+    label: z.string(),
+    months: z.array(SalesPlaceMonth),
+  })
+  .meta({ id: 'SalesPlace' });
+export const SalesPlaces = z.object({ places: z.array(SalesPlace) }).meta({ id: 'SalesPlaces' });
+
 export const KpiQuery = z
   .object({
     month: Month.optional(),
@@ -109,6 +138,8 @@ export const ProductKpiReport = z
 
 export type KpiReport = z.infer<typeof KpiReport>;
 export type ProductKpiReport = z.infer<typeof ProductKpiReport>;
+export type SalesPlaces = z.infer<typeof SalesPlaces>;
+export type SalesPlacesQuery = z.infer<typeof SalesPlacesQuery>;
 
 /** Non-Sunday dates in [from, to] (inclusive, YYYY-MM-DD), the calendar part of working days. */
 export function calendarWorkingDates(from: string, to: string): string[] {

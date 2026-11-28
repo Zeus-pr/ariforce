@@ -189,7 +189,13 @@ import {
 } from './schemas/auth';
 import { RoleList } from './schemas/roles';
 import { Health } from './schemas/health';
-import { KpiQuery, KpiReport, ProductKpiReport } from './schemas/kpis';
+import {
+  KpiQuery,
+  KpiReport,
+  ProductKpiReport,
+  SalesPlaces,
+  SalesPlacesQuery,
+} from './schemas/kpis';
 import { BotAskRequest, BotAskResponse } from './schemas/bot';
 import {
   Holiday,
@@ -1051,6 +1057,20 @@ function buildDocument(): OpenApiDocument {
             '403': err('Below Area Business Manager, or missing reports:read'),
             '429': err('Too many questions this hour'),
             '503': err('XAI_API_KEY is not set, or the model call failed'),
+          },
+        }),
+      },
+      '/v1/kpis/sales-places': {
+        get: op({
+          tags: ['KPIs'],
+          operationId: 'getSalesPlaces',
+          summary:
+            'Primary and secondary sales for each place, for up to 48 months, in one call. Same scope as GET /v1/kpis byTerritory.',
+          requestParams: { query: SalesPlacesQuery },
+          responses: {
+            '200': { description: 'OK', ...json(SalesPlaces) },
+            '403': err('Missing reports:read'),
+            '422': err('Invalid query'),
           },
         }),
       },

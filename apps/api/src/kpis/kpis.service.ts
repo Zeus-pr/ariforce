@@ -6,6 +6,8 @@ import {
   type KpiQuery,
   type KpiReport,
   type ProductKpiReport,
+  type SalesPlaces,
+  type SalesPlacesQuery,
 } from '@ariforce/contracts';
 import type { Tx } from '@ariforce/db';
 import { sql, type SQL } from 'drizzle-orm';
@@ -543,6 +545,103 @@ export class KpisService {
       today,
       keys,
     );
+  }
+
+  /**
+   * Sales for every place in one query. The sales page used to call GET /v1/kpis once per month,
+   * and each of those calls also walked daily reports and doctor lists.
+   */
+  salesPlaces(p: Principal, q: z.output<typeof SalesPlacesQuery>): Promise<SalesPlaces> {
+    return this.tenant.run(p, async (tx) => {
+      const scope = p.scopePaths
+        ? sql`and (${sql.join(
+            p.scopePaths.map((s) => sql`(t.path = ${s} or starts_with(t.path, ${s}::text || '.'))`),
+            sql` or `,
+          )})`
+        : sql``;
+      const listed = q.territoryLevel
+        ? await rows<{ id: string; name: string; path: string }>(
+            tx,
+            sql`select t.id, t.name, t.path from territories t
+                  join territories p on p.id = ${q.territoryId}::uuid
+                 where t.deleted_at is null and p.deleted_at is null ${scope}
+                   and t.level = ${q.territoryLevel}
+                   and (t.id = p.id or starts_with(t.path, p.path || '.'))
+                 order by t.name`,
+          )
+        : await rows<{ id: string; name: string; path: string }>(
+            tx,
+            sql`select t.id, t.name, t.path from territories t
+                 where t.deleted_at is null ${scope}
+                   and (t.id = ${q.territoryId}::uuid or t.parent_id = ${q.territoryId}::uuid)
+                 order by (t.id = ${q.territoryId}::uuid) desc, t.name`,
+          );
+      if (q.territoryId && !q.territoryLevel && !listed.some((t) => t.id === q.territoryId))
+        throw new NotFoundException('Territory not found');
+      const list =
+        q.territoryLevel && listed.length > 1
+          ? listed.filter((t) => t.id !== q.territoryId)
+          : listed;
+      const months = [...new Set(q.months)];
+      const empty = () =>
+        months.map((month) => ({
+          month,
+          primary: 0,
+          primaryTarget: null,
+          secondary: 0,
+          secondaryTarget: null,
+        }));
+      if (!list.length) return { places: [] };
+      const summed = await rows<{
+        group_id: string;
+        month: string;
+        kind: string;
+        actual: string;
+        target: string | null;
+      }>(
+        tx,
+        sql`select g.id as group_id, to_char(s.month, 'YYYY-MM') as month, s.kind,
+                   coalesce(sum(s.actual_value), 0) as actual,
+                   sum(s.target_value) as target
+              from territories g
+              join territories t
+                on t.deleted_at is null
+               and (t.path = g.path or starts_with(t.path, g.path::text || '.'))
+              join kpi_sales_month s
+                on s.territory_id = t.id
+               and s.month = any(${txt(months.map((month) => `${month}-01`))}::date[])
+             where g.id = any(${arr(list.map((place) => place.id))})
+             group by g.id, s.month, s.kind`,
+      );
+      const byPlace = new Map<
+        string,
+        Map<string, SalesPlaces['places'][number]['months'][number]>
+      >();
+      for (const place of list) {
+        const monthsOfPlace = new Map(empty().map((point) => [point.month, { ...point }]));
+        byPlace.set(place.id, monthsOfPlace);
+      }
+      for (const row of summed) {
+        const point = byPlace.get(row.group_id)?.get(row.month);
+        if (!point) continue;
+        const actual = Number(row.actual);
+        const target = row.target === null ? null : Number(row.target);
+        if (row.kind === 'primary') {
+          point.primary = actual;
+          point.primaryTarget = target;
+        } else if (row.kind === 'secondary') {
+          point.secondary = actual;
+          point.secondaryTarget = target;
+        }
+      }
+      return {
+        places: list.map((place) => ({
+          territoryId: place.id,
+          label: place.name,
+          months: [...(byPlace.get(place.id)?.values() ?? empty())],
+        })),
+      };
+    });
   }
 
   report(p: Principal, q: Q) {

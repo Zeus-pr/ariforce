@@ -966,6 +966,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/kpis/sales-places': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Primary and secondary sales for each place, for up to 48 months, in one call. Same scope as GET /v1/kpis byTerritory. */
+    get: operations['getSalesPlaces'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/kpis/products': {
     parameters: {
       query?: never;
@@ -6341,6 +6358,30 @@ export interface components {
       title: string;
       columns: string[];
       rows: string[][];
+    };
+    SalesPlaces: {
+      places: components['schemas']['SalesPlace'][];
+    };
+    SalesPlace: {
+      /**
+       * Format: uuid
+       * @description UUIDv7 identifier
+       * @example 0192f1d2-7c3a-7b4e-9a1f-2b3c4d5e6f70
+       */
+      territoryId: string;
+      label: string;
+      months: components['schemas']['SalesPlaceMonth'][];
+    };
+    SalesPlaceMonth: {
+      /**
+       * @description Month (YYYY-MM)
+       * @example 2026-11
+       */
+      month: string;
+      primary: number;
+      primaryTarget: number | null;
+      secondary: number;
+      secondaryTarget: number | null;
     };
     ProductKpiReport: {
       /**
@@ -14366,6 +14407,58 @@ export interface operations {
       };
       /** @description XAI_API_KEY is not set, or the model call failed */
       503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+    };
+  };
+  getSalesPlaces: {
+    parameters: {
+      query: {
+        /** @description UUIDv7 identifier */
+        territoryId: string;
+        territoryLevel?: components['schemas']['TerritoryLevel'];
+        months: string[];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SalesPlaces'];
+        };
+      };
+      /** @description Not signed in */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Missing reports:read */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description Invalid query */
+      422: {
         headers: {
           [name: string]: unknown;
         };
