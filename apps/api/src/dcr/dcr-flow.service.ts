@@ -745,6 +745,8 @@ export class DcrFlowService {
         tourPlanId: plan.tourPlanId,
         tourPlanItemId: item?.id ?? null,
         deviationReason: b.deviationReason?.trim() || null,
+        // Omitted: a client that does not know day remarks leaves the saved text alone.
+        ...(b.remarks !== undefined ? { remarks: b.remarks?.trim() || null } : {}),
         band: head.band,
         details: head.details ?? null,
         workWithUserIds: head.part.workWithUserIds,

@@ -4209,6 +4209,8 @@ export interface components {
       sfcRoutes?: components['schemas']['DcrSfcRouteChoice'][];
       details?: components['schemas']['DcrDetails'] | null;
       deviationReason?: string | null;
+      /** @description Day remarks, separate from each visit. Null clears it. Omit to keep the saved remarks (older clients) */
+      remarks?: string | null;
       /** @description The approved TourPlanItem this day is filed from. The date must lie in its from..to and it must be yours and approved, else 422 VALIDATION (details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date in the range may be drafted (submit still opens on the day). Omitted: the server links the approved item covering the date, if any. No deviation reason is ever required */
       tourPlanItemId?: string | null;
       calls?: components['schemas']['DcrCallInput'][];
@@ -6788,6 +6790,8 @@ export interface components {
       tourPlanItemId?: string | null;
       /** @description Required when worked differs from the approved TP (#22) */
       deviationReason: string | null;
+      /** @description Day remarks, separate from each visit. Null when blank. Absent on older responses */
+      remarks?: string | null;
       /**
        * @description draft/submitted show 'locked' after the day-lock cut-off (#23). approved/rejected (manager review) always show as such.
        * @enum {string}
@@ -7433,6 +7437,8 @@ export interface components {
       tourPlanItemId?: string | null;
       /** @description Required when worked differs from the approved TP (#22) */
       deviationReason: string | null;
+      /** @description Day remarks, separate from each visit. Null when blank. Absent on older responses */
+      remarks?: string | null;
       /**
        * @description draft/submitted show 'locked' after the day-lock cut-off (#23). approved/rejected (manager review) always show as such.
        * @enum {string}

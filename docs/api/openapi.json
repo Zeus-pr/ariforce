@@ -23342,6 +23342,18 @@
               }
             ]
           },
+          "remarks": {
+            "description": "Day remarks, separate from each visit. Null clears it. Omit to keep the saved remarks (older clients)",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tourPlanItemId": {
             "description": "The approved TourPlanItem this day is filed from. The date must lie in its from..to and it must be yours and approved, else 422 VALIDATION (details.reason TOUR_PLAN_ITEM_MISMATCH). With it, a future date in the range may be drafted (submit still opens on the day). Omitted: the server links the approved item covering the date, if any. No deviation reason is ever required",
             "anyOf": [
@@ -32886,6 +32898,18 @@
             ],
             "description": "Required when worked differs from the approved TP (#22)"
           },
+          "remarks": {
+            "description": "Day remarks, separate from each visit. Null when blank. Absent on older responses",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -34984,6 +35008,18 @@
               }
             ],
             "description": "Required when worked differs from the approved TP (#22)"
+          },
+          "remarks": {
+            "description": "Day remarks, separate from each visit. Null when blank. Absent on older responses",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "type": "string",

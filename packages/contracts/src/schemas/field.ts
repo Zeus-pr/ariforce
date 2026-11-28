@@ -588,6 +588,10 @@ export const Dcr = Syncable.extend({
     .max(500)
     .nullable()
     .meta({ description: 'Required when worked differs from the approved TP (#22)' }),
+  remarks: z.string().max(1000).nullable().optional().meta({
+    description:
+      'Day remarks, separate from each visit. Null when blank. Absent on older responses',
+  }),
   status: z.enum(['draft', 'submitted', 'locked', 'approved', 'rejected']).meta({
     description:
       "draft/submitted show 'locked' after the day-lock cut-off (#23). approved/rejected (manager review) always show as such.",

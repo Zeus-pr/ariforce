@@ -264,6 +264,8 @@ export type FlowState = {
   leaveRequestId: string;
   /** Why the day differs from the approved tour plan; asked for when submit says DEVIATION_REASON_REQUIRED. */
   deviationReason: string;
+  /** Day remarks. Separate from the remarks on each visit. */
+  remarks: string;
   /** Optional day expenses (any work type). */
   expenses: ExpenseDraft[];
   /** The saved report had expenses, so an empty list must be sent to clear them. */
@@ -426,6 +428,7 @@ export function draftBody(
     // A partial non-field form is kept on the page, not sent: the API only takes complete details.
     details,
     deviationReason: s.deviationReason.trim() || null,
+    remarks: s.remarks.trim() || null,
     calls: withCalls
       ? s.calls
           .filter((c) => c.outletId && HHMM.test(c.time))

@@ -86,6 +86,7 @@ const emptyFlow = (date: string): FlowState => ({
   office: emptyOffice(),
   leaveRequestId: '',
   deviationReason: '',
+  remarks: '',
   expenses: [],
   expensesSent: false,
 });
