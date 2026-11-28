@@ -169,9 +169,7 @@ export function SfcPanel({
           <div key={h.hqTerritoryId} className="flex flex-col gap-2">
             {h.candidates.length > 1 && (
               <div className="flex flex-col gap-1.5">
-                <Label id={`route-${h.hqTerritoryId}`}>
-                  {h.hqName}: which route did you travel?
-                </Label>
+                <Label id={`route-${h.hqTerritoryId}`}>Which route did you travel?</Label>
                 <ChoiceSelect
                   aria-labelledby={`route-${h.hqTerritoryId}`}
                   value={chosen}
@@ -190,7 +188,7 @@ export function SfcPanel({
             )}
             {c ? (
               <RouteFacts
-                title={`${h.hqName} · ${c.fromPlace} to ${c.toPlace}`}
+                title={`${c.fromPlace} to ${c.toPlace}`}
                 c={c}
                 note="From your SFC. Read-only; changes are made on the SFC screen."
               />
