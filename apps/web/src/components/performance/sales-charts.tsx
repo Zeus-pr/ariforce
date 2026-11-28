@@ -63,24 +63,29 @@ export function SalesGauges({
     }));
   if (gauges.length === 0) return null;
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid gap-4 sm:grid-cols-2">
       {gauges.map((gauge) => {
         return (
-          <ChartFrame key={gauge.label} label={`${gauge.label} ${gauge.pct}% of target`}>
-            <Gauge
-              value={Math.max(0, Math.min(100, gauge.pct))}
-              centerValue={gauge.pct}
-              suffix="%"
-              defaultLabel={gauge.label}
-              needle
-              activeFill={gauge.color}
-              className="mx-auto max-w-sm"
-            />
-            <p className="text-center text-xs text-muted-foreground tabular-nums">
-              {inr(gauge.actual)}
-              {gauge.target > 0 ? ` of ${inr(gauge.target)}` : ''}
-            </p>
-          </ChartFrame>
+          <section
+            key={gauge.label}
+            className="rounded-xl border bg-card p-4 shadow-xs"
+          >
+            <ChartFrame label={`${gauge.label} ${gauge.pct}% of target`}>
+              <Gauge
+                value={Math.max(0, Math.min(100, gauge.pct))}
+                centerValue={gauge.pct}
+                suffix="%"
+                defaultLabel={gauge.label}
+                needle
+                activeFill={gauge.color}
+                className="mx-auto max-w-sm"
+              />
+              <p className="text-center text-xs text-muted-foreground tabular-nums">
+                {inr(gauge.actual)}
+                {gauge.target > 0 ? ` of ${inr(gauge.target)}` : ''}
+              </p>
+            </ChartFrame>
+          </section>
         );
       })}
     </div>
